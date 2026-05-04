@@ -141,7 +141,46 @@ func (m *Module) TrackEvent(ctx context.Context, event models.AnalyticsEvent) {
 		m.updateSession(event)
 	}
 	m.updateStats(event)
+	// Invalidate the aggregation caches that this event could affect.
+	// Selective invalidation rather than a full flush — it's cheap, and a
+	// flush-everything would mean every event causes a 50k-event scan on
+	// the next dashboard refresh, defeating the cache entirely.
+	m.invalidateCachesFor(event.Type)
+	// Broadcast to live subscribers (SSE listeners). Best-effort: a slow
+	// subscriber doesn't block the hot event path.
+	m.broadcastEvent(event)
 	m.log.Debug("Tracked event: %s for %s", event.Type, event.MediaID)
+}
+
+// invalidateCachesFor drops cached entries that could be affected by the
+// given event type. Each event type maps to a small set of cache prefixes;
+// unrelated entries (e.g. heatmap when a login arrives) are left alone so
+// the cache continues to serve other panels.
+func (m *Module) invalidateCachesFor(eventType string) {
+	if m.cache == nil {
+		return
+	}
+	// Every event affects the cohort + heatmap totals + top-users (if it
+	// has a user_id) + funnel. The cheap path is to drop those four prefixes
+	// for every event — they cover most aggregations.
+	m.cache.invalidate("cohort")
+	m.cache.invalidate("heatmap")
+	m.cache.invalidate("topusers")
+	m.cache.invalidate("funnel")
+	switch eventType {
+	case EventSearch:
+		m.cache.invalidate("topsearches")
+	case EventLoginFailed:
+		m.cache.invalidate("failedlogins")
+	case EventServerError:
+		m.cache.invalidate("errorpaths")
+	case EventStreamStart, EventStreamEnd:
+		m.cache.invalidate("quality")
+	}
+	// Device breakdown is keyed off user-agent which only changes when a
+	// new client appears — invalidate on every event keeps the device
+	// distribution honest after sudden traffic shifts.
+	m.cache.invalidate("devices")
 }
 
 // TrackView records a view event.

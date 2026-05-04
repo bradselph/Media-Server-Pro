@@ -3,7 +3,10 @@ import type {
   AnalyticsSummary, DailyStats, TopMediaItem, EventStats, EventTypeCounts,
   AnalyticsEvent, ContentPerformanceItem, UserAnalytics,
   TopUserEntry, SearchQueryEntry, FailedLoginEntry, ErrorPathEntry,
-  MetricTimelineEntry,
+  MetricTimelineEntry, CohortMetrics, HourlyHeatmapCell, QualityBucket,
+  PeriodComparison, Funnel, DeviceBucket, MediaDetail, RetentionGrid,
+  AnomalyReport, IPSummary, ModuleDiagnostics, MetricForecast,
+  RangeComparison, AlertRule, AlertResult,
 } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime, formatBytes } from '~/utils/format'
@@ -45,6 +48,292 @@ const tlUploads = ref<MetricTimelineEntry[]>([])
 const tlBandwidth = ref<MetricTimelineEntry[]>([])
 const tlLogins = ref<MetricTimelineEntry[]>([])
 const tlServerErrors = ref<MetricTimelineEntry[]>([])
+
+// Cohort metrics + heatmap + quality + content gaps + period comparison.
+const cohort = ref<CohortMetrics | null>(null)
+const heatmap = ref<HourlyHeatmapCell[]>([])
+const quality = ref<QualityBucket[]>([])
+const contentGaps = ref<SearchQueryEntry[]>([])
+const cmpViews = ref<PeriodComparison | null>(null)
+const cmpStreams = ref<PeriodComparison | null>(null)
+const cmpBandwidth = ref<PeriodComparison | null>(null)
+const cmpLogins = ref<PeriodComparison | null>(null)
+
+// Anomaly report — banner at the top of the page when something unusual
+// is happening today.
+const anomalies = ref<AnomalyReport | null>(null)
+
+// Backfill — recompute one date's DailyStats from raw events and reload
+// the daily breakdown to show the fresh numbers. Used when persisted
+// values drift (caught a flush failure, migrated data, etc.).
+const backfilling = ref<string | null>(null)
+async function backfillDate(date: string) {
+  backfilling.value = date
+  try {
+    await analyticsApi.backfillDailyStats(date)
+    toast.add({ title: `Recomputed ${date} from raw events`, color: 'success', icon: 'i-lucide-check' })
+    // Reload everything so the daily breakdown + dependent panels
+    // (period comparison, timeline, etc.) all reflect the new totals.
+    await load()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Backfill failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    backfilling.value = null
+  }
+}
+
+// Per-event detail modal — opened when clicking any drill-row or live-tail
+// row. Shows the full event, including the data JSON formatted for reading.
+const eventDetail = ref<AnalyticsEvent | null>(null)
+function openEventDetail(ev: AnalyticsEvent) {
+  eventDetail.value = ev
+}
+function eventDataPretty(ev: AnalyticsEvent | null): string {
+  if (!ev || !ev.data) return ''
+  try { return JSON.stringify(ev.data, null, 2) } catch { return '' }
+}
+async function copyEventJson() {
+  if (!eventDetail.value || !import.meta.client) return
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(eventDetail.value, null, 2))
+    toast.add({ title: 'Event JSON copied', color: 'success', icon: 'i-lucide-clipboard-check' })
+  } catch {
+    toast.add({ title: 'Clipboard unavailable', color: 'warning', icon: 'i-lucide-alert-triangle' })
+  }
+}
+
+// Custom alert rules — admin-defined threshold checks. Persisted to
+// localStorage so each admin keeps their own alert set; evaluated on
+// every dashboard load + auto-refresh.
+const alertRules = ref<AlertRule[]>([])
+const alertResults = ref<AlertResult[]>([])
+const alertsEditOpen = ref(false)
+const alertEdit = ref<AlertRule>({
+  id: '', name: '', metric: 'server_errors', operator: 'gt', threshold: 5, window: 1,
+})
+
+function loadAlertRules() {
+  if (!import.meta.client) return
+  try {
+    const raw = localStorage.getItem('analytics:alertRules')
+    if (raw) alertRules.value = JSON.parse(raw) as AlertRule[]
+  } catch { /* ignore — corrupted JSON falls through to empty list */ }
+}
+function persistAlertRules() {
+  if (!import.meta.client) return
+  try { localStorage.setItem('analytics:alertRules', JSON.stringify(alertRules.value)) } catch { /* quota / privacy mode */ }
+}
+async function evaluateAlerts() {
+  if (alertRules.value.length === 0) {
+    alertResults.value = []
+    return
+  }
+  try {
+    alertResults.value = (await analyticsApi.evaluateAlerts(alertRules.value)) ?? []
+  } catch { /* silent — alerts are best-effort */ }
+}
+function addOrUpdateAlertRule() {
+  if (!alertEdit.value.name || !alertEdit.value.metric) {
+    toast.add({ title: 'Name and metric required', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    return
+  }
+  if (alertEdit.value.id) {
+    const idx = alertRules.value.findIndex(r => r.id === alertEdit.value.id)
+    if (idx >= 0) alertRules.value[idx] = { ...alertEdit.value }
+  } else {
+    alertRules.value.push({ ...alertEdit.value, id: 'a' + Date.now() })
+  }
+  persistAlertRules()
+  alertsEditOpen.value = false
+  alertEdit.value = { id: '', name: '', metric: 'server_errors', operator: 'gt', threshold: 5, window: 1 }
+  evaluateAlerts()
+}
+function removeAlertRule(id: string) {
+  alertRules.value = alertRules.value.filter(r => r.id !== id)
+  persistAlertRules()
+  evaluateAlerts()
+}
+function startEditAlertRule(r: AlertRule) {
+  alertEdit.value = { ...r }
+  alertsEditOpen.value = true
+}
+const triggeredAlerts = computed(() => alertResults.value.filter(a => a.triggered))
+onMounted(() => {
+  loadAlertRules()
+  evaluateAlerts()
+})
+
+// Per-IP traffic summary + analytics module's own diagnostics.
+const ipSummary = ref<IPSummary | null>(null)
+const diagnostics = ref<ModuleDiagnostics | null>(null)
+
+// Forecasts — one per headline metric. Rendered next to the period
+// comparison so admins see "is this growing?" alongside "vs last week".
+const forecastViews = ref<MetricForecast | null>(null)
+const forecastStreams = ref<MetricForecast | null>(null)
+const forecastBandwidth = ref<MetricForecast | null>(null)
+const forecastErrors = ref<MetricForecast | null>(null)
+
+// A/B range comparison — admin picks two date ranges and the panel shows
+// per-metric deltas. Reused for "did the new feature move the needle"
+// analyses without leaving the dashboard.
+const rangeAStart = ref('')
+const rangeAEnd = ref('')
+const rangeBStart = ref('')
+const rangeBEnd = ref('')
+const rangeResult = ref<RangeComparison | null>(null)
+const rangeLoading = ref(false)
+async function runRangeCompare() {
+  if (!rangeAStart.value || !rangeAEnd.value || !rangeBStart.value || !rangeBEnd.value) {
+    toast.add({ title: 'All four dates required', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    return
+  }
+  rangeLoading.value = true
+  try {
+    rangeResult.value = await analyticsApi.getRangeComparison(
+      rangeAStart.value, rangeAEnd.value,
+      rangeBStart.value, rangeBEnd.value,
+    )
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Comparison failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    rangeLoading.value = false
+  }
+}
+
+// Funnel + device/browser breakdown + per-media drill + retention grid.
+const funnel = ref<Funnel | null>(null)
+const devices = ref<DeviceBucket[]>([])
+const browsers = ref<DeviceBucket[]>([])
+const retention = ref<RetentionGrid | null>(null)
+const mediaDetail = ref<MediaDetail | null>(null)
+const mediaDetailLoading = ref(false)
+const mediaDetailOpen = ref(false)
+const mediaDetailTitle = ref('')
+
+// Panel visibility — admin-controlled. Persisted to localStorage so the
+// dashboard remembers the layout across sessions. Each entry is true by
+// default (everything visible until the admin hides it).
+const PANEL_KEYS = [
+  'cohort', 'comparison', 'timeline', 'bandwidth', 'errorsChart',
+  'traffic', 'distribution', 'hourly', 'heatmap', 'funnel', 'quality',
+  'gaps', 'devices', 'retention', 'topUsers', 'topSearches', 'activeStreams',
+  'errorPaths', 'failedLogins', 'recent', 'drill', 'topMedia',
+  'contentPerf', 'daily', 'ips', 'diagnostics', 'forecast', 'rangeCompare',
+  'alerts',
+] as const
+type PanelKey = typeof PANEL_KEYS[number]
+const panelVisibility = ref<Record<PanelKey, boolean>>(
+  Object.fromEntries(PANEL_KEYS.map(k => [k, true])) as Record<PanelKey, boolean>
+)
+// Hydrate from localStorage on mount and persist on change. SSR-safe via
+// process.client guard so the initial server render stays deterministic.
+onMounted(() => {
+  if (!import.meta.client) return
+  try {
+    const raw = localStorage.getItem('analytics:panelVisibility')
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<Record<PanelKey, boolean>>
+      for (const k of PANEL_KEYS) {
+        if (typeof parsed[k] === 'boolean') panelVisibility.value[k] = parsed[k]!
+      }
+    }
+  } catch { /* corrupted JSON — fall through to defaults */ }
+})
+watch(panelVisibility, (v) => {
+  if (!import.meta.client) return
+  try { localStorage.setItem('analytics:panelVisibility', JSON.stringify(v)) } catch { /* quota / privacy mode — ignore */ }
+}, { deep: true })
+
+// Built-in presets — quick-switch dashboard layouts admins can apply with
+// one click. Each preset is a list of panels to enable; everything else
+// gets hidden. "All" restores the default (everything on).
+const PRESETS: Record<string, PanelKey[] | 'all'> = {
+  All: 'all',
+  Engagement: ['cohort', 'comparison', 'timeline', 'bandwidth', 'traffic',
+    'distribution', 'retention', 'topUsers', 'topMedia', 'topSearches',
+    'contentPerf', 'funnel', 'recent'],
+  Operations: ['comparison', 'timeline', 'bandwidth', 'errorsChart',
+    'errorPaths', 'failedLogins', 'activeStreams', 'quality', 'devices',
+    'ips', 'diagnostics', 'recent', 'drill'],
+  Security: ['comparison', 'errorsChart', 'errorPaths', 'failedLogins',
+    'ips', 'recent', 'drill'],
+  Content: ['cohort', 'timeline', 'topMedia', 'contentPerf', 'topSearches',
+    'gaps', 'funnel', 'quality'],
+}
+function applyPreset(name: string) {
+  const preset = PRESETS[name]
+  if (preset === 'all') {
+    for (const k of PANEL_KEYS) panelVisibility.value[k] = true
+    return
+  }
+  const enable = new Set(preset)
+  for (const k of PANEL_KEYS) panelVisibility.value[k] = enable.has(k)
+}
+
+// ── Live event tail (SSE) ───────────────────────────────────────────────────
+// Opens an EventSource against /api/admin/analytics/stream and pushes new
+// events into a ring buffer. Capped at 100 entries so the panel doesn't
+// grow unbounded for an admin who leaves it open all day.
+const liveTailOpen = ref(false)
+const liveTail = ref<AnalyticsEvent[]>([])
+const liveTailMax = 100
+let liveTailSource: EventSource | null = null
+
+function startLiveTail() {
+  if (!import.meta.client) return
+  if (liveTailSource) return
+  try {
+    liveTailSource = new EventSource('/api/admin/analytics/stream', { withCredentials: true })
+    liveTailSource.addEventListener('analytics', (e) => {
+      try {
+        const ev = JSON.parse(e.data) as AnalyticsEvent
+        liveTail.value.unshift(ev)
+        if (liveTail.value.length > liveTailMax) liveTail.value.length = liveTailMax
+      } catch { /* ignore malformed */ }
+    })
+    liveTailSource.addEventListener('error', () => {
+      // EventSource auto-reconnects on network errors; only act if the
+      // connection is in a permanently-failed state.
+      if (liveTailSource && liveTailSource.readyState === EventSource.CLOSED) {
+        toast.add({ title: 'Live tail disconnected', color: 'warning', icon: 'i-lucide-wifi-off' })
+        stopLiveTail()
+      }
+    })
+  } catch (e: unknown) {
+    toast.add({ title: 'Failed to open live tail', color: 'error', icon: 'i-lucide-x' })
+  }
+}
+
+function stopLiveTail() {
+  if (liveTailSource) {
+    liveTailSource.close()
+    liveTailSource = null
+  }
+}
+
+function toggleLiveTail() {
+  liveTailOpen.value = !liveTailOpen.value
+  if (liveTailOpen.value) startLiveTail()
+  else stopLiveTail()
+}
+
+onUnmounted(() => stopLiveTail())
+
+// Open the per-media analytics modal for a specific media item.
+async function openMediaDetail(mediaId: string, title: string) {
+  mediaDetailTitle.value = title
+  mediaDetailOpen.value = true
+  mediaDetail.value = null
+  mediaDetailLoading.value = true
+  try {
+    mediaDetail.value = await analyticsApi.getMediaAnalytics(mediaId, 30)
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load media analytics', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    mediaDetailLoading.value = false
+  }
+}
 
 const summary = ref<AnalyticsSummary | null>(null)
 const daily = ref<DailyStats[]>([])
@@ -189,6 +478,24 @@ async function load() {
       analyticsApi.getMetricTimeline('bytes_served', days4chart),   // 14
       analyticsApi.getMetricTimeline('logins', days4chart),         // 15
       analyticsApi.getMetricTimeline('server_errors', days4chart),  // 16
+      analyticsApi.getCohortMetrics(),                              // 17
+      analyticsApi.getHourlyHeatmap(30),                            // 18
+      analyticsApi.getQualityBreakdown(30),                         // 19
+      analyticsApi.getContentGaps(30, 10),                          // 20
+      analyticsApi.getPeriodComparison('total_views', days),        // 21
+      analyticsApi.getPeriodComparison('stream_starts', days),      // 22
+      analyticsApi.getPeriodComparison('bytes_served', days),       // 23
+      analyticsApi.getPeriodComparison('logins', days),             // 24
+      analyticsApi.getFunnel(30),                                   // 25
+      analyticsApi.getDeviceBreakdown(30),                          // 26
+      analyticsApi.getRetention(12),                                // 27
+      analyticsApi.getAnomalies(2.5, 14),                           // 28
+      analyticsApi.getIPSummary(30, 15),                            // 29
+      analyticsApi.getDiagnostics(),                                // 30
+      analyticsApi.getForecast('total_views', 14),                  // 31
+      analyticsApi.getForecast('stream_starts', 14),                // 32
+      analyticsApi.getForecast('bytes_served', 14),                 // 33
+      analyticsApi.getForecast('server_errors', 14),                // 34
     ])
     if (period.value !== capturedPeriod) return
     const r = (i: number) => results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<unknown>).value : null
@@ -209,6 +516,28 @@ async function load() {
     if (r(14) !== null) tlBandwidth.value = (r(14) as MetricTimelineEntry[]) ?? []
     if (r(15) !== null) tlLogins.value = (r(15) as MetricTimelineEntry[]) ?? []
     if (r(16) !== null) tlServerErrors.value = (r(16) as MetricTimelineEntry[]) ?? []
+    if (r(17) !== null) cohort.value = r(17) as CohortMetrics
+    if (r(18) !== null) heatmap.value = (r(18) as HourlyHeatmapCell[]) ?? []
+    if (r(19) !== null) quality.value = (r(19) as QualityBucket[]) ?? []
+    if (r(20) !== null) contentGaps.value = (r(20) as SearchQueryEntry[]) ?? []
+    if (r(21) !== null) cmpViews.value = r(21) as PeriodComparison
+    if (r(22) !== null) cmpStreams.value = r(22) as PeriodComparison
+    if (r(23) !== null) cmpBandwidth.value = r(23) as PeriodComparison
+    if (r(24) !== null) cmpLogins.value = r(24) as PeriodComparison
+    if (r(25) !== null) funnel.value = r(25) as Funnel
+    if (r(26) !== null) {
+      const d = r(26) as { devices: DeviceBucket[]; browsers: DeviceBucket[] }
+      devices.value = d.devices ?? []
+      browsers.value = d.browsers ?? []
+    }
+    if (r(27) !== null) retention.value = r(27) as RetentionGrid
+    if (r(28) !== null) anomalies.value = r(28) as AnomalyReport
+    if (r(29) !== null) ipSummary.value = r(29) as IPSummary
+    if (r(30) !== null) diagnostics.value = r(30) as ModuleDiagnostics
+    if (r(31) !== null) forecastViews.value = r(31) as MetricForecast
+    if (r(32) !== null) forecastStreams.value = r(32) as MetricForecast
+    if (r(33) !== null) forecastBandwidth.value = r(33) as MetricForecast
+    if (r(34) !== null) forecastErrors.value = r(34) as MetricForecast
 
     const failed = results.filter(x => x.status === 'rejected')
     if (failed.length) toast.add({ title: `${failed.length} analytics endpoint(s) failed`, color: 'warning', icon: 'i-lucide-alert-triangle' })
@@ -347,6 +676,77 @@ const trafficGroups = computed<TrafficGroup[]>(() => {
   ]
 })
 
+// Heatmap helpers — flattened into a 7×24 matrix indexed by [day][hour] so
+// the template can iterate without doing the math. Cells fall back to 0
+// when the backend hasn't seen any events for that bucket.
+const heatmapMatrix = computed(() => {
+  const m: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
+  for (const cell of heatmap.value) {
+    if (cell.day_of_week >= 0 && cell.day_of_week < 7 && cell.hour >= 0 && cell.hour < 24) {
+      m[cell.day_of_week][cell.hour] = cell.count
+    }
+  }
+  return m
+})
+const heatmapMax = computed(() => {
+  let max = 0
+  for (const row of heatmapMatrix.value) for (const v of row) if (v > max) max = v
+  return max
+})
+const heatmapPalette = ['bg-muted/10', 'bg-emerald-500/15', 'bg-emerald-500/30', 'bg-emerald-500/50', 'bg-emerald-500/70', 'bg-emerald-500/90']
+function heatmapClass(count: number): string {
+  if (count === 0 || heatmapMax.value === 0) return heatmapPalette[0]
+  // 5-bucket quantization keeps the palette discrete and readable.
+  const ratio = count / heatmapMax.value
+  const idx = Math.min(heatmapPalette.length - 1, Math.max(1, Math.ceil(ratio * 5)))
+  return heatmapPalette[idx]
+}
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+// Format a period-comparison delta. Returns "+12%" / "−4%" / "—" depending on
+// sign, with the "vs prev" tooltip context handled separately in the template.
+function formatDelta(c: PeriodComparison | null): { label: string; tone: 'success' | 'error' | 'neutral' } {
+  if (!c || (c.current === 0 && c.previous === 0)) return { label: '—', tone: 'neutral' }
+  const pct = c.delta_pct
+  const sign = pct > 0 ? '+' : ''
+  const tone: 'success' | 'error' | 'neutral' = pct > 0 ? 'success' : pct < 0 ? 'error' : 'neutral'
+  // Cap display at ±999% so a "previous=0, current=N" doesn't dominate the row.
+  const capped = Math.max(-999, Math.min(999, pct))
+  return { label: `${sign}${capped.toFixed(0)}%`, tone }
+}
+
+// Total bytes across all quality buckets, used to render percentages.
+const qualityTotalBytes = computed(() => quality.value.reduce((a, b) => a + (b.bytes_sent || 0), 0))
+const qualityTotalStreams = computed(() => quality.value.reduce((a, b) => a + (b.streams || 0), 0))
+
+// Color the from-previous percentage by drop-off severity. > 50% retained =
+// healthy (success), 25-50% = neutral, < 25% = warning, 0 = error.
+function funnelTone(pct: number): 'success' | 'warning' | 'error' | 'neutral' {
+  if (pct === 0) return 'error'
+  if (pct >= 50) return 'success'
+  if (pct >= 25) return 'neutral'
+  return 'warning'
+}
+
+// Total events across the device breakdown, used for percentage labels.
+const deviceTotalEvents = computed(() => devices.value.reduce((a, b) => a + b.events, 0))
+const browserTotalEvents = computed(() => browsers.value.reduce((a, b) => a + b.events, 0))
+
+// Retention cell shading. 5 buckets keep the visual discrete; gaps in the
+// upper triangle (cells beyond the cohort's age) render as muted/transparent
+// instead of a misleading 0% block.
+const retentionPalette = ['bg-muted/10', 'bg-emerald-500/15', 'bg-emerald-500/30', 'bg-emerald-500/50', 'bg-emerald-500/70', 'bg-emerald-500/90']
+function retentionCellClass(pct: number, weekIndex: number, cohortAge: number): string {
+  if (weekIndex > cohortAge) return 'bg-transparent'
+  if (pct === 0) return retentionPalette[0]
+  // Buckets: 0-5, 5-15, 15-30, 30-50, 50-75, 75+.
+  if (pct >= 75) return retentionPalette[5]
+  if (pct >= 50) return retentionPalette[4]
+  if (pct >= 30) return retentionPalette[3]
+  if (pct >= 15) return retentionPalette[2]
+  return retentionPalette[1]
+}
+
 // Server-health summary — surfaces failure-side counters in one place so
 // operators can see at a glance whether the server is misbehaving today
 // without scanning the whole 24-card breakdown.
@@ -400,6 +800,16 @@ const hasTrafficActivity = computed(() =>
           size="xs"
           @click="toggleAutoRefresh"
         />
+        <!-- Live tail toggle — opens an SSE connection. While open, every
+             tracked event flows into a ring buffer the panel below renders. -->
+        <UButton
+          :icon="liveTailOpen ? 'i-lucide-radio' : 'i-lucide-radio-tower'"
+          :label="liveTailOpen ? 'Live' : 'Tail'"
+          :variant="liveTailOpen ? 'solid' : 'outline'"
+          :color="liveTailOpen ? 'success' : 'neutral'"
+          size="xs"
+          @click="toggleLiveTail"
+        />
         <UButton
           icon="i-lucide-download"
           label="Export CSV"
@@ -410,6 +820,54 @@ const hasTrafficActivity = computed(() =>
           :href="analyticsApi.exportCsv(period)"
           download
         />
+        <!-- Export-all bundle — single zip with one CSV per panel. Useful
+             for archival snapshots or sharing dashboard state with a peer
+             without screenshot-and-paste. -->
+        <UButton
+          icon="i-lucide-package"
+          label="Bundle"
+          variant="outline"
+          color="neutral"
+          size="xs"
+          tag="a"
+          :href="analyticsApi.exportAllUrl()"
+          download
+          title="Download a ZIP containing every panel as CSV"
+        />
+        <!-- Panels visibility menu — admins can hide widgets they don't
+             care about. Choices persist to localStorage so the layout
+             survives reloads. -->
+        <UPopover :ui="{ content: 'w-64' }">
+          <UButton icon="i-lucide-layout-dashboard" label="Panels" variant="outline" color="neutral" size="xs" />
+          <template #content>
+            <div class="p-3 max-h-96 overflow-y-auto space-y-1.5 text-sm">
+              <div class="mb-3">
+                <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-1.5">Presets</p>
+                <div class="flex flex-wrap gap-1">
+                  <UButton
+                    v-for="name in Object.keys(PRESETS)"
+                    :key="name"
+                    :label="name"
+                    size="xs"
+                    variant="outline"
+                    color="neutral"
+                    @click="applyPreset(name)"
+                  />
+                </div>
+                <p class="text-[10px] text-muted mt-1.5 italic">
+                  One-click layout switches; individual toggles below override.
+                </p>
+              </div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs uppercase tracking-wide font-semibold text-muted">Show panels</span>
+              </div>
+              <label v-for="k in PANEL_KEYS" :key="k" class="flex items-center gap-2 cursor-pointer hover:bg-muted/10 rounded px-1 py-0.5">
+                <UCheckbox v-model="panelVisibility[k]" />
+                <span class="text-xs capitalize">{{ k.replace(/([A-Z])/g, ' $1').trim() }}</span>
+              </label>
+            </div>
+          </template>
+        </UPopover>
       </div>
     </div>
 
@@ -453,6 +911,64 @@ const hasTrafficActivity = computed(() =>
     <div v-if="loading && !summary" class="flex justify-center py-8">
       <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
     </div>
+
+    <!-- Custom alerts banner — admin-defined threshold rules. Renders only
+         when at least one rule is currently triggered. Each pill shows the
+         rule name + the current value vs threshold. -->
+    <UAlert
+      v-if="triggeredAlerts.length > 0"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-bell-ring"
+      :title="`${triggeredAlerts.length} alert${triggeredAlerts.length === 1 ? '' : 's'} triggered`"
+    >
+      <template #description>
+        <div class="flex flex-wrap gap-2 mt-1.5">
+          <UBadge
+            v-for="a in triggeredAlerts"
+            :key="a.rule.id"
+            color="error"
+            variant="subtle"
+            size="xs"
+            :title="a.message"
+          >
+            {{ a.rule.name }}: {{ a.value.toLocaleString() }}
+          </UBadge>
+        </div>
+      </template>
+    </UAlert>
+
+    <!-- Anomalies banner — appears only when at least one watched metric
+         is statistically far from its rolling baseline. Each anomaly gets
+         its own pill so admins can see at a glance which metrics need
+         attention. Spikes in error metrics colour error; growth spikes
+         in engagement colour primary. -->
+    <UAlert
+      v-if="anomalies && anomalies.anomalies.length > 0"
+      :color="anomalies.anomalies.some(a => ['server_errors','hls_errors','logins_failed','mature_blocked','permission_denied'].includes(a.metric)) ? 'error' : 'warning'"
+      variant="subtle"
+      icon="i-lucide-zap"
+      :title="`${anomalies.anomalies.length} anomaly${anomalies.anomalies.length === 1 ? '' : 'ies'} vs ${anomalies.window_days}-day baseline`"
+    >
+      <template #description>
+        <div class="flex flex-wrap gap-2 mt-1.5">
+          <UBadge
+            v-for="a in anomalies.anomalies"
+            :key="a.date + a.metric"
+            :color="['server_errors','hls_errors','logins_failed','mature_blocked','permission_denied'].includes(a.metric) ? 'error' :
+                    a.direction === 'dip' ? 'warning' : 'primary'"
+            variant="subtle"
+            size="xs"
+            class="cursor-pointer"
+            :title="`${a.metric}: ${a.value.toLocaleString()} (baseline ${a.baseline.toFixed(1)}, z=${a.z_score.toFixed(1)})`"
+            @click="drillDateFilter = a.date"
+          >
+            <UIcon :name="a.direction === 'spike' ? 'i-lucide-trending-up' : 'i-lucide-trending-down'" class="size-3 mr-1" />
+            {{ a.metric }} {{ a.direction }} ({{ a.z_score !== 0 ? `${a.z_score.toFixed(1)}σ` : 'absolute' }})
+          </UBadge>
+        </div>
+      </template>
+    </UAlert>
 
     <!-- Summary cards (8 metrics — added today bandwidth + active streams). -->
     <div v-if="summary" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
@@ -501,11 +1017,121 @@ const hasTrafficActivity = computed(() =>
       </template>
     </UAlert>
 
+    <!-- Cohort + period-delta strip — DAU/WAU/MAU + stickiness on the left,
+         period-over-period deltas on the right. Quick-glance health pulse. -->
+    <div v-if="(panelVisibility.cohort || panelVisibility.comparison) && (cohort || cmpViews)" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <UCard v-if="cohort && panelVisibility.cohort" :ui="{ body: 'p-3' }">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs uppercase tracking-wide font-semibold text-muted">User Cohorts (last 30 days)</span>
+          <UIcon name="i-lucide-users-round" class="size-4 text-primary" />
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <p class="text-2xl font-bold text-highlighted">{{ cohort.dau.toLocaleString() }}</p>
+            <p class="text-xs text-muted">DAU</p>
+          </div>
+          <div>
+            <p class="text-2xl font-bold text-highlighted">{{ cohort.wau.toLocaleString() }}</p>
+            <p class="text-xs text-muted">WAU</p>
+          </div>
+          <div>
+            <p class="text-2xl font-bold text-highlighted">{{ cohort.mau.toLocaleString() }}</p>
+            <p class="text-xs text-muted">MAU</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-4 mt-2 text-xs text-muted">
+          <span title="DAU divided by WAU — share of weekly users active today">
+            DAU/WAU: <strong class="text-highlighted">{{ (cohort.stickiness_dau_wau * 100).toFixed(0) }}%</strong>
+          </span>
+          <span title="DAU divided by MAU — share of monthly users active today">
+            DAU/MAU: <strong class="text-highlighted">{{ (cohort.stickiness_dau_mau * 100).toFixed(0) }}%</strong>
+          </span>
+        </div>
+      </UCard>
+
+      <UCard v-if="panelVisibility.comparison" :ui="{ body: 'p-3' }">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs uppercase tracking-wide font-semibold text-muted">Period Comparison ({{ cmpViews?.window_days ?? '—' }}d vs prev)</span>
+          <UIcon name="i-lucide-trending-up" class="size-4 text-primary" />
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <template v-for="cmp in [
+            { label: 'Views', cmp: cmpViews },
+            { label: 'Streams', cmp: cmpStreams },
+            { label: 'Bandwidth', cmp: cmpBandwidth, isBytes: true },
+            { label: 'Logins', cmp: cmpLogins },
+          ]" :key="cmp.label">
+            <div v-if="cmp.cmp" class="flex flex-col">
+              <p class="text-lg font-bold text-highlighted truncate">
+                {{ cmp.isBytes ? formatBytes(cmp.cmp.current) : cmp.cmp.current.toLocaleString() }}
+              </p>
+              <div class="flex items-center gap-1 text-xs">
+                <span class="text-muted">{{ cmp.label }}</span>
+                <UBadge
+                  :color="formatDelta(cmp.cmp).tone === 'success' ? 'success' : formatDelta(cmp.cmp).tone === 'error' ? 'error' : 'neutral'"
+                  variant="subtle"
+                  size="xs"
+                >
+                  {{ formatDelta(cmp.cmp).label }}
+                </UBadge>
+              </div>
+            </div>
+          </template>
+        </div>
+      </UCard>
+    </div>
+
+    <!-- Forecast strip — linear-trend projections of tomorrow's metrics
+         alongside their direction. Renders as 4 small cards because the
+         signal we want is "up / down / flat" plus a number, not a chart. -->
+    <UCard v-if="panelVisibility.forecast && (forecastViews || forecastStreams || forecastBandwidth || forecastErrors)" :ui="{ body: 'p-3' }">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-telescope" class="size-4" />
+          14-Day Trend Forecast
+        </div>
+      </template>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <template v-for="f in [
+          { label: 'Views', cmp: forecastViews },
+          { label: 'Streams', cmp: forecastStreams },
+          { label: 'Bandwidth', cmp: forecastBandwidth, isBytes: true },
+          { label: 'Server Errors', cmp: forecastErrors, isError: true },
+        ]" :key="f.label">
+          <div v-if="f.cmp">
+            <div class="flex items-center gap-1 mb-0.5">
+              <UIcon
+                :name="f.cmp.direction === 'up' ? 'i-lucide-trending-up' :
+                       f.cmp.direction === 'down' ? 'i-lucide-trending-down' :
+                       'i-lucide-minus'"
+                :class="[
+                  f.cmp.direction === 'up' && f.isError ? 'text-error' :
+                  f.cmp.direction === 'up' ? 'text-success' :
+                  f.cmp.direction === 'down' && f.isError ? 'text-success' :
+                  f.cmp.direction === 'down' ? 'text-warning' :
+                  'text-muted',
+                  'size-4'
+                ]"
+              />
+              <span class="text-xs text-muted">{{ f.label }}</span>
+            </div>
+            <p class="text-base font-bold text-highlighted truncate"
+               :title="`Slope: ${f.cmp.slope.toFixed(2)} per day; ±${f.cmp.confidence_band.toFixed(1)} band`">
+              {{ f.isBytes ? formatBytes(f.cmp.projection) : Math.round(f.cmp.projection).toLocaleString() }}
+            </p>
+            <p class="text-[10px] text-muted">
+              tomorrow ±{{ f.isBytes ? formatBytes(f.cmp.confidence_band) : f.cmp.confidence_band.toFixed(0) }}
+            </p>
+          </div>
+        </template>
+      </div>
+    </UCard>
+
     <!-- Engagement timeline — overlays views, streams, uploads, and logins
          on a single chart so operators can see how the four highest-signal
          metrics correlate over the chart range. Bandwidth gets its own
          chart below since the y-axis is incompatible (bytes vs counts). -->
-    <UCard v-if="tlViews.length > 0">
+    <UCard v-if="panelVisibility.timeline && tlViews.length > 0">
       <template #header>
         <div class="font-semibold flex items-center gap-2">
           <UIcon name="i-lucide-line-chart" class="size-4" />
@@ -520,12 +1146,13 @@ const hasTrafficActivity = computed(() =>
           { label: 'Logins', color: 'stroke-sky-500 text-sky-500', values: tlLogins },
         ]"
         :height="220"
+        @point-click="(date: string) => { drillDateFilter = date }"
       />
     </UCard>
 
     <!-- Bandwidth + Server-Errors charts — separate axes (bytes / count). -->
     <div v-if="tlBandwidth.length > 0 || tlServerErrors.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <UCard v-if="tlBandwidth.length > 0">
+      <UCard v-if="panelVisibility.bandwidth && tlBandwidth.length > 0">
         <template #header>
           <div class="font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-network" class="size-4" />
@@ -537,9 +1164,10 @@ const hasTrafficActivity = computed(() =>
             { label: 'Bytes', color: 'stroke-cyan-500 text-cyan-500', values: tlBandwidth, format: (v: number) => formatBytes(v) },
           ]"
           :height="180"
+          @point-click="(date: string) => { drillDateFilter = date }"
         />
       </UCard>
-      <UCard v-if="tlServerErrors.length > 0 && tlServerErrors.some(e => e.value > 0)">
+      <UCard v-if="panelVisibility.errorsChart && tlServerErrors.length > 0 && tlServerErrors.some(e => e.value > 0)">
         <template #header>
           <div class="font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-alert-octagon" class="size-4 text-error" />
@@ -551,13 +1179,14 @@ const hasTrafficActivity = computed(() =>
             { label: 'Errors', color: 'stroke-red-500 text-red-500', values: tlServerErrors },
           ]"
           :height="180"
+          @point-click="(date: string) => { drillDateFilter = date }"
         />
       </UCard>
     </div>
 
     <!-- Today's Traffic Breakdown — grouped, only shows non-zero counters so
          a quiet day stays visually quiet instead of rendering 24 zero cards. -->
-    <div v-if="summary && hasTrafficActivity" class="space-y-3">
+    <div v-if="panelVisibility.traffic && summary && hasTrafficActivity" class="space-y-3">
       <template v-for="group in trafficGroups" :key="group.title">
         <div v-if="group.items.some(i => i.value > 0)">
           <h4 class="text-xs font-semibold uppercase tracking-wide text-muted mb-2">{{ group.title }}</h4>
@@ -583,7 +1212,7 @@ const hasTrafficActivity = computed(() =>
     <!-- Charts row: Event Distribution + Hourly Activity -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- Event Type Distribution -->
-      <UCard v-if="filteredEventTypeEntries.length > 0">
+      <UCard v-if="panelVisibility.distribution && filteredEventTypeEntries.length > 0">
         <template #header>
           <div class="font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-pie-chart" class="size-4" />
@@ -592,7 +1221,10 @@ const hasTrafficActivity = computed(() =>
           </div>
         </template>
         <div class="space-y-2 max-h-72 overflow-y-auto">
-          <div v-for="entry in filteredEventTypeEntries" :key="entry.type" class="flex items-center gap-2">
+          <div v-for="entry in filteredEventTypeEntries" :key="entry.type"
+               class="flex items-center gap-2 cursor-pointer hover:bg-muted/10 rounded px-1 py-0.5"
+               :title="`Click to drill events of type: ${entry.type}`"
+               @click="drillMode = 'type'; drillType = entry.type; drillByType()">
             <span class="w-24 shrink-0 text-xs text-muted capitalize truncate" :title="entry.type.replace(/_/g, ' ')">
               {{ entry.type.replace(/_/g, ' ') }}
             </span>
@@ -614,7 +1246,7 @@ const hasTrafficActivity = computed(() =>
       </UCard>
 
       <!-- Hourly Activity (today) -->
-      <UCard v-if="eventStats?.hourly_events">
+      <UCard v-if="panelVisibility.hourly && eventStats?.hourly_events">
         <template #header>
           <div class="font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-clock" class="size-4" />
@@ -640,7 +1272,7 @@ const hasTrafficActivity = computed(() =>
     </div>
 
     <!-- Content Performance -->
-    <UCard v-if="contentPerf.length > 0">
+    <UCard v-if="panelVisibility.contentPerf && contentPerf.length > 0">
       <template #header>
         <div class="font-semibold flex items-center gap-2">
           <UIcon name="i-lucide-bar-chart-3" class="size-4" />
@@ -680,34 +1312,324 @@ const hasTrafficActivity = computed(() =>
       </div>
     </UCard>
 
+    <!-- Conversion funnel — view → playback → completion, with overall
+         and authenticated/anonymous splits. The "from prev" percentages
+         show step-over-step retention; the bars shade by tone so admins
+         can spot where users are falling out of the experience. -->
+    <UCard v-if="panelVisibility.funnel && funnel && funnel.stages?.[0]?.count > 0">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-filter" class="size-4" />
+          Conversion Funnel ({{ funnel.window_days }} days)
+        </div>
+      </template>
+      <div class="space-y-4">
+        <template v-for="row in [
+          { label: 'Overall', stages: funnel.stages },
+          { label: 'Authenticated', stages: funnel.authenticated },
+          { label: 'Anonymous', stages: funnel.anonymous },
+        ]" :key="row.label">
+          <div v-if="row.stages.length > 0">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs uppercase tracking-wide font-semibold text-muted">{{ row.label }}</span>
+              <span class="text-xs text-muted">
+                {{ row.stages[0].count.toLocaleString() }} → {{ row.stages[row.stages.length - 1].count.toLocaleString() }}
+                ({{ row.stages[row.stages.length - 1].from_top_pct.toFixed(1) }}% conversion)
+              </span>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5">
+              <div v-for="(s, i) in row.stages" :key="i" class="relative">
+                <div
+                  :class="[
+                    'rounded p-2.5 border-l-4',
+                    funnelTone(s.from_previous_pct) === 'success' ? 'border-l-emerald-500 bg-emerald-500/5' :
+                    funnelTone(s.from_previous_pct) === 'warning' ? 'border-l-amber-500 bg-amber-500/5' :
+                    funnelTone(s.from_previous_pct) === 'error' ? 'border-l-red-500 bg-red-500/5' :
+                    'border-l-default bg-muted/5'
+                  ]"
+                >
+                  <p class="text-xs text-muted">{{ s.stage }}</p>
+                  <p class="text-base font-bold text-highlighted">{{ s.count.toLocaleString() }}</p>
+                  <p v-if="i > 0" class="text-[10px] text-muted">
+                    {{ s.from_previous_pct.toFixed(1) }}% of prev
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </UCard>
+
+    <!-- Hourly heatmap (7 days × 24 hours) — surfaces traffic peaks per
+         weekday so operators can correlate scheduled tasks / cron / load
+         with user activity windows. Rendered as a discrete-quantized grid;
+         each cell tooltips its raw count. -->
+    <UCard v-if="panelVisibility.heatmap && heatmap.length > 0 && heatmapMax > 0">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-grid" class="size-4" />
+          Hourly Activity Heatmap (last 30 days)
+        </div>
+      </template>
+      <div class="overflow-x-auto">
+        <div class="inline-grid gap-0.5" :style="{ gridTemplateColumns: 'auto repeat(24, minmax(14px, 1fr))' }">
+          <!-- header row: hour labels every 3 hours -->
+          <div></div>
+          <div v-for="h in 24" :key="`h-${h - 1}`" class="text-[9px] text-muted text-center leading-tight">
+            <span v-if="(h - 1) % 3 === 0">{{ String(h - 1).padStart(2, '0') }}</span>
+          </div>
+          <!-- one row per day -->
+          <template v-for="(dow, i) in DAY_LABELS" :key="dow">
+            <div class="text-[10px] text-muted pr-1 self-center text-right">{{ dow }}</div>
+            <div
+              v-for="(count, h) in heatmapMatrix[i]"
+              :key="`c-${i}-${h}`"
+              :class="[heatmapClass(count), 'h-4 rounded-sm cursor-default']"
+              :title="`${dow} ${String(h).padStart(2, '0')}:00 — ${count.toLocaleString()} events`"
+            />
+          </template>
+        </div>
+        <div class="flex items-center gap-1.5 mt-2 text-[10px] text-muted">
+          <span>Less</span>
+          <span v-for="(c, i) in heatmapPalette" :key="i" :class="[c, 'w-3 h-3 rounded-sm']" />
+          <span>More</span>
+          <span class="ml-2">peak: {{ heatmapMax.toLocaleString() }} events/hour</span>
+        </div>
+      </div>
+    </UCard>
+
+    <!-- Retention grid (week-N retention by signup cohort). Upper-triangular
+         by construction — younger cohorts have fewer cells. Empty cells in
+         the upper triangle are rendered transparent (not 0%) so admins
+         don't read a "drop-off" where there's just no data yet. -->
+    <UCard v-if="panelVisibility.retention && retention && retention.weeks?.length > 0">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-table-2" class="size-4" />
+          Cohort Retention ({{ retention.cohort_weeks }} weeks)
+        </div>
+      </template>
+      <div class="overflow-x-auto">
+        <table class="text-xs">
+          <thead>
+            <tr>
+              <th class="px-2 py-1 text-left font-semibold text-muted">Cohort</th>
+              <th class="px-2 py-1 text-right font-semibold text-muted">Size</th>
+              <th
+                v-for="w in retention.cohort_weeks"
+                :key="`wh-${w - 1}`"
+                class="px-1.5 py-1 text-center font-semibold text-muted"
+              >W{{ w - 1 }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, i) in retention.weeks" :key="row.cohort_start" class="hover:bg-muted/5">
+              <td class="px-2 py-1 font-mono text-muted whitespace-nowrap">{{ row.cohort_start }}</td>
+              <td class="px-2 py-1 text-right font-mono text-muted">{{ row.cohort_size.toLocaleString() }}</td>
+              <td
+                v-for="w in retention.cohort_weeks"
+                :key="`c-${i}-${w - 1}`"
+                :class="[
+                  retentionCellClass(row.retention[w - 1] ?? 0, w - 1, retention.weeks.length - 1 - i),
+                  'px-1.5 py-1 text-center font-mono',
+                  (w - 1) > (retention.weeks.length - 1 - i) ? 'text-transparent' : 'text-highlighted'
+                ]"
+                :title="(w - 1) > (retention.weeks.length - 1 - i) ?
+                  '(cohort younger than this week)' :
+                  `${row.cohort_start} → week ${w - 1}: ${(row.retention[w - 1] ?? 0).toFixed(1)}%`"
+              >
+                {{ ((w - 1) > (retention.weeks.length - 1 - i)) ? '·' : (row.retention[w - 1] ?? 0).toFixed(0) + '%' }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-xs text-muted mt-2 italic">
+        Each cell is the % of the signup-week cohort that returned in week N.
+        Active = any user-attributed event that week (login, view, search…).
+      </p>
+    </UCard>
+
+    <!-- Device + Browser breakdown — two side-by-side panels showing how
+         events split across device families and browser families. Sorted
+         by event count descending so the dominant client is at the top. -->
+    <div v-if="panelVisibility.devices && (devices.length > 0 || browsers.length > 0)" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <UCard v-if="devices.length > 0">
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-smartphone" class="size-4" />
+            Devices (last 30 days)
+          </div>
+        </template>
+        <div class="space-y-1.5">
+          <div v-for="d in devices" :key="d.family" class="flex items-center gap-2 text-xs">
+            <span class="w-24 shrink-0 truncate" :title="d.family">{{ d.family }}</span>
+            <div class="flex-1 bg-muted/20 rounded-full h-3 overflow-hidden">
+              <div
+                class="h-full rounded-full bg-primary transition-all"
+                :style="{ width: deviceTotalEvents > 0 ? `${Math.round((d.events / deviceTotalEvents) * 100)}%` : '0%' }"
+              />
+            </div>
+            <span class="w-16 shrink-0 text-right text-muted">{{ d.events.toLocaleString() }}</span>
+            <span class="w-12 shrink-0 text-right text-[11px] text-muted" :title="`${d.unique_users} unique users`">
+              {{ d.unique_users }}u
+            </span>
+          </div>
+        </div>
+      </UCard>
+
+      <UCard v-if="browsers.length > 0">
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-globe" class="size-4" />
+            Browsers (last 30 days)
+          </div>
+        </template>
+        <div class="space-y-1.5">
+          <div v-for="b in browsers" :key="b.family" class="flex items-center gap-2 text-xs">
+            <span class="w-24 shrink-0 truncate" :title="b.family">{{ b.family }}</span>
+            <div class="flex-1 bg-muted/20 rounded-full h-3 overflow-hidden">
+              <div
+                class="h-full rounded-full bg-sky-500 transition-all"
+                :style="{ width: browserTotalEvents > 0 ? `${Math.round((b.events / browserTotalEvents) * 100)}%` : '0%' }"
+              />
+            </div>
+            <span class="w-16 shrink-0 text-right text-muted">{{ b.events.toLocaleString() }}</span>
+            <span class="w-12 shrink-0 text-right text-[11px] text-muted">{{ b.unique_users }}u</span>
+          </div>
+        </div>
+      </UCard>
+    </div>
+
+    <!-- Per-IP traffic — two side-by-side leaderboards (by event volume,
+         by bandwidth) so admins can spot scrapers (high events, low bytes)
+         vs heavy streamers (low events, high bytes). -->
+    <UCard v-if="panelVisibility.ips && ipSummary && ipSummary.unique_ips > 0">
+      <template #header>
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-network" class="size-4" />
+            IP Traffic — {{ ipSummary.unique_ips.toLocaleString() }} unique IPs (last 30 days)
+          </div>
+        </div>
+      </template>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div>
+          <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-2">By event volume</p>
+          <div class="divide-y divide-default max-h-72 overflow-y-auto">
+            <div v-for="ip in ipSummary.top_by_events" :key="`e-${ip.ip_address}`" class="py-1.5 flex items-center gap-2 text-xs">
+              <span class="flex-1 font-mono truncate">{{ ip.ip_address }}</span>
+              <UBadge color="neutral" variant="subtle" size="xs">{{ ip.events.toLocaleString() }}</UBadge>
+              <span class="text-muted shrink-0">{{ ip.unique_user_ids }}u</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-2">By bandwidth</p>
+          <div class="divide-y divide-default max-h-72 overflow-y-auto">
+            <div v-for="ip in ipSummary.top_by_bytes" :key="`b-${ip.ip_address}`" class="py-1.5 flex items-center gap-2 text-xs">
+              <span class="flex-1 font-mono truncate">{{ ip.ip_address }}</span>
+              <UBadge color="primary" variant="subtle" size="xs">{{ formatBytes(ip.bytes_sent) }}</UBadge>
+              <span class="text-muted shrink-0">{{ ip.events.toLocaleString() }}e</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </UCard>
+
+    <!-- Quality breakdown + content gaps — two side-by-side panels showing
+         (a) which resolutions are eating bandwidth, (b) what users are
+         searching for that the catalog doesn't cover. -->
+    <div v-if="(panelVisibility.quality || panelVisibility.gaps) && (quality.length > 0 || contentGaps.length > 0)" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <UCard v-if="panelVisibility.quality && quality.length > 0">
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-monitor" class="size-4" />
+            Stream Quality Breakdown
+          </div>
+        </template>
+        <div class="space-y-2">
+          <div v-for="q in quality" :key="q.quality" class="flex items-center gap-2 text-xs">
+            <span class="w-16 shrink-0 font-medium truncate" :title="q.quality">{{ q.quality }}</span>
+            <div class="flex-1 bg-muted/20 rounded-full h-3 overflow-hidden">
+              <div
+                class="h-full rounded-full bg-cyan-500 transition-all"
+                :style="{ width: qualityTotalBytes > 0 ? `${Math.round((q.bytes_sent / qualityTotalBytes) * 100)}%` : '0%' }"
+              />
+            </div>
+            <span class="w-20 shrink-0 text-right font-mono text-[11px] text-muted">{{ formatBytes(q.bytes_sent) }}</span>
+            <span class="w-12 shrink-0 text-right text-muted">{{ q.streams.toLocaleString() }}</span>
+          </div>
+          <div class="flex items-center gap-3 pt-2 mt-2 border-t border-default text-xs text-muted">
+            <span>Total: <strong class="text-highlighted">{{ qualityTotalStreams.toLocaleString() }}</strong> streams</span>
+            <span><strong class="text-highlighted">{{ formatBytes(qualityTotalBytes) }}</strong> served</span>
+          </div>
+        </div>
+      </UCard>
+
+      <UCard v-if="panelVisibility.gaps && contentGaps.length > 0">
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-search-x" class="size-4 text-warning" />
+            Content Gaps — searches with no results
+          </div>
+        </template>
+        <div class="space-y-1.5 max-h-72 overflow-y-auto">
+          <div v-for="(g, i) in contentGaps" :key="i" class="flex items-center gap-2 text-sm py-1">
+            <span class="flex-1 truncate font-mono text-xs" :title="g.query">{{ g.query }}</span>
+            <UBadge color="warning" variant="subtle" size="xs">
+              {{ g.empty_count }}/{{ g.count }} empty
+            </UBadge>
+          </div>
+        </div>
+        <p class="text-xs text-muted mt-2 italic">
+          Queries that mostly returned zero results — strong signal for what to
+          add to the library.
+        </p>
+      </UCard>
+    </div>
+
     <!-- Top Users + Top Searches — side by side. Top Users has a metric
          selector so admins can sort by views, watch_time, uploads, etc.
          without leaving the page. -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <UCard>
+    <div v-if="panelVisibility.topUsers || panelVisibility.topSearches" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <UCard v-if="panelVisibility.topUsers">
         <template #header>
-          <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
             <div class="font-semibold flex items-center gap-2">
               <UIcon name="i-lucide-trophy" class="size-4 text-amber-500" />
               Top Users
             </div>
-            <UButtonGroup>
+            <div class="flex items-center gap-2">
               <UButton
-                v-for="m in [
-                  { label: 'Views', value: 'views' },
-                  { label: 'Watch', value: 'watch_time' },
-                  { label: 'Uploads', value: 'uploads' },
-                  { label: 'Downloads', value: 'downloads' },
-                  { label: 'All', value: 'events' },
-                ]"
-                :key="m.value"
-                :label="m.label"
                 size="xs"
-                :variant="topUserMetric === m.value ? 'solid' : 'outline'"
-                :color="topUserMetric === m.value ? 'primary' : 'neutral'"
-                @click="topUserMetric = m.value as typeof topUserMetric"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-download"
+                tag="a"
+                :href="analyticsApi.exportPanelUrl('top-users', 'csv', { metric: topUserMetric, limit: 50 })"
+                download
+                title="Export this panel as CSV"
               />
-            </UButtonGroup>
+              <UButtonGroup>
+                <UButton
+                  v-for="m in [
+                    { label: 'Views', value: 'views' },
+                    { label: 'Watch', value: 'watch_time' },
+                    { label: 'Uploads', value: 'uploads' },
+                    { label: 'Downloads', value: 'downloads' },
+                    { label: 'All', value: 'events' },
+                  ]"
+                  :key="m.value"
+                  :label="m.label"
+                  size="xs"
+                  :variant="topUserMetric === m.value ? 'solid' : 'outline'"
+                  :color="topUserMetric === m.value ? 'primary' : 'neutral'"
+                  @click="topUserMetric = m.value as typeof topUserMetric"
+                />
+              </UButtonGroup>
+            </div>
           </div>
         </template>
         <div v-if="topUsersLoading" class="flex justify-center py-4">
@@ -742,11 +1664,23 @@ const hasTrafficActivity = computed(() =>
         </div>
       </UCard>
 
-      <UCard>
+      <UCard v-if="panelVisibility.topSearches">
         <template #header>
-          <div class="font-semibold flex items-center gap-2">
-            <UIcon name="i-lucide-search" class="size-4 text-info" />
-            Top Searches
+          <div class="flex items-center justify-between gap-2">
+            <div class="font-semibold flex items-center gap-2">
+              <UIcon name="i-lucide-search" class="size-4 text-info" />
+              Top Searches
+            </div>
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-download"
+              tag="a"
+              :href="analyticsApi.exportPanelUrl('top-searches', 'csv', { limit: 100 })"
+              download
+              title="Export this panel as CSV"
+            />
           </div>
         </template>
         <div v-if="topSearches.length === 0" class="text-center text-sm text-muted py-4">
@@ -768,7 +1702,7 @@ const hasTrafficActivity = computed(() =>
     <!-- Active Streams (live snapshot) — capacity / debugging signal that the
          existing Streaming tab also shows, but here in context with the rest
          of the analytics. Refreshes when the page reloads / auto-refresh. -->
-    <UCard v-if="activeStreams.length > 0">
+    <UCard v-if="panelVisibility.activeStreams && activeStreams.length > 0">
       <template #header>
         <div class="font-semibold flex items-center gap-2">
           <UIcon name="i-lucide-radio-tower" class="size-4 text-emerald-500" />
@@ -809,11 +1743,23 @@ const hasTrafficActivity = computed(() =>
     <!-- Server Errors-by-Path — only renders when there's something wrong.
          Shown alongside (not inside) the health banner so the table can
          breathe and is sortable. -->
-    <UCard v-if="errorPaths.length > 0">
+    <UCard v-if="panelVisibility.errorPaths && errorPaths.length > 0">
       <template #header>
-        <div class="font-semibold flex items-center gap-2 text-error">
-          <UIcon name="i-lucide-bug" class="size-4" />
-          Server Errors by Path
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-semibold flex items-center gap-2 text-error">
+            <UIcon name="i-lucide-bug" class="size-4" />
+            Server Errors by Path
+          </div>
+          <UButton
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            icon="i-lucide-download"
+            tag="a"
+            :href="analyticsApi.exportPanelUrl('error-paths', 'csv', { limit: 200 })"
+            download
+            title="Export this panel as CSV"
+          />
         </div>
       </template>
       <UTable
@@ -842,11 +1788,23 @@ const hasTrafficActivity = computed(() =>
 
     <!-- Failed Logins — recent N login_failed events with attempted username
          and IP so security review is one click away. -->
-    <UCard v-if="failedLogins.length > 0">
+    <UCard v-if="panelVisibility.failedLogins && failedLogins.length > 0">
       <template #header>
-        <div class="font-semibold flex items-center gap-2 text-error">
-          <UIcon name="i-lucide-shield-alert" class="size-4" />
-          Recent Failed Logins ({{ failedLogins.length }})
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-semibold flex items-center gap-2 text-error">
+            <UIcon name="i-lucide-shield-alert" class="size-4" />
+            Recent Failed Logins ({{ failedLogins.length }})
+          </div>
+          <UButton
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            icon="i-lucide-download"
+            tag="a"
+            :href="analyticsApi.exportPanelUrl('failed-logins', 'csv', { limit: 200 })"
+            download
+            title="Export this panel as CSV"
+          />
         </div>
       </template>
       <div class="divide-y divide-default max-h-64 overflow-y-auto">
@@ -860,7 +1818,7 @@ const hasTrafficActivity = computed(() =>
     </UCard>
 
     <!-- Recent Activity Feed -->
-    <UCard v-if="recentActivity.length > 0">
+    <UCard v-if="panelVisibility.recent && recentActivity.length > 0">
       <template #header>
         <div class="font-semibold flex items-center gap-2">
           <UIcon name="i-lucide-radio" class="size-4" />
@@ -888,8 +1846,57 @@ const hasTrafficActivity = computed(() =>
       </div>
     </UCard>
 
+    <!-- Live event tail — only visible while the SSE connection is active.
+         Streams every tracked event in real time so admins can watch the
+         server breathe. Capped at 100 rows in-memory; the live tail
+         intentionally has no auto-scroll-to-bottom because admins
+         frequently want to read recent rows without being yanked. -->
+    <UCard v-if="liveTailOpen">
+      <template #header>
+        <div class="flex items-center justify-between">
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-radio" class="size-4 text-emerald-500" />
+            Live Event Tail
+            <span class="relative flex h-2 w-2 ml-1">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+            <span class="text-xs font-normal text-muted">{{ liveTail.length }} / {{ liveTailMax }}</span>
+          </div>
+          <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-trash" label="Clear" @click="liveTail = []" />
+        </div>
+      </template>
+      <div v-if="liveTail.length === 0" class="text-center text-sm text-muted py-3 italic">
+        Waiting for events…
+      </div>
+      <div v-else class="divide-y divide-default max-h-72 overflow-y-auto">
+        <div
+          v-for="(ev, i) in liveTail"
+          :key="`${ev.id}-${i}`"
+          class="py-1.5 flex items-start gap-3 text-sm cursor-pointer hover:bg-muted/10 rounded px-1"
+          @click="openEventDetail(ev)"
+        >
+          <UBadge
+            :color="ev.type === 'server_error' || ev.type === 'login_failed' || ev.type === 'error' ? 'error' :
+                    ev.type === 'login' || ev.type === 'register' ? 'success' :
+                    ev.type === 'mature_blocked' || ev.type === 'permission_denied' ? 'warning' : 'neutral'"
+            variant="subtle"
+            size="xs"
+          >
+            {{ ev.type }}
+          </UBadge>
+          <div class="flex-1 min-w-0 text-xs text-muted flex items-center gap-2 flex-wrap">
+            <span v-if="ev.user_id" class="font-medium">{{ ev.user_id }}</span>
+            <span v-if="ev.ip_address" class="font-mono">{{ ev.ip_address }}</span>
+            <span v-if="ev.media_id" class="font-mono">{{ ev.media_id.slice(0, 8) }}…</span>
+          </div>
+          <span class="text-xs text-muted shrink-0">{{ new Date(ev.timestamp).toLocaleTimeString() }}</span>
+        </div>
+      </div>
+    </UCard>
+
     <!-- Event drill-down -->
-    <UCard>
+    <UCard v-if="panelVisibility.drill">
       <template #header>
         <div class="flex items-center justify-between">
           <div class="font-semibold flex items-center gap-2">
@@ -977,7 +1984,12 @@ const hasTrafficActivity = computed(() =>
         <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
       </div>
       <div v-else-if="drillEvents.length > 0" class="mt-3 divide-y divide-default max-h-64 overflow-y-auto">
-        <div v-for="ev in drillEvents" :key="ev.id" class="py-2 text-sm flex items-start gap-3">
+        <div
+          v-for="ev in drillEvents"
+          :key="ev.id"
+          class="py-2 text-sm flex items-start gap-3 cursor-pointer hover:bg-muted/10 rounded px-1"
+          @click="openEventDetail(ev)"
+        >
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
               <UBadge :label="ev.type" color="neutral" variant="subtle" size="xs" />
@@ -993,8 +2005,8 @@ const hasTrafficActivity = computed(() =>
       <p v-else-if="!drillLoading && (drillType || drillMediaId || drillUserId) && drillEvents.length === 0" class="text-center py-4 text-muted text-sm mt-2">No events found.</p>
     </UCard>
 
-    <!-- Top media -->
-    <UCard v-if="topMedia.length > 0">
+    <!-- Top media — clickable rows open the per-media analytics modal. -->
+    <UCard v-if="panelVisibility.topMedia && topMedia.length > 0">
       <template #header>
         <div class="font-semibold flex items-center gap-2">
           <UIcon name="i-lucide-trending-up" class="size-4" />
@@ -1006,6 +2018,7 @@ const hasTrafficActivity = computed(() =>
         :columns="[
           { accessorKey: 'filename', header: 'Title' },
           { accessorKey: 'views', header: 'Views' },
+          { accessorKey: 'media_id', header: '' },
         ]"
       >
         <template #filename-cell="{ row }">
@@ -1016,11 +2029,105 @@ const hasTrafficActivity = computed(() =>
         <template #views-cell="{ row }">
           <span class="text-sm">{{ (row.original.views ?? 0).toLocaleString() }}</span>
         </template>
+        <template #media_id-cell="{ row }">
+          <UButton
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            icon="i-lucide-bar-chart-3"
+            label="Drill"
+            @click="openMediaDetail(row.original.media_id, getDisplayTitle(row.original))"
+          />
+        </template>
       </UTable>
     </UCard>
 
+    <!-- Per-media analytics modal — opens when a Top Media row is clicked.
+         Mirrors the per-user pattern: cached stats on top, view + playback
+         sparklines below. -->
+    <UModal v-model:open="mediaDetailOpen" :ui="{ content: 'max-w-3xl' }">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="flex items-center justify-between">
+              <div class="font-semibold flex items-center gap-2">
+                <UIcon name="i-lucide-bar-chart-3" class="size-4" />
+                Media Analytics
+              </div>
+              <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-x" @click="mediaDetailOpen = false" />
+            </div>
+          </template>
+          <div class="space-y-4">
+            <p class="text-sm font-medium truncate" :title="mediaDetailTitle">{{ mediaDetailTitle }}</p>
+            <div v-if="mediaDetailLoading" class="flex justify-center py-6">
+              <UIcon name="i-lucide-loader-2" class="animate-spin size-5 text-muted" />
+            </div>
+            <div v-else-if="mediaDetail">
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+                <UCard :ui="{ body: 'p-2' }">
+                  <p class="text-base font-bold text-highlighted">{{ (mediaDetail.stats.total_views ?? 0).toLocaleString() }}</p>
+                  <p class="text-[11px] text-muted">Views</p>
+                </UCard>
+                <UCard :ui="{ body: 'p-2' }">
+                  <p class="text-base font-bold text-highlighted">{{ (mediaDetail.stats.unique_viewers ?? 0).toLocaleString() }}</p>
+                  <p class="text-[11px] text-muted">Unique viewers</p>
+                </UCard>
+                <UCard :ui="{ body: 'p-2' }">
+                  <p class="text-base font-bold text-highlighted">{{ formatPct((mediaDetail.stats.completion_rate ?? 0) * 100) }}</p>
+                  <p class="text-[11px] text-muted">Completion rate</p>
+                </UCard>
+                <UCard :ui="{ body: 'p-2' }">
+                  <p class="text-base font-bold text-highlighted">{{ formatWatchTime(mediaDetail.stats.avg_watch_duration ?? 0) }}</p>
+                  <p class="text-[11px] text-muted">Avg watch</p>
+                </UCard>
+              </div>
+              <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-1">Activity (last 30 days)</p>
+              <MetricLineChart
+                :series="[
+                  { label: 'Views', color: 'stroke-primary text-primary', values: mediaDetail.view_timeline },
+                  { label: 'Playbacks', color: 'stroke-emerald-500 text-emerald-500', values: mediaDetail.playback_timeline },
+                ]"
+                :height="160"
+              />
+              <!-- Playback abandonment histogram. Each bucket = a 10%
+                   progress range (0-10, 10-20, …); the bar height is the
+                   count of playback events that stopped in that range.
+                   Strong drop-offs at the start/end signal "intro too
+                   long" or "credits skipped" patterns. -->
+              <div v-if="mediaDetail.abandonment && mediaDetail.abandonment.some(b => b.count > 0)" class="mt-4">
+                <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-1">Playback abandonment</p>
+                <div class="flex items-end gap-1 h-24">
+                  <div
+                    v-for="(b, i) in mediaDetail.abandonment"
+                    :key="i"
+                    class="flex-1 flex flex-col items-center justify-end gap-0.5 group relative"
+                  >
+                    <div
+                      :class="['w-full rounded-t transition-colors min-h-[2px]',
+                        i < 2 ? 'bg-warning/70' :
+                        i >= 8 ? 'bg-emerald-500/70' :
+                        'bg-primary/70']"
+                      :style="{ height: `${Math.max(2, (b.count / Math.max(...mediaDetail.abandonment.map(x => x.count), 1)) * 100)}%` }"
+                      :title="`${b.range}: ${b.count} playbacks ended in this range`"
+                    />
+                    <span class="text-[9px] text-muted leading-none">{{ b.range }}</span>
+                  </div>
+                </div>
+                <p class="text-[10px] text-muted mt-1 italic">
+                  Bars in the early range (warning) often mean the intro is losing viewers; bars near 100% (success) mean the media is being completed.
+                </p>
+              </div>
+            </div>
+            <div v-else class="text-center text-sm text-muted py-4">
+              No data available for this item.
+            </div>
+          </div>
+        </UCard>
+      </template>
+    </UModal>
+
     <!-- Daily breakdown -->
-    <UCard v-if="daily.length > 0">
+    <UCard v-if="panelVisibility.daily && daily.length > 0">
       <template #header>
         <div class="flex items-center justify-between gap-2 flex-wrap">
           <div class="font-semibold flex items-center gap-2">
@@ -1049,16 +2156,23 @@ const hasTrafficActivity = computed(() =>
       </template>
 
       <!-- CSS bar chart — views per day. Clickable rows so admins can
-           drill the daily breakdown by clicking the bar instead of typing. -->
+           drill the daily breakdown by clicking the bar instead of typing.
+           A right-side button recomputes that day's DailyStats from raw
+           events — useful when persisted values look wrong. -->
       <div class="mb-4 space-y-1">
         <div
           v-for="row in dailyReversed"
           :key="row.date"
-          class="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/10 rounded px-1 py-0.5"
-          @click="drillDateFilter = row.date === drillDateFilter ? '' : row.date"
+          class="flex items-center gap-2 text-xs hover:bg-muted/10 rounded px-1 py-0.5 group"
         >
-          <span class="w-24 shrink-0 font-mono text-muted text-right">{{ row.date }}</span>
-          <div class="flex-1 bg-muted/20 rounded-full h-4 overflow-hidden">
+          <span
+            class="w-24 shrink-0 font-mono text-muted text-right cursor-pointer"
+            @click="drillDateFilter = row.date === drillDateFilter ? '' : row.date"
+          >{{ row.date }}</span>
+          <div
+            class="flex-1 bg-muted/20 rounded-full h-4 overflow-hidden cursor-pointer"
+            @click="drillDateFilter = row.date === drillDateFilter ? '' : row.date"
+          >
             <div
               class="h-full rounded-full bg-primary transition-all duration-300"
               :class="drillDateFilter && row.date !== drillDateFilter ? 'opacity-30' : ''"
@@ -1066,6 +2180,16 @@ const hasTrafficActivity = computed(() =>
             />
           </div>
           <span class="w-12 shrink-0 text-right text-muted">{{ (row.total_views ?? 0).toLocaleString() }}</span>
+          <UButton
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            icon="i-lucide-refresh-cw"
+            class="opacity-0 group-hover:opacity-100 transition-opacity"
+            :loading="backfilling === row.date"
+            :title="`Recompute ${row.date} from raw events`"
+            @click.stop="backfillDate(row.date)"
+          />
         </div>
       </div>
 
@@ -1103,6 +2227,266 @@ const hasTrafficActivity = computed(() =>
         <template #hls_starts-cell="{ row }">{{ (row.original.hls_starts ?? 0).toLocaleString() }}</template>
         <template #admin_actions-cell="{ row }">{{ (row.original.admin_actions ?? 0).toLocaleString() }}</template>
       </UTable>
+    </UCard>
+
+    <!-- A/B range comparison — pick two arbitrary date ranges and see
+         per-metric deltas side-by-side. Useful for "did the new search
+         algo move the needle" or "Black Friday vs prior week". -->
+    <UCard v-if="panelVisibility.rangeCompare">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-arrow-left-right" class="size-4" />
+          A / B Range Comparison
+        </div>
+      </template>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div class="space-y-1.5">
+          <p class="text-xs font-semibold text-muted">Range A</p>
+          <div class="flex items-center gap-2">
+            <UInput v-model="rangeAStart" type="date" size="xs" placeholder="Start" />
+            <span class="text-xs text-muted">to</span>
+            <UInput v-model="rangeAEnd" type="date" size="xs" placeholder="End" />
+          </div>
+        </div>
+        <div class="space-y-1.5">
+          <p class="text-xs font-semibold text-muted">Range B</p>
+          <div class="flex items-center gap-2">
+            <UInput v-model="rangeBStart" type="date" size="xs" placeholder="Start" />
+            <span class="text-xs text-muted">to</span>
+            <UInput v-model="rangeBEnd" type="date" size="xs" placeholder="End" />
+          </div>
+        </div>
+      </div>
+      <UButton
+        :loading="rangeLoading"
+        size="xs"
+        icon="i-lucide-play"
+        label="Compare"
+        :disabled="!rangeAStart || !rangeAEnd || !rangeBStart || !rangeBEnd"
+        @click="runRangeCompare"
+      />
+      <div v-if="rangeResult" class="mt-4">
+        <UTable
+          :data="rangeResult.metrics"
+          :columns="[
+            { accessorKey: 'metric', header: 'Metric' },
+            { accessorKey: 'a', header: `A (${rangeResult.a_start} → ${rangeResult.a_end})` },
+            { accessorKey: 'b', header: `B (${rangeResult.b_start} → ${rangeResult.b_end})` },
+            { accessorKey: 'delta_absolute', header: 'Δ' },
+            { accessorKey: 'delta_pct', header: '%' },
+          ]"
+        >
+          <template #metric-cell="{ row }">
+            <span class="text-xs font-mono">{{ row.original.metric }}</span>
+          </template>
+          <template #a-cell="{ row }">{{ Math.round(row.original.a).toLocaleString() }}</template>
+          <template #b-cell="{ row }">{{ Math.round(row.original.b).toLocaleString() }}</template>
+          <template #delta_absolute-cell="{ row }">
+            <span :class="row.original.delta_absolute > 0 ? 'text-success' : row.original.delta_absolute < 0 ? 'text-error' : 'text-muted'">
+              {{ row.original.delta_absolute > 0 ? '+' : '' }}{{ Math.round(row.original.delta_absolute).toLocaleString() }}
+            </span>
+          </template>
+          <template #delta_pct-cell="{ row }">
+            <UBadge
+              :color="row.original.delta_pct > 0 ? 'success' : row.original.delta_pct < 0 ? 'error' : 'neutral'"
+              variant="subtle"
+              size="xs"
+            >
+              {{ row.original.delta_pct > 0 ? '+' : '' }}{{ row.original.delta_pct.toFixed(0) }}%
+            </UBadge>
+          </template>
+        </UTable>
+      </div>
+    </UCard>
+
+    <!-- Custom alerts management — list of admin-defined threshold rules
+         with add/edit/remove. Persisted to localStorage; evaluated on the
+         backend (cheap in-memory lookup) and the triggered-alerts banner
+         at the top of the page is driven by the same data. -->
+    <UCard v-if="panelVisibility.alerts">
+      <template #header>
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-bell" class="size-4" />
+            Custom Alerts
+            <UBadge color="neutral" variant="subtle" size="xs">{{ alertRules.length }}</UBadge>
+          </div>
+          <UButton size="xs" icon="i-lucide-plus" label="New rule"
+                   @click="alertEdit = { id: '', name: '', metric: 'server_errors', operator: 'gt', threshold: 5, window: 1 }; alertsEditOpen = true" />
+        </div>
+      </template>
+      <div v-if="alertRules.length === 0" class="text-center text-sm text-muted py-4 italic">
+        No alert rules defined. Create one to get notified when a metric
+        crosses your threshold (e.g. "server_errors > 10 in last 1 day").
+      </div>
+      <div v-else class="divide-y divide-default">
+        <div v-for="r in alertRules" :key="r.id" class="py-2 flex items-center gap-2 text-sm">
+          <UIcon
+            :name="alertResults.find(a => a.rule.id === r.id)?.triggered ? 'i-lucide-bell-ring' : 'i-lucide-bell'"
+            :class="alertResults.find(a => a.rule.id === r.id)?.triggered ? 'text-error' : 'text-muted'"
+            class="size-4 shrink-0"
+          />
+          <div class="flex-1 min-w-0">
+            <p class="font-medium truncate">{{ r.name }}</p>
+            <p class="text-xs text-muted font-mono">
+              {{ r.metric }} {{ r.operator }} {{ r.threshold }} (last {{ r.window }}d)
+              <span v-if="alertResults.find(a => a.rule.id === r.id)" class="ml-2">
+                = {{ alertResults.find(a => a.rule.id === r.id)?.value?.toLocaleString() ?? '?' }}
+              </span>
+            </p>
+          </div>
+          <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-pencil" @click="startEditAlertRule(r)" />
+          <UButton size="xs" variant="ghost" color="error" icon="i-lucide-trash-2" @click="removeAlertRule(r.id)" />
+        </div>
+      </div>
+    </UCard>
+
+    <!-- Per-event detail modal — opens when an admin clicks a row in the
+         drill panel or the live tail. Shows the full event (id, type,
+         media/user/session/IP/UA, timestamp, data JSON) formatted for
+         reading. Copy-to-clipboard for the whole JSON so the event can
+         be pasted into a bug report. -->
+    <UModal :open="!!eventDetail" :ui="{ content: 'max-w-2xl' }" @update:open="val => { if (!val) eventDetail = null }">
+      <template #content>
+        <UCard v-if="eventDetail">
+          <template #header>
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-semibold flex items-center gap-2">
+                <UIcon name="i-lucide-info" class="size-4" />
+                Event Detail
+                <UBadge color="neutral" variant="subtle" size="xs">{{ eventDetail.type }}</UBadge>
+              </div>
+              <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-clipboard-copy" label="Copy JSON" @click="copyEventJson" />
+            </div>
+          </template>
+          <div class="space-y-3 text-sm">
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div><span class="text-muted">ID:</span> <span class="font-mono">{{ eventDetail.id }}</span></div>
+              <div><span class="text-muted">Time:</span> {{ new Date(eventDetail.timestamp).toLocaleString() }}</div>
+              <div v-if="eventDetail.media_id"><span class="text-muted">Media:</span> <span class="font-mono">{{ eventDetail.media_id }}</span></div>
+              <div v-if="eventDetail.user_id"><span class="text-muted">User:</span> <span class="font-mono">{{ eventDetail.user_id }}</span></div>
+              <div v-if="eventDetail.session_id"><span class="text-muted">Session:</span> <span class="font-mono">{{ eventDetail.session_id }}</span></div>
+              <div v-if="eventDetail.ip_address"><span class="text-muted">IP:</span> <span class="font-mono">{{ eventDetail.ip_address }}</span></div>
+            </div>
+            <div v-if="eventDetail.user_agent">
+              <p class="text-xs text-muted mb-1">User-Agent</p>
+              <p class="text-xs font-mono break-all bg-muted/10 rounded p-2">{{ eventDetail.user_agent }}</p>
+            </div>
+            <div v-if="eventDetail.data && Object.keys(eventDetail.data).length > 0">
+              <p class="text-xs text-muted mb-1">Data</p>
+              <pre class="text-xs bg-muted/10 rounded p-2 overflow-x-auto whitespace-pre-wrap">{{ eventDataPretty(eventDetail) }}</pre>
+            </div>
+          </div>
+          <template #footer>
+            <UButton variant="ghost" color="neutral" label="Close" @click="eventDetail = null" />
+          </template>
+        </UCard>
+      </template>
+    </UModal>
+
+    <!-- Alert rule edit modal -->
+    <UModal v-model:open="alertsEditOpen" :ui="{ content: 'max-w-md' }">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="font-semibold">{{ alertEdit.id ? 'Edit alert rule' : 'New alert rule' }}</div>
+          </template>
+          <div class="space-y-3">
+            <UFormField label="Name" hint="Shown in the triggered-alert banner">
+              <UInput v-model="alertEdit.name" placeholder="e.g. High error rate" />
+            </UFormField>
+            <UFormField label="Metric" hint="DailyStats column to watch">
+              <USelect
+                v-model="alertEdit.metric"
+                :items="[
+                  { label: 'Server errors', value: 'server_errors' },
+                  { label: 'HLS errors', value: 'hls_errors' },
+                  { label: 'Failed logins', value: 'logins_failed' },
+                  { label: 'Mature blocked', value: 'mature_blocked' },
+                  { label: 'Permission denied', value: 'permission_denied' },
+                  { label: 'Upload failures', value: 'uploads_failed' },
+                  { label: 'Total views', value: 'total_views' },
+                  { label: 'Stream starts', value: 'stream_starts' },
+                  { label: 'Bandwidth bytes', value: 'bytes_served' },
+                  { label: 'Logins', value: 'logins' },
+                  { label: 'Registrations', value: 'registrations' },
+                  { label: 'Downloads', value: 'downloads' },
+                  { label: 'Searches', value: 'searches' },
+                  { label: 'Account deletions', value: 'account_deletions' },
+                ]"
+              />
+            </UFormField>
+            <div class="grid grid-cols-2 gap-2">
+              <UFormField label="Operator">
+                <USelect
+                  v-model="alertEdit.operator"
+                  :items="[
+                    { label: '>', value: 'gt' },
+                    { label: '≥', value: 'ge' },
+                    { label: '<', value: 'lt' },
+                    { label: '≤', value: 'le' },
+                    { label: '=', value: 'eq' },
+                  ]"
+                />
+              </UFormField>
+              <UFormField label="Threshold">
+                <UInput v-model.number="alertEdit.threshold" type="number" />
+              </UFormField>
+            </div>
+            <UFormField label="Window (days)" hint="Sum the metric over this many trailing days before comparing">
+              <UInput v-model.number="alertEdit.window" type="number" :min="1" :max="365" />
+            </UFormField>
+          </div>
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" color="neutral" label="Cancel" @click="alertsEditOpen = false" />
+              <UButton color="primary" :label="alertEdit.id ? 'Save' : 'Create'" @click="addOrUpdateAlertRule" />
+            </div>
+          </template>
+        </UCard>
+      </template>
+    </UModal>
+
+    <!-- Module diagnostics — analytics module's own internal counters.
+         Helps debug "why is the dashboard slow / stale" without server
+         log access. Hidden by default to keep the page tidy; admins
+         re-enable it from the panels menu when investigating. -->
+    <UCard v-if="panelVisibility.diagnostics && diagnostics" :ui="{ body: 'p-3' }">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2 text-muted">
+          <UIcon name="i-lucide-activity" class="size-4" />
+          Analytics Module Diagnostics
+          <UBadge :color="diagnostics.healthy ? 'success' : 'error'" variant="subtle" size="xs">
+            {{ diagnostics.healthy ? 'Healthy' : 'Unhealthy' }}
+          </UBadge>
+        </div>
+      </template>
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
+        <div>
+          <p class="font-bold text-highlighted">{{ diagnostics.cache_entries.toLocaleString() }}</p>
+          <p class="text-muted">Cached aggregations</p>
+        </div>
+        <div>
+          <p class="font-bold text-highlighted">{{ diagnostics.dirty_days.toLocaleString() }}</p>
+          <p class="text-muted">Dirty days (pending flush)</p>
+        </div>
+        <div>
+          <p class="font-bold text-highlighted">{{ diagnostics.active_subscribers.toLocaleString() }}</p>
+          <p class="text-muted">Live SSE subscribers</p>
+        </div>
+        <div>
+          <p class="font-bold text-highlighted">{{ diagnostics.sessions_tracked.toLocaleString() }}</p>
+          <p class="text-muted">In-mem sessions</p>
+        </div>
+        <div>
+          <p class="font-bold text-highlighted">{{ diagnostics.media_tracked.toLocaleString() }}</p>
+          <p class="text-muted">Tracked media items</p>
+        </div>
+        <div>
+          <p class="font-bold text-highlighted">{{ diagnostics.max_reconstruct_events.toLocaleString() }}</p>
+          <p class="text-muted">Max reconstruct cap</p>
+        </div>
+      </div>
     </UCard>
 
     <!-- Empty state -->

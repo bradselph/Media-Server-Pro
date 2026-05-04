@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import type { User, UserSession } from '~/types/api'
+import type { User, UserSession, UserAnalytics } from '~/types/api'
+import { formatWatchTime } from '~/utils/format'
 
 const adminApi = useAdminApi()
+const analyticsApi = useAnalyticsApi()
 const toast = useToast()
 const { user: currentUser } = useAuthStore()
 
@@ -17,6 +19,26 @@ const deleting = ref(false)
 const sessionsUser = ref<User | null>(null)
 const sessions = ref<UserSession[]>([])
 const sessionsLoading = ref(false)
+
+// Per-user analytics — opens a modal with the same UserAnalytics aggregate
+// shown in the Analytics tab's drill-down, but inline on the user row so
+// admins don't have to switch tabs to investigate a specific account.
+const analyticsUser = ref<User | null>(null)
+const analyticsData = ref<UserAnalytics | null>(null)
+const analyticsLoading = ref(false)
+
+async function openUserAnalytics(user: User) {
+  analyticsUser.value = user
+  analyticsData.value = null
+  analyticsLoading.value = true
+  try {
+    analyticsData.value = await analyticsApi.getUserAnalytics(user.username)
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load user analytics', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    analyticsLoading.value = false
+  }
+}
 
 async function openSessions(user: User) {
   sessionsUser.value = user
@@ -343,6 +365,7 @@ onMounted(load)
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-1 justify-end">
+            <UButton icon="i-lucide-bar-chart-3" aria-label="View analytics" size="xs" variant="ghost" color="neutral" @click="openUserAnalytics(row.original)" />
             <UButton icon="i-lucide-monitor" aria-label="View sessions" size="xs" variant="ghost" color="neutral" @click="openSessions(row.original)" />
             <UButton icon="i-lucide-pencil" aria-label="Edit user" size="xs" variant="ghost" color="neutral" @click="openEdit(row.original)" />
             <UButton icon="i-lucide-trash-2" aria-label="Delete user" size="xs" variant="ghost" color="error" @click="deleteUser = row.original" />
@@ -482,6 +505,67 @@ onMounted(load)
       </template>
       <template #footer>
         <UButton variant="ghost" color="neutral" label="Close" @click="sessionsUser = null" />
+      </template>
+    </UModal>
+
+    <!-- Per-user analytics — same UserAnalytics aggregate shown in the
+         Analytics tab's drill-down, but inline on the user row so admins
+         don't have to context-switch to investigate one account. -->
+    <UModal
+      v-if="analyticsUser"
+      :open="!!analyticsUser"
+      :title="`Analytics: ${analyticsUser.username}`"
+      description="Aggregate activity across the retention window"
+      @update:open="val => { if (!val) analyticsUser = null }"
+    >
+      <template #body>
+        <div v-if="analyticsLoading" class="flex justify-center py-6">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        </div>
+        <div v-else-if="analyticsData" class="space-y-4">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <UCard
+              v-for="m in [
+                { label: 'Views', value: analyticsData.total_views },
+                { label: 'Playbacks', value: analyticsData.total_playbacks },
+                { label: 'Completions', value: analyticsData.total_completions },
+                { label: 'Watch', value: analyticsData.total_watch_time, isTime: true },
+                { label: 'Downloads', value: analyticsData.total_downloads },
+                { label: 'Searches', value: analyticsData.total_searches },
+                { label: 'Favorites +', value: analyticsData.favorites_added },
+                { label: 'Ratings', value: analyticsData.ratings_set },
+                { label: 'Playlists +', value: analyticsData.playlists_created },
+                { label: 'Uploads OK', value: analyticsData.uploads_succeeded },
+                { label: 'Logins', value: analyticsData.logins },
+                { label: 'Failed Logins', value: analyticsData.logins_failed },
+                { label: 'Logouts', value: analyticsData.logouts },
+                { label: 'Unique Media', value: analyticsData.unique_media },
+                { label: 'Total Events', value: analyticsData.total_events },
+              ]"
+              :key="m.label"
+              :ui="{ body: 'p-2' }"
+            >
+              <p class="text-base font-bold text-highlighted truncate">
+                {{ m.isTime ? formatWatchTime(m.value) : (m.value ?? 0).toLocaleString() }}
+              </p>
+              <p class="text-[10px] text-muted">{{ m.label }}</p>
+            </UCard>
+          </div>
+          <div class="text-xs text-muted flex flex-wrap gap-4">
+            <span v-if="analyticsData.first_seen">First seen: {{ new Date(analyticsData.first_seen).toLocaleString() }}</span>
+            <span v-if="analyticsData.last_seen">Last seen: {{ new Date(analyticsData.last_seen).toLocaleString() }}</span>
+            <span v-if="analyticsData.most_viewed_media_id">
+              Most-viewed: <span class="font-mono">{{ analyticsData.most_viewed_media_id.slice(0, 8) }}…</span>
+              ({{ analyticsData.most_viewed_count }})
+            </span>
+          </div>
+        </div>
+        <div v-else class="text-center py-4 text-muted text-sm">
+          No analytics data for this user.
+        </div>
+      </template>
+      <template #footer>
+        <UButton variant="ghost" color="neutral" label="Close" @click="analyticsUser = null" />
       </template>
     </UModal>
 

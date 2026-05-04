@@ -412,6 +412,205 @@ export interface MetricTimelineEntry {
     value: number
 }
 
+// Rolling unique-user counts. Stickiness ratios are 0..1 (DAU/WAU and
+// DAU/MAU) — useful to detect engagement decay independent of absolute
+// install size.
+export interface CohortMetrics {
+    dau: number
+    wau: number
+    mau: number
+    stickiness_dau_wau: number
+    stickiness_dau_mau: number
+}
+
+// One cell on the day-of-week × hour heatmap. day_of_week follows
+// time.Weekday (0=Sunday … 6=Saturday); hour is 0..23 in server local time.
+export interface HourlyHeatmapCell {
+    day_of_week: number
+    hour: number
+    count: number
+}
+
+// One row of the stream-quality breakdown.
+export interface QualityBucket {
+    quality: string
+    streams: number
+    bytes_sent: number
+}
+
+// Period-over-period comparison for a single DailyStats metric.
+export interface PeriodComparison {
+    metric: string
+    current: number
+    previous: number
+    delta_absolute: number
+    delta_pct: number
+    window_days: number
+}
+
+// One stage of a conversion funnel. from_top_pct is relative to the first
+// stage (always 100); from_previous_pct is the step-over-step rate, which
+// is what the dashboard shades to highlight drop-off.
+export interface FunnelStage {
+    stage: string
+    count: number
+    from_previous_pct: number
+    from_top_pct: number
+}
+
+// View → Playback → Completion funnel split by overall / authenticated /
+// anonymous traffic. Anonymous traffic typically converts differently (the
+// auth gate is itself a step) so it gets its own row.
+export interface Funnel {
+    window_days: number
+    stages: FunnelStage[]
+    authenticated: FunnelStage[]
+    anonymous: FunnelStage[]
+}
+
+// Device or browser breakdown row.
+export interface DeviceBucket {
+    family: string
+    events: number
+    unique_users: number
+}
+
+// One bucket of the playback abandonment histogram. The dashboard
+// renders the 10 buckets as a horizontal bar chart so curators can see
+// where viewers drop off in a media item.
+export interface AbandonmentBucket {
+    range: string
+    count: number
+}
+
+// One IP's traffic snapshot: total events, unique users behind that IP,
+// total bytes streamed (from stream_end events), and last-seen timestamp.
+export interface IPBucket {
+    ip_address: string
+    events: number
+    unique_user_ids: number
+    bytes_sent: number
+    last_seen: string
+}
+
+export interface IPSummary {
+    unique_ips: number
+    top_by_events: IPBucket[]
+    top_by_bytes: IPBucket[]
+}
+
+// Analytics module's internal counters — exposed so admins can debug
+// "why is the dashboard slow / stale" without server log access.
+export interface ModuleDiagnostics {
+    cache_entries: number
+    dirty_days: number
+    active_subscribers: number
+    sessions_tracked: number
+    media_tracked: number
+    max_reconstruct_events: number
+    healthy: boolean
+}
+
+// Admin-defined threshold check against a DailyStats metric. Persisted
+// to browser localStorage and re-evaluated on every dashboard load.
+export interface AlertRule {
+    id: string
+    name: string
+    metric: string
+    operator: 'gt' | 'ge' | 'lt' | 'le' | 'eq'
+    threshold: number
+    window: number
+}
+
+export interface AlertResult {
+    rule: AlertRule
+    triggered: boolean
+    value: number
+    message?: string
+}
+
+// One row of an A/B range comparison: each metric's totals across two
+// arbitrary date ranges plus the absolute and percent delta.
+export interface RangeMetric {
+    metric: string
+    a: number
+    b: number
+    delta_absolute: number
+    delta_pct: number
+}
+
+export interface RangeComparison {
+    a_start: string
+    a_end: string
+    b_start: string
+    b_end: string
+    metrics: RangeMetric[]
+}
+
+// Linear-trend projection for one metric — slope per day, tomorrow's
+// projected value, and a residual-stddev confidence band. Direction is
+// "up" / "down" / "flat" based on a small threshold around the mean so a
+// noisy series isn't declared trending.
+export interface MetricForecast {
+    metric: string
+    window_days: number
+    slope: number
+    intercept: number
+    projection: number
+    confidence_band: number
+    direction: 'up' | 'down' | 'flat'
+}
+
+// Anomaly detection — one daily metric whose value is statistically
+// far from its rolling baseline. The dashboard renders these as a
+// banner at the top so admins notice incidents within a day.
+export interface Anomaly {
+    date: string
+    metric: string
+    value: number
+    baseline: number
+    std_dev: number
+    z_score: number
+    direction: 'spike' | 'dip'
+}
+
+export interface AnomalyReport {
+    window_days: number
+    anomalies: Anomaly[]
+}
+
+// Cohort retention grid. Rows are signup-week cohorts (oldest first);
+// each row carries the percentage of users still active in week-N. The
+// matrix is upper-triangular by construction — older cohorts have more
+// retention buckets than younger ones.
+export interface RetentionCohort {
+    cohort_start: string
+    cohort_size: number
+    retention: number[]
+}
+
+export interface RetentionGrid {
+    cohort_weeks: number
+    weeks: RetentionCohort[]
+}
+
+// Per-media analytics drill payload — the cached stats plus a 30-day
+// view + playback timeline so the modal can render a sparkline.
+export interface MediaDetail {
+    media_id: string
+    stats: {
+        total_views: number
+        completion_rate: number
+        last_viewed: string
+        unique_viewers: number
+        avg_watch_duration: number
+        peak_concurrent: number
+    }
+    view_timeline: MetricTimelineEntry[]
+    playback_timeline: MetricTimelineEntry[]
+    abandonment: AbandonmentBucket[]
+}
+
 // Per-user aggregated analytics returned by /admin/users/:username/analytics.
 // Field names mirror the Go UserStats struct so the codegen pipeline doesn't
 // need a translation step. All counts default to 0 for inactive users.

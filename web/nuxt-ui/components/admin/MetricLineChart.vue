@@ -27,6 +27,12 @@ const props = defineProps<{
   showAxis?: boolean
 }>()
 
+// Emit click events when the user clicks a data point so parents can
+// drill the daily breakdown to that date.
+const emit = defineEmits<{
+  pointClick: [date: string, seriesIndex: number]
+}>()
+
 const W = 600
 const H = 200
 
@@ -63,6 +69,7 @@ function circlesFor(values: MetricTimelineEntry[], color: string, fmt?: (v: numb
     cy: H - 20 - (entry.value / maxValue.value) * (H - 40),
     title: `${entry.date}: ${fmt ? fmt(entry.value) : entry.value.toLocaleString()}`,
     color,
+    date: entry.date,
   }))
 }
 
@@ -120,10 +127,11 @@ const xLabels = computed(() => {
           :key="`c-${idx}-${ci}`"
           :cx="c.cx"
           :cy="c.cy"
-          r="2"
-          :class="[c.color, 'fill-current']"
+          r="3"
+          :class="[c.color, 'fill-current cursor-pointer hover:r-4']"
+          @click="emit('pointClick', c.date, idx)"
         >
-          <title>{{ c.title }}</title>
+          <title>{{ c.title }} (click to drill)</title>
         </circle>
       </g>
 

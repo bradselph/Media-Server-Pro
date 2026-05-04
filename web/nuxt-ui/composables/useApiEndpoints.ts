@@ -99,6 +99,21 @@ import type {
     FailedLoginEntry,
     ErrorPathEntry,
     MetricTimelineEntry,
+    CohortMetrics,
+    HourlyHeatmapCell,
+    QualityBucket,
+    PeriodComparison,
+    Funnel,
+    DeviceBucket,
+    MediaDetail,
+    RetentionGrid,
+    AnomalyReport,
+    IPSummary,
+    ModuleDiagnostics,
+    MetricForecast,
+    RangeComparison,
+    AlertRule,
+    AlertResult,
     UpdateInfo,
     UserAnalytics,
     UpdateStatus,
@@ -915,20 +930,79 @@ export function useAnalyticsApi() {
         getUserAnalytics: (username: string, limit?: number) =>
             api.get<UserAnalytics>(`/api/admin/users/${encodeURIComponent(username)}/analytics${buildQS({limit: limit || undefined})}`),
         // User leaderboard. metric: views | watch_time | uploads | downloads | events.
-        getTopUsers: (metric?: string, limit?: number) =>
-            api.get<TopUserEntry[]>(`/api/admin/analytics/top-users${buildQS({metric: metric || undefined, limit: limit || undefined})}`),
+        // days narrows the time window (default = retention window). Optional
+        // since/until ISO timestamps override days.
+        getTopUsers: (metric?: string, limit?: number, days?: number) =>
+            api.get<TopUserEntry[]>(`/api/admin/analytics/top-users${buildQS({metric: metric || undefined, limit: limit || undefined, days: days || undefined})}`),
         // Top search queries with empty-result share.
-        getTopSearches: (limit?: number) =>
-            api.get<SearchQueryEntry[]>(`/api/admin/analytics/top-searches${buildQS({limit: limit || undefined})}`),
+        getTopSearches: (limit?: number, days?: number) =>
+            api.get<SearchQueryEntry[]>(`/api/admin/analytics/top-searches${buildQS({limit: limit || undefined, days: days || undefined})}`),
         // Recent failed login events (security review).
-        getFailedLogins: (limit?: number) =>
-            api.get<FailedLoginEntry[]>(`/api/admin/analytics/failed-logins${buildQS({limit: limit || undefined})}`),
+        getFailedLogins: (limit?: number, days?: number) =>
+            api.get<FailedLoginEntry[]>(`/api/admin/analytics/failed-logins${buildQS({limit: limit || undefined, days: days || undefined})}`),
         // 5xx grouped by (method, path, status).
-        getErrorPaths: (limit?: number) =>
-            api.get<ErrorPathEntry[]>(`/api/admin/analytics/error-paths${buildQS({limit: limit || undefined})}`),
+        getErrorPaths: (limit?: number, days?: number) =>
+            api.get<ErrorPathEntry[]>(`/api/admin/analytics/error-paths${buildQS({limit: limit || undefined, days: days || undefined})}`),
         // Gap-filled per-day timeline for any DailyStats metric.
         getMetricTimeline: (metric: string, days?: number) =>
             api.get<MetricTimelineEntry[]>(`/api/admin/analytics/timeline${buildQS({metric, days: days || undefined})}`),
+        // DAU / WAU / MAU + stickiness.
+        getCohortMetrics: () =>
+            api.get<CohortMetrics>('/api/admin/analytics/cohorts'),
+        // 7×24 day-of-week × hour event-count grid.
+        getHourlyHeatmap: (days?: number) =>
+            api.get<HourlyHeatmapCell[]>(`/api/admin/analytics/heatmap${buildQS({days: days || undefined})}`),
+        // Stream activity grouped by reported quality (resolution).
+        getQualityBreakdown: (days?: number) =>
+            api.get<QualityBucket[]>(`/api/admin/analytics/quality${buildQS({days: days || undefined})}`),
+        // Popular-but-unanswered searches.
+        getContentGaps: (days?: number, limit?: number) =>
+            api.get<SearchQueryEntry[]>(`/api/admin/analytics/content-gaps${buildQS({days: days || undefined, limit: limit || undefined})}`),
+        // Current-vs-previous-window totals for one metric.
+        getPeriodComparison: (metric: string, days?: number) =>
+            api.get<PeriodComparison>(`/api/admin/analytics/comparison${buildQS({metric, days: days || undefined})}`),
+        // View → Playback → Completion conversion funnel.
+        getFunnel: (days?: number) =>
+            api.get<Funnel>(`/api/admin/analytics/funnel${buildQS({days: days || undefined})}`),
+        // Device + browser breakdown (parsed from User-Agent).
+        getDeviceBreakdown: (days?: number) =>
+            api.get<{ devices: DeviceBucket[]; browsers: DeviceBucket[] }>(`/api/admin/analytics/devices${buildQS({days: days || undefined})}`),
+        // Per-media analytics drill-down.
+        getMediaAnalytics: (mediaId: string, days?: number) =>
+            api.get<MediaDetail>(`/api/admin/analytics/media/${encodeURIComponent(mediaId)}${buildQS({days: days || undefined})}`),
+        // Cohort retention grid (rows = signup weeks, cells = % retained).
+        getRetention: (weeks?: number) =>
+            api.get<RetentionGrid>(`/api/admin/analytics/retention${buildQS({weeks: weeks || undefined})}`),
+        // Daily metric spikes / dips beyond a rolling baseline.
+        getAnomalies: (z?: number, window?: number) =>
+            api.get<AnomalyReport>(`/api/admin/analytics/anomalies${buildQS({z: z || undefined, window: window || undefined})}`),
+        // Per-IP traffic — unique IPs + top by events / bytes.
+        getIPSummary: (days?: number, limit?: number) =>
+            api.get<IPSummary>(`/api/admin/analytics/ips${buildQS({days: days || undefined, limit: limit || undefined})}`),
+        // Analytics module's internal diagnostics counters.
+        getDiagnostics: () =>
+            api.get<ModuleDiagnostics>('/api/admin/analytics/diagnostics'),
+        // Linear-trend projection of a single metric.
+        getForecast: (metric: string, days?: number) =>
+            api.get<MetricForecast>(`/api/admin/analytics/forecast${buildQS({metric, days: days || undefined})}`),
+        // Export-all bundle URL for <a download>.
+        exportAllUrl: () => '/api/admin/analytics/export-all',
+        // A/B comparison across two arbitrary date ranges.
+        getRangeComparison: (aStart: string, aEnd: string, bStart: string, bEnd: string) =>
+            api.get<RangeComparison>(`/api/admin/analytics/range-compare${buildQS({a_start: aStart, a_end: aEnd, b_start: bStart, b_end: bEnd})}`),
+        // Evaluate a set of alert rules against today's stats. Rules
+        // themselves live in browser localStorage; the backend just runs
+        // the comparisons.
+        evaluateAlerts: (rules: AlertRule[]) =>
+            api.post<AlertResult[]>('/api/admin/analytics/evaluate-alerts', { rules }),
+        // Recompute a single date's DailyStats from raw events. Use when
+        // the persisted values look wrong (drift, partial flush, etc.).
+        backfillDailyStats: (date: string) =>
+            api.post<DailyStats>(`/api/admin/analytics/backfill${buildQS({date})}`),
+        // Export-panel URL builder. Used by <a download> links so the
+        // browser handles the file save dialog rather than the JS layer.
+        exportPanelUrl: (panel: string, format: 'csv' | 'json' = 'csv', extra: Record<string, string | number | undefined> = {}) =>
+            `/api/admin/analytics/export-panel${buildQS({panel, format, ...extra})}`,
         // Live snapshot of active streaming sessions (already enriched with filename).
         getActiveStreams: () =>
             api.get<Array<{ id: string; media_id: string; filename: string; user_id: string; ip_address: string; quality: string; position: number; started_at: number; last_update: number; bytes_sent: number }>>(`/api/admin/streams`),
