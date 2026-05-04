@@ -95,7 +95,7 @@ func (h *Handler) GetExtractorStats(c *gin.Context) {
 // GET /extractor/hls/:id/master.m3u8
 func (h *Handler) ExtractorHLSMaster(c *gin.Context) {
 	if h.extractor == nil {
-		c.Status(http.StatusNotFound)
+		writeError(c, http.StatusNotFound, "extractor module not enabled")
 		return
 	}
 
@@ -112,7 +112,7 @@ func (h *Handler) ExtractorHLSMaster(c *gin.Context) {
 // GET /extractor/hls/:id/:quality/playlist.m3u8
 func (h *Handler) ExtractorHLSVariant(c *gin.Context) {
 	if h.extractor == nil {
-		c.Status(http.StatusNotFound)
+		writeError(c, http.StatusNotFound, "extractor module not enabled")
 		return
 	}
 
@@ -136,7 +136,7 @@ func (h *Handler) ExtractorHLSVariant(c *gin.Context) {
 // GET /extractor/hls/:id/:quality/:segment
 func (h *Handler) ExtractorHLSSegment(c *gin.Context) {
 	if h.extractor == nil {
-		c.Status(http.StatusNotFound)
+		writeError(c, http.StatusNotFound, "extractor module not enabled")
 		return
 	}
 

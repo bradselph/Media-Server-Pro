@@ -11,6 +11,7 @@ import type {
     APIToken,
     APITokenCreated,
     AuditLogEntry,
+    AuditLogResponse,
     BackupEntry,
     BannedIP,
     CategorizedItem,
@@ -525,7 +526,7 @@ export function useAdminApi() {
             if (params) Object.entries(params).forEach(([k, v]) => {
                 if (v !== undefined) qs.set(k, String(v))
             })
-            return api.get<AuditLogEntry[]>(`${base}/audit-log?${qs}`)
+            return api.get<AuditLogResponse>(`${base}/audit-log?${qs}`)
         },
         exportAuditLogUrl: () => `${base}/audit-log/export`,
 
