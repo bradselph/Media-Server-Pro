@@ -1,10 +1,50 @@
 <script setup lang="ts">
-import type { AnalyticsSummary, DailyStats, TopMediaItem, EventStats, EventTypeCounts, AnalyticsEvent, ContentPerformanceItem, UserAnalytics } from '~/types/api'
+import type {
+  AnalyticsSummary, DailyStats, TopMediaItem, EventStats, EventTypeCounts,
+  AnalyticsEvent, ContentPerformanceItem, UserAnalytics,
+  TopUserEntry, SearchQueryEntry, FailedLoginEntry, ErrorPathEntry,
+  MetricTimelineEntry,
+} from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime, formatBytes } from '~/utils/format'
 
 const analyticsApi = useAnalyticsApi()
 const toast = useToast()
+
+// ── Filtering & view-state ──────────────────────────────────────────────────
+// Most filters live in URL-style refs so the user can tweak the dashboard
+// without remounting it. period drives everything time-bound; eventTypeFilter
+// narrows the Event Distribution chart and drill-down inputs.
+const eventTypeFilter = ref<string>('') // empty = all
+const drillDateFilter = ref<string>('') // YYYY-MM-DD; restricts daily breakdown
+const showTrafficGroups = ref<Record<string, boolean>>({
+  Auth: true, Content: true, 'Playlists & Streaming': true, 'Admin & System': true,
+})
+
+// Top-users panel state.
+const topUserMetric = ref<'views' | 'watch_time' | 'uploads' | 'downloads' | 'events'>('views')
+const topUsers = ref<TopUserEntry[]>([])
+const topUsersLoading = ref(false)
+
+// Top-searches state.
+const topSearches = ref<SearchQueryEntry[]>([])
+
+// Active streams (live snapshot, refreshed with the page).
+const activeStreams = ref<Array<{ id: string; media_id: string; filename: string; user_id: string; ip_address: string; quality: string; position: number; started_at: number; last_update: number; bytes_sent: number }>>([])
+
+// Security review.
+const failedLogins = ref<FailedLoginEntry[]>([])
+const errorPaths = ref<ErrorPathEntry[]>([])
+
+// Time-series state. Two charts: bandwidth (single series), and a multi-line
+// "engagement overview" overlaying views/streams/uploads.
+const timelineDays = ref<number>(30)
+const tlViews = ref<MetricTimelineEntry[]>([])
+const tlStreams = ref<MetricTimelineEntry[]>([])
+const tlUploads = ref<MetricTimelineEntry[]>([])
+const tlBandwidth = ref<MetricTimelineEntry[]>([])
+const tlLogins = ref<MetricTimelineEntry[]>([])
+const tlServerErrors = ref<MetricTimelineEntry[]>([])
 
 const summary = ref<AnalyticsSummary | null>(null)
 const daily = ref<DailyStats[]>([])
@@ -126,28 +166,102 @@ function periodToDays(p: string): number {
 async function load() {
   loading.value = true
   const capturedPeriod = period.value
+  const days = periodToDays(period.value)
+  // Pull ALL panels in parallel — Promise.allSettled tolerates partial
+  // failures so one broken endpoint doesn't blank the whole dashboard.
   try {
-    const [s, d, t, cp, es, etc] = await Promise.allSettled([
-      analyticsApi.getSummary(period.value),
-      analyticsApi.getDaily(periodToDays(period.value)),
-      analyticsApi.getTopMedia(20),
-      analyticsApi.getContentPerformance(20),
-      analyticsApi.getEventStats(),
-      analyticsApi.getEventTypeCounts(),
+    const days4chart = Math.max(days, timelineDays.value)
+    const results = await Promise.allSettled([
+      analyticsApi.getSummary(period.value),                        // 0
+      analyticsApi.getDaily(days),                                  // 1
+      analyticsApi.getTopMedia(20),                                 // 2
+      analyticsApi.getContentPerformance(20),                       // 3
+      analyticsApi.getEventStats(),                                 // 4
+      analyticsApi.getEventTypeCounts(),                            // 5
+      analyticsApi.getTopUsers(topUserMetric.value, 10),            // 6
+      analyticsApi.getTopSearches(15),                              // 7
+      analyticsApi.getActiveStreams(),                              // 8
+      analyticsApi.getFailedLogins(20),                             // 9
+      analyticsApi.getErrorPaths(15),                               // 10
+      analyticsApi.getMetricTimeline('total_views', days4chart),    // 11
+      analyticsApi.getMetricTimeline('stream_starts', days4chart),  // 12
+      analyticsApi.getMetricTimeline('uploads_succeeded', days4chart), // 13
+      analyticsApi.getMetricTimeline('bytes_served', days4chart),   // 14
+      analyticsApi.getMetricTimeline('logins', days4chart),         // 15
+      analyticsApi.getMetricTimeline('server_errors', days4chart),  // 16
     ])
     if (period.value !== capturedPeriod) return
-    if (s.status === 'fulfilled') summary.value = s.value
-    if (d.status === 'fulfilled') daily.value = d.value ?? []
-    if (t.status === 'fulfilled') topMedia.value = t.value ?? []
-    if (cp.status === 'fulfilled') contentPerf.value = cp.value ?? []
-    if (es.status === 'fulfilled') eventStats.value = es.value
-    if (etc.status === 'fulfilled') eventTypeCounts.value = etc.value
-    const failed = [s, d, t, cp, es, etc].filter(r => r.status === 'rejected')
-    if (failed.length) toast.add({ title: 'Some analytics data failed to load', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    const r = (i: number) => results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<unknown>).value : null
+    if (r(0) !== null) summary.value = r(0) as AnalyticsSummary
+    if (r(1) !== null) daily.value = (r(1) as DailyStats[]) ?? []
+    if (r(2) !== null) topMedia.value = (r(2) as TopMediaItem[]) ?? []
+    if (r(3) !== null) contentPerf.value = (r(3) as ContentPerformanceItem[]) ?? []
+    if (r(4) !== null) eventStats.value = r(4) as EventStats
+    if (r(5) !== null) eventTypeCounts.value = r(5) as EventTypeCounts
+    if (r(6) !== null) topUsers.value = (r(6) as TopUserEntry[]) ?? []
+    if (r(7) !== null) topSearches.value = (r(7) as SearchQueryEntry[]) ?? []
+    if (r(8) !== null) activeStreams.value = (r(8) as typeof activeStreams.value) ?? []
+    if (r(9) !== null) failedLogins.value = (r(9) as FailedLoginEntry[]) ?? []
+    if (r(10) !== null) errorPaths.value = (r(10) as ErrorPathEntry[]) ?? []
+    if (r(11) !== null) tlViews.value = (r(11) as MetricTimelineEntry[]) ?? []
+    if (r(12) !== null) tlStreams.value = (r(12) as MetricTimelineEntry[]) ?? []
+    if (r(13) !== null) tlUploads.value = (r(13) as MetricTimelineEntry[]) ?? []
+    if (r(14) !== null) tlBandwidth.value = (r(14) as MetricTimelineEntry[]) ?? []
+    if (r(15) !== null) tlLogins.value = (r(15) as MetricTimelineEntry[]) ?? []
+    if (r(16) !== null) tlServerErrors.value = (r(16) as MetricTimelineEntry[]) ?? []
+
+    const failed = results.filter(x => x.status === 'rejected')
+    if (failed.length) toast.add({ title: `${failed.length} analytics endpoint(s) failed`, color: 'warning', icon: 'i-lucide-alert-triangle' })
   } finally {
     loading.value = false
   }
 }
+
+// Reload top-users when the metric selector changes — cheap, no dashboard
+// re-fetch needed.
+async function reloadTopUsers() {
+  topUsersLoading.value = true
+  try {
+    topUsers.value = (await analyticsApi.getTopUsers(topUserMetric.value, 10)) ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load top users', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    topUsersLoading.value = false
+  }
+}
+watch(topUserMetric, reloadTopUsers)
+// Reload timelines when the user widens the chart range.
+watch(timelineDays, async (n) => {
+  const [v, s, u, b, l, e] = await Promise.allSettled([
+    analyticsApi.getMetricTimeline('total_views', n),
+    analyticsApi.getMetricTimeline('stream_starts', n),
+    analyticsApi.getMetricTimeline('uploads_succeeded', n),
+    analyticsApi.getMetricTimeline('bytes_served', n),
+    analyticsApi.getMetricTimeline('logins', n),
+    analyticsApi.getMetricTimeline('server_errors', n),
+  ])
+  if (v.status === 'fulfilled') tlViews.value = v.value ?? []
+  if (s.status === 'fulfilled') tlStreams.value = s.value ?? []
+  if (u.status === 'fulfilled') tlUploads.value = u.value ?? []
+  if (b.status === 'fulfilled') tlBandwidth.value = b.value ?? []
+  if (l.status === 'fulfilled') tlLogins.value = l.value ?? []
+  if (e.status === 'fulfilled') tlServerErrors.value = e.value ?? []
+})
+
+// Filtered event-type entries — when the filter is set, only that one row
+// shows in the bar chart and drill-down inputs auto-fill.
+const filteredEventTypeEntries = computed(() => {
+  if (!eventTypeFilter.value) return eventTypeEntries.value
+  const needle = eventTypeFilter.value.toLowerCase()
+  return eventTypeEntries.value.filter(e => e.type.toLowerCase().includes(needle))
+})
+
+// Filtered daily breakdown — restricted to the row whose date matches
+// drillDateFilter when set, otherwise all rows.
+const filteredDaily = computed(() => {
+  if (!drillDateFilter.value) return daily.value
+  return daily.value.filter(d => d.date === drillDateFilter.value)
+})
 
 watch(period, load)
 onMounted(load)
@@ -299,6 +413,42 @@ const hasTrafficActivity = computed(() =>
       </div>
     </div>
 
+    <!-- Filter strip — type filter chip + chart range slider. The same
+         eventTypeFilter feeds the distribution chart and pre-fills the
+         drill-down panel; the chart range is independent of `period` so
+         operators can zoom out the trend line without losing the daily
+         table they're looking at. -->
+    <div class="flex flex-wrap gap-3 items-center">
+      <UInput
+        v-model="eventTypeFilter"
+        size="xs"
+        icon="i-lucide-filter"
+        placeholder="Filter event types (e.g. login, view, upload)"
+        class="w-72"
+      />
+      <UButton
+        v-if="eventTypeFilter"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        icon="i-lucide-x"
+        label="Clear"
+        @click="eventTypeFilter = ''"
+      />
+      <span class="text-xs text-muted">Chart range:</span>
+      <UButtonGroup>
+        <UButton
+          v-for="d in [7, 14, 30, 90, 180, 365]"
+          :key="d"
+          :label="`${d}d`"
+          size="xs"
+          :variant="timelineDays === d ? 'solid' : 'outline'"
+          :color="timelineDays === d ? 'primary' : 'neutral'"
+          @click="timelineDays = d"
+        />
+      </UButtonGroup>
+    </div>
+
     <!-- Loading -->
     <div v-if="loading && !summary" class="flex justify-center py-8">
       <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
@@ -351,6 +501,60 @@ const hasTrafficActivity = computed(() =>
       </template>
     </UAlert>
 
+    <!-- Engagement timeline — overlays views, streams, uploads, and logins
+         on a single chart so operators can see how the four highest-signal
+         metrics correlate over the chart range. Bandwidth gets its own
+         chart below since the y-axis is incompatible (bytes vs counts). -->
+    <UCard v-if="tlViews.length > 0">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-line-chart" class="size-4" />
+          Engagement Timeline ({{ timelineDays }} days)
+        </div>
+      </template>
+      <MetricLineChart
+        :series="[
+          { label: 'Views', color: 'stroke-primary text-primary', values: tlViews },
+          { label: 'Streams', color: 'stroke-emerald-500 text-emerald-500', values: tlStreams },
+          { label: 'Uploads', color: 'stroke-amber-500 text-amber-500', values: tlUploads },
+          { label: 'Logins', color: 'stroke-sky-500 text-sky-500', values: tlLogins },
+        ]"
+        :height="220"
+      />
+    </UCard>
+
+    <!-- Bandwidth + Server-Errors charts — separate axes (bytes / count). -->
+    <div v-if="tlBandwidth.length > 0 || tlServerErrors.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <UCard v-if="tlBandwidth.length > 0">
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-network" class="size-4" />
+            Bandwidth Served ({{ timelineDays }} days)
+          </div>
+        </template>
+        <MetricLineChart
+          :series="[
+            { label: 'Bytes', color: 'stroke-cyan-500 text-cyan-500', values: tlBandwidth, format: (v: number) => formatBytes(v) },
+          ]"
+          :height="180"
+        />
+      </UCard>
+      <UCard v-if="tlServerErrors.length > 0 && tlServerErrors.some(e => e.value > 0)">
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-alert-octagon" class="size-4 text-error" />
+            5xx Server Errors ({{ timelineDays }} days)
+          </div>
+        </template>
+        <MetricLineChart
+          :series="[
+            { label: 'Errors', color: 'stroke-red-500 text-red-500', values: tlServerErrors },
+          ]"
+          :height="180"
+        />
+      </UCard>
+    </div>
+
     <!-- Today's Traffic Breakdown — grouped, only shows non-zero counters so
          a quiet day stays visually quiet instead of rendering 24 zero cards. -->
     <div v-if="summary && hasTrafficActivity" class="space-y-3">
@@ -379,15 +583,16 @@ const hasTrafficActivity = computed(() =>
     <!-- Charts row: Event Distribution + Hourly Activity -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <!-- Event Type Distribution -->
-      <UCard v-if="eventTypeEntries.length > 0">
+      <UCard v-if="filteredEventTypeEntries.length > 0">
         <template #header>
           <div class="font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-pie-chart" class="size-4" />
             Event Distribution
+            <span v-if="eventTypeFilter" class="text-xs font-normal text-muted">(filtered: {{ eventTypeFilter }})</span>
           </div>
         </template>
-        <div class="space-y-2">
-          <div v-for="entry in eventTypeEntries" :key="entry.type" class="flex items-center gap-2">
+        <div class="space-y-2 max-h-72 overflow-y-auto">
+          <div v-for="entry in filteredEventTypeEntries" :key="entry.type" class="flex items-center gap-2">
             <span class="w-24 shrink-0 text-xs text-muted capitalize truncate" :title="entry.type.replace(/_/g, ' ')">
               {{ entry.type.replace(/_/g, ' ') }}
             </span>
@@ -472,6 +677,185 @@ const hasTrafficActivity = computed(() =>
           <template #avg_watch_duration-cell="{ row }">{{ formatWatchTime(row.original.avg_watch_duration) }}</template>
           <template #unique_viewers-cell="{ row }">{{ (row.original.unique_viewers ?? 0).toLocaleString() }}</template>
         </UTable>
+      </div>
+    </UCard>
+
+    <!-- Top Users + Top Searches — side by side. Top Users has a metric
+         selector so admins can sort by views, watch_time, uploads, etc.
+         without leaving the page. -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <UCard>
+        <template #header>
+          <div class="flex items-center justify-between gap-2">
+            <div class="font-semibold flex items-center gap-2">
+              <UIcon name="i-lucide-trophy" class="size-4 text-amber-500" />
+              Top Users
+            </div>
+            <UButtonGroup>
+              <UButton
+                v-for="m in [
+                  { label: 'Views', value: 'views' },
+                  { label: 'Watch', value: 'watch_time' },
+                  { label: 'Uploads', value: 'uploads' },
+                  { label: 'Downloads', value: 'downloads' },
+                  { label: 'All', value: 'events' },
+                ]"
+                :key="m.value"
+                :label="m.label"
+                size="xs"
+                :variant="topUserMetric === m.value ? 'solid' : 'outline'"
+                :color="topUserMetric === m.value ? 'primary' : 'neutral'"
+                @click="topUserMetric = m.value as typeof topUserMetric"
+              />
+            </UButtonGroup>
+          </div>
+        </template>
+        <div v-if="topUsersLoading" class="flex justify-center py-4">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-4 text-muted" />
+        </div>
+        <div v-else-if="topUsers.length === 0" class="text-center text-sm text-muted py-4">
+          No user activity in the current window.
+        </div>
+        <div v-else class="divide-y divide-default max-h-72 overflow-y-auto">
+          <div v-for="(u, i) in topUsers" :key="u.user_id" class="py-2 flex items-center gap-3 text-sm">
+            <span class="w-6 shrink-0 font-mono text-muted text-right">#{{ i + 1 }}</span>
+            <span class="flex-1 truncate">
+              <span v-if="u.username" class="font-medium">{{ u.username }}</span>
+              <span v-else class="font-mono text-xs text-muted">{{ u.user_id }}</span>
+            </span>
+            <div class="flex items-center gap-2 shrink-0">
+              <UBadge v-if="topUserMetric === 'watch_time'" color="primary" variant="subtle" size="xs">
+                {{ formatWatchTime(u.metric) }}
+              </UBadge>
+              <UBadge v-else color="primary" variant="subtle" size="xs">
+                {{ Math.round(u.metric).toLocaleString() }}
+              </UBadge>
+              <UButton
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-search"
+                @click="drillMode = 'user'; drillUserId = u.username || u.user_id; drillByUser()"
+              />
+            </div>
+          </div>
+        </div>
+      </UCard>
+
+      <UCard>
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-search" class="size-4 text-info" />
+            Top Searches
+          </div>
+        </template>
+        <div v-if="topSearches.length === 0" class="text-center text-sm text-muted py-4">
+          No searches recorded.
+        </div>
+        <div v-else class="space-y-1.5 max-h-72 overflow-y-auto">
+          <div v-for="(q, i) in topSearches" :key="i" class="flex items-center gap-2 text-sm py-1">
+            <span class="flex-1 truncate font-mono text-xs" :title="q.query">{{ q.query }}</span>
+            <UBadge v-if="q.empty_count > 0" color="warning" variant="subtle" size="xs"
+                    :title="`${q.empty_count} of ${q.count} returned no results`">
+              {{ q.empty_count }} empty
+            </UBadge>
+            <UBadge color="neutral" variant="subtle" size="xs">{{ q.count }}</UBadge>
+          </div>
+        </div>
+      </UCard>
+    </div>
+
+    <!-- Active Streams (live snapshot) — capacity / debugging signal that the
+         existing Streaming tab also shows, but here in context with the rest
+         of the analytics. Refreshes when the page reloads / auto-refresh. -->
+    <UCard v-if="activeStreams.length > 0">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-radio-tower" class="size-4 text-emerald-500" />
+          Active Streams ({{ activeStreams.length }})
+          <span class="relative flex h-2 w-2 ml-1">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+          </span>
+        </div>
+      </template>
+      <UTable
+        :data="activeStreams"
+        :columns="[
+          { accessorKey: 'filename', header: 'Media' },
+          { accessorKey: 'user_id', header: 'User' },
+          { accessorKey: 'ip_address', header: 'IP' },
+          { accessorKey: 'quality', header: 'Quality' },
+          { accessorKey: 'position', header: 'Position' },
+          { accessorKey: 'bytes_sent', header: 'Bytes' },
+          { accessorKey: 'started_at', header: 'Started' },
+        ]"
+      >
+        <template #filename-cell="{ row }">
+          <span class="text-sm font-medium truncate max-w-xs block" :title="row.original.filename">
+            {{ row.original.filename }}
+          </span>
+        </template>
+        <template #position-cell="{ row }">{{ formatWatchTime(row.original.position) }}</template>
+        <template #bytes_sent-cell="{ row }">{{ formatBytes(row.original.bytes_sent) }}</template>
+        <template #started_at-cell="{ row }">{{ new Date(row.original.started_at * 1000).toLocaleTimeString() }}</template>
+        <template #user_id-cell="{ row }">
+          <span v-if="row.original.user_id" class="text-sm">{{ row.original.user_id }}</span>
+          <span v-else class="italic text-xs text-muted">anonymous</span>
+        </template>
+      </UTable>
+    </UCard>
+
+    <!-- Server Errors-by-Path — only renders when there's something wrong.
+         Shown alongside (not inside) the health banner so the table can
+         breathe and is sortable. -->
+    <UCard v-if="errorPaths.length > 0">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2 text-error">
+          <UIcon name="i-lucide-bug" class="size-4" />
+          Server Errors by Path
+        </div>
+      </template>
+      <UTable
+        :data="errorPaths"
+        :columns="[
+          { accessorKey: 'method', header: 'Method' },
+          { accessorKey: 'path', header: 'Path' },
+          { accessorKey: 'status', header: 'Status' },
+          { accessorKey: 'count', header: 'Count' },
+          { accessorKey: 'last_seen', header: 'Last Seen' },
+        ]"
+      >
+        <template #method-cell="{ row }">
+          <UBadge color="neutral" variant="subtle" size="xs">{{ row.original.method }}</UBadge>
+        </template>
+        <template #path-cell="{ row }">
+          <span class="font-mono text-xs truncate max-w-md block" :title="row.original.path">{{ row.original.path }}</span>
+        </template>
+        <template #status-cell="{ row }">
+          <UBadge color="error" variant="subtle" size="xs">{{ row.original.status }}</UBadge>
+        </template>
+        <template #count-cell="{ row }">{{ row.original.count.toLocaleString() }}</template>
+        <template #last_seen-cell="{ row }">{{ new Date(row.original.last_seen).toLocaleString() }}</template>
+      </UTable>
+    </UCard>
+
+    <!-- Failed Logins — recent N login_failed events with attempted username
+         and IP so security review is one click away. -->
+    <UCard v-if="failedLogins.length > 0">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2 text-error">
+          <UIcon name="i-lucide-shield-alert" class="size-4" />
+          Recent Failed Logins ({{ failedLogins.length }})
+        </div>
+      </template>
+      <div class="divide-y divide-default max-h-64 overflow-y-auto">
+        <div v-for="(f, i) in failedLogins" :key="i" class="py-1.5 flex items-center gap-3 text-sm">
+          <UBadge color="error" variant="subtle" size="xs">{{ f.username || 'unknown' }}</UBadge>
+          <span class="flex-1 font-mono text-xs text-muted truncate" :title="f.user_agent">{{ f.ip_address }}</span>
+          <span v-if="f.reason" class="text-xs text-muted italic">{{ f.reason }}</span>
+          <span class="text-xs text-muted shrink-0">{{ new Date(f.timestamp).toLocaleString() }}</span>
+        </div>
       </div>
     </UCard>
 
@@ -638,23 +1022,46 @@ const hasTrafficActivity = computed(() =>
     <!-- Daily breakdown -->
     <UCard v-if="daily.length > 0">
       <template #header>
-        <div class="font-semibold flex items-center gap-2">
-          <UIcon name="i-lucide-bar-chart-2" class="size-4" />
-          Daily Breakdown
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-bar-chart-2" class="size-4" />
+            Daily Breakdown
+            <span v-if="drillDateFilter" class="text-xs font-normal text-muted">(filtered: {{ drillDateFilter }})</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <UInput
+              v-model="drillDateFilter"
+              size="xs"
+              type="date"
+              placeholder="Filter date"
+              class="w-40"
+            />
+            <UButton
+              v-if="drillDateFilter"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-x"
+              @click="drillDateFilter = ''"
+            />
+          </div>
         </div>
       </template>
 
-      <!-- CSS bar chart — views per day -->
+      <!-- CSS bar chart — views per day. Clickable rows so admins can
+           drill the daily breakdown by clicking the bar instead of typing. -->
       <div class="mb-4 space-y-1">
         <div
           v-for="row in dailyReversed"
           :key="row.date"
-          class="flex items-center gap-2 text-xs"
+          class="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/10 rounded px-1 py-0.5"
+          @click="drillDateFilter = row.date === drillDateFilter ? '' : row.date"
         >
           <span class="w-24 shrink-0 font-mono text-muted text-right">{{ row.date }}</span>
           <div class="flex-1 bg-muted/20 rounded-full h-4 overflow-hidden">
             <div
               class="h-full rounded-full bg-primary transition-all duration-300"
+              :class="drillDateFilter && row.date !== drillDateFilter ? 'opacity-30' : ''"
               :style="{ width: dailyMaxViews > 0 ? `${Math.round(((row.total_views ?? 0) / dailyMaxViews) * 100)}%` : '0%' }"
             />
           </div>
@@ -663,7 +1070,7 @@ const hasTrafficActivity = computed(() =>
       </div>
 
       <UTable
-        :data="daily"
+        :data="filteredDaily"
         :columns="[
           { accessorKey: 'date', header: 'Date' },
           { accessorKey: 'total_views', header: 'Views' },

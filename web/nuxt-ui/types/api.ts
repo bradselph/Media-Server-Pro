@@ -363,6 +363,55 @@ export interface AnalyticsSummary {
     }[]
 }
 
+// Top-N user leaderboard entry returned by /admin/analytics/top-users.
+// `metric` carries whichever ranking value the caller asked for (views,
+// watch_time, uploads, downloads, events) so the UI can render a single
+// "value" column without a separate switch on metric name.
+export interface TopUserEntry {
+    user_id: string
+    username?: string
+    metric: number
+    total_views: number
+    total_watch_time: number
+    total_uploads: number
+    total_downloads: number
+    total_events: number
+}
+
+// Top-search bucket. `empty_count` is how many of the `count` occurrences
+// returned zero results, so the dashboard can flag "popular but unanswered"
+// queries — a strong product signal.
+export interface SearchQueryEntry {
+    query: string
+    count: number
+    empty_count: number
+}
+
+// Recent failed login attempt for the security review panel.
+export interface FailedLoginEntry {
+    ip_address: string
+    username?: string
+    user_agent?: string
+    timestamp: string
+    reason?: string
+}
+
+// 5xx error grouped by (method, path, status).
+export interface ErrorPathEntry {
+    method: string
+    path: string
+    status: number
+    count: number
+    last_seen: string
+}
+
+// One bucket on a per-day metric timeline. Always gap-filled — the backend
+// emits a zero entry for missing days so chart axes are even.
+export interface MetricTimelineEntry {
+    date: string
+    value: number
+}
+
 // Per-user aggregated analytics returned by /admin/users/:username/analytics.
 // Field names mirror the Go UserStats struct so the codegen pipeline doesn't
 // need a translation step. All counts default to 0 for inactive users.
