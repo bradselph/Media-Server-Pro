@@ -33,6 +33,8 @@ import (
 	"media-server-pro/internal/scanner"
 	"media-server-pro/internal/security"
 	"media-server-pro/internal/server"
+
+	"github.com/gin-gonic/gin"
 	"media-server-pro/internal/streaming"
 	"media-server-pro/internal/suggestions"
 	"media-server-pro/internal/tasks"
@@ -53,7 +55,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.11.1"
+	Version   = "1.10.55"
 	BuildDate = "dev"
 )
 
@@ -98,7 +100,7 @@ func main() {
 	mods := initModules(srv, cfg, log, stores)
 
 	// ── Age gate middleware ────────────────────────────────────────────────
-	ageGate := setupAgeGate(cfg, mods.analytics)
+	ageGate := setupAgeGate(cfg, mods.analytics, mods.auth)
 
 	// ── Cookie consent middleware ──────────────────────────────────────────
 	cookieConsent := middleware.NewCookieConsent(cfg.Get().CookieConsent)
@@ -340,6 +342,36 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	} else {
 		m.analytics = am
 		mustRegister(srv, m.analytics)
+		// Bridge streaming session lifecycle into analytics so dashboards
+		// can show today's stream-start count and total bandwidth served.
+		// Hooks run on a goroutine inside the streaming module so DB I/O
+		// here never blocks the stream itself.
+		m.streaming.SetSessionHooks(
+			func(s *models.StreamSession) {
+				am.TrackTrafficEvent(context.Background(), analytics.TrafficEventParams{
+					Type:      analytics.EventStreamStart,
+					UserID:    s.UserID,
+					IPAddress: s.IPAddress,
+					Data: map[string]any{
+						"media_id": s.MediaID,
+						"quality":  s.Quality,
+					},
+				})
+			},
+			func(s *models.StreamSession) {
+				am.TrackTrafficEvent(context.Background(), analytics.TrafficEventParams{
+					Type:      analytics.EventStreamEnd,
+					UserID:    s.UserID,
+					IPAddress: s.IPAddress,
+					Data: map[string]any{
+						"media_id":   s.MediaID,
+						"quality":    s.Quality,
+						"bytes_sent": s.BytesSent,
+						"duration":   time.Since(s.StartedAt).Seconds(),
+					},
+				})
+			},
+		)
 	}
 
 	// Playlist (non-critical — requires database)
@@ -453,14 +485,31 @@ func setupHFClient(hfCfg config.HuggingFaceConfig, scannerModule *scanner.Module
 	log.Info("Hugging Face visual classification enabled (model: %s)", hfCfg.Model)
 }
 
-func setupAgeGate(cfg *config.Manager, analyticsModule *analytics.Module) *middleware.AgeGate {
+func setupAgeGate(cfg *config.Manager, analyticsModule *analytics.Module, authModule *auth.Module) *middleware.AgeGate {
 	appCfg := cfg.Get()
 	ageGate := middleware.NewAgeGate(appCfg.AgeGate)
-	// Wire age gate analytics callback so passage events are tracked
+	// Wire age gate analytics callback so passage events are tracked. Most
+	// gate passes are anonymous, but if the visitor already has a valid
+	// session cookie (e.g. they cleared the age-gate cookie but kept their
+	// login), attribute the event to that user so per-user reports are
+	// complete.
 	if analyticsModule != nil {
-		ageGate.OnVerify = func(ip, userAgent string) {
+		ageGate.OnVerify = func(c *gin.Context, ip, userAgent string) {
+			userID, sessionID := "", ""
+			if authModule != nil {
+				if cookie, err := c.Request.Cookie("session_id"); err == nil && cookie.Value != "" {
+					if sess, _, vErr := authModule.ValidateSession(c.Request.Context(), cookie.Value); vErr == nil && sess != nil {
+						userID = sess.UserID
+						sessionID = sess.ID
+					}
+				}
+			}
 			analyticsModule.TrackTrafficEvent(context.Background(), analytics.TrafficEventParams{
-				Type: analytics.EventAgeGatePass, IPAddress: ip, UserAgent: userAgent,
+				Type:      analytics.EventAgeGatePass,
+				UserID:    userID,
+				SessionID: sessionID,
+				IPAddress: ip,
+				UserAgent: userAgent,
 			})
 		}
 	}

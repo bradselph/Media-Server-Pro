@@ -64,6 +64,7 @@ func (h *Handler) AddFavorite(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Failed to add favorite")
 		return
 	}
+	h.trackServerEvent(c, "favorite_add", map[string]any{"media_id": req.MediaID})
 	writeSuccess(c, nil)
 }
 
@@ -84,6 +85,7 @@ func (h *Handler) RemoveFavorite(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Failed to remove favorite")
 		return
 	}
+	h.trackServerEvent(c, "favorite_remove", map[string]any{"media_id": mediaID})
 	writeSuccess(c, nil)
 }
 

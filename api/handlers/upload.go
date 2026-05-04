@@ -211,6 +211,22 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		"errors":   uploadErrors,
 	})
 
+	// Track per-file outcomes so the dashboard can show "uploads succeeded /
+	// failed today" trends. Counted per file (not per request) so a multi-file
+	// upload with mixed outcomes gets accurate accounting on both sides.
+	for _, u := range uploaded {
+		h.trackServerEvent(c, "upload_success", map[string]any{
+			"filename": u.Filename,
+			"size":     u.Size,
+		})
+	}
+	for _, e := range uploadErrors {
+		h.trackServerEvent(c, "upload_failed", map[string]any{
+			"filename": e.Filename,
+			"error":    e.Error,
+		})
+	}
+
 	// Media-index registration and mature scanning run after the response is sent
 	// so that ffprobe and the content classifier don't block the HTTP round-trip.
 	scanForMature := cfg.Uploads.ScanForMature

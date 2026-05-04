@@ -61,6 +61,21 @@ type Module struct {
 	bufferPool     *sync.Pool
 	cleanupTicker  *time.Ticker
 	cleanupDone    chan struct{}
+	// onSessionStart and onSessionEnd are optional analytics hooks set by the
+	// caller (main.go) to bridge streaming events into the analytics module
+	// without creating a streaming → analytics import dependency. Both are
+	// called outside any streaming-internal lock so the callback is free to
+	// do its own DB I/O.
+	onSessionStart func(*models.StreamSession)
+	onSessionEnd   func(*models.StreamSession)
+}
+
+// SetSessionHooks installs callbacks invoked when a stream session starts
+// or ends. Pass nil for either hook to leave it unset. Calling this on a
+// running module is safe but only affects sessions started after the call.
+func (m *Module) SetSessionHooks(onStart, onEnd func(*models.StreamSession)) {
+	m.onSessionStart = onStart
+	m.onSessionEnd = onEnd
 }
 
 // StreamStats holds streaming statistics. TotalStreams and TotalBytesSent reset on
@@ -668,6 +683,14 @@ func (m *Module) startSession(req StreamRequest, position int64) *models.StreamS
 	m.sessionMu.Unlock()
 
 	m.log.Debug("Started stream session %s for %s", session.ID, req.Path)
+	// Fire-and-forget analytics hook outside the lock so analytics DB I/O
+	// can never block the hot streaming path.
+	if hook := m.onSessionStart; hook != nil {
+		// Pass a copy so the analytics layer can't accidentally mutate the
+		// session struct that the streaming module is still tracking.
+		snap := *session
+		go hook(&snap)
+	}
 	return session
 }
 
@@ -680,6 +703,12 @@ func (m *Module) endSession(sessionID string) {
 		m.log.Debug("Ended stream session %s (bytes: %d)", sessionID, session.BytesSent)
 	}
 	m.sessionMu.Unlock()
+	if exists {
+		if hook := m.onSessionEnd; hook != nil {
+			snap := *session
+			go hook(&snap)
+		}
+	}
 }
 
 // updateSessionStats updates session statistics

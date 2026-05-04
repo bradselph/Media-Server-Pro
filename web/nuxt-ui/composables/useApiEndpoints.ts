@@ -94,7 +94,13 @@ import type {
     ThumbnailPreviews,
     ThumbnailStats,
     TopMediaItem,
+    TopUserEntry,
+    SearchQueryEntry,
+    FailedLoginEntry,
+    ErrorPathEntry,
+    MetricTimelineEntry,
     UpdateInfo,
+    UserAnalytics,
     UpdateStatus,
     UploadProgress,
     UploadResult,
@@ -904,6 +910,28 @@ export function useAnalyticsApi() {
         getEventTypeCounts: () => api.get<EventTypeCounts>('/api/analytics/events/counts'),
         getContentPerformance: (limit?: number) =>
             api.get<ContentPerformanceItem[]>(`/api/analytics/content${buildQS({limit: limit || undefined})}`),
+        // Per-user aggregated analytics. Mounted at /admin/users/:username/analytics
+        // so the URL matches the rest of the admin user routes (which use :username).
+        getUserAnalytics: (username: string, limit?: number) =>
+            api.get<UserAnalytics>(`/api/admin/users/${encodeURIComponent(username)}/analytics${buildQS({limit: limit || undefined})}`),
+        // User leaderboard. metric: views | watch_time | uploads | downloads | events.
+        getTopUsers: (metric?: string, limit?: number) =>
+            api.get<TopUserEntry[]>(`/api/admin/analytics/top-users${buildQS({metric: metric || undefined, limit: limit || undefined})}`),
+        // Top search queries with empty-result share.
+        getTopSearches: (limit?: number) =>
+            api.get<SearchQueryEntry[]>(`/api/admin/analytics/top-searches${buildQS({limit: limit || undefined})}`),
+        // Recent failed login events (security review).
+        getFailedLogins: (limit?: number) =>
+            api.get<FailedLoginEntry[]>(`/api/admin/analytics/failed-logins${buildQS({limit: limit || undefined})}`),
+        // 5xx grouped by (method, path, status).
+        getErrorPaths: (limit?: number) =>
+            api.get<ErrorPathEntry[]>(`/api/admin/analytics/error-paths${buildQS({limit: limit || undefined})}`),
+        // Gap-filled per-day timeline for any DailyStats metric.
+        getMetricTimeline: (metric: string, days?: number) =>
+            api.get<MetricTimelineEntry[]>(`/api/admin/analytics/timeline${buildQS({metric, days: days || undefined})}`),
+        // Live snapshot of active streaming sessions (already enriched with filename).
+        getActiveStreams: () =>
+            api.get<Array<{ id: string; media_id: string; filename: string; user_id: string; ip_address: string; quality: string; position: number; started_at: number; last_update: number; bytes_sent: number }>>(`/api/admin/streams`),
         exportCsv: (period?: string) => {
             const today = new Date()
             const fmt = (d: Date) => d.toISOString().slice(0, 10)

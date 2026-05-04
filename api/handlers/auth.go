@@ -410,6 +410,15 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 	// response reflects exactly what was committed, preventing a discrepancy that
 	// would make the client think one value was saved when another was stored.
 	prefs.Validate()
+	// Track which fields the patch actually touched (key set, not values) so
+	// the audit log doesn't record sensitive things like custom EQ presets,
+	// while still showing operators what kind of preferences a user is
+	// changing — useful for detecting suspicious patterns.
+	keys := make([]string, 0, len(incoming))
+	for k := range incoming {
+		keys = append(keys, k)
+	}
+	h.trackServerEvent(c, "preferences_change", map[string]any{"fields": keys})
 	writeSuccess(c, prefs)
 }
 
@@ -731,6 +740,7 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, "password_change", nil)
 	writeSuccess(c, map[string]string{"status": "password_changed"})
 }
 
@@ -764,6 +774,12 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 		return
 	}
 
+	// Capture the user identifiers BEFORE the delete — the session is about
+	// to be evicted, so trackServerEvent's default session-lookup would return
+	// nothing if we waited until after.
+	deletedUserID := user.ID
+	deletedUsername := user.Username
+
 	// Delete the account first — if this fails, the user remains logged in and can retry.
 	if err := h.auth.DeleteUser(c.Request.Context(), user.Username); err != nil {
 		h.log.Error("Failed to delete account: %v", err)
@@ -771,12 +787,22 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 		return
 	}
 
+	if h.analytics != nil {
+		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
+			Type:      "account_delete",
+			UserID:    deletedUserID,
+			IPAddress: c.ClientIP(),
+			UserAgent: c.Request.UserAgent(),
+			Data:      map[string]any{"username": deletedUsername},
+		})
+	}
+
 	// Clear the session cookie. DeleteUser already evicts all sessions from cache
 	// and DB via evictSessionsForUser, so an explicit Logout call is unnecessary
 	// and would always fail with ErrSessionNotFound.
 	clearSessionCookie(c.Writer, c.Request)
 
-	h.log.Info("User %s deleted their account", user.Username)
+	h.log.Info("User %s deleted their account", deletedUsername)
 	writeSuccess(c, map[string]string{"status": "account_deleted", "message": "Your account has been permanently deleted"})
 }
 

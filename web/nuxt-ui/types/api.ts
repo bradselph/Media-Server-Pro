@@ -317,12 +317,128 @@ export interface AnalyticsSummary {
     unique_clients: number
     today_logins?: number
     today_logins_failed?: number
+    today_logouts?: number
     today_registrations?: number
     today_age_gate_passes?: number
     today_downloads?: number
     today_searches?: number
+    today_favorites_added?: number
+    today_favorites_removed?: number
+    today_ratings_set?: number
+    today_playlists_created?: number
+    today_playlists_deleted?: number
+    today_playlist_items_added?: number
+    today_uploads_succeeded?: number
+    today_uploads_failed?: number
+    today_password_changes?: number
+    today_account_deletions?: number
+    today_hls_starts?: number
+    today_hls_errors?: number
+    today_media_deletions?: number
+    today_api_tokens_created?: number
+    today_api_tokens_revoked?: number
+    today_admin_actions?: number
+    today_server_errors?: number
+    today_stream_starts?: number
+    today_stream_ends?: number
+    today_bytes_served?: number
+    today_mature_blocked?: number
+    today_permission_denied?: number
+    today_preferences_changes?: number
+    today_bulk_deletes?: number
+    today_bulk_updates?: number
+    today_user_role_changes?: number
     top_viewed: TopMediaItem[]
-    recent_activity: { type: string; media_id: string; filename: string; timestamp: number }[]
+    // Recent activity carries optional user/IP context so non-media events
+    // (login, register, admin_action, etc.) render with attribution rather
+    // than a blank filename row.
+    recent_activity: {
+        type: string
+        media_id: string
+        filename: string
+        user_id?: string
+        username?: string
+        ip_address?: string
+        timestamp: number
+    }[]
+}
+
+// Top-N user leaderboard entry returned by /admin/analytics/top-users.
+// `metric` carries whichever ranking value the caller asked for (views,
+// watch_time, uploads, downloads, events) so the UI can render a single
+// "value" column without a separate switch on metric name.
+export interface TopUserEntry {
+    user_id: string
+    username?: string
+    metric: number
+    total_views: number
+    total_watch_time: number
+    total_uploads: number
+    total_downloads: number
+    total_events: number
+}
+
+// Top-search bucket. `empty_count` is how many of the `count` occurrences
+// returned zero results, so the dashboard can flag "popular but unanswered"
+// queries — a strong product signal.
+export interface SearchQueryEntry {
+    query: string
+    count: number
+    empty_count: number
+}
+
+// Recent failed login attempt for the security review panel.
+export interface FailedLoginEntry {
+    ip_address: string
+    username?: string
+    user_agent?: string
+    timestamp: string
+    reason?: string
+}
+
+// 5xx error grouped by (method, path, status).
+export interface ErrorPathEntry {
+    method: string
+    path: string
+    status: number
+    count: number
+    last_seen: string
+}
+
+// One bucket on a per-day metric timeline. Always gap-filled — the backend
+// emits a zero entry for missing days so chart axes are even.
+export interface MetricTimelineEntry {
+    date: string
+    value: number
+}
+
+// Per-user aggregated analytics returned by /admin/users/:username/analytics.
+// Field names mirror the Go UserStats struct so the codegen pipeline doesn't
+// need a translation step. All counts default to 0 for inactive users.
+export interface UserAnalytics {
+    user_id: string
+    total_events: number
+    total_views: number
+    total_playbacks: number
+    total_completions: number
+    total_watch_time: number
+    total_downloads: number
+    total_searches: number
+    favorites_added: number
+    favorites_removed: number
+    ratings_set: number
+    playlists_created: number
+    playlists_deleted: number
+    uploads_succeeded: number
+    uploads_failed: number
+    logins: number
+    logins_failed: number
+    logouts: number
+    unique_media: number
+    first_seen?: string
+    last_seen?: string
+    most_viewed_media_id?: string
+    most_viewed_count: number
 }
 
 export interface ContentPerformanceItem {
@@ -359,6 +475,36 @@ export interface DailyStats {
     age_gate_passes: number
     downloads: number
     searches: number
+    // Extended traffic breakdown — every notable user/admin action is tracked
+    // server-side so the dashboard reflects real activity rather than just the
+    // narrow auth-and-stream subset. Every field is required (zero-defaulted)
+    // because the backend always emits it.
+    favorites_added: number
+    favorites_removed: number
+    ratings_set: number
+    playlists_created: number
+    playlists_deleted: number
+    playlist_items_added: number
+    uploads_succeeded: number
+    uploads_failed: number
+    password_changes: number
+    account_deletions: number
+    hls_starts: number
+    hls_errors: number
+    media_deletions: number
+    api_tokens_created: number
+    api_tokens_revoked: number
+    admin_actions: number
+    server_errors: number
+    stream_starts: number
+    stream_ends: number
+    bytes_served: number
+    mature_blocked: number
+    permission_denied: number
+    preferences_changes: number
+    bulk_deletes: number
+    bulk_updates: number
+    user_role_changes: number
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

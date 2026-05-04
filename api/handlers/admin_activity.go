@@ -8,9 +8,41 @@ import (
 	"media-server-pro/internal/upload"
 )
 
-// AdminGetActiveStreams returns the list of active streaming sessions.
+// AdminGetActiveStreams returns the list of active streaming sessions with
+// each session enriched with the human-readable media name so the operations
+// dashboard doesn't have to do its own per-row media lookups. Falls back to
+// the raw media_id when the lookup fails (e.g. extractor / receiver items).
 func (h *Handler) AdminGetActiveStreams(c *gin.Context) {
-	writeSuccess(c, h.streaming.GetActiveSessions())
+	if h.streaming == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	sessions := h.streaming.GetActiveSessions()
+	out := make([]map[string]any, 0, len(sessions))
+	for _, s := range sessions {
+		if s == nil {
+			continue
+		}
+		filename := s.MediaID
+		if h.media != nil {
+			if mi, err := h.media.GetMediaByID(s.MediaID); err == nil && mi != nil {
+				filename = mi.Name
+			}
+		}
+		out = append(out, map[string]any{
+			"id":          s.ID,
+			"media_id":    s.MediaID,
+			"filename":    filename,
+			"user_id":     s.UserID,
+			"ip_address":  s.IPAddress,
+			"quality":     s.Quality,
+			"position":    s.Position,
+			"started_at":  s.StartedAt.Unix(),
+			"last_update": s.LastUpdate.Unix(),
+			"bytes_sent":  s.BytesSent,
+		})
+	}
+	writeSuccess(c, out)
 }
 
 // AdminGetActiveUploads returns the list of in-progress uploads.

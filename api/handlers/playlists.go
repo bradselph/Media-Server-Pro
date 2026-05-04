@@ -176,6 +176,10 @@ func (h *Handler) CreatePlaylist(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
+	h.trackServerEvent(c, "playlist_create", map[string]any{
+		"playlist_id": pl.ID,
+		"is_public":   req.IsPublic,
+	})
 	writeSuccess(c, pl)
 }
 
@@ -258,6 +262,7 @@ func (h *Handler) DeletePlaylist(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, "playlist_delete", map[string]any{"playlist_id": id})
 	writeSuccess(c, nil)
 }
 
@@ -339,6 +344,10 @@ func (h *Handler) AddPlaylistItem(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, "playlist_item_add", map[string]any{
+		"playlist_id": playlistID,
+		"media_id":    req.MediaID,
+	})
 	writeSuccess(c, nil)
 }
 

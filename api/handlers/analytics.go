@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -42,35 +43,78 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 	recentEvents := h.analytics.GetRecentEvents(c.Request.Context(), 20)
 	recentActivity := make([]map[string]any, 0, len(recentEvents))
 	for _, event := range recentEvents {
-		filename := event.MediaID
-		// Analytics keys are stable UUIDs — resolve to human-readable names.
-		if mediaItem, err := h.media.GetMediaByID(event.MediaID); err == nil && mediaItem != nil {
-			filename = mediaItem.Name
+		filename := ""
+		if event.MediaID != "" {
+			// Analytics keys are stable UUIDs — resolve to human-readable names.
+			if mediaItem, err := h.media.GetMediaByID(event.MediaID); err == nil && mediaItem != nil {
+				filename = mediaItem.Name
+			} else {
+				filename = event.MediaID
+			}
+		}
+		// Resolve UserID → username so non-media events (login, logout,
+		// admin_action, etc.) render as "<username> · <type>" instead of
+		// blank rows. Auth lookup failures fall back to the raw user_id.
+		username := ""
+		if event.UserID != "" && h.auth != nil {
+			if u, err := h.auth.GetUserByID(c.Request.Context(), event.UserID); err == nil && u != nil {
+				username = u.Username
+			}
 		}
 		recentActivity = append(recentActivity, map[string]any{
-			"type":      event.Type,
-			"media_id":  event.MediaID,
-			"filename":  filename,
-			"timestamp": event.Timestamp.Unix(),
+			"type":       event.Type,
+			"media_id":   event.MediaID,
+			"filename":   filename,
+			"user_id":    event.UserID,
+			"username":   username,
+			"ip_address": event.IPAddress,
+			"timestamp":  event.Timestamp.Unix(),
 		})
 	}
 
 	writeSuccess(c, map[string]any{
-		"total_events":          summary.TotalEvents,
-		"active_sessions":       summary.ActiveSessions,
-		"today_views":           summary.TodayViews,
-		"total_views":           summary.TotalViews,
-		"total_media":           summary.TotalMedia,
-		"total_watch_time":      summary.TotalWatchTime,
-		"unique_clients":        globalStats.UniqueClients,
-		"top_viewed":            topViewed,
-		"recent_activity":       recentActivity,
-		"today_logins":          summary.TodayLogins,
-		"today_logins_failed":   summary.TodayLoginsFailed,
-		"today_registrations":   summary.TodayRegistrations,
-		"today_age_gate_passes": summary.TodayAgeGatePasses,
-		"today_downloads":       summary.TodayDownloads,
-		"today_searches":        summary.TodaySearches,
+		"total_events":                summary.TotalEvents,
+		"active_sessions":             summary.ActiveSessions,
+		"today_views":                 summary.TodayViews,
+		"total_views":                 summary.TotalViews,
+		"total_media":                 summary.TotalMedia,
+		"total_watch_time":            summary.TotalWatchTime,
+		"unique_clients":              globalStats.UniqueClients,
+		"top_viewed":                  topViewed,
+		"recent_activity":             recentActivity,
+		"today_logins":                summary.TodayLogins,
+		"today_logins_failed":         summary.TodayLoginsFailed,
+		"today_logouts":               summary.TodayLogouts,
+		"today_registrations":         summary.TodayRegistrations,
+		"today_age_gate_passes":       summary.TodayAgeGatePasses,
+		"today_downloads":             summary.TodayDownloads,
+		"today_searches":              summary.TodaySearches,
+		"today_favorites_added":       summary.TodayFavoritesAdded,
+		"today_favorites_removed":     summary.TodayFavoritesRemoved,
+		"today_ratings_set":           summary.TodayRatingsSet,
+		"today_playlists_created":     summary.TodayPlaylistsCreated,
+		"today_playlists_deleted":     summary.TodayPlaylistsDeleted,
+		"today_playlist_items_added":  summary.TodayPlaylistItemsAdded,
+		"today_uploads_succeeded":     summary.TodayUploadsSucceeded,
+		"today_uploads_failed":        summary.TodayUploadsFailed,
+		"today_password_changes":      summary.TodayPasswordChanges,
+		"today_account_deletions":     summary.TodayAccountDeletions,
+		"today_hls_starts":            summary.TodayHLSStarts,
+		"today_hls_errors":            summary.TodayHLSErrors,
+		"today_media_deletions":       summary.TodayMediaDeletions,
+		"today_api_tokens_created":    summary.TodayAPITokensCreated,
+		"today_api_tokens_revoked":    summary.TodayAPITokensRevoked,
+		"today_admin_actions":         summary.TodayAdminActions,
+		"today_server_errors":         summary.TodayServerErrors,
+		"today_stream_starts":         summary.TodayStreamStarts,
+		"today_stream_ends":           summary.TodayStreamEnds,
+		"today_bytes_served":          summary.TodayBytesServed,
+		"today_mature_blocked":        summary.TodayMatureBlocked,
+		"today_permission_denied":     summary.TodayPermissionDenied,
+		"today_preferences_changes":   summary.TodayPreferencesChanges,
+		"today_bulk_deletes":          summary.TodayBulkDeletes,
+		"today_bulk_updates":          summary.TodayBulkUpdates,
+		"today_user_role_changes":     summary.TodayUserRoleChanges,
 	})
 }
 
@@ -278,6 +322,125 @@ func (h *Handler) GetEventsByMedia(c *gin.Context) {
 
 	events := h.analytics.GetEventsByMedia(c.Request.Context(), mediaID, limit)
 	writeSuccess(c, events)
+}
+
+// AdminGetTopUsers returns a leaderboard of users ranked by the chosen
+// metric. Query params: metric (views|watch_time|uploads|downloads|events,
+// default views), limit (1-200, default 10). Resolves user_id → username
+// best-effort so the dashboard can render names.
+func (h *Handler) AdminGetTopUsers(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	metric := c.DefaultQuery("metric", "views")
+	limit := 10
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 200 {
+		limit = l
+	}
+	rows := h.analytics.GetTopUsers(c.Request.Context(), metric, limit)
+	if h.auth != nil {
+		for i := range rows {
+			if rows[i].UserID == "" {
+				continue
+			}
+			if u, err := h.auth.GetUserByID(c.Request.Context(), rows[i].UserID); err == nil && u != nil {
+				rows[i].Username = u.Username
+			}
+		}
+	}
+	writeSuccess(c, rows)
+}
+
+// AdminGetTopSearches returns the most-frequent search queries with the
+// empty-result share alongside, so admins can see what users want and what
+// the catalog is missing. Query params: limit (1-100, default 20).
+func (h *Handler) AdminGetTopSearches(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	limit := 20
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
+		limit = l
+	}
+	writeSuccess(c, h.analytics.GetTopSearches(c.Request.Context(), limit))
+}
+
+// AdminGetFailedLogins returns recent login_failed events for security review.
+// Query params: limit (1-200, default 50).
+func (h *Handler) AdminGetFailedLogins(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	limit := 50
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 200 {
+		limit = l
+	}
+	writeSuccess(c, h.analytics.GetRecentFailedLogins(c.Request.Context(), limit))
+}
+
+// AdminGetErrorPaths returns a (method, path, status) breakdown of recent
+// 5xx responses so operators can see which routes are misbehaving without
+// drilling raw events. Query params: limit (1-200, default 25).
+func (h *Handler) AdminGetErrorPaths(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	limit := 25
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 200 {
+		limit = l
+	}
+	writeSuccess(c, h.analytics.GetErrorPaths(c.Request.Context(), limit))
+}
+
+// AdminGetMetricTimeline returns a per-day series for charting.
+// Query params: metric (one of the DailyStats JSON tags), days (1-365, default 30).
+// Returns gap-filled entries (zeros for missing days) so charts are continuous.
+func (h *Handler) AdminGetMetricTimeline(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	metric := strings.TrimSpace(c.DefaultQuery("metric", "total_views"))
+	days := 30
+	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
+		days = d
+	}
+	writeSuccess(c, h.analytics.GetMetricTimeline(metric, days))
+}
+
+// AdminGetUserAnalytics returns aggregated per-user analytics for the user
+// whose username is in the URL param (mounted under /users/:username/analytics
+// to match the rest of the admin user routes). Restricted to admins.
+//
+// Response includes total_views, total_watch_time, total_downloads,
+// favorites_added/removed, ratings_set, playlists_created/deleted, login
+// counts, first_seen, last_seen, unique_media, and most_viewed_media_id —
+// everything the per-user admin dashboard needs in one round-trip.
+func (h *Handler) AdminGetUserAnalytics(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{"analytics_disabled": true})
+		return
+	}
+	username := strings.TrimSpace(c.Param("username"))
+	if username == "" {
+		writeError(c, http.StatusBadRequest, "username required")
+		return
+	}
+	user, err := h.auth.GetUser(c.Request.Context(), username)
+	if err != nil || user == nil {
+		writeError(c, http.StatusNotFound, "user not found")
+		return
+	}
+	limit := 10000
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100000 {
+		limit = l
+	}
+	stats := h.analytics.GetUserStats(c.Request.Context(), user.ID, limit)
+	writeSuccess(c, stats)
 }
 
 // GetEventsByUser returns events for a specific user (user_id query param required)

@@ -155,6 +155,16 @@ type AnalyticsRepository interface {
 	DeleteByMediaID(ctx context.Context, mediaID string) error
 	Count(ctx context.Context, filter AnalyticsFilter) (int64, error)
 	CountByType(ctx context.Context) (map[string]int64, error)
+
+	// UpsertDailyStats writes (or replaces) a daily aggregate row. Called from
+	// the analytics module's flush loop so dashboard numbers survive restarts.
+	UpsertDailyStats(ctx context.Context, stats *models.DailyStats) error
+	// ListDailyStatsBetween returns persisted daily stats for [startDate, endDate]
+	// inclusive ("YYYY-MM-DD"). Used on Start to rehydrate the in-memory map.
+	ListDailyStatsBetween(ctx context.Context, startDate, endDate string) ([]*models.DailyStats, error)
+	// DeleteDailyStatsOlderThan removes daily_stats rows older than the cutoff
+	// date ("YYYY-MM-DD"). Mirrors the retention policy applied to raw events.
+	DeleteDailyStatsOlderThan(ctx context.Context, beforeDate string) error
 }
 
 // AnalyticsFilter defines filtering options for analytics queries
