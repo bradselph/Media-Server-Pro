@@ -95,6 +95,7 @@ import type {
     ThumbnailStats,
     TopMediaItem,
     UpdateInfo,
+    UserAnalytics,
     UpdateStatus,
     UploadProgress,
     UploadResult,
@@ -904,6 +905,10 @@ export function useAnalyticsApi() {
         getEventTypeCounts: () => api.get<EventTypeCounts>('/api/analytics/events/counts'),
         getContentPerformance: (limit?: number) =>
             api.get<ContentPerformanceItem[]>(`/api/analytics/content${buildQS({limit: limit || undefined})}`),
+        // Per-user aggregated analytics. Mounted at /admin/users/:username/analytics
+        // so the URL matches the rest of the admin user routes (which use :username).
+        getUserAnalytics: (username: string, limit?: number) =>
+            api.get<UserAnalytics>(`/api/admin/users/${encodeURIComponent(username)}/analytics${buildQS({limit: limit || undefined})}`),
         exportCsv: (period?: string) => {
             const today = new Date()
             const fmt = (d: Date) => d.toISOString().slice(0, 10)

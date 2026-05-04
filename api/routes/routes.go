@@ -525,6 +525,8 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/analytics/events/by-media", adminAuth(authModule), h.GetEventsByMedia)
 	api.GET("/analytics/events/by-user", adminAuth(authModule), h.GetEventsByUser)
 	api.GET("/analytics/events/counts", adminAuth(authModule), h.GetEventTypeCounts)
+	// Per-user aggregate analytics. Mounted under /admin/users/:id/analytics
+	// in the admin group below — kept here as a comment for cross-reference.
 
 	// Thumbnail previews (public) — frontend uses mediaApi.getThumbnailPreviews()
 	api.GET("/thumbnails/previews", h.GetThumbnailPreviews)
@@ -615,6 +617,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/audit-log/export", h.AdminExportAuditLog)
 	adminGrp.GET("/logs", h.GetServerLogs)
 	adminGrp.GET("/analytics/export", h.AdminExportAnalytics)
+	adminGrp.GET(routeUserByName+"/analytics", h.AdminGetUserAnalytics)
 
 	// Configuration management routes
 	adminGrp.GET("/config", h.AdminGetConfig)

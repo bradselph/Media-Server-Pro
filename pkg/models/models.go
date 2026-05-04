@@ -526,23 +526,55 @@ type ViewStats struct {
 	PeakConcurrent   int       `json:"peak_concurrent"` // populated by streaming.Module.GetStats()
 }
 
-// DailyStats holds daily aggregate statistics
+// DailyStats holds daily aggregate statistics. Persisted to the daily_stats
+// table so values survive restarts; the in-memory cache is rehydrated from this
+// table on startup, then topped up from raw analytics_events for any same-day
+// activity that hasn't been flushed yet.
 type DailyStats struct {
-	Date           string   `json:"date"` // "YYYY-MM-DD" date string, not a timestamp
-	TotalViews     int      `json:"total_views"`
-	UniqueUsers    int      `json:"unique_users"`
-	TotalWatchTime float64  `json:"total_watch_time"`
-	NewUsers       int      `json:"new_users"`
-	TopMedia       []string `json:"top_media"`
+	Date           string  `json:"date" gorm:"primaryKey;column:date;size:10"` // "YYYY-MM-DD"
+	TotalViews     int     `json:"total_views" gorm:"column:total_views;not null;default:0"`
+	UniqueUsers    int     `json:"unique_users" gorm:"column:unique_users;not null;default:0"`
+	TotalWatchTime float64 `json:"total_watch_time" gorm:"column:total_watch_time;not null;default:0"`
+	NewUsers       int     `json:"new_users" gorm:"column:new_users;not null;default:0"`
+	// TopMedia is computed on read (not persisted) — keeping it stored would
+	// double-count when the underlying media stats roll. The struct field is
+	// kept so JSON consumers see it; gorm:"-" tells GORM to skip it.
+	TopMedia []string `json:"top_media" gorm:"-"`
 
-	// Traffic breakdown (server-generated events)
-	Logins        int `json:"logins"`
-	LoginsFailed  int `json:"logins_failed"`
-	Logouts       int `json:"logouts"`
-	Registrations int `json:"registrations"`
-	AgeGatePasses int `json:"age_gate_passes"`
-	Downloads     int `json:"downloads"`
-	Searches      int `json:"searches"`
+	// Traffic breakdown (server-generated events).
+	Logins        int `json:"logins" gorm:"column:logins;not null;default:0"`
+	LoginsFailed  int `json:"logins_failed" gorm:"column:logins_failed;not null;default:0"`
+	Logouts       int `json:"logouts" gorm:"column:logouts;not null;default:0"`
+	Registrations int `json:"registrations" gorm:"column:registrations;not null;default:0"`
+	AgeGatePasses int `json:"age_gate_passes" gorm:"column:age_gate_passes;not null;default:0"`
+	Downloads     int `json:"downloads" gorm:"column:downloads;not null;default:0"`
+	Searches      int `json:"searches" gorm:"column:searches;not null;default:0"`
+
+	// Extended traffic breakdown — every notable user/admin action emits an
+	// event so the dashboard reflects real server activity. New columns are
+	// added by ensureSchemaColumns; older databases auto-upgrade on startup.
+	FavoritesAdded     int `json:"favorites_added" gorm:"column:favorites_added;not null;default:0"`
+	FavoritesRemoved   int `json:"favorites_removed" gorm:"column:favorites_removed;not null;default:0"`
+	RatingsSet         int `json:"ratings_set" gorm:"column:ratings_set;not null;default:0"`
+	PlaylistsCreated   int `json:"playlists_created" gorm:"column:playlists_created;not null;default:0"`
+	PlaylistsDeleted   int `json:"playlists_deleted" gorm:"column:playlists_deleted;not null;default:0"`
+	PlaylistItemsAdded int `json:"playlist_items_added" gorm:"column:playlist_items_added;not null;default:0"`
+	UploadsSucceeded   int `json:"uploads_succeeded" gorm:"column:uploads_succeeded;not null;default:0"`
+	UploadsFailed      int `json:"uploads_failed" gorm:"column:uploads_failed;not null;default:0"`
+	PasswordChanges    int `json:"password_changes" gorm:"column:password_changes;not null;default:0"`
+	AccountDeletions   int `json:"account_deletions" gorm:"column:account_deletions;not null;default:0"`
+	HLSStarts          int `json:"hls_starts" gorm:"column:hls_starts;not null;default:0"`
+	HLSErrors          int `json:"hls_errors" gorm:"column:hls_errors;not null;default:0"`
+	MediaDeletions     int `json:"media_deletions" gorm:"column:media_deletions;not null;default:0"`
+	APITokensCreated   int `json:"api_tokens_created" gorm:"column:api_tokens_created;not null;default:0"`
+	APITokensRevoked   int `json:"api_tokens_revoked" gorm:"column:api_tokens_revoked;not null;default:0"`
+	AdminActions       int `json:"admin_actions" gorm:"column:admin_actions;not null;default:0"`
+	ServerErrors       int `json:"server_errors" gorm:"column:server_errors;not null;default:0"`
+}
+
+// TableName specifies the table name for GORM.
+func (DailyStats) TableName() string {
+	return "daily_stats"
 }
 
 // HLSJob represents an HLS transcoding job

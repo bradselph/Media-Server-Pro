@@ -37,8 +37,11 @@ type AgeGate struct {
 	evicting       bool
 	// OnVerify is called when a visitor passes the age gate. Set by the caller
 	// to integrate with analytics without creating a dependency from middleware
-	// to the analytics package.
-	OnVerify func(ip, userAgent string)
+	// to the analytics package. The gin.Context is passed so the caller can
+	// extract any logged-in session for user attribution — most age-gate
+	// passes are anonymous, but a returning logged-in user crossing the gate
+	// after a cookie wipe is still a meaningful event to attribute.
+	OnVerify func(c *gin.Context, ip, userAgent string)
 }
 
 // parseBypassCIDR parses a single bypass IP or CIDR string.
@@ -287,7 +290,7 @@ func (ag *AgeGate) GinVerifyHandler() gin.HandlerFunc {
 		}
 		// Notify analytics callback if set
 		if ag.OnVerify != nil {
-			ag.OnVerify(extractClientIP(c.Request), c.Request.UserAgent())
+			ag.OnVerify(c, extractClientIP(c.Request), c.Request.UserAgent())
 		}
 
 		c.JSON(http.StatusOK, gin.H{"success": true})

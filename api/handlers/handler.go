@@ -370,6 +370,32 @@ func getSession(c *gin.Context) *models.Session {
 	return nil
 }
 
+// trackServerEvent emits a server-side traffic event with the caller's
+// session, IP, and User-Agent automatically attached. Returns silently when
+// analytics is disabled so call sites don't have to repeat the nil-guard.
+//
+// `data` may be nil. The eventType must be one of the analytics.Event*
+// constants — accepting arbitrary strings here would defeat the
+// updateDailyStatsLocked switch and silently drop counts.
+func (h *Handler) trackServerEvent(c *gin.Context, eventType string, data map[string]any) {
+	if h.analytics == nil {
+		return
+	}
+	userID, sessionID := "", ""
+	if sess := getSession(c); sess != nil {
+		userID = sess.UserID
+		sessionID = sess.ID
+	}
+	h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
+		Type:      eventType,
+		UserID:    userID,
+		SessionID: sessionID,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+		Data:      data,
+	})
+}
+
 // getUser retrieves the user from the gin context.
 func getUser(c *gin.Context) *models.User {
 	if v, exists := c.Get("user"); exists {
@@ -538,6 +564,10 @@ type adminLogActionParams struct {
 // is best-effort — if the admin module is unavailable the action is silently
 // skipped so that the primary operation (user create, media delete, etc.) still
 // succeeds. Uses the session user when available so audit logs distinguish admins.
+//
+// Also emits an `admin_action` analytics event so the dashboard can show how
+// much administrative activity is happening — without depending on the audit
+// log table (which has different retention and access rules).
 func (h *Handler) logAdminAction(c *gin.Context, p *adminLogActionParams) {
 	if h.admin == nil {
 		return
@@ -550,6 +580,10 @@ func (h *Handler) logAdminAction(c *gin.Context, p *adminLogActionParams) {
 	h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
 		UserID: userID, Username: username, Action: p.Action, Resource: p.Target,
 		Details: p.Details, IPAddress: c.ClientIP(), Success: true,
+	})
+	h.trackServerEvent(c, "admin_action", map[string]any{
+		"action":   p.Action,
+		"resource": p.Target,
 	})
 }
 

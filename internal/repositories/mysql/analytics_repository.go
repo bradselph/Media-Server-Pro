@@ -8,6 +8,7 @@ import (
 	"media-server-pro/pkg/models"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const sqlOrderTimestampDesc = "timestamp DESC"
@@ -142,4 +143,40 @@ func (r *AnalyticsRepository) Count(ctx context.Context, filter repositories.Ana
 	query = r.applyListFilter(query, filter)
 	err := query.Count(&count).Error
 	return count, err
+}
+
+// UpsertDailyStats writes (or replaces) the daily aggregate row keyed by date.
+// Uses INSERT ... ON DUPLICATE KEY UPDATE so concurrent writers can't lose data
+// to a race between read-modify-write cycles. TopMedia is gorm:"-" and skipped.
+func (r *AnalyticsRepository) UpsertDailyStats(ctx context.Context, stats *models.DailyStats) error {
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "date"}},
+		UpdateAll: true,
+	}).Create(stats).Error
+}
+
+// ListDailyStatsBetween returns persisted daily aggregates ordered by date asc.
+// Both bounds are inclusive ("YYYY-MM-DD"); empty bounds disable that side.
+func (r *AnalyticsRepository) ListDailyStatsBetween(ctx context.Context, startDate, endDate string) ([]*models.DailyStats, error) {
+	var rows []*models.DailyStats
+	query := r.db.WithContext(ctx).Model(&models.DailyStats{})
+	if startDate != "" {
+		query = query.Where("date >= ?", startDate)
+	}
+	if endDate != "" {
+		query = query.Where("date <= ?", endDate)
+	}
+	if err := query.Order("date ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// DeleteDailyStatsOlderThan removes daily_stats rows whose date is strictly
+// before beforeDate ("YYYY-MM-DD"). Called from the cleanup loop to honor the
+// retention policy applied to raw events.
+func (r *AnalyticsRepository) DeleteDailyStatsOlderThan(ctx context.Context, beforeDate string) error {
+	return r.db.WithContext(ctx).
+		Where("date < ?", beforeDate).
+		Delete(&models.DailyStats{}).Error
 }

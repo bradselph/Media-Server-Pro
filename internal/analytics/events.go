@@ -50,6 +50,28 @@ const (
 	EventAgeGatePass = "age_gate_pass"
 	EventDownload    = "download"
 	EventSearch      = "search"
+
+	// Server-side action events. These are emitted by the handlers / modules
+	// that perform the action, NOT submitted by clients — accepting them from
+	// the browser would let any caller forge dashboard counts. Each one maps
+	// to a column on daily_stats in updateDailyStatsLocked.
+	EventFavoriteAdd      = "favorite_add"
+	EventFavoriteRemove   = "favorite_remove"
+	EventRatingSet        = "rating_set"
+	EventPlaylistCreate   = "playlist_create"
+	EventPlaylistDelete   = "playlist_delete"
+	EventPlaylistItemAdd  = "playlist_item_add"
+	EventUploadSuccess    = "upload_success"
+	EventUploadFailed     = "upload_failed"
+	EventPasswordChange   = "password_change"
+	EventAccountDelete    = "account_delete"
+	EventHLSStart         = "hls_start"
+	EventHLSError         = "hls_error"
+	EventMediaDeleted     = "media_deleted" // tombstone — see DeleteEventsByMedia
+	EventAPITokenCreate   = "api_token_create"
+	EventAPITokenRevoke   = "api_token_revoke"
+	EventAdminAction      = "admin_action"
+	EventServerError      = "server_error"
 )
 
 // ClientEventInput holds parameters for SubmitClientEvent.
@@ -191,13 +213,15 @@ func (m *Module) TrackDownload(ctx context.Context, params ViewParams) {
 }
 
 // clientAllowedTypes lists event types that clients (browser players) may submit.
-// Server-only events (login, logout, register, download, etc.) are intentionally
-// excluded — accepting them from clients would allow forged traffic stats.
+// Server-only events (login, logout, register, download, view, playback, etc.)
+// are intentionally excluded — accepting them from clients would let any caller
+// inflate traffic counts simply by POSTing forged JSON. "view" and "playback"
+// are tracked exclusively on the server side from the actual streaming and
+// playback handlers, never trusted from a client message.
 var clientAllowedTypes = map[string]bool{
 	EventPlay: true, EventPause: true, EventResume: true, EventSeek: true,
 	EventComplete: true, EventError: true, EventQualityChange: true,
 	EventBuffering: true, EventVolumeChange: true, EventFullscreen: true,
-	"view": true, "playback": true,
 }
 
 // SubmitClientEvent processes an event submitted by a client.
@@ -241,12 +265,58 @@ func (m *Module) GetEventsByType(ctx context.Context, eventType string, limit in
 	return m.listEvents(ctx, repositories.AnalyticsFilter{Type: eventType, Limit: limit}, "Failed to get events by type: %v")
 }
 
-// DeleteEventsByMedia removes all analytics events for the given media ID.
-// Called when a media item is permanently deleted so orphaned event rows do not accumulate.
+// DeleteEventsByMedia removes raw events for a deleted media item AND emits a
+// permanent tombstone (`media_deleted`) carrying the historical view/playback
+// counts. The tombstone is NOT keyed by media_id (the media is gone, foreign
+// references would hold orphaned values), so it survives the purge and shows
+// up in audit-style queries even after the media row is removed.
+//
+// Without the tombstone, the dashboard's "media deletions today" count would
+// always be zero and historical totals would silently drop on every delete.
 func (m *Module) DeleteEventsByMedia(ctx context.Context, mediaID string) {
+	// Snapshot the cached per-media stats BEFORE the purge so the tombstone
+	// preserves them. The values come from the in-memory map, not the DB,
+	// because we're about to delete the DB rows.
+	m.statsMu.RLock()
+	var totalViews, totalPlaybacks, totalCompletions int
+	var lastViewed time.Time
+	if stats, ok := m.mediaStats[mediaID]; ok && stats != nil {
+		totalViews = stats.TotalViews
+		totalPlaybacks = stats.TotalPlaybacks
+		totalCompletions = stats.TotalCompletions
+		lastViewed = stats.LastViewed
+	}
+	m.statsMu.RUnlock()
+
+	tombstone := models.AnalyticsEvent{
+		ID:        generateEventID(),
+		Type:      EventMediaDeleted,
+		Timestamp: time.Now(),
+		Data: map[string]any{
+			"media_id":          mediaID,
+			"total_views":       totalViews,
+			"total_playbacks":   totalPlaybacks,
+			"total_completions": totalCompletions,
+			"last_viewed":       lastViewed,
+		},
+	}
+	if err := m.eventRepo.Create(ctx, &tombstone); err != nil {
+		m.log.Warn("Failed to write tombstone for deleted media %s: %v", mediaID, err)
+	}
+	m.updateStats(tombstone)
+
 	if err := m.eventRepo.DeleteByMediaID(ctx, mediaID); err != nil {
 		m.log.Warn("Failed to purge analytics events for deleted media %s: %v", mediaID, err)
 	}
+
+	// Drop the in-memory media stats now that the row is gone. Without this,
+	// GetTopMedia and GetContentPerformance would still return phantom rows
+	// for the deleted item until the LRU eviction window kicked in.
+	m.statsMu.Lock()
+	delete(m.mediaStats, mediaID)
+	delete(m.mediaViewers, mediaID)
+	delete(m.mediaDurationSamples, mediaID)
+	m.statsMu.Unlock()
 }
 
 // GetEventsByMedia returns events for a specific media item.

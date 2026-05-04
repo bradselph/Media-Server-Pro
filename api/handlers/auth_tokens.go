@@ -107,6 +107,10 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 		resp["expires_at"] = rec.ExpiresAt.Format(timeFormatRFC3339Ext)
 	}
 	h.logAdminAction(c, &adminLogActionParams{Action: "create_api_token", Target: rec.ID, Details: map[string]any{"name": rec.Name}})
+	h.trackServerEvent(c, "api_token_create", map[string]any{
+		"token_id": rec.ID,
+		"name":     rec.Name,
+	})
 	writeSuccess(c, resp)
 }
 
@@ -131,5 +135,6 @@ func (h *Handler) DeleteAPIToken(c *gin.Context) {
 		return
 	}
 	h.logAdminAction(c, &adminLogActionParams{Action: "delete_api_token", Target: tokenID})
+	h.trackServerEvent(c, "api_token_revoke", map[string]any{"token_id": tokenID})
 	writeSuccess(c, nil)
 }

@@ -317,12 +317,59 @@ export interface AnalyticsSummary {
     unique_clients: number
     today_logins?: number
     today_logins_failed?: number
+    today_logouts?: number
     today_registrations?: number
     today_age_gate_passes?: number
     today_downloads?: number
     today_searches?: number
+    today_favorites_added?: number
+    today_favorites_removed?: number
+    today_ratings_set?: number
+    today_playlists_created?: number
+    today_playlists_deleted?: number
+    today_playlist_items_added?: number
+    today_uploads_succeeded?: number
+    today_uploads_failed?: number
+    today_password_changes?: number
+    today_account_deletions?: number
+    today_hls_starts?: number
+    today_hls_errors?: number
+    today_media_deletions?: number
+    today_api_tokens_created?: number
+    today_api_tokens_revoked?: number
+    today_admin_actions?: number
+    today_server_errors?: number
     top_viewed: TopMediaItem[]
     recent_activity: { type: string; media_id: string; filename: string; timestamp: number }[]
+}
+
+// Per-user aggregated analytics returned by /admin/users/:username/analytics.
+// Field names mirror the Go UserStats struct so the codegen pipeline doesn't
+// need a translation step. All counts default to 0 for inactive users.
+export interface UserAnalytics {
+    user_id: string
+    total_events: number
+    total_views: number
+    total_playbacks: number
+    total_completions: number
+    total_watch_time: number
+    total_downloads: number
+    total_searches: number
+    favorites_added: number
+    favorites_removed: number
+    ratings_set: number
+    playlists_created: number
+    playlists_deleted: number
+    uploads_succeeded: number
+    uploads_failed: number
+    logins: number
+    logins_failed: number
+    logouts: number
+    unique_media: number
+    first_seen?: string
+    last_seen?: string
+    most_viewed_media_id?: string
+    most_viewed_count: number
 }
 
 export interface ContentPerformanceItem {
@@ -359,6 +406,27 @@ export interface DailyStats {
     age_gate_passes: number
     downloads: number
     searches: number
+    // Extended traffic breakdown — every notable user/admin action is tracked
+    // server-side so the dashboard reflects real activity rather than just the
+    // narrow auth-and-stream subset. Every field is required (zero-defaulted)
+    // because the backend always emits it.
+    favorites_added: number
+    favorites_removed: number
+    ratings_set: number
+    playlists_created: number
+    playlists_deleted: number
+    playlist_items_added: number
+    uploads_succeeded: number
+    uploads_failed: number
+    password_changes: number
+    account_deletions: number
+    hls_starts: number
+    hls_errors: number
+    media_deletions: number
+    api_tokens_created: number
+    api_tokens_revoked: number
+    admin_actions: number
+    server_errors: number
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

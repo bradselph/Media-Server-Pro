@@ -145,9 +145,20 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 	job, err := h.hls.GenerateHLS(c.Request.Context(), &hls.GenerateHLSParams{MediaPath: absPath, MediaID: id, Qualities: qualities})
 	if err != nil {
 		h.log.Error("%v", err)
+		// Track HLS request errors so dashboards surface a transcoder problem
+		// before users start complaining.
+		h.trackServerEvent(c, "hls_error", map[string]any{
+			"media_id": id,
+			"error":    err.Error(),
+		})
 		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
+	h.trackServerEvent(c, "hls_start", map[string]any{
+		"media_id":  id,
+		"job_id":    job.ID,
+		"qualities": qualities,
+	})
 	writeSuccess(c, buildGenerateHLSResponse(job))
 }
 

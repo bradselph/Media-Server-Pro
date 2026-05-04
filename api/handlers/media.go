@@ -19,6 +19,28 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+// trackDownloadCompleted records a download event. Called only after the
+// streaming layer has actually delivered (or partially delivered) bytes to the
+// client — failed proxies and hard 4xx/5xx paths skip this so the daily
+// download counter reflects real deliveries rather than attempts.
+func (h *Handler) trackDownloadCompleted(c *gin.Context, session *models.Session, mediaID string) {
+	if h.analytics == nil {
+		return
+	}
+	userID, sessionID := "", ""
+	if session != nil {
+		userID = session.UserID
+		sessionID = session.ID
+	}
+	h.analytics.TrackDownload(c.Request.Context(), analytics.ViewParams{
+		MediaID:   mediaID,
+		UserID:    userID,
+		SessionID: sessionID,
+		IPAddress: c.ClientIP(),
+		UserAgent: c.Request.UserAgent(),
+	})
+}
+
 // ListMedia returns all media items
 func (h *Handler) ListMedia(c *gin.Context) {
 	c.Header("Cache-Control", "private, max-age=300")
@@ -73,7 +95,12 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		SortDesc: c.Query("sort_order") == "desc",
 	}
 
-	// Track search queries for analytics (non-empty search terms only)
+	allItems := h.media.ListMedia(filterNoPagination)
+
+	// Track search queries for analytics (non-empty search terms only) AFTER
+	// the search has run, so we can record the result count and an explicit
+	// "no results" flag — letting the dashboard distinguish productive
+	// searches from queries that turned up nothing.
 	if h.analytics != nil && filterNoPagination.Search != "" {
 		sess := getSession(c)
 		uid := ""
@@ -83,11 +110,13 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
 			Type: analytics.EventSearch, UserID: uid,
 			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-			Data: map[string]any{"query": filterNoPagination.Search},
+			Data: map[string]any{
+				"query":        filterNoPagination.Search,
+				"result_count": len(allItems),
+				"empty":        len(allItems) == 0,
+			},
 		})
 	}
-
-	allItems := h.media.ListMedia(filterNoPagination)
 
 	// Global ID set — tracks every item ID already present in allItems so that
 	// receiver and extractor items are never added twice regardless of source.
@@ -772,24 +801,20 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 					writeError(c, http.StatusForbidden, msgMatureContent)
 					return
 				}
-				// Track download analytics for slave-sourced media so reporting
-				// is source-agnostic — mirrors the local-media branch below.
-				if h.analytics != nil {
-					userID := ""
-					sessionID := ""
-					if session != nil {
-						userID = session.UserID
-						sessionID = session.ID
-					}
-					h.analytics.TrackDownload(c.Request.Context(), analytics.ViewParams{
-						MediaID: id, UserID: userID, SessionID: sessionID,
-						IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-					})
-				}
-				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
-					if !c.Writer.Written() && !isClientDisconnect(err) {
-						writeError(c, http.StatusBadGateway, "Download proxy error")
-					}
+				err := h.receiver.ProxyStream(c.Writer, c.Request, id)
+				switch {
+				case err == nil:
+					// Track only after a successful proxy so failed downloads
+					// don't inflate the daily download counter — the previous
+					// pre-proxy track call counted any 502 or aborted transfer
+					// as if the user had received the file.
+					h.trackDownloadCompleted(c, session, id)
+				case isClientDisconnect(err):
+					// Client started receiving and then disconnected — that's
+					// still a delivered download from the server's POV.
+					h.trackDownloadCompleted(c, session, id)
+				case !c.Writer.Written():
+					writeError(c, http.StatusBadGateway, "Download proxy error")
 				}
 				return
 			}
@@ -808,36 +833,32 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 		return
 	}
 
-	// Track download for analytics
-	if h.analytics != nil {
-		userID := ""
-		sessionID := ""
-		if session != nil {
-			userID = session.UserID
-			sessionID = session.ID
-		}
-		h.analytics.TrackDownload(c.Request.Context(), analytics.ViewParams{
-			MediaID: id, UserID: userID, SessionID: sessionID,
-			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-		})
+	dlErr := h.streaming.Download(c.Writer, c.Request, absPath)
+	if dlErr == nil {
+		// File served end-to-end — count it.
+		h.trackDownloadCompleted(c, session, id)
+		return
 	}
-
-	if err := h.streaming.Download(c.Writer, c.Request, absPath); err != nil {
-		if c.Writer.Written() || isClientDisconnect(err) {
-			if isClientDisconnect(err) {
-				h.log.Debug("Download canceled by client: %v", err)
-			}
-			return
-		}
-		switch {
-		case errors.Is(err, streaming.ErrFileNotFound):
-			writeError(c, http.StatusNotFound, errFileNotFound)
-		case errors.Is(err, streaming.ErrFileTooLarge):
-			writeError(c, http.StatusRequestEntityTooLarge, "File exceeds maximum download size")
-		default:
-			h.log.Error("Download error: %v", err)
-			writeError(c, http.StatusInternalServerError, "Download error")
-		}
+	if isClientDisconnect(dlErr) {
+		// Bytes started flowing before the client gave up — still counts.
+		h.log.Debug("Download canceled by client: %v", dlErr)
+		h.trackDownloadCompleted(c, session, id)
+		return
+	}
+	if c.Writer.Written() {
+		// Headers/body already sent — assume partial success worth counting.
+		h.trackDownloadCompleted(c, session, id)
+		return
+	}
+	// Hard failure before any bytes left the server — don't track.
+	switch {
+	case errors.Is(dlErr, streaming.ErrFileNotFound):
+		writeError(c, http.StatusNotFound, errFileNotFound)
+	case errors.Is(dlErr, streaming.ErrFileTooLarge):
+		writeError(c, http.StatusRequestEntityTooLarge, "File exceeds maximum download size")
+	default:
+		h.log.Error("Download error: %v", dlErr)
+		writeError(c, http.StatusInternalServerError, "Download error")
 	}
 }
 

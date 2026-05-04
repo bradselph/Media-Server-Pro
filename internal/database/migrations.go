@@ -158,6 +158,38 @@ var tableDefs = []struct {
 			INDEX idx_user_id   (user_id),
 			INDEX idx_timestamp (timestamp)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"daily_stats", `
+		CREATE TABLE IF NOT EXISTS daily_stats (
+			date                  VARCHAR(10) PRIMARY KEY,
+			total_views           INT     NOT NULL DEFAULT 0,
+			unique_users          INT     NOT NULL DEFAULT 0,
+			total_watch_time      DOUBLE  NOT NULL DEFAULT 0,
+			new_users             INT     NOT NULL DEFAULT 0,
+			logins                INT     NOT NULL DEFAULT 0,
+			logins_failed         INT     NOT NULL DEFAULT 0,
+			logouts               INT     NOT NULL DEFAULT 0,
+			registrations         INT     NOT NULL DEFAULT 0,
+			age_gate_passes       INT     NOT NULL DEFAULT 0,
+			downloads             INT     NOT NULL DEFAULT 0,
+			searches              INT     NOT NULL DEFAULT 0,
+			favorites_added       INT     NOT NULL DEFAULT 0,
+			favorites_removed     INT     NOT NULL DEFAULT 0,
+			ratings_set           INT     NOT NULL DEFAULT 0,
+			playlists_created     INT     NOT NULL DEFAULT 0,
+			playlists_deleted     INT     NOT NULL DEFAULT 0,
+			playlist_items_added  INT     NOT NULL DEFAULT 0,
+			uploads_succeeded     INT     NOT NULL DEFAULT 0,
+			uploads_failed        INT     NOT NULL DEFAULT 0,
+			password_changes      INT     NOT NULL DEFAULT 0,
+			account_deletions     INT     NOT NULL DEFAULT 0,
+			hls_starts            INT     NOT NULL DEFAULT 0,
+			hls_errors            INT     NOT NULL DEFAULT 0,
+			media_deletions       INT     NOT NULL DEFAULT 0,
+			api_tokens_created    INT     NOT NULL DEFAULT 0,
+			api_tokens_revoked    INT     NOT NULL DEFAULT 0,
+			admin_actions         INT     NOT NULL DEFAULT 0,
+			server_errors         INT     NOT NULL DEFAULT 0
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"audit_log", `
 		CREATE TABLE IF NOT EXISTS audit_log (
 			id         VARCHAR(255) PRIMARY KEY,

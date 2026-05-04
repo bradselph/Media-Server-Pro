@@ -151,6 +151,10 @@ func (h *Handler) RecordRating(c *gin.Context) {
 	}
 
 	h.suggestions.RecordRating(session.UserID, mediaPath, req.Rating)
+	h.trackServerEvent(c, "rating_set", map[string]any{
+		"media_id": req.ID,
+		"rating":   req.Rating,
+	})
 	writeSuccess(c, nil)
 }
 

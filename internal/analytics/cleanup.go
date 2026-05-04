@@ -21,6 +21,12 @@ func (m *Module) cleanup() {
 	if err := m.eventRepo.DeleteOlderThan(ctx, before); err != nil {
 		m.log.Error("Failed to cleanup old events: %v", err)
 	}
+	// Prune the persisted daily_stats table to match the same retention window
+	// — otherwise daily aggregates would accumulate forever even after the raw
+	// events backing them have been deleted.
+	if err := m.eventRepo.DeleteDailyStatsOlderThan(ctx, cutoff.Format(dateFormat)); err != nil {
+		m.log.Error("Failed to cleanup old daily_stats rows: %v", err)
+	}
 
 	m.cleanupStaleSessions(cfg.Analytics.SessionTimeout)
 	m.cleanupOldDailyStats(cutoff.Format(dateFormat))

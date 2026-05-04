@@ -24,13 +24,33 @@ type Summary struct {
 	TotalMedia     int     `json:"total_media"`
 	TotalWatchTime float64 `json:"total_watch_time"`
 
-	// Today's traffic breakdown
-	TodayLogins        int `json:"today_logins"`
-	TodayLoginsFailed  int `json:"today_logins_failed"`
-	TodayRegistrations int `json:"today_registrations"`
-	TodayAgeGatePasses int `json:"today_age_gate_passes"`
-	TodayDownloads     int `json:"today_downloads"`
-	TodaySearches      int `json:"today_searches"`
+	// Today's traffic breakdown — every counter that DailyStats tracks gets a
+	// today_<x> projection so the dashboard widgets can render without doing
+	// their own date math against the daily array.
+	TodayLogins             int `json:"today_logins"`
+	TodayLoginsFailed       int `json:"today_logins_failed"`
+	TodayLogouts            int `json:"today_logouts"`
+	TodayRegistrations      int `json:"today_registrations"`
+	TodayAgeGatePasses      int `json:"today_age_gate_passes"`
+	TodayDownloads          int `json:"today_downloads"`
+	TodaySearches           int `json:"today_searches"`
+	TodayFavoritesAdded     int `json:"today_favorites_added"`
+	TodayFavoritesRemoved   int `json:"today_favorites_removed"`
+	TodayRatingsSet         int `json:"today_ratings_set"`
+	TodayPlaylistsCreated   int `json:"today_playlists_created"`
+	TodayPlaylistsDeleted   int `json:"today_playlists_deleted"`
+	TodayPlaylistItemsAdded int `json:"today_playlist_items_added"`
+	TodayUploadsSucceeded   int `json:"today_uploads_succeeded"`
+	TodayUploadsFailed      int `json:"today_uploads_failed"`
+	TodayPasswordChanges    int `json:"today_password_changes"`
+	TodayAccountDeletions   int `json:"today_account_deletions"`
+	TodayHLSStarts          int `json:"today_hls_starts"`
+	TodayHLSErrors          int `json:"today_hls_errors"`
+	TodayMediaDeletions     int `json:"today_media_deletions"`
+	TodayAPITokensCreated   int `json:"today_api_tokens_created"`
+	TodayAPITokensRevoked   int `json:"today_api_tokens_revoked"`
+	TodayAdminActions       int `json:"today_admin_actions"`
+	TodayServerErrors       int `json:"today_server_errors"`
 }
 
 // Stats holds statistics for metrics export.
@@ -63,13 +83,17 @@ func (m *Module) ensureMediaStatsLocked(mediaID string) *models.ViewStats {
 
 func (m *Module) updateStats(event models.AnalyticsEvent) {
 	m.statsMu.Lock()
-	defer m.statsMu.Unlock()
-
 	// Use event.Timestamp so events with historical timestamps (e.g. replayed
 	// or bulk-imported) are bucketed to the correct day, not always "today".
 	today := event.Timestamp.Format(dateFormat)
 	m.updateDailyStatsLocked(event, today)
 	m.updateMediaStatsLocked(event)
+	m.statsMu.Unlock()
+	// Persistence happens out-of-band on the flush ticker; here we just record
+	// the date as dirty so the flush picks it up. Done outside statsMu because
+	// markDailyDirty has its own tiny mutex and we want to release the big
+	// statsMu writer lock as quickly as possible.
+	m.markDailyDirty(today)
 }
 
 func (m *Module) updateDailyStatsLocked(event models.AnalyticsEvent, today string) {
@@ -94,6 +118,40 @@ func (m *Module) updateDailyStatsLocked(event models.AnalyticsEvent, today strin
 		daily.Downloads++
 	case EventSearch:
 		daily.Searches++
+	case EventFavoriteAdd:
+		daily.FavoritesAdded++
+	case EventFavoriteRemove:
+		daily.FavoritesRemoved++
+	case EventRatingSet:
+		daily.RatingsSet++
+	case EventPlaylistCreate:
+		daily.PlaylistsCreated++
+	case EventPlaylistDelete:
+		daily.PlaylistsDeleted++
+	case EventPlaylistItemAdd:
+		daily.PlaylistItemsAdded++
+	case EventUploadSuccess:
+		daily.UploadsSucceeded++
+	case EventUploadFailed:
+		daily.UploadsFailed++
+	case EventPasswordChange:
+		daily.PasswordChanges++
+	case EventAccountDelete:
+		daily.AccountDeletions++
+	case EventHLSStart:
+		daily.HLSStarts++
+	case EventHLSError:
+		daily.HLSErrors++
+	case EventMediaDeleted:
+		daily.MediaDeletions++
+	case EventAPITokenCreate:
+		daily.APITokensCreated++
+	case EventAPITokenRevoke:
+		daily.APITokensRevoked++
+	case EventAdminAction:
+		daily.AdminActions++
+	case EventServerError:
+		daily.ServerErrors++
 	}
 }
 
@@ -157,9 +215,22 @@ func (m *Module) applyViewToMediaStatsLocked(event models.AnalyticsEvent, stats 
 }
 
 func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, stats *models.ViewStats) {
-	if dur, ok := event.Data["duration"].(float64); ok && dur > 0 {
+	pos, _ := event.Data["position"].(float64)
+	dur, _ := event.Data["duration"].(float64)
+	if dur > 0 {
 		stats.TotalPlaybacks++
-		m.updateAvgWatchDurationLocked(event.MediaID, stats, dur)
+		// AvgWatchDuration is the average time a viewer actually watched, not
+		// the average length of the media itself — feed the running average
+		// the watched seconds (clamped to total duration to defend against a
+		// forged position > duration).
+		watched := pos
+		if watched > dur {
+			watched = dur
+		}
+		if watched < 0 {
+			watched = 0
+		}
+		m.updateAvgWatchDurationLocked(event.MediaID, stats, watched)
 	}
 	if progress, ok := event.Data["progress"].(float64); ok && progress >= 90 {
 		stats.TotalCompletions++
@@ -193,10 +264,38 @@ func completionRateFromCounts(completions, playbacks int) float64 {
 	return float64(completions) / float64(playbacks)
 }
 
-// GetDailyStats returns copies of daily statistics so callers cannot mutate internal state.
+// GetDailyStats returns copies of daily statistics so callers cannot mutate
+// internal state. TopMedia is filled from the most recent global view-counts
+// snapshot — it isn't persisted per-day (rolling top-N is a property of the
+// whole library at query time, not of any one date), but exposing it here
+// keeps the dashboard's "top items" widget and the daily-stats payload
+// consistent so frontend consumers don't need a second round-trip.
 func (m *Module) GetDailyStats(days int) []*models.DailyStats {
+	// Compute the top media list under the same lock so the snapshot we attach
+	// to every returned row is internally consistent with the counters.
 	m.statsMu.RLock()
 	defer m.statsMu.RUnlock()
+
+	const topMediaCount = 10
+	type tm struct {
+		id    string
+		views int
+	}
+	tops := make([]tm, 0, len(m.mediaStats))
+	for id, s := range m.mediaStats {
+		if s == nil {
+			continue
+		}
+		tops = append(tops, tm{id, s.TotalViews})
+	}
+	sort.Slice(tops, func(i, j int) bool { return tops[i].views > tops[j].views })
+	if len(tops) > topMediaCount {
+		tops = tops[:topMediaCount]
+	}
+	topIDs := make([]string, len(tops))
+	for i, t := range tops {
+		topIDs[i] = t.id
+	}
 
 	var stats []*models.DailyStats
 	now := time.Now()
@@ -205,10 +304,139 @@ func (m *Module) GetDailyStats(days int) []*models.DailyStats {
 		date := now.AddDate(0, 0, -i).Format(dateFormat)
 		if daily, ok := m.dailyStats[date]; ok {
 			d := *daily
+			// Defensive copy of the slice — avoid sharing backing storage with
+			// other returned days or the underlying media-stats map iteration.
+			d.TopMedia = append([]string(nil), topIDs...)
 			stats = append(stats, &d)
 		}
 	}
 
+	return stats
+}
+
+// UserStats holds per-user aggregate metrics computed from raw events.
+//
+// Computed on demand rather than maintained as a long-lived in-memory map so
+// the dashboard's per-user view always reflects the database (events purged by
+// retention drop out, deletion-tombstones are honored, etc.) without a
+// separate refresh path. Cheap on small per-user event counts; capped at the
+// repository-level analytics_events query limit.
+type UserStats struct {
+	UserID            string    `json:"user_id"`
+	TotalEvents       int       `json:"total_events"`
+	TotalViews        int       `json:"total_views"`
+	TotalPlaybacks    int       `json:"total_playbacks"`
+	TotalCompletions  int       `json:"total_completions"`
+	TotalWatchTime    float64   `json:"total_watch_time"`
+	TotalDownloads    int       `json:"total_downloads"`
+	TotalSearches     int       `json:"total_searches"`
+	FavoritesAdded    int       `json:"favorites_added"`
+	FavoritesRemoved  int       `json:"favorites_removed"`
+	RatingsSet        int       `json:"ratings_set"`
+	PlaylistsCreated  int       `json:"playlists_created"`
+	PlaylistsDeleted  int       `json:"playlists_deleted"`
+	UploadsSucceeded  int       `json:"uploads_succeeded"`
+	UploadsFailed     int       `json:"uploads_failed"`
+	Logins            int       `json:"logins"`
+	LoginsFailed      int       `json:"logins_failed"`
+	Logouts           int       `json:"logouts"`
+	UniqueMedia       int       `json:"unique_media"`
+	FirstSeen         time.Time `json:"first_seen,omitempty"`
+	LastSeen          time.Time `json:"last_seen,omitempty"`
+	MostViewedMediaID string    `json:"most_viewed_media_id,omitempty"`
+	MostViewedCount   int       `json:"most_viewed_count"`
+}
+
+// GetUserStats computes aggregate metrics for a user from the raw event stream.
+// limit caps how many events are scanned (defaults to 10000); higher values
+// give more accurate totals on heavy users at the cost of a larger query.
+func (m *Module) GetUserStats(ctx context.Context, userID string, limit int) UserStats {
+	stats := UserStats{UserID: userID}
+	if userID == "" || m.eventRepo == nil {
+		return stats
+	}
+	if limit <= 0 {
+		limit = 10000
+	}
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		UserID: userID,
+		Limit:  limit,
+	})
+	if err != nil {
+		m.log.Error("GetUserStats: list events for %s: %v", userID, err)
+		return stats
+	}
+	stats.TotalEvents = len(events)
+	mediaSeen := make(map[string]struct{})
+	mediaViewCounts := make(map[string]int)
+	for _, ev := range events {
+		if !ev.Timestamp.IsZero() {
+			if stats.FirstSeen.IsZero() || ev.Timestamp.Before(stats.FirstSeen) {
+				stats.FirstSeen = ev.Timestamp
+			}
+			if ev.Timestamp.After(stats.LastSeen) {
+				stats.LastSeen = ev.Timestamp
+			}
+		}
+		if ev.MediaID != "" {
+			mediaSeen[ev.MediaID] = struct{}{}
+		}
+		switch ev.Type {
+		case "view":
+			stats.TotalViews++
+			if ev.MediaID != "" {
+				mediaViewCounts[ev.MediaID]++
+			}
+		case "playback":
+			pos, _ := ev.Data["position"].(float64)
+			dur, _ := ev.Data["duration"].(float64)
+			if dur > 0 {
+				stats.TotalPlaybacks++
+				watched := pos
+				if watched > dur {
+					watched = dur
+				}
+				if watched < 0 {
+					watched = 0
+				}
+				stats.TotalWatchTime += watched
+			}
+			if progress, ok := ev.Data["progress"].(float64); ok && progress >= 90 {
+				stats.TotalCompletions++
+			}
+		case EventDownload:
+			stats.TotalDownloads++
+		case EventSearch:
+			stats.TotalSearches++
+		case EventFavoriteAdd:
+			stats.FavoritesAdded++
+		case EventFavoriteRemove:
+			stats.FavoritesRemoved++
+		case EventRatingSet:
+			stats.RatingsSet++
+		case EventPlaylistCreate:
+			stats.PlaylistsCreated++
+		case EventPlaylistDelete:
+			stats.PlaylistsDeleted++
+		case EventUploadSuccess:
+			stats.UploadsSucceeded++
+		case EventUploadFailed:
+			stats.UploadsFailed++
+		case EventLogin:
+			stats.Logins++
+		case EventLoginFailed:
+			stats.LoginsFailed++
+		case EventLogout:
+			stats.Logouts++
+		}
+	}
+	stats.UniqueMedia = len(mediaSeen)
+	for id, n := range mediaViewCounts {
+		if n > stats.MostViewedCount {
+			stats.MostViewedCount = n
+			stats.MostViewedMediaID = id
+		}
+	}
 	return stats
 }
 
@@ -325,10 +553,28 @@ func (m *Module) GetSummary(ctx context.Context) Summary {
 		summary.TodayViews = daily.TotalViews
 		summary.TodayLogins = daily.Logins
 		summary.TodayLoginsFailed = daily.LoginsFailed
+		summary.TodayLogouts = daily.Logouts
 		summary.TodayRegistrations = daily.Registrations
 		summary.TodayAgeGatePasses = daily.AgeGatePasses
 		summary.TodayDownloads = daily.Downloads
 		summary.TodaySearches = daily.Searches
+		summary.TodayFavoritesAdded = daily.FavoritesAdded
+		summary.TodayFavoritesRemoved = daily.FavoritesRemoved
+		summary.TodayRatingsSet = daily.RatingsSet
+		summary.TodayPlaylistsCreated = daily.PlaylistsCreated
+		summary.TodayPlaylistsDeleted = daily.PlaylistsDeleted
+		summary.TodayPlaylistItemsAdded = daily.PlaylistItemsAdded
+		summary.TodayUploadsSucceeded = daily.UploadsSucceeded
+		summary.TodayUploadsFailed = daily.UploadsFailed
+		summary.TodayPasswordChanges = daily.PasswordChanges
+		summary.TodayAccountDeletions = daily.AccountDeletions
+		summary.TodayHLSStarts = daily.HLSStarts
+		summary.TodayHLSErrors = daily.HLSErrors
+		summary.TodayMediaDeletions = daily.MediaDeletions
+		summary.TodayAPITokensCreated = daily.APITokensCreated
+		summary.TodayAPITokensRevoked = daily.APITokensRevoked
+		summary.TodayAdminActions = daily.AdminActions
+		summary.TodayServerErrors = daily.ServerErrors
 	}
 	for _, stats := range m.mediaStats {
 		summary.TotalViews += stats.TotalViews
@@ -364,10 +610,21 @@ func (m *Module) GetStats() Stats {
 }
 
 // reconstructStats rebuilds in-memory daily and media stats from recent database events.
+//
+// This runs AFTER loadDailyStats has already restored persisted aggregates, so
+// it overwrites those values for any day represented in the event window. That
+// is intentional: the persisted row may lag the raw events by up to one flush
+// interval (~30s), and reconstruction is the canonical truth for the period it
+// covers. Days outside the event window keep their persisted values.
 func (m *Module) reconstructStats() {
+	cfg := m.config.Get()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	cutoff := time.Now().AddDate(0, 0, -30).Format(time.RFC3339)
+	retention := cfg.Analytics.RetentionDays
+	if retention <= 0 {
+		retention = 30
+	}
+	cutoff := time.Now().AddDate(0, 0, -retention).Format(time.RFC3339)
 	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
 		StartDate: cutoff,
 		Limit:     m.maxEvents,
@@ -377,12 +634,45 @@ func (m *Module) reconstructStats() {
 		return
 	}
 
+	// Reset same-day aggregates we're about to recompute so the reconstruction
+	// pass matches the live counter logic exactly. Persisted rows for older
+	// days are preserved.
+	touchedDays := make(map[string]struct{})
+	for _, ev := range events {
+		touchedDays[ev.Timestamp.Format(dateFormat)] = struct{}{}
+	}
+
 	m.statsMu.Lock()
-	defer m.statsMu.Unlock()
+	for date := range touchedDays {
+		// Drop the persisted row for this day; reconstruction will rebuild it
+		// from the raw events below. This avoids double-counting.
+		m.dailyStats[date] = &models.DailyStats{Date: date}
+		delete(m.dailyUsers, date)
+	}
 	for _, ev := range events {
 		m.rebuildStatsFromEvent(*ev)
 	}
-	m.log.Debug("Reconstructed stats from %d events", len(events))
+	m.statsMu.Unlock()
+
+	if len(events) >= m.maxEvents && m.maxEvents > 0 {
+		// We almost certainly truncated. Warn loudly so operators raise the cap
+		// or shorten the retention window — silently dropping recent activity
+		// is exactly the kind of invisible inaccuracy this whole system fights.
+		m.log.Warn(
+			"Analytics reconstruction hit the event cap (%d). Recent activity may be missing — "+
+				"persisted daily_stats rows still cover earlier days. Increase analytics.max_reconstruct_events "+
+				"or lower analytics.retention_days.",
+			m.maxEvents,
+		)
+	}
+	m.log.Info("Reconstructed stats from %d events across %d distinct day(s)", len(events), len(touchedDays))
+
+	// Mark every reconstructed day dirty so the next flush re-persists the
+	// canonical numbers — otherwise a restart-then-immediate-shutdown could
+	// leave the table with the older, stale values.
+	for date := range touchedDays {
+		m.markDailyDirty(date)
+	}
 }
 
 // rebuildStatsFromEvent updates in-memory maps from a stored event.
@@ -418,6 +708,40 @@ func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 		daily.Downloads++
 	case EventSearch:
 		daily.Searches++
+	case EventFavoriteAdd:
+		daily.FavoritesAdded++
+	case EventFavoriteRemove:
+		daily.FavoritesRemoved++
+	case EventRatingSet:
+		daily.RatingsSet++
+	case EventPlaylistCreate:
+		daily.PlaylistsCreated++
+	case EventPlaylistDelete:
+		daily.PlaylistsDeleted++
+	case EventPlaylistItemAdd:
+		daily.PlaylistItemsAdded++
+	case EventUploadSuccess:
+		daily.UploadsSucceeded++
+	case EventUploadFailed:
+		daily.UploadsFailed++
+	case EventPasswordChange:
+		daily.PasswordChanges++
+	case EventAccountDelete:
+		daily.AccountDeletions++
+	case EventHLSStart:
+		daily.HLSStarts++
+	case EventHLSError:
+		daily.HLSErrors++
+	case EventMediaDeleted:
+		daily.MediaDeletions++
+	case EventAPITokenCreate:
+		daily.APITokensCreated++
+	case EventAPITokenRevoke:
+		daily.APITokensRevoked++
+	case EventAdminAction:
+		daily.AdminActions++
+	case EventServerError:
+		daily.ServerErrors++
 	case "playback":
 		// Reconstruct TotalWatchTime in daily stats (mirrors live path in applyPlaybackToDailyStatsLocked).
 		m.applyPlaybackToDailyStatsLocked(event, daily)
@@ -445,11 +769,20 @@ func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 		return
 	}
 	if event.Type == "playback" {
-		if dur, ok := event.Data["duration"].(float64); ok && dur > 0 {
+		pos, _ := event.Data["position"].(float64)
+		dur, _ := event.Data["duration"].(float64)
+		if dur > 0 {
 			stats.TotalPlaybacks++
+			watched := pos
+			if watched > dur {
+				watched = dur
+			}
+			if watched < 0 {
+				watched = 0
+			}
 			// Reconstruct AvgWatchDuration using the same running-average helper
 			// used by the live path so the values are consistent.
-			m.updateAvgWatchDurationLocked(event.MediaID, stats, dur)
+			m.updateAvgWatchDurationLocked(event.MediaID, stats, watched)
 		}
 		if progress, ok := event.Data["progress"].(float64); ok && progress >= 90 {
 			stats.TotalCompletions++

@@ -40,6 +40,14 @@ func (noOpAnalyticsRepo) CountByType(context.Context) (map[string]int64, error) 
 	return nil, nil //nolint:nilnil // test stub returns empty result with no error
 }
 
+func (noOpAnalyticsRepo) UpsertDailyStats(context.Context, *models.DailyStats) error { return nil }
+
+func (noOpAnalyticsRepo) ListDailyStatsBetween(context.Context, string, string) ([]*models.DailyStats, error) {
+	return nil, nil
+}
+
+func (noOpAnalyticsRepo) DeleteDailyStatsOlderThan(context.Context, string) error { return nil }
+
 func testAnalyticsModule(t *testing.T) *Module {
 	t.Helper()
 	cfg := config.NewManager(filepath.Join(t.TempDir(), "config.json"))

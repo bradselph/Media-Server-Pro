@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -56,21 +57,39 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 	}
 
 	writeSuccess(c, map[string]any{
-		"total_events":          summary.TotalEvents,
-		"active_sessions":       summary.ActiveSessions,
-		"today_views":           summary.TodayViews,
-		"total_views":           summary.TotalViews,
-		"total_media":           summary.TotalMedia,
-		"total_watch_time":      summary.TotalWatchTime,
-		"unique_clients":        globalStats.UniqueClients,
-		"top_viewed":            topViewed,
-		"recent_activity":       recentActivity,
-		"today_logins":          summary.TodayLogins,
-		"today_logins_failed":   summary.TodayLoginsFailed,
-		"today_registrations":   summary.TodayRegistrations,
-		"today_age_gate_passes": summary.TodayAgeGatePasses,
-		"today_downloads":       summary.TodayDownloads,
-		"today_searches":        summary.TodaySearches,
+		"total_events":                summary.TotalEvents,
+		"active_sessions":             summary.ActiveSessions,
+		"today_views":                 summary.TodayViews,
+		"total_views":                 summary.TotalViews,
+		"total_media":                 summary.TotalMedia,
+		"total_watch_time":            summary.TotalWatchTime,
+		"unique_clients":              globalStats.UniqueClients,
+		"top_viewed":                  topViewed,
+		"recent_activity":             recentActivity,
+		"today_logins":                summary.TodayLogins,
+		"today_logins_failed":         summary.TodayLoginsFailed,
+		"today_logouts":               summary.TodayLogouts,
+		"today_registrations":         summary.TodayRegistrations,
+		"today_age_gate_passes":       summary.TodayAgeGatePasses,
+		"today_downloads":             summary.TodayDownloads,
+		"today_searches":              summary.TodaySearches,
+		"today_favorites_added":       summary.TodayFavoritesAdded,
+		"today_favorites_removed":     summary.TodayFavoritesRemoved,
+		"today_ratings_set":           summary.TodayRatingsSet,
+		"today_playlists_created":     summary.TodayPlaylistsCreated,
+		"today_playlists_deleted":     summary.TodayPlaylistsDeleted,
+		"today_playlist_items_added":  summary.TodayPlaylistItemsAdded,
+		"today_uploads_succeeded":     summary.TodayUploadsSucceeded,
+		"today_uploads_failed":        summary.TodayUploadsFailed,
+		"today_password_changes":      summary.TodayPasswordChanges,
+		"today_account_deletions":     summary.TodayAccountDeletions,
+		"today_hls_starts":            summary.TodayHLSStarts,
+		"today_hls_errors":            summary.TodayHLSErrors,
+		"today_media_deletions":       summary.TodayMediaDeletions,
+		"today_api_tokens_created":    summary.TodayAPITokensCreated,
+		"today_api_tokens_revoked":    summary.TodayAPITokensRevoked,
+		"today_admin_actions":         summary.TodayAdminActions,
+		"today_server_errors":         summary.TodayServerErrors,
 	})
 }
 
@@ -278,6 +297,37 @@ func (h *Handler) GetEventsByMedia(c *gin.Context) {
 
 	events := h.analytics.GetEventsByMedia(c.Request.Context(), mediaID, limit)
 	writeSuccess(c, events)
+}
+
+// AdminGetUserAnalytics returns aggregated per-user analytics for the user
+// whose username is in the URL param (mounted under /users/:username/analytics
+// to match the rest of the admin user routes). Restricted to admins.
+//
+// Response includes total_views, total_watch_time, total_downloads,
+// favorites_added/removed, ratings_set, playlists_created/deleted, login
+// counts, first_seen, last_seen, unique_media, and most_viewed_media_id —
+// everything the per-user admin dashboard needs in one round-trip.
+func (h *Handler) AdminGetUserAnalytics(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{"analytics_disabled": true})
+		return
+	}
+	username := strings.TrimSpace(c.Param("username"))
+	if username == "" {
+		writeError(c, http.StatusBadRequest, "username required")
+		return
+	}
+	user, err := h.auth.GetUser(c.Request.Context(), username)
+	if err != nil || user == nil {
+		writeError(c, http.StatusNotFound, "user not found")
+		return
+	}
+	limit := 10000
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100000 {
+		limit = l
+	}
+	stats := h.analytics.GetUserStats(c.Request.Context(), user.ID, limit)
+	writeSuccess(c, stats)
 }
 
 // GetEventsByUser returns events for a specific user (user_id query param required)

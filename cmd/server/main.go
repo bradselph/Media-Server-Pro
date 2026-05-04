@@ -33,6 +33,8 @@ import (
 	"media-server-pro/internal/scanner"
 	"media-server-pro/internal/security"
 	"media-server-pro/internal/server"
+
+	"github.com/gin-gonic/gin"
 	"media-server-pro/internal/streaming"
 	"media-server-pro/internal/suggestions"
 	"media-server-pro/internal/tasks"
@@ -98,7 +100,7 @@ func main() {
 	mods := initModules(srv, cfg, log, stores)
 
 	// ── Age gate middleware ────────────────────────────────────────────────
-	ageGate := setupAgeGate(cfg, mods.analytics)
+	ageGate := setupAgeGate(cfg, mods.analytics, mods.auth)
 
 	// ── Cookie consent middleware ──────────────────────────────────────────
 	cookieConsent := middleware.NewCookieConsent(cfg.Get().CookieConsent)
@@ -453,14 +455,31 @@ func setupHFClient(hfCfg config.HuggingFaceConfig, scannerModule *scanner.Module
 	log.Info("Hugging Face visual classification enabled (model: %s)", hfCfg.Model)
 }
 
-func setupAgeGate(cfg *config.Manager, analyticsModule *analytics.Module) *middleware.AgeGate {
+func setupAgeGate(cfg *config.Manager, analyticsModule *analytics.Module, authModule *auth.Module) *middleware.AgeGate {
 	appCfg := cfg.Get()
 	ageGate := middleware.NewAgeGate(appCfg.AgeGate)
-	// Wire age gate analytics callback so passage events are tracked
+	// Wire age gate analytics callback so passage events are tracked. Most
+	// gate passes are anonymous, but if the visitor already has a valid
+	// session cookie (e.g. they cleared the age-gate cookie but kept their
+	// login), attribute the event to that user so per-user reports are
+	// complete.
 	if analyticsModule != nil {
-		ageGate.OnVerify = func(ip, userAgent string) {
+		ageGate.OnVerify = func(c *gin.Context, ip, userAgent string) {
+			userID, sessionID := "", ""
+			if authModule != nil {
+				if cookie, err := c.Request.Cookie("session_id"); err == nil && cookie.Value != "" {
+					if sess, _, vErr := authModule.ValidateSession(c.Request.Context(), cookie.Value); vErr == nil && sess != nil {
+						userID = sess.UserID
+						sessionID = sess.ID
+					}
+				}
+			}
 			analyticsModule.TrackTrafficEvent(context.Background(), analytics.TrafficEventParams{
-				Type: analytics.EventAgeGatePass, IPAddress: ip, UserAgent: userAgent,
+				Type:      analytics.EventAgeGatePass,
+				UserID:    userID,
+				SessionID: sessionID,
+				IPAddress: ip,
+				UserAgent: userAgent,
 			})
 		}
 	}
