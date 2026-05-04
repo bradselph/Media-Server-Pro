@@ -342,6 +342,36 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	} else {
 		m.analytics = am
 		mustRegister(srv, m.analytics)
+		// Bridge streaming session lifecycle into analytics so dashboards
+		// can show today's stream-start count and total bandwidth served.
+		// Hooks run on a goroutine inside the streaming module so DB I/O
+		// here never blocks the stream itself.
+		m.streaming.SetSessionHooks(
+			func(s *models.StreamSession) {
+				am.TrackTrafficEvent(context.Background(), analytics.TrafficEventParams{
+					Type:      analytics.EventStreamStart,
+					UserID:    s.UserID,
+					IPAddress: s.IPAddress,
+					Data: map[string]any{
+						"media_id": s.MediaID,
+						"quality":  s.Quality,
+					},
+				})
+			},
+			func(s *models.StreamSession) {
+				am.TrackTrafficEvent(context.Background(), analytics.TrafficEventParams{
+					Type:      analytics.EventStreamEnd,
+					UserID:    s.UserID,
+					IPAddress: s.IPAddress,
+					Data: map[string]any{
+						"media_id":   s.MediaID,
+						"quality":    s.Quality,
+						"bytes_sent": s.BytesSent,
+						"duration":   time.Since(s.StartedAt).Seconds(),
+					},
+				})
+			},
+		)
 	}
 
 	// Playlist (non-critical — requires database)
