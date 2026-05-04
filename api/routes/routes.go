@@ -682,6 +682,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/analytics/funnel", h.AdminGetFunnel)
 	adminGrp.GET("/analytics/devices", h.AdminGetDeviceBreakdown)
 	adminGrp.GET("/analytics/media/:id", h.AdminGetMediaAnalytics)
+	adminGrp.GET("/analytics/export-panel", h.AdminExportPanel)
 	adminGrp.GET(routeUserByName+"/analytics", h.AdminGetUserAnalytics)
 
 	// Configuration management routes

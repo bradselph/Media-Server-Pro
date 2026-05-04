@@ -1118,28 +1118,40 @@ const hasTrafficActivity = computed(() =>
     <div v-if="panelVisibility.topUsers || panelVisibility.topSearches" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <UCard v-if="panelVisibility.topUsers">
         <template #header>
-          <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
             <div class="font-semibold flex items-center gap-2">
               <UIcon name="i-lucide-trophy" class="size-4 text-amber-500" />
               Top Users
             </div>
-            <UButtonGroup>
+            <div class="flex items-center gap-2">
               <UButton
-                v-for="m in [
-                  { label: 'Views', value: 'views' },
-                  { label: 'Watch', value: 'watch_time' },
-                  { label: 'Uploads', value: 'uploads' },
-                  { label: 'Downloads', value: 'downloads' },
-                  { label: 'All', value: 'events' },
-                ]"
-                :key="m.value"
-                :label="m.label"
                 size="xs"
-                :variant="topUserMetric === m.value ? 'solid' : 'outline'"
-                :color="topUserMetric === m.value ? 'primary' : 'neutral'"
-                @click="topUserMetric = m.value as typeof topUserMetric"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-download"
+                tag="a"
+                :href="analyticsApi.exportPanelUrl('top-users', 'csv', { metric: topUserMetric, limit: 50 })"
+                download
+                title="Export this panel as CSV"
               />
-            </UButtonGroup>
+              <UButtonGroup>
+                <UButton
+                  v-for="m in [
+                    { label: 'Views', value: 'views' },
+                    { label: 'Watch', value: 'watch_time' },
+                    { label: 'Uploads', value: 'uploads' },
+                    { label: 'Downloads', value: 'downloads' },
+                    { label: 'All', value: 'events' },
+                  ]"
+                  :key="m.value"
+                  :label="m.label"
+                  size="xs"
+                  :variant="topUserMetric === m.value ? 'solid' : 'outline'"
+                  :color="topUserMetric === m.value ? 'primary' : 'neutral'"
+                  @click="topUserMetric = m.value as typeof topUserMetric"
+                />
+              </UButtonGroup>
+            </div>
           </div>
         </template>
         <div v-if="topUsersLoading" class="flex justify-center py-4">
@@ -1176,9 +1188,21 @@ const hasTrafficActivity = computed(() =>
 
       <UCard v-if="panelVisibility.topSearches">
         <template #header>
-          <div class="font-semibold flex items-center gap-2">
-            <UIcon name="i-lucide-search" class="size-4 text-info" />
-            Top Searches
+          <div class="flex items-center justify-between gap-2">
+            <div class="font-semibold flex items-center gap-2">
+              <UIcon name="i-lucide-search" class="size-4 text-info" />
+              Top Searches
+            </div>
+            <UButton
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              icon="i-lucide-download"
+              tag="a"
+              :href="analyticsApi.exportPanelUrl('top-searches', 'csv', { limit: 100 })"
+              download
+              title="Export this panel as CSV"
+            />
           </div>
         </template>
         <div v-if="topSearches.length === 0" class="text-center text-sm text-muted py-4">
@@ -1243,9 +1267,21 @@ const hasTrafficActivity = computed(() =>
          breathe and is sortable. -->
     <UCard v-if="panelVisibility.errorPaths && errorPaths.length > 0">
       <template #header>
-        <div class="font-semibold flex items-center gap-2 text-error">
-          <UIcon name="i-lucide-bug" class="size-4" />
-          Server Errors by Path
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-semibold flex items-center gap-2 text-error">
+            <UIcon name="i-lucide-bug" class="size-4" />
+            Server Errors by Path
+          </div>
+          <UButton
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            icon="i-lucide-download"
+            tag="a"
+            :href="analyticsApi.exportPanelUrl('error-paths', 'csv', { limit: 200 })"
+            download
+            title="Export this panel as CSV"
+          />
         </div>
       </template>
       <UTable
@@ -1276,9 +1312,21 @@ const hasTrafficActivity = computed(() =>
          and IP so security review is one click away. -->
     <UCard v-if="panelVisibility.failedLogins && failedLogins.length > 0">
       <template #header>
-        <div class="font-semibold flex items-center gap-2 text-error">
-          <UIcon name="i-lucide-shield-alert" class="size-4" />
-          Recent Failed Logins ({{ failedLogins.length }})
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-semibold flex items-center gap-2 text-error">
+            <UIcon name="i-lucide-shield-alert" class="size-4" />
+            Recent Failed Logins ({{ failedLogins.length }})
+          </div>
+          <UButton
+            size="xs"
+            variant="ghost"
+            color="neutral"
+            icon="i-lucide-download"
+            tag="a"
+            :href="analyticsApi.exportPanelUrl('failed-logins', 'csv', { limit: 200 })"
+            download
+            title="Export this panel as CSV"
+          />
         </div>
       </template>
       <div class="divide-y divide-default max-h-64 overflow-y-auto">

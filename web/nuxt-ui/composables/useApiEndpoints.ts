@@ -962,6 +962,10 @@ export function useAnalyticsApi() {
         // Per-media analytics drill-down.
         getMediaAnalytics: (mediaId: string, days?: number) =>
             api.get<MediaDetail>(`/api/admin/analytics/media/${encodeURIComponent(mediaId)}${buildQS({days: days || undefined})}`),
+        // Export-panel URL builder. Used by <a download> links so the
+        // browser handles the file save dialog rather than the JS layer.
+        exportPanelUrl: (panel: string, format: 'csv' | 'json' = 'csv', extra: Record<string, string | number | undefined> = {}) =>
+            `/api/admin/analytics/export-panel${buildQS({panel, format, ...extra})}`,
         // Live snapshot of active streaming sessions (already enriched with filename).
         getActiveStreams: () =>
             api.get<Array<{ id: string; media_id: string; filename: string; user_id: string; ip_address: string; quality: string; position: number; started_at: number; last_update: number; bytes_sent: number }>>(`/api/admin/streams`),

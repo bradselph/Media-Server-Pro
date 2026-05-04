@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"crypto/sha256"
+	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -420,6 +422,209 @@ func (h *Handler) AdminGetErrorPaths(c *gin.Context) {
 	}
 	since, until := resolveAnalyticsTimeWindow(c)
 	writeSuccess(c, h.analytics.GetErrorPaths(c.Request.Context(), since, until, limit))
+}
+
+// AdminExportPanel exports the named analytics panel as either JSON or CSV.
+// Query: panel (required — top-users | top-searches | failed-logins |
+// error-paths | active-streams | quality | devices | content-gaps |
+// daily | heatmap), format (json | csv, default csv), days (optional time
+// window). Streams the response with a Content-Disposition attachment so
+// browsers download instead of rendering inline.
+//
+// The point of this endpoint is to give admins one consistent way to grab
+// any panel's raw data for spreadsheet analysis — without the dashboard
+// having to ship per-panel exporters.
+func (h *Handler) AdminExportPanel(c *gin.Context) {
+	if h.analytics == nil {
+		writeError(c, http.StatusServiceUnavailable, "Analytics is not available")
+		return
+	}
+	panel := strings.TrimSpace(c.Query("panel"))
+	if panel == "" {
+		writeError(c, http.StatusBadRequest, "panel parameter required")
+		return
+	}
+	format := strings.ToLower(c.DefaultQuery("format", "csv"))
+	if format != "csv" && format != "json" {
+		writeError(c, http.StatusBadRequest, "format must be csv or json")
+		return
+	}
+
+	rows, headers, err := h.fetchExportRows(c, panel)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	filename := "analytics-" + panel + "-" + time.Now().Format("20060102-150405") + "." + format
+	c.Header(headerContentDisposition, safeContentDisposition(filename))
+	if format == "json" {
+		c.Header(headerContentType, "application/json")
+		// Wrap in {"panel": ..., "rows": [...]} so consumers can tell which
+		// dataset they got even if the filename is lost.
+		c.JSON(http.StatusOK, map[string]any{"panel": panel, "rows": rows})
+		return
+	}
+	c.Header(headerContentType, "text/csv")
+	w := csv.NewWriter(c.Writer)
+	defer w.Flush()
+	if err := w.Write(headers); err != nil {
+		h.log.Error("export: write csv header: %v", err)
+		return
+	}
+	for _, row := range rows {
+		rec := make([]string, len(headers))
+		for i, h := range headers {
+			rec[i] = exportFieldToString(row[h])
+		}
+		if err := w.Write(rec); err != nil {
+			h.log.Error("export: write csv row: %v", err)
+			return
+		}
+	}
+}
+
+// exportFieldToString flattens any value into a CSV-safe string. Time
+// values become RFC3339, numbers become decimal, slices/maps become JSON.
+func exportFieldToString(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return t
+	case time.Time:
+		return t.Format(time.RFC3339)
+	case int:
+		return strconv.Itoa(t)
+	case int64:
+		return strconv.FormatInt(t, 10)
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(t)
+	default:
+		// Slices, maps, etc. — emit as JSON so the cell is at least readable.
+		b, err := jsonMarshal(v)
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	}
+}
+
+// jsonMarshal is split out so unit tests can stub it if needed; the
+// real impl uses encoding/json.
+var jsonMarshal = func(v any) ([]byte, error) {
+	return json.Marshal(v)
+}
+
+// fetchExportRows dispatches the panel name to the correct analytics
+// method and converts the typed results into a generic []map[string]any +
+// header order so the export writer doesn't need a switch per format.
+func (h *Handler) fetchExportRows(c *gin.Context, panel string) ([]map[string]any, []string, error) {
+	since, until := resolveAnalyticsTimeWindow(c)
+	limit := 1000
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 10000 {
+		limit = l
+	}
+	days := 30
+	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
+		days = d
+	}
+	switch panel {
+	case "top-users":
+		metric := c.DefaultQuery("metric", "views")
+		rows := h.analytics.GetTopUsers(c.Request.Context(), metric, since, until, limit)
+		out := make([]map[string]any, len(rows))
+		for i, r := range rows {
+			out[i] = map[string]any{
+				"user_id": r.UserID, "username": r.Username, "metric": r.Metric,
+				"total_views": r.TotalViews, "total_watch_time": r.TotalWatchTime,
+				"total_uploads": r.TotalUploads, "total_downloads": r.TotalDownloads,
+				"total_events": r.TotalEvents,
+			}
+		}
+		return out, []string{"user_id", "username", "metric", "total_views", "total_watch_time", "total_uploads", "total_downloads", "total_events"}, nil
+	case "top-searches":
+		rows := h.analytics.GetTopSearches(c.Request.Context(), since, until, limit)
+		out := make([]map[string]any, len(rows))
+		for i, r := range rows {
+			out[i] = map[string]any{"query": r.Query, "count": r.Count, "empty_count": r.EmptyCount}
+		}
+		return out, []string{"query", "count", "empty_count"}, nil
+	case "failed-logins":
+		rows := h.analytics.GetRecentFailedLogins(c.Request.Context(), since, until, limit)
+		out := make([]map[string]any, len(rows))
+		for i, r := range rows {
+			out[i] = map[string]any{
+				"timestamp": r.Timestamp, "ip_address": r.IPAddress,
+				"username": r.Username, "user_agent": r.UserAgent, "reason": r.Reason,
+			}
+		}
+		return out, []string{"timestamp", "ip_address", "username", "user_agent", "reason"}, nil
+	case "error-paths":
+		rows := h.analytics.GetErrorPaths(c.Request.Context(), since, until, limit)
+		out := make([]map[string]any, len(rows))
+		for i, r := range rows {
+			out[i] = map[string]any{
+				"method": r.Method, "path": r.Path, "status": r.Status,
+				"count": r.Count, "last_seen": r.LastSeen,
+			}
+		}
+		return out, []string{"method", "path", "status", "count", "last_seen"}, nil
+	case "quality":
+		rows := h.analytics.GetQualityBreakdown(c.Request.Context(), days)
+		out := make([]map[string]any, len(rows))
+		for i, r := range rows {
+			out[i] = map[string]any{"quality": r.Quality, "streams": r.Streams, "bytes_sent": r.BytesSent}
+		}
+		return out, []string{"quality", "streams", "bytes_sent"}, nil
+	case "devices":
+		devs, brws := h.analytics.GetDeviceBreakdown(c.Request.Context(), days)
+		out := make([]map[string]any, 0, len(devs)+len(brws))
+		for _, d := range devs {
+			out = append(out, map[string]any{"category": "device", "family": d.Family, "events": d.Events, "unique_users": d.UniqueUsers})
+		}
+		for _, b := range brws {
+			out = append(out, map[string]any{"category": "browser", "family": b.Family, "events": b.Events, "unique_users": b.UniqueUsers})
+		}
+		return out, []string{"category", "family", "events", "unique_users"}, nil
+	case "content-gaps":
+		rows := h.analytics.GetContentGaps(c.Request.Context(), since, until, 2, 0.5, limit)
+		out := make([]map[string]any, len(rows))
+		for i, r := range rows {
+			out[i] = map[string]any{"query": r.Query, "count": r.Count, "empty_count": r.EmptyCount}
+		}
+		return out, []string{"query", "count", "empty_count"}, nil
+	case "daily":
+		rows := h.analytics.GetDailyStats(days)
+		out := make([]map[string]any, len(rows))
+		for i, r := range rows {
+			if r == nil {
+				continue
+			}
+			out[i] = map[string]any{
+				"date": r.Date, "total_views": r.TotalViews, "unique_users": r.UniqueUsers,
+				"total_watch_time": r.TotalWatchTime, "logins": r.Logins, "logins_failed": r.LoginsFailed,
+				"logouts": r.Logouts, "registrations": r.Registrations, "downloads": r.Downloads,
+				"searches": r.Searches, "favorites_added": r.FavoritesAdded, "ratings_set": r.RatingsSet,
+				"playlists_created": r.PlaylistsCreated, "uploads_succeeded": r.UploadsSucceeded,
+				"uploads_failed": r.UploadsFailed, "stream_starts": r.StreamStarts, "stream_ends": r.StreamEnds,
+				"bytes_served": r.BytesServed, "hls_starts": r.HLSStarts, "hls_errors": r.HLSErrors,
+				"server_errors": r.ServerErrors, "admin_actions": r.AdminActions,
+			}
+		}
+		return out, []string{"date", "total_views", "unique_users", "total_watch_time", "logins", "logins_failed", "logouts", "registrations", "downloads", "searches", "favorites_added", "ratings_set", "playlists_created", "uploads_succeeded", "uploads_failed", "stream_starts", "stream_ends", "bytes_served", "hls_starts", "hls_errors", "server_errors", "admin_actions"}, nil
+	case "heatmap":
+		rows := h.analytics.GetHourlyHeatmap(c.Request.Context(), days)
+		out := make([]map[string]any, len(rows))
+		for i, r := range rows {
+			out[i] = map[string]any{"day_of_week": r.DayOfWeek, "hour": r.Hour, "count": r.Count}
+		}
+		return out, []string{"day_of_week", "hour", "count"}, nil
+	default:
+		return nil, nil, fmt.Errorf("unknown panel %q", panel)
+	}
 }
 
 // AdminGetFunnel returns the view → playback → completion conversion funnel.
