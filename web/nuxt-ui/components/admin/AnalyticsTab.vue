@@ -3,7 +3,8 @@ import type {
   AnalyticsSummary, DailyStats, TopMediaItem, EventStats, EventTypeCounts,
   AnalyticsEvent, ContentPerformanceItem, UserAnalytics,
   TopUserEntry, SearchQueryEntry, FailedLoginEntry, ErrorPathEntry,
-  MetricTimelineEntry,
+  MetricTimelineEntry, CohortMetrics, HourlyHeatmapCell, QualityBucket,
+  PeriodComparison,
 } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime, formatBytes } from '~/utils/format'
@@ -45,6 +46,16 @@ const tlUploads = ref<MetricTimelineEntry[]>([])
 const tlBandwidth = ref<MetricTimelineEntry[]>([])
 const tlLogins = ref<MetricTimelineEntry[]>([])
 const tlServerErrors = ref<MetricTimelineEntry[]>([])
+
+// Cohort metrics + heatmap + quality + content gaps + period comparison.
+const cohort = ref<CohortMetrics | null>(null)
+const heatmap = ref<HourlyHeatmapCell[]>([])
+const quality = ref<QualityBucket[]>([])
+const contentGaps = ref<SearchQueryEntry[]>([])
+const cmpViews = ref<PeriodComparison | null>(null)
+const cmpStreams = ref<PeriodComparison | null>(null)
+const cmpBandwidth = ref<PeriodComparison | null>(null)
+const cmpLogins = ref<PeriodComparison | null>(null)
 
 const summary = ref<AnalyticsSummary | null>(null)
 const daily = ref<DailyStats[]>([])
@@ -189,6 +200,14 @@ async function load() {
       analyticsApi.getMetricTimeline('bytes_served', days4chart),   // 14
       analyticsApi.getMetricTimeline('logins', days4chart),         // 15
       analyticsApi.getMetricTimeline('server_errors', days4chart),  // 16
+      analyticsApi.getCohortMetrics(),                              // 17
+      analyticsApi.getHourlyHeatmap(30),                            // 18
+      analyticsApi.getQualityBreakdown(30),                         // 19
+      analyticsApi.getContentGaps(30, 10),                          // 20
+      analyticsApi.getPeriodComparison('total_views', days),        // 21
+      analyticsApi.getPeriodComparison('stream_starts', days),      // 22
+      analyticsApi.getPeriodComparison('bytes_served', days),       // 23
+      analyticsApi.getPeriodComparison('logins', days),             // 24
     ])
     if (period.value !== capturedPeriod) return
     const r = (i: number) => results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<unknown>).value : null
@@ -209,6 +228,14 @@ async function load() {
     if (r(14) !== null) tlBandwidth.value = (r(14) as MetricTimelineEntry[]) ?? []
     if (r(15) !== null) tlLogins.value = (r(15) as MetricTimelineEntry[]) ?? []
     if (r(16) !== null) tlServerErrors.value = (r(16) as MetricTimelineEntry[]) ?? []
+    if (r(17) !== null) cohort.value = r(17) as CohortMetrics
+    if (r(18) !== null) heatmap.value = (r(18) as HourlyHeatmapCell[]) ?? []
+    if (r(19) !== null) quality.value = (r(19) as QualityBucket[]) ?? []
+    if (r(20) !== null) contentGaps.value = (r(20) as SearchQueryEntry[]) ?? []
+    if (r(21) !== null) cmpViews.value = r(21) as PeriodComparison
+    if (r(22) !== null) cmpStreams.value = r(22) as PeriodComparison
+    if (r(23) !== null) cmpBandwidth.value = r(23) as PeriodComparison
+    if (r(24) !== null) cmpLogins.value = r(24) as PeriodComparison
 
     const failed = results.filter(x => x.status === 'rejected')
     if (failed.length) toast.add({ title: `${failed.length} analytics endpoint(s) failed`, color: 'warning', icon: 'i-lucide-alert-triangle' })
@@ -346,6 +373,49 @@ const trafficGroups = computed<TrafficGroup[]>(() => {
     },
   ]
 })
+
+// Heatmap helpers — flattened into a 7×24 matrix indexed by [day][hour] so
+// the template can iterate without doing the math. Cells fall back to 0
+// when the backend hasn't seen any events for that bucket.
+const heatmapMatrix = computed(() => {
+  const m: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
+  for (const cell of heatmap.value) {
+    if (cell.day_of_week >= 0 && cell.day_of_week < 7 && cell.hour >= 0 && cell.hour < 24) {
+      m[cell.day_of_week][cell.hour] = cell.count
+    }
+  }
+  return m
+})
+const heatmapMax = computed(() => {
+  let max = 0
+  for (const row of heatmapMatrix.value) for (const v of row) if (v > max) max = v
+  return max
+})
+const heatmapPalette = ['bg-muted/10', 'bg-emerald-500/15', 'bg-emerald-500/30', 'bg-emerald-500/50', 'bg-emerald-500/70', 'bg-emerald-500/90']
+function heatmapClass(count: number): string {
+  if (count === 0 || heatmapMax.value === 0) return heatmapPalette[0]
+  // 5-bucket quantization keeps the palette discrete and readable.
+  const ratio = count / heatmapMax.value
+  const idx = Math.min(heatmapPalette.length - 1, Math.max(1, Math.ceil(ratio * 5)))
+  return heatmapPalette[idx]
+}
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+// Format a period-comparison delta. Returns "+12%" / "−4%" / "—" depending on
+// sign, with the "vs prev" tooltip context handled separately in the template.
+function formatDelta(c: PeriodComparison | null): { label: string; tone: 'success' | 'error' | 'neutral' } {
+  if (!c || (c.current === 0 && c.previous === 0)) return { label: '—', tone: 'neutral' }
+  const pct = c.delta_pct
+  const sign = pct > 0 ? '+' : ''
+  const tone: 'success' | 'error' | 'neutral' = pct > 0 ? 'success' : pct < 0 ? 'error' : 'neutral'
+  // Cap display at ±999% so a "previous=0, current=N" doesn't dominate the row.
+  const capped = Math.max(-999, Math.min(999, pct))
+  return { label: `${sign}${capped.toFixed(0)}%`, tone }
+}
+
+// Total bytes across all quality buckets, used to render percentages.
+const qualityTotalBytes = computed(() => quality.value.reduce((a, b) => a + (b.bytes_sent || 0), 0))
+const qualityTotalStreams = computed(() => quality.value.reduce((a, b) => a + (b.streams || 0), 0))
 
 // Server-health summary — surfaces failure-side counters in one place so
 // operators can see at a glance whether the server is misbehaving today
@@ -501,6 +571,70 @@ const hasTrafficActivity = computed(() =>
       </template>
     </UAlert>
 
+    <!-- Cohort + period-delta strip — DAU/WAU/MAU + stickiness on the left,
+         period-over-period deltas on the right. Quick-glance health pulse. -->
+    <div v-if="cohort || cmpViews" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <UCard v-if="cohort" :ui="{ body: 'p-3' }">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs uppercase tracking-wide font-semibold text-muted">User Cohorts (last 30 days)</span>
+          <UIcon name="i-lucide-users-round" class="size-4 text-primary" />
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <p class="text-2xl font-bold text-highlighted">{{ cohort.dau.toLocaleString() }}</p>
+            <p class="text-xs text-muted">DAU</p>
+          </div>
+          <div>
+            <p class="text-2xl font-bold text-highlighted">{{ cohort.wau.toLocaleString() }}</p>
+            <p class="text-xs text-muted">WAU</p>
+          </div>
+          <div>
+            <p class="text-2xl font-bold text-highlighted">{{ cohort.mau.toLocaleString() }}</p>
+            <p class="text-xs text-muted">MAU</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-4 mt-2 text-xs text-muted">
+          <span title="DAU divided by WAU — share of weekly users active today">
+            DAU/WAU: <strong class="text-highlighted">{{ (cohort.stickiness_dau_wau * 100).toFixed(0) }}%</strong>
+          </span>
+          <span title="DAU divided by MAU — share of monthly users active today">
+            DAU/MAU: <strong class="text-highlighted">{{ (cohort.stickiness_dau_mau * 100).toFixed(0) }}%</strong>
+          </span>
+        </div>
+      </UCard>
+
+      <UCard :ui="{ body: 'p-3' }">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs uppercase tracking-wide font-semibold text-muted">Period Comparison ({{ cmpViews?.window_days ?? '—' }}d vs prev)</span>
+          <UIcon name="i-lucide-trending-up" class="size-4 text-primary" />
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <template v-for="cmp in [
+            { label: 'Views', cmp: cmpViews },
+            { label: 'Streams', cmp: cmpStreams },
+            { label: 'Bandwidth', cmp: cmpBandwidth, isBytes: true },
+            { label: 'Logins', cmp: cmpLogins },
+          ]" :key="cmp.label">
+            <div v-if="cmp.cmp" class="flex flex-col">
+              <p class="text-lg font-bold text-highlighted truncate">
+                {{ cmp.isBytes ? formatBytes(cmp.cmp.current) : cmp.cmp.current.toLocaleString() }}
+              </p>
+              <div class="flex items-center gap-1 text-xs">
+                <span class="text-muted">{{ cmp.label }}</span>
+                <UBadge
+                  :color="formatDelta(cmp.cmp).tone === 'success' ? 'success' : formatDelta(cmp.cmp).tone === 'error' ? 'error' : 'neutral'"
+                  variant="subtle"
+                  size="xs"
+                >
+                  {{ formatDelta(cmp.cmp).label }}
+                </UBadge>
+              </div>
+            </div>
+          </template>
+        </div>
+      </UCard>
+    </div>
+
     <!-- Engagement timeline — overlays views, streams, uploads, and logins
          on a single chart so operators can see how the four highest-signal
          metrics correlate over the chart range. Bandwidth gets its own
@@ -520,6 +654,7 @@ const hasTrafficActivity = computed(() =>
           { label: 'Logins', color: 'stroke-sky-500 text-sky-500', values: tlLogins },
         ]"
         :height="220"
+        @point-click="(date: string) => { drillDateFilter = date }"
       />
     </UCard>
 
@@ -537,6 +672,7 @@ const hasTrafficActivity = computed(() =>
             { label: 'Bytes', color: 'stroke-cyan-500 text-cyan-500', values: tlBandwidth, format: (v: number) => formatBytes(v) },
           ]"
           :height="180"
+          @point-click="(date: string) => { drillDateFilter = date }"
         />
       </UCard>
       <UCard v-if="tlServerErrors.length > 0 && tlServerErrors.some(e => e.value > 0)">
@@ -551,6 +687,7 @@ const hasTrafficActivity = computed(() =>
             { label: 'Errors', color: 'stroke-red-500 text-red-500', values: tlServerErrors },
           ]"
           :height="180"
+          @point-click="(date: string) => { drillDateFilter = date }"
         />
       </UCard>
     </div>
@@ -592,7 +729,10 @@ const hasTrafficActivity = computed(() =>
           </div>
         </template>
         <div class="space-y-2 max-h-72 overflow-y-auto">
-          <div v-for="entry in filteredEventTypeEntries" :key="entry.type" class="flex items-center gap-2">
+          <div v-for="entry in filteredEventTypeEntries" :key="entry.type"
+               class="flex items-center gap-2 cursor-pointer hover:bg-muted/10 rounded px-1 py-0.5"
+               :title="`Click to drill events of type: ${entry.type}`"
+               @click="drillMode = 'type'; drillType = entry.type; drillByType()">
             <span class="w-24 shrink-0 text-xs text-muted capitalize truncate" :title="entry.type.replace(/_/g, ' ')">
               {{ entry.type.replace(/_/g, ' ') }}
             </span>
@@ -679,6 +819,96 @@ const hasTrafficActivity = computed(() =>
         </UTable>
       </div>
     </UCard>
+
+    <!-- Hourly heatmap (7 days × 24 hours) — surfaces traffic peaks per
+         weekday so operators can correlate scheduled tasks / cron / load
+         with user activity windows. Rendered as a discrete-quantized grid;
+         each cell tooltips its raw count. -->
+    <UCard v-if="heatmap.length > 0 && heatmapMax > 0">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-grid" class="size-4" />
+          Hourly Activity Heatmap (last 30 days)
+        </div>
+      </template>
+      <div class="overflow-x-auto">
+        <div class="inline-grid gap-0.5" :style="{ gridTemplateColumns: 'auto repeat(24, minmax(14px, 1fr))' }">
+          <!-- header row: hour labels every 3 hours -->
+          <div></div>
+          <div v-for="h in 24" :key="`h-${h - 1}`" class="text-[9px] text-muted text-center leading-tight">
+            <span v-if="(h - 1) % 3 === 0">{{ String(h - 1).padStart(2, '0') }}</span>
+          </div>
+          <!-- one row per day -->
+          <template v-for="(dow, i) in DAY_LABELS" :key="dow">
+            <div class="text-[10px] text-muted pr-1 self-center text-right">{{ dow }}</div>
+            <div
+              v-for="(count, h) in heatmapMatrix[i]"
+              :key="`c-${i}-${h}`"
+              :class="[heatmapClass(count), 'h-4 rounded-sm cursor-default']"
+              :title="`${dow} ${String(h).padStart(2, '0')}:00 — ${count.toLocaleString()} events`"
+            />
+          </template>
+        </div>
+        <div class="flex items-center gap-1.5 mt-2 text-[10px] text-muted">
+          <span>Less</span>
+          <span v-for="(c, i) in heatmapPalette" :key="i" :class="[c, 'w-3 h-3 rounded-sm']" />
+          <span>More</span>
+          <span class="ml-2">peak: {{ heatmapMax.toLocaleString() }} events/hour</span>
+        </div>
+      </div>
+    </UCard>
+
+    <!-- Quality breakdown + content gaps — two side-by-side panels showing
+         (a) which resolutions are eating bandwidth, (b) what users are
+         searching for that the catalog doesn't cover. -->
+    <div v-if="quality.length > 0 || contentGaps.length > 0" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <UCard v-if="quality.length > 0">
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-monitor" class="size-4" />
+            Stream Quality Breakdown
+          </div>
+        </template>
+        <div class="space-y-2">
+          <div v-for="q in quality" :key="q.quality" class="flex items-center gap-2 text-xs">
+            <span class="w-16 shrink-0 font-medium truncate" :title="q.quality">{{ q.quality }}</span>
+            <div class="flex-1 bg-muted/20 rounded-full h-3 overflow-hidden">
+              <div
+                class="h-full rounded-full bg-cyan-500 transition-all"
+                :style="{ width: qualityTotalBytes > 0 ? `${Math.round((q.bytes_sent / qualityTotalBytes) * 100)}%` : '0%' }"
+              />
+            </div>
+            <span class="w-20 shrink-0 text-right font-mono text-[11px] text-muted">{{ formatBytes(q.bytes_sent) }}</span>
+            <span class="w-12 shrink-0 text-right text-muted">{{ q.streams.toLocaleString() }}</span>
+          </div>
+          <div class="flex items-center gap-3 pt-2 mt-2 border-t border-default text-xs text-muted">
+            <span>Total: <strong class="text-highlighted">{{ qualityTotalStreams.toLocaleString() }}</strong> streams</span>
+            <span><strong class="text-highlighted">{{ formatBytes(qualityTotalBytes) }}</strong> served</span>
+          </div>
+        </div>
+      </UCard>
+
+      <UCard v-if="contentGaps.length > 0">
+        <template #header>
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-search-x" class="size-4 text-warning" />
+            Content Gaps — searches with no results
+          </div>
+        </template>
+        <div class="space-y-1.5 max-h-72 overflow-y-auto">
+          <div v-for="(g, i) in contentGaps" :key="i" class="flex items-center gap-2 text-sm py-1">
+            <span class="flex-1 truncate font-mono text-xs" :title="g.query">{{ g.query }}</span>
+            <UBadge color="warning" variant="subtle" size="xs">
+              {{ g.empty_count }}/{{ g.count }} empty
+            </UBadge>
+          </div>
+        </div>
+        <p class="text-xs text-muted mt-2 italic">
+          Queries that mostly returned zero results — strong signal for what to
+          add to the library.
+        </p>
+      </UCard>
+    </div>
 
     <!-- Top Users + Top Searches — side by side. Top Users has a metric
          selector so admins can sort by views, watch_time, uploads, etc.
