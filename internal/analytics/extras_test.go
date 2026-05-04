@@ -676,6 +676,79 @@ func TestAnalyticsHealth_AfterFlushReportsLag(t *testing.T) {
 	}
 }
 
+// ── Search clickthrough (stats.go searchClickthroughForMedia) ──────────────
+
+func TestSearchClickthrough_BasicCorrelation(t *testing.T) {
+	// Three users search and immediately view different media. Only views
+	// preceded by a search within 5 minutes (and from the same session)
+	// should be attributed.
+	now := time.Now()
+	events := []*models.AnalyticsEvent{
+		// alice/sess1: searches "cats", views media-1 90s later → counted.
+		{Type: EventSearch, UserID: "alice", SessionID: "sess1", Timestamp: now.Add(-10 * time.Minute),
+			Data: map[string]any{"query": "cats"}},
+		{Type: "view", UserID: "alice", SessionID: "sess1", MediaID: "media-1", Timestamp: now.Add(-10*time.Minute + 90*time.Second)},
+		// bob/sess2: searches "cats" too, views media-1 → counted.
+		{Type: EventSearch, UserID: "bob", SessionID: "sess2", Timestamp: now.Add(-7 * time.Minute),
+			Data: map[string]any{"query": "cats"}},
+		{Type: "view", UserID: "bob", SessionID: "sess2", MediaID: "media-1", Timestamp: now.Add(-7*time.Minute + 30*time.Second)},
+		// carol/sess3: searches "dogs", views media-1 → counted as "dogs".
+		{Type: EventSearch, UserID: "carol", SessionID: "sess3", Timestamp: now.Add(-5 * time.Minute),
+			Data: map[string]any{"query": "dogs"}},
+		{Type: "view", UserID: "carol", SessionID: "sess3", MediaID: "media-1", Timestamp: now.Add(-5*time.Minute + 60*time.Second)},
+		// dave/sess4: searches "cars" but waits 10 minutes → outside window, NOT counted.
+		{Type: EventSearch, UserID: "dave", SessionID: "sess4", Timestamp: now.Add(-30 * time.Minute),
+			Data: map[string]any{"query": "cars"}},
+		{Type: "view", UserID: "dave", SessionID: "sess4", MediaID: "media-1", Timestamp: now.Add(-15 * time.Minute)},
+		// eve/sess5: views media-1 with no preceding search → not counted.
+		{Type: "view", UserID: "eve", SessionID: "sess5", MediaID: "media-1", Timestamp: now.Add(-2 * time.Minute)},
+	}
+	m := moduleWithEvents(t, events)
+	got := m.searchClickthroughForMedia(context.Background(), "media-1", 30, 10)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 distinct queries (cats, dogs), got %d: %+v", len(got), got)
+	}
+	// "cats" should rank first (2 hits) over "dogs" (1 hit).
+	if got[0].Query != "cats" || got[0].Count != 2 {
+		t.Errorf("expected cats=2 first, got %+v", got[0])
+	}
+	if got[1].Query != "dogs" || got[1].Count != 1 {
+		t.Errorf("expected dogs=1 second, got %+v", got[1])
+	}
+}
+
+func TestSearchClickthrough_FallsBackToUserIDWhenNoSession(t *testing.T) {
+	// When events lack session_id, the correlator must still match by user_id
+	// — older events written before session tracking landed should not be lost.
+	now := time.Now()
+	events := []*models.AnalyticsEvent{
+		{Type: EventSearch, UserID: "alice", Timestamp: now.Add(-3 * time.Minute),
+			Data: map[string]any{"query": "fallback"}},
+		{Type: "view", UserID: "alice", MediaID: "media-9", Timestamp: now.Add(-1 * time.Minute)},
+	}
+	m := moduleWithEvents(t, events)
+	got := m.searchClickthroughForMedia(context.Background(), "media-9", 30, 10)
+	if len(got) != 1 || got[0].Query != "fallback" || got[0].Count != 1 {
+		t.Errorf("expected 1×fallback, got %+v", got)
+	}
+}
+
+func TestSearchClickthrough_DifferentSessionsDontCrossAttribute(t *testing.T) {
+	// alice/sess1 searches but a view from a *different* session must not
+	// be attributed to her search.
+	now := time.Now()
+	events := []*models.AnalyticsEvent{
+		{Type: EventSearch, UserID: "alice", SessionID: "sess1", Timestamp: now.Add(-2 * time.Minute),
+			Data: map[string]any{"query": "leak"}},
+		{Type: "view", UserID: "alice", SessionID: "sess2", MediaID: "media-7", Timestamp: now.Add(-1 * time.Minute)},
+	}
+	m := moduleWithEvents(t, events)
+	got := m.searchClickthroughForMedia(context.Background(), "media-7", 30, 10)
+	if len(got) != 0 {
+		t.Errorf("expected empty result (different sessions), got %+v", got)
+	}
+}
+
 func TestAnalyticsHealth_CountsDirtyDays(t *testing.T) {
 	m := moduleWithEvents(t, nil)
 	m.markDailyDirty("2026-01-01")

@@ -2117,6 +2117,24 @@ const hasTrafficActivity = computed(() =>
                   Bars in the early range (warning) often mean the intro is losing viewers; bars near 100% (success) mean the media is being completed.
                 </p>
               </div>
+              <!-- Search clickthrough — queries that landed viewers on this
+                   item, inferred from search→view correlation in the same
+                   session within 5 minutes. Empty when no traffic arrived
+                   from the search box. -->
+              <div v-if="mediaDetail.search_sources && mediaDetail.search_sources.length > 0" class="mt-4">
+                <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-1">Search queries that landed here</p>
+                <div class="space-y-1">
+                  <div
+                    v-for="(s, i) in mediaDetail.search_sources"
+                    :key="i"
+                    class="flex items-center gap-2 text-xs"
+                  >
+                    <UIcon name="i-lucide-search" class="size-3 text-muted shrink-0" />
+                    <span class="font-mono truncate flex-1" :title="s.query">{{ s.query }}</span>
+                    <UBadge size="xs" variant="subtle" color="primary">{{ s.count }}</UBadge>
+                  </div>
+                </div>
+              </div>
             </div>
             <div v-else class="text-center text-sm text-muted py-4">
               No data available for this item.

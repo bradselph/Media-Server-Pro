@@ -624,6 +624,14 @@ export interface MediaDetail {
     view_timeline: MetricTimelineEntry[]
     playback_timeline: MetricTimelineEntry[]
     abandonment: AbandonmentBucket[]
+    search_sources: SearchClickthrough[]
+}
+
+// Search query that preceded a view of this media item, inferred from the
+// event timeline (search → view within the same session, ≤5 minutes).
+export interface SearchClickthrough {
+    query: string
+    count: number
 }
 
 // Per-user aggregated analytics returned by /admin/users/:username/analytics.
