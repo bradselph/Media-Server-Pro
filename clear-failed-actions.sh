@@ -113,10 +113,7 @@ else
 fi
 
 # If we hit the per-status limit, more runs may remain.
-for status in "${STATUSES[@]}"; do
-  if [[ "$TOTAL" -ge "$LIMIT" ]]; then
-    echo
-    echo "note: page size capped at $LIMIT. Re-run the script to clear remaining runs."
-    break
-  fi
-done
+if [[ "$TOTAL" -ge "$LIMIT" ]]; then
+  echo
+  echo "note: page size capped at $LIMIT. Re-run the script to clear remaining runs."
+fi
