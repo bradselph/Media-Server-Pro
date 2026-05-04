@@ -270,8 +270,18 @@ func (m *Module) Health() models.HealthStatus {
 // Recover on panic so one failure does not stop cleanup forever.
 func (m *Module) cleanupLoop() {
 	for {
+		// Read cleanupTicker under lock for defense-in-depth synchronization.
+		// While the initial write is protected by happens-before on goroutine start,
+		// explicit locking ensures all reads are synchronized.
+		m.cleanupTickerMu.Lock()
+		ticker := m.cleanupTicker
+		m.cleanupTickerMu.Unlock()
+		if ticker == nil {
+			// Ticker not initialized yet; avoid panic on closed channel.
+			return
+		}
 		select {
-		case <-m.cleanupTicker.C:
+		case <-ticker.C:
 			func() {
 				defer func() {
 					if r := recover(); r != nil {

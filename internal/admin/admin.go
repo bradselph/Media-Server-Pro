@@ -145,9 +145,16 @@ func (m *Module) CleanupAuditLogOlderThan(ctx context.Context, retentionDays int
 	return m.auditRepo.DeleteOlderThan(ctx, before)
 }
 
-// GetAuditLog returns audit log entries, optionally filtered by userID (empty string = all users).
-// Both limit and offset are applied so pagination works when filtering by user.
-func (m *Module) GetAuditLog(ctx context.Context, limit, offset int, userID string) []models.AuditLogEntry {
+// AuditLogResponse holds paginated audit log results with total count.
+type AuditLogResponse struct {
+	Items      []models.AuditLogEntry `json:"items"`
+	Total      int64                  `json:"total"`
+	TotalPages int                    `json:"total_pages"`
+}
+
+// GetAuditLog returns audit log entries with pagination, optionally filtered by userID (empty string = all users).
+// Returns the page of entries and the total count across all entries matching the filter.
+func (m *Module) GetAuditLog(ctx context.Context, limit, offset int, userID string) AuditLogResponse {
 	entries, err := m.auditRepo.List(ctx, repositories.AuditLogFilter{
 		UserID: userID,
 		Limit:  limit,
@@ -159,15 +166,32 @@ func (m *Module) GetAuditLog(ctx context.Context, limit, offset int, userID stri
 		} else {
 			m.log.Error("Failed to retrieve audit log: %v", err)
 		}
-		return []models.AuditLogEntry{}
+		return AuditLogResponse{Items: []models.AuditLogEntry{}, Total: 0, TotalPages: 0}
 	}
 
 	// Convert pointers to values
-	result := make([]models.AuditLogEntry, len(entries))
+	items := make([]models.AuditLogEntry, len(entries))
 	for i, entry := range entries {
-		result[i] = *entry
+		items[i] = *entry
 	}
-	return result
+
+	// Query total count for the filter (may differ from len(entries) if fewer than limit returned)
+	total, err := m.auditRepo.Count(ctx, repositories.AuditLogFilter{UserID: userID})
+	if err != nil {
+		m.log.Warn("Failed to count audit log entries: %v", err)
+		total = int64(len(items)) // fallback: use returned items count
+	}
+
+	totalPages := 0
+	if limit > 0 && total > 0 {
+		totalPages = int((total + int64(limit) - 1) / int64(limit))
+	}
+
+	return AuditLogResponse{
+		Items:      items,
+		Total:      total,
+		TotalPages: totalPages,
+	}
 }
 
 // ExportAuditLog exports audit log to CSV. The caller (handler) should remove the file after sending the response.

@@ -71,10 +71,18 @@ func (m *Manager) applySecurityCORSOverrides() {
 		for _, o := range origins {
 			if u, err := url.Parse(o); err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
 				valid = append(valid, o)
+			} else {
+				// Log invalid origin so operator is aware of misconfiguration
+				if m.log != nil {
+					m.log.Warn("CORS_ORIGINS: skipping invalid origin %q (must be http:// or https:// URL)", o)
+				}
 			}
 		}
 		if len(valid) > 0 {
 			m.config.Security.CORSOrigins = valid
+		}
+		if len(valid) < len(origins) && m.log != nil {
+			m.log.Warn("CORS_ORIGINS: %d invalid origins filtered out of %d total", len(origins)-len(valid), len(origins))
 		}
 	}
 }

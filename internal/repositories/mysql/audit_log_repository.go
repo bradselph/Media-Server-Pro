@@ -70,6 +70,37 @@ func (r *AuditLogRepository) List(ctx context.Context, filter repositories.Audit
 	return entries, nil
 }
 
+// Count returns the total number of audit log entries matching the filter (ignoring limit/offset).
+func (r *AuditLogRepository) Count(ctx context.Context, filter repositories.AuditLogFilter) (int64, error) {
+	var count int64
+	query := r.db.WithContext(ctx).Model(&models.AuditLogEntry{})
+
+	if filter.UserID != "" {
+		query = query.Where("user_id = ?", filter.UserID)
+	}
+	if filter.Action != "" {
+		query = query.Where("action = ?", filter.Action)
+	}
+	if filter.Resource != "" {
+		query = query.Where("resource = ?", filter.Resource)
+	}
+	if filter.Success != nil {
+		query = query.Where("success = ?", *filter.Success)
+	}
+	if filter.StartDate != "" {
+		query = query.Where("timestamp >= ?", filter.StartDate)
+	}
+	if filter.EndDate != "" {
+		query = query.Where("timestamp <= ?", filter.EndDate)
+	}
+
+	if err := query.Count(&count).Error; err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
 // getByUserMaxLimit is the hard cap applied when limit <= 0 to prevent unbounded queries.
 const getByUserMaxLimit = 1000
 

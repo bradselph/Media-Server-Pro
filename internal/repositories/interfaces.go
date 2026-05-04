@@ -201,6 +201,7 @@ type UserPermissionsRepository interface {
 type AuditLogRepository interface {
 	Create(ctx context.Context, entry *models.AuditLogEntry) error
 	List(ctx context.Context, filter AuditLogFilter) ([]*models.AuditLogEntry, error)
+	Count(ctx context.Context, filter AuditLogFilter) (int64, error)
 	GetByUser(ctx context.Context, userID string, limit int) ([]*models.AuditLogEntry, error)
 	DeleteOlderThan(ctx context.Context, before string) error
 }

@@ -62,6 +62,9 @@ func (m *Module) getOrLoadUser(ctx context.Context, username string) (*models.Us
 }
 
 // verifyPasswordWithCacheRefresh checks password against cached user; on mismatch, retries from DB and refreshes cache if DB matches.
+// NOTE: User passwords use external salt concatenation (password+salt) before bcrypt for defense-in-depth additional entropy.
+// Admin passwords use standard bcrypt without external salt. Both are cryptographically sound; bcrypt applies its own internal salt.
+// This asymmetry is intentional: users gain additional entropy while admin uses standard bcrypt for simplicity.
 func (m *Module) verifyPasswordWithCacheRefresh(ctx context.Context, user *models.User, c *creds) error {
 	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(c.Password+user.Salt))
 	if err == nil {
