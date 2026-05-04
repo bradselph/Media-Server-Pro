@@ -692,6 +692,25 @@ func (h *Handler) fetchExportRows(c *gin.Context, panel string) ([]map[string]an
 	}
 }
 
+// AdminGetAnomalies returns daily metrics that spiked or dipped beyond
+// the rolling-window threshold. Query: z (default 2.5), window (1-90,
+// default 14).
+func (h *Handler) AdminGetAnomalies(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{})
+		return
+	}
+	z := 2.5
+	if v, err := strconv.ParseFloat(c.Query("z"), 64); err == nil && v > 0 {
+		z = v
+	}
+	window := 14
+	if v, err := strconv.Atoi(c.Query("window")); err == nil && v > 0 && v <= 90 {
+		window = v
+	}
+	writeSuccess(c, h.analytics.GetAnomalies(z, window))
+}
+
 // AdminGetRetention returns the week-over-week retention grid: rows are
 // signup-week cohorts, columns are weeks elapsed since signup, cells are
 // % of the cohort still active that week. Query: weeks (1-52, default 12).

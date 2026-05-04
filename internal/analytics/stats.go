@@ -1386,6 +1386,142 @@ type MediaDetail struct {
 	PlaybackTimeline []MetricTimelineEntry `json:"playback_timeline"`
 }
 
+// Anomaly captures a single per-day metric spike or dip that exceeds the
+// rolling-window threshold. Used by the dashboard to highlight unusual
+// activity at a glance — e.g. "5xx errors are 4σ above the 14-day baseline".
+type Anomaly struct {
+	Date      string  `json:"date"`
+	Metric    string  `json:"metric"`
+	Value     float64 `json:"value"`
+	Baseline  float64 `json:"baseline"`  // mean of the rolling window
+	StdDev    float64 `json:"std_dev"`
+	ZScore    float64 `json:"z_score"`   // (value - baseline) / std_dev
+	Direction string  `json:"direction"` // "spike" | "dip"
+}
+
+// AnomalyReport groups all detected anomalies across watched metrics.
+type AnomalyReport struct {
+	WindowDays int       `json:"window_days"`
+	Anomalies  []Anomaly `json:"anomalies"`
+}
+
+// GetAnomalies scans the per-day metric series for points that exceed
+// `zThreshold` standard deviations from the rolling-window mean. Watched
+// metrics cover both engagement (views, streams) and health (5xx errors,
+// HLS errors, failed logins) so admins see both growth spikes and
+// reliability dips in one place.
+//
+// Threshold defaults to 2.5σ — high enough to skip routine variance,
+// low enough to catch real incidents within a day. The rolling window
+// excludes the day under test so a single bad day doesn't poison its
+// own baseline.
+func (m *Module) GetAnomalies(zThreshold float64, windowDays int) AnomalyReport {
+	if zThreshold <= 0 {
+		zThreshold = 2.5
+	}
+	if windowDays <= 0 || windowDays > 90 {
+		windowDays = 14
+	}
+	out := AnomalyReport{WindowDays: windowDays, Anomalies: []Anomaly{}}
+	// Watch the metrics most likely to indicate user-visible problems or
+	// growth signals. Easy to extend — every entry needs a JSON tag the
+	// dailyStatField helper can resolve.
+	metrics := []string{
+		"total_views", "stream_starts", "uploads_succeeded",
+		"server_errors", "hls_errors", "logins_failed",
+		"mature_blocked", "permission_denied",
+	}
+	for _, metric := range metrics {
+		// Pull windowDays + 1 days so we have one "current" day and N
+		// prior days for the baseline.
+		series := m.GetMetricTimeline(metric, windowDays+1)
+		if len(series) < 4 {
+			// Not enough data to compute a meaningful baseline.
+			continue
+		}
+		current := series[len(series)-1]
+		baseline := series[:len(series)-1]
+		mean := 0.0
+		for _, b := range baseline {
+			mean += b.Value
+		}
+		mean /= float64(len(baseline))
+		variance := 0.0
+		for _, b := range baseline {
+			d := b.Value - mean
+			variance += d * d
+		}
+		variance /= float64(len(baseline))
+		std := 0.0
+		if variance > 0 {
+			std = sqrt(variance)
+		}
+		// Need a non-zero stddev to compute z. Also skip metrics where the
+		// baseline is essentially zero (e.g. server_errors normally 0/day);
+		// without this guard, a single 1-event day shows as "infinite z".
+		if std < 1 || mean < 1 {
+			// Fallback: report large spikes by absolute threshold (3× the max
+			// of the prior window) rather than z-score.
+			maxPrior := 0.0
+			for _, b := range baseline {
+				if b.Value > maxPrior {
+					maxPrior = b.Value
+				}
+			}
+			if current.Value >= maxPrior*3 && current.Value >= 5 {
+				out.Anomalies = append(out.Anomalies, Anomaly{
+					Date:      current.Date,
+					Metric:    metric,
+					Value:     current.Value,
+					Baseline:  mean,
+					StdDev:    std,
+					ZScore:    0, // not meaningful — flagged by absolute rule
+					Direction: "spike",
+				})
+			}
+			continue
+		}
+		z := (current.Value - mean) / std
+		if absFloat(z) >= zThreshold {
+			direction := "spike"
+			if z < 0 {
+				direction = "dip"
+			}
+			out.Anomalies = append(out.Anomalies, Anomaly{
+				Date:      current.Date,
+				Metric:    metric,
+				Value:     current.Value,
+				Baseline:  mean,
+				StdDev:    std,
+				ZScore:    z,
+				Direction: direction,
+			})
+		}
+	}
+	return out
+}
+
+// sqrt is split out so we don't import math at the top of the file just
+// for one call. Newton's method converges fast enough on positive inputs
+// for our use case (low-magnitude variance values).
+func sqrt(x float64) float64 {
+	if x <= 0 {
+		return 0
+	}
+	z := x / 2
+	for i := 0; i < 12; i++ {
+		z -= (z*z - x) / (2 * z)
+	}
+	return z
+}
+
+func absFloat(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
 // RetentionGrid is a classic week-over-week retention table. Rows are
 // signup cohorts (weeks since the cohort started); columns are weeks
 // elapsed since signup; cells are the % of the cohort that returned in

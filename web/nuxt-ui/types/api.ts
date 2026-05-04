@@ -475,6 +475,24 @@ export interface DeviceBucket {
     unique_users: number
 }
 
+// Anomaly detection — one daily metric whose value is statistically
+// far from its rolling baseline. The dashboard renders these as a
+// banner at the top so admins notice incidents within a day.
+export interface Anomaly {
+    date: string
+    metric: string
+    value: number
+    baseline: number
+    std_dev: number
+    z_score: number
+    direction: 'spike' | 'dip'
+}
+
+export interface AnomalyReport {
+    window_days: number
+    anomalies: Anomaly[]
+}
+
 // Cohort retention grid. Rows are signup-week cohorts (oldest first);
 // each row carries the percentage of users still active in week-N. The
 // matrix is upper-triangular by construction — older cohorts have more

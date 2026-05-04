@@ -107,6 +107,7 @@ import type {
     DeviceBucket,
     MediaDetail,
     RetentionGrid,
+    AnomalyReport,
     UpdateInfo,
     UserAnalytics,
     UpdateStatus,
@@ -966,6 +967,9 @@ export function useAnalyticsApi() {
         // Cohort retention grid (rows = signup weeks, cells = % retained).
         getRetention: (weeks?: number) =>
             api.get<RetentionGrid>(`/api/admin/analytics/retention${buildQS({weeks: weeks || undefined})}`),
+        // Daily metric spikes / dips beyond a rolling baseline.
+        getAnomalies: (z?: number, window?: number) =>
+            api.get<AnomalyReport>(`/api/admin/analytics/anomalies${buildQS({z: z || undefined, window: window || undefined})}`),
         // Export-panel URL builder. Used by <a download> links so the
         // browser handles the file save dialog rather than the JS layer.
         exportPanelUrl: (panel: string, format: 'csv' | 'json' = 'csv', extra: Record<string, string | number | undefined> = {}) =>

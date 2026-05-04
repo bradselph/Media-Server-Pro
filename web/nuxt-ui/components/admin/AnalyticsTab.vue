@@ -5,6 +5,7 @@ import type {
   TopUserEntry, SearchQueryEntry, FailedLoginEntry, ErrorPathEntry,
   MetricTimelineEntry, CohortMetrics, HourlyHeatmapCell, QualityBucket,
   PeriodComparison, Funnel, DeviceBucket, MediaDetail, RetentionGrid,
+  AnomalyReport,
 } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime, formatBytes } from '~/utils/format'
@@ -56,6 +57,10 @@ const cmpViews = ref<PeriodComparison | null>(null)
 const cmpStreams = ref<PeriodComparison | null>(null)
 const cmpBandwidth = ref<PeriodComparison | null>(null)
 const cmpLogins = ref<PeriodComparison | null>(null)
+
+// Anomaly report — banner at the top of the page when something unusual
+// is happening today.
+const anomalies = ref<AnomalyReport | null>(null)
 
 // Funnel + device/browser breakdown + per-media drill + retention grid.
 const funnel = ref<Funnel | null>(null)
@@ -318,6 +323,7 @@ async function load() {
       analyticsApi.getFunnel(30),                                   // 25
       analyticsApi.getDeviceBreakdown(30),                          // 26
       analyticsApi.getRetention(12),                                // 27
+      analyticsApi.getAnomalies(2.5, 14),                           // 28
     ])
     if (period.value !== capturedPeriod) return
     const r = (i: number) => results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<unknown>).value : null
@@ -353,6 +359,7 @@ async function load() {
       browsers.value = d.browsers ?? []
     }
     if (r(27) !== null) retention.value = r(27) as RetentionGrid
+    if (r(28) !== null) anomalies.value = r(28) as AnomalyReport
 
     const failed = results.filter(x => x.status === 'rejected')
     if (failed.length) toast.add({ title: `${failed.length} analytics endpoint(s) failed`, color: 'warning', icon: 'i-lucide-alert-triangle' })
@@ -702,6 +709,38 @@ const hasTrafficActivity = computed(() =>
     <div v-if="loading && !summary" class="flex justify-center py-8">
       <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
     </div>
+
+    <!-- Anomalies banner — appears only when at least one watched metric
+         is statistically far from its rolling baseline. Each anomaly gets
+         its own pill so admins can see at a glance which metrics need
+         attention. Spikes in error metrics colour error; growth spikes
+         in engagement colour primary. -->
+    <UAlert
+      v-if="anomalies && anomalies.anomalies.length > 0"
+      :color="anomalies.anomalies.some(a => ['server_errors','hls_errors','logins_failed','mature_blocked','permission_denied'].includes(a.metric)) ? 'error' : 'warning'"
+      variant="subtle"
+      icon="i-lucide-zap"
+      :title="`${anomalies.anomalies.length} anomaly${anomalies.anomalies.length === 1 ? '' : 'ies'} vs ${anomalies.window_days}-day baseline`"
+    >
+      <template #description>
+        <div class="flex flex-wrap gap-2 mt-1.5">
+          <UBadge
+            v-for="a in anomalies.anomalies"
+            :key="a.date + a.metric"
+            :color="['server_errors','hls_errors','logins_failed','mature_blocked','permission_denied'].includes(a.metric) ? 'error' :
+                    a.direction === 'dip' ? 'warning' : 'primary'"
+            variant="subtle"
+            size="xs"
+            class="cursor-pointer"
+            :title="`${a.metric}: ${a.value.toLocaleString()} (baseline ${a.baseline.toFixed(1)}, z=${a.z_score.toFixed(1)})`"
+            @click="drillDateFilter = a.date"
+          >
+            <UIcon :name="a.direction === 'spike' ? 'i-lucide-trending-up' : 'i-lucide-trending-down'" class="size-3 mr-1" />
+            {{ a.metric }} {{ a.direction }} ({{ a.z_score !== 0 ? `${a.z_score.toFixed(1)}σ` : 'absolute' }})
+          </UBadge>
+        </div>
+      </template>
+    </UAlert>
 
     <!-- Summary cards (8 metrics — added today bandwidth + active streams). -->
     <div v-if="summary" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
