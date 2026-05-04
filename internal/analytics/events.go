@@ -83,6 +83,50 @@ const (
 	EventBulkDelete         = "bulk_delete"
 	EventBulkUpdate         = "bulk_update"
 	EventUserRoleChange     = "user_role_change"
+
+	// Library curation events — recorded as raw events so they appear in the
+	// admin actions panel and audit log, but intentionally NOT mapped to a
+	// daily_stats column. Adding a column for every micro-action would balloon
+	// the schema; counts come from event-by-type queries on demand.
+	EventCollectionCreate      = "collection_create"
+	EventCollectionUpdate      = "collection_update"
+	EventCollectionDelete      = "collection_delete"
+	EventCollectionItemsAdd    = "collection_items_add"
+	EventCollectionItemRemove  = "collection_item_remove"
+	EventSmartPlaylistCreate   = "smart_playlist_create"
+	EventSmartPlaylistUpdate   = "smart_playlist_update"
+	EventSmartPlaylistDelete   = "smart_playlist_delete"
+	EventChapterCreate         = "chapter_create"
+	EventChapterUpdate         = "chapter_update"
+	EventChapterDelete         = "chapter_delete"
+	EventAutoTagRuleCreate     = "auto_tag_rule_create"
+	EventAutoTagRuleUpdate     = "auto_tag_rule_update"
+	EventAutoTagRuleDelete     = "auto_tag_rule_delete"
+	EventAutoTagRulesApply     = "auto_tag_rules_apply"
+
+	// Account governance events — surface user-driven deletion requests in the
+	// admin review UI without polling the deletion_requests table directly.
+	EventDeletionRequestSubmit  = "deletion_request_submit"
+	EventDeletionRequestApprove = "deletion_request_approve"
+	EventDeletionRequestDeny    = "deletion_request_deny"
+
+	// Admin infrastructure events. Backup / scan / task / config / thumbnail
+	// operations are infrequent but high-impact; tracking them gives operators
+	// a single timeline for "what changed on the server today" without having
+	// to cross-reference half a dozen module logs.
+	EventBackupCreate           = "backup_create"
+	EventBackupRestore          = "backup_restore"
+	EventBackupDelete           = "backup_delete"
+	EventScanRun                = "scan_run"
+	EventScanReview             = "scan_review"
+	EventConfigUpdate           = "config_update"
+	EventThumbnailUpload        = "thumbnail_upload"
+	EventThumbnailCleanup       = "thumbnail_cleanup"
+	EventAdminTaskRun           = "admin_task_run"
+	EventAdminTaskEnable        = "admin_task_enable"
+	EventAdminTaskDisable       = "admin_task_disable"
+	EventAdminTaskStop          = "admin_task_stop"
+	EventFollowerSettingsUpdate = "follower_settings_update"
 )
 
 // ClientEventInput holds parameters for SubmitClientEvent.

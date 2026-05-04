@@ -641,3 +641,295 @@ func TestEvaluateAlerts_UnknownOperatorDoesNotTrigger(t *testing.T) {
 		t.Errorf("unknown operator should not trigger, got %+v", results)
 	}
 }
+
+// ── Health snapshot (stats.go AnalyticsHealth) ──────────────────────────────
+
+func TestAnalyticsHealth_BeforeFirstFlushReportsZeroLag(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	m.healthMu.Lock()
+	m.healthy = true
+	m.healthMsg = "Running"
+	m.healthMu.Unlock()
+	h := m.AnalyticsHealth()
+	if !h.Healthy || h.Status != "Running" {
+		t.Errorf("expected healthy=true status=Running, got %+v", h)
+	}
+	// LastFlush is the zero time before the first flush, and FlushLagSeconds
+	// must NOT report time.Since(zero) — that would be ~57 years on every
+	// call and trigger every alert immediately.
+	if !h.LastFlush.IsZero() {
+		t.Errorf("expected zero last_flush before first flush, got %v", h.LastFlush)
+	}
+	if h.FlushLagSeconds != 0 {
+		t.Errorf("expected 0s flush lag before first flush, got %f", h.FlushLagSeconds)
+	}
+}
+
+func TestAnalyticsHealth_AfterFlushReportsLag(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	m.lastFlushMu.Lock()
+	m.lastFlush = time.Now().Add(-45 * time.Second)
+	m.lastFlushMu.Unlock()
+	h := m.AnalyticsHealth()
+	if h.FlushLagSeconds < 44 || h.FlushLagSeconds > 60 {
+		t.Errorf("expected ~45s flush lag, got %f", h.FlushLagSeconds)
+	}
+}
+
+// ── Backfill (stats.go BackfillDailyStats) ─────────────────────────────────
+
+func TestBackfillDailyStats_RebuildsFromRawEvents(t *testing.T) {
+	// Backfill is the recovery path when persisted DailyStats drift away
+	// from the raw event truth. This test verifies the per-event arithmetic
+	// matches updateDailyStatsLocked column-by-column for the most common
+	// event types — locks the parity in so a future event addition can't
+	// silently make backfill diverge from the live counter path.
+	loc := time.Now().Location()
+	day, _ := time.ParseInLocation(dateFormat, "2026-04-15", loc)
+	events := []*models.AnalyticsEvent{
+		{Type: "view", UserID: "alice", Timestamp: day.Add(1 * time.Hour)},
+		{Type: "view", UserID: "alice", Timestamp: day.Add(2 * time.Hour)}, // same user — UniqueUsers stays 1
+		{Type: "view", UserID: "bob", Timestamp: day.Add(3 * time.Hour)},
+		{Type: "playback", UserID: "alice", Timestamp: day.Add(4 * time.Hour),
+			Data: map[string]any{"position": 120.0, "duration": 600.0}},
+		{Type: EventLogin, UserID: "alice", Timestamp: day.Add(5 * time.Hour)},
+		{Type: EventLoginFailed, Timestamp: day.Add(6 * time.Hour)},
+		{Type: EventRegister, UserID: "carol", Timestamp: day.Add(7 * time.Hour)},
+		{Type: EventDownload, UserID: "alice", Timestamp: day.Add(8 * time.Hour)},
+		{Type: EventSearch, UserID: "alice", Timestamp: day.Add(9 * time.Hour)},
+		{Type: EventStreamEnd, UserID: "bob", Timestamp: day.Add(10 * time.Hour),
+			Data: map[string]any{"bytes_sent": float64(1_500_000)}},
+		{Type: EventStreamEnd, UserID: "bob", Timestamp: day.Add(11 * time.Hour),
+			Data: map[string]any{"bytes_sent": int64(500_000)}},
+		{Type: EventServerError, Timestamp: day.Add(12 * time.Hour)},
+		// An event from a *different* day must NOT be counted.
+		{Type: "view", UserID: "alice", Timestamp: day.AddDate(0, 0, 1).Add(1 * time.Hour)},
+	}
+	m := moduleWithEvents(t, events)
+
+	got, err := m.BackfillDailyStats(context.Background(), "2026-04-15")
+	if err != nil {
+		t.Fatalf("backfill: %v", err)
+	}
+	if got.TotalViews != 3 {
+		t.Errorf("TotalViews: got %d, want 3", got.TotalViews)
+	}
+	if got.UniqueUsers != 2 {
+		t.Errorf("UniqueUsers: got %d, want 2", got.UniqueUsers)
+	}
+	if got.TotalWatchTime != 120.0 {
+		t.Errorf("TotalWatchTime: got %f, want 120", got.TotalWatchTime)
+	}
+	if got.Logins != 1 {
+		t.Errorf("Logins: got %d, want 1", got.Logins)
+	}
+	if got.LoginsFailed != 1 {
+		t.Errorf("LoginsFailed: got %d, want 1", got.LoginsFailed)
+	}
+	if got.Registrations != 1 || got.NewUsers != 1 {
+		t.Errorf("Registrations/NewUsers: got %d/%d, want 1/1", got.Registrations, got.NewUsers)
+	}
+	if got.Downloads != 1 {
+		t.Errorf("Downloads: got %d, want 1", got.Downloads)
+	}
+	if got.Searches != 1 {
+		t.Errorf("Searches: got %d, want 1", got.Searches)
+	}
+	if got.StreamEnds != 2 {
+		t.Errorf("StreamEnds: got %d, want 2", got.StreamEnds)
+	}
+	if got.BytesServed != 2_000_000 {
+		t.Errorf("BytesServed: got %d, want 2,000,000 (sums float64+int64 payloads)", got.BytesServed)
+	}
+	if got.ServerErrors != 1 {
+		t.Errorf("ServerErrors: got %d, want 1", got.ServerErrors)
+	}
+}
+
+func TestBackfillDailyStats_RejectsBadDate(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	if _, err := m.BackfillDailyStats(context.Background(), ""); err == nil {
+		t.Error("expected error for empty date")
+	}
+	if _, err := m.BackfillDailyStats(context.Background(), "2026/04/15"); err == nil {
+		t.Error("expected error for non-ISO date format")
+	}
+	if _, err := m.BackfillDailyStats(context.Background(), "yesterday"); err == nil {
+		t.Error("expected error for non-date string")
+	}
+}
+
+func TestBackfillDailyStats_ReplacesInMemoryEntry(t *testing.T) {
+	// If persisted DailyStats drifted upward (e.g. double-counted events),
+	// backfill must overwrite the in-memory map rather than add to it.
+	day, _ := time.ParseInLocation(dateFormat, "2026-04-16", time.Now().Location())
+	events := []*models.AnalyticsEvent{
+		{Type: "view", UserID: "alice", Timestamp: day.Add(1 * time.Hour)},
+	}
+	m := moduleWithEvents(t, events)
+	// Pre-seed an inflated entry to simulate drift.
+	m.dailyStats["2026-04-16"] = &models.DailyStats{Date: "2026-04-16", TotalViews: 999}
+
+	got, err := m.BackfillDailyStats(context.Background(), "2026-04-16")
+	if err != nil {
+		t.Fatalf("backfill: %v", err)
+	}
+	if got.TotalViews != 1 {
+		t.Errorf("backfill didn't replace inflated counter: got %d, want 1", got.TotalViews)
+	}
+	if m.dailyStats["2026-04-16"].TotalViews != 1 {
+		t.Errorf("in-memory entry not replaced: got %d, want 1", m.dailyStats["2026-04-16"].TotalViews)
+	}
+}
+
+// ── IP summary truncation ──────────────────────────────────────────────────
+
+func TestGetIPSummary_HonorsLimit(t *testing.T) {
+	// computeIPSummary truncates TopByEvents and TopByBytes to `limit`
+	// independently. This locks in that contract — without it, accidentally
+	// applying the limit to the unsorted `flat` slice would silently drop
+	// the heaviest IPs from the report.
+	now := time.Now()
+	var events []*models.AnalyticsEvent
+	ips := []string{"10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4", "10.0.0.5", "10.0.0.6", "10.0.0.7", "10.0.0.8"}
+	for i, ip := range ips {
+		events = append(events, &models.AnalyticsEvent{
+			Type: "view", UserID: "u-" + ip, IPAddress: ip, Timestamp: now.Add(-time.Duration(i) * time.Hour),
+		})
+	}
+	m := moduleWithEvents(t, events)
+	out := m.GetIPSummary(context.Background(), 7, 3)
+	if out.UniqueIPs != 8 {
+		t.Errorf("UniqueIPs: got %d, want 8", out.UniqueIPs)
+	}
+	if len(out.TopByEvents) != 3 {
+		t.Errorf("TopByEvents truncation: got %d, want 3", len(out.TopByEvents))
+	}
+	if len(out.TopByBytes) != 3 {
+		t.Errorf("TopByBytes truncation: got %d, want 3", len(out.TopByBytes))
+	}
+}
+
+// ── Diagnostics — extended (stats.go GetDiagnostics) ───────────────────────
+
+func TestGetDiagnostics_ReportsRuntimeState(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	m.healthMu.Lock()
+	m.healthy = true
+	m.healthMu.Unlock()
+	m.markDailyDirty("2026-04-01")
+	m.markDailyDirty("2026-04-02")
+	m.cache.set("k1", 1, time.Second)
+	m.cache.set("k2", 2, time.Second)
+	m.statsMu.Lock()
+	m.mediaStats["m1"] = &models.ViewStats{}
+	m.statsMu.Unlock()
+	m.sessionsMu.Lock()
+	m.sessions["sess-a"] = &sessionData{}
+	m.sessions["sess-b"] = &sessionData{}
+	m.sessionsMu.Unlock()
+	m.maxEvents = 12345
+
+	d := m.GetDiagnostics()
+	if !d.Healthy {
+		t.Error("Healthy: got false, want true")
+	}
+	if d.DirtyDays != 2 {
+		t.Errorf("DirtyDays: got %d, want 2", d.DirtyDays)
+	}
+	if d.CacheEntries != 2 {
+		t.Errorf("CacheEntries: got %d, want 2", d.CacheEntries)
+	}
+	if d.MediaTracked != 1 {
+		t.Errorf("MediaTracked: got %d, want 1", d.MediaTracked)
+	}
+	if d.SessionsTracked != 2 {
+		t.Errorf("SessionsTracked: got %d, want 2", d.SessionsTracked)
+	}
+	if d.MaxReconstruct != 12345 {
+		t.Errorf("MaxReconstruct: got %d, want 12345", d.MaxReconstruct)
+	}
+}
+
+// ── Search clickthrough (stats.go searchClickthroughForMedia) ──────────────
+
+func TestSearchClickthrough_BasicCorrelation(t *testing.T) {
+	// Three users search and immediately view different media. Only views
+	// preceded by a search within 5 minutes (and from the same session)
+	// should be attributed.
+	now := time.Now()
+	events := []*models.AnalyticsEvent{
+		// alice/sess1: searches "cats", views media-1 90s later → counted.
+		{Type: EventSearch, UserID: "alice", SessionID: "sess1", Timestamp: now.Add(-10 * time.Minute),
+			Data: map[string]any{"query": "cats"}},
+		{Type: "view", UserID: "alice", SessionID: "sess1", MediaID: "media-1", Timestamp: now.Add(-10*time.Minute + 90*time.Second)},
+		// bob/sess2: searches "cats" too, views media-1 → counted.
+		{Type: EventSearch, UserID: "bob", SessionID: "sess2", Timestamp: now.Add(-7 * time.Minute),
+			Data: map[string]any{"query": "cats"}},
+		{Type: "view", UserID: "bob", SessionID: "sess2", MediaID: "media-1", Timestamp: now.Add(-7*time.Minute + 30*time.Second)},
+		// carol/sess3: searches "dogs", views media-1 → counted as "dogs".
+		{Type: EventSearch, UserID: "carol", SessionID: "sess3", Timestamp: now.Add(-5 * time.Minute),
+			Data: map[string]any{"query": "dogs"}},
+		{Type: "view", UserID: "carol", SessionID: "sess3", MediaID: "media-1", Timestamp: now.Add(-5*time.Minute + 60*time.Second)},
+		// dave/sess4: searches "cars" but waits 10 minutes → outside window, NOT counted.
+		{Type: EventSearch, UserID: "dave", SessionID: "sess4", Timestamp: now.Add(-30 * time.Minute),
+			Data: map[string]any{"query": "cars"}},
+		{Type: "view", UserID: "dave", SessionID: "sess4", MediaID: "media-1", Timestamp: now.Add(-15 * time.Minute)},
+		// eve/sess5: views media-1 with no preceding search → not counted.
+		{Type: "view", UserID: "eve", SessionID: "sess5", MediaID: "media-1", Timestamp: now.Add(-2 * time.Minute)},
+	}
+	m := moduleWithEvents(t, events)
+	got := m.searchClickthroughForMedia(context.Background(), "media-1", 30, 10)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 distinct queries (cats, dogs), got %d: %+v", len(got), got)
+	}
+	// "cats" should rank first (2 hits) over "dogs" (1 hit).
+	if got[0].Query != "cats" || got[0].Count != 2 {
+		t.Errorf("expected cats=2 first, got %+v", got[0])
+	}
+	if got[1].Query != "dogs" || got[1].Count != 1 {
+		t.Errorf("expected dogs=1 second, got %+v", got[1])
+	}
+}
+
+func TestSearchClickthrough_FallsBackToUserIDWhenNoSession(t *testing.T) {
+	// When events lack session_id, the correlator must still match by user_id
+	// — older events written before session tracking landed should not be lost.
+	now := time.Now()
+	events := []*models.AnalyticsEvent{
+		{Type: EventSearch, UserID: "alice", Timestamp: now.Add(-3 * time.Minute),
+			Data: map[string]any{"query": "fallback"}},
+		{Type: "view", UserID: "alice", MediaID: "media-9", Timestamp: now.Add(-1 * time.Minute)},
+	}
+	m := moduleWithEvents(t, events)
+	got := m.searchClickthroughForMedia(context.Background(), "media-9", 30, 10)
+	if len(got) != 1 || got[0].Query != "fallback" || got[0].Count != 1 {
+		t.Errorf("expected 1×fallback, got %+v", got)
+	}
+}
+
+func TestSearchClickthrough_DifferentSessionsDontCrossAttribute(t *testing.T) {
+	// alice/sess1 searches but a view from a *different* session must not
+	// be attributed to her search.
+	now := time.Now()
+	events := []*models.AnalyticsEvent{
+		{Type: EventSearch, UserID: "alice", SessionID: "sess1", Timestamp: now.Add(-2 * time.Minute),
+			Data: map[string]any{"query": "leak"}},
+		{Type: "view", UserID: "alice", SessionID: "sess2", MediaID: "media-7", Timestamp: now.Add(-1 * time.Minute)},
+	}
+	m := moduleWithEvents(t, events)
+	got := m.searchClickthroughForMedia(context.Background(), "media-7", 30, 10)
+	if len(got) != 0 {
+		t.Errorf("expected empty result (different sessions), got %+v", got)
+	}
+}
+
+func TestAnalyticsHealth_CountsDirtyDays(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	m.markDailyDirty("2026-01-01")
+	m.markDailyDirty("2026-01-02")
+	m.markDailyDirty("2026-01-03")
+	if h := m.AnalyticsHealth(); h.DirtyDays != 3 {
+		t.Errorf("expected 3 dirty days, got %d", h.DirtyDays)
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/media"
 	"media-server-pro/pkg/models"
 )
@@ -55,13 +56,10 @@ func (h *Handler) CreateAutoTagRule(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Failed to create rule: "+err.Error())
 		return
 	}
-	session := getSession(c)
-	if session != nil {
-		h.logAdminAction(c, &adminLogActionParams{
-			UserID: session.UserID, Username: session.Username,
-			Action: "create_auto_tag_rule", Target: rule.ID,
-		})
-	}
+	h.trackServerEvent(c, analytics.EventAutoTagRuleCreate, map[string]any{
+		"rule_id": rule.ID,
+		"name":    rule.Name,
+	})
 	writeSuccess(c, rule)
 }
 
@@ -113,6 +111,9 @@ func (h *Handler) UpdateAutoTagRule(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Failed to update rule: "+err.Error())
 		return
 	}
+	h.trackServerEvent(c, analytics.EventAutoTagRuleUpdate, map[string]any{
+		"rule_id": rule.ID,
+	})
 	writeSuccess(c, rule)
 }
 
@@ -128,13 +129,9 @@ func (h *Handler) DeleteAutoTagRule(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Failed to delete rule: "+err.Error())
 		return
 	}
-	session := getSession(c)
-	if session != nil {
-		h.logAdminAction(c, &adminLogActionParams{
-			UserID: session.UserID, Username: session.Username,
-			Action: "delete_auto_tag_rule", Target: id,
-		})
-	}
+	h.trackServerEvent(c, analytics.EventAutoTagRuleDelete, map[string]any{
+		"rule_id": id,
+	})
 	writeSuccess(c, gin.H{"message": "Rule deleted"})
 }
 
@@ -177,13 +174,10 @@ func (h *Handler) ApplyAutoTagRules(c *gin.Context) {
 		}
 	}
 
-	session := getSession(c)
-	if session != nil {
-		h.logAdminAction(c, &adminLogActionParams{
-			UserID: session.UserID, Username: session.Username,
-			Action: "apply_auto_tag_rules",
-		})
-	}
+	h.trackServerEvent(c, analytics.EventAutoTagRulesApply, map[string]any{
+		"rules_evaluated": len(rules),
+		"items_affected":  affected,
+	})
 	writeSuccess(c, gin.H{"applied": len(rules), "items_affected": affected})
 }
 

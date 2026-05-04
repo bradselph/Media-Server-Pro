@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/analytics"
 )
 
 // UploadCustomThumbnail accepts a multipart image upload and stores it as the
@@ -51,13 +53,9 @@ func (h *Handler) UploadCustomThumbnail(c *gin.Context) {
 		return
 	}
 
-	session := getSession(c)
-	if session != nil {
-		h.logAdminAction(c, &adminLogActionParams{
-			UserID: session.UserID, Username: session.Username,
-			Action: "upload_custom_thumbnail", Target: id,
-		})
-	}
+	h.trackServerEvent(c, analytics.EventThumbnailUpload, map[string]any{
+		"media_id": id,
+	})
 	writeSuccess(c, gin.H{"message": "thumbnail updated"})
 }
 
@@ -75,6 +73,12 @@ func (h *Handler) CleanupThumbnails(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventThumbnailCleanup, map[string]any{
+		"orphans_removed": result.OrphansRemoved,
+		"excess_removed":  result.ExcessRemoved,
+		"corrupt_removed": result.CorruptRemoved,
+		"bytes_freed":     result.BytesFreed,
+	})
 	writeSuccess(c, map[string]any{
 		"orphans_removed": result.OrphansRemoved,
 		"excess_removed":  result.ExcessRemoved,

@@ -110,6 +110,7 @@ import type {
     AnomalyReport,
     IPSummary,
     ModuleDiagnostics,
+    AnalyticsHealth,
     MetricForecast,
     RangeComparison,
     AlertRule,
@@ -982,6 +983,10 @@ export function useAnalyticsApi() {
         // Analytics module's internal diagnostics counters.
         getDiagnostics: () =>
             api.get<ModuleDiagnostics>('/api/admin/analytics/diagnostics'),
+        // Compact health snapshot — suitable for cron/uptime monitors.
+        // Reports module healthy state, flush lag, and live subscriber count.
+        getAnalyticsHealth: () =>
+            api.get<AnalyticsHealth>('/api/admin/analytics/health'),
         // Linear-trend projection of a single metric.
         getForecast: (metric: string, days?: number) =>
             api.get<MetricForecast>(`/api/admin/analytics/forecast${buildQS({metric, days: days || undefined})}`),

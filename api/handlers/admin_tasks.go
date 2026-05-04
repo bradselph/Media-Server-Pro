@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/tasks"
 )
 
@@ -45,6 +46,7 @@ func (h *Handler) AdminRunTask(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventAdminTaskRun, map[string]any{"task_id": taskID})
 	writeSuccess(c, map[string]string{"message": "Task started"})
 }
 
@@ -69,6 +71,7 @@ func (h *Handler) AdminEnableTask(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventAdminTaskEnable, map[string]any{"task_id": taskID})
 	writeSuccess(c, map[string]string{"message": "Task enabled"})
 }
 
@@ -93,6 +96,7 @@ func (h *Handler) AdminDisableTask(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventAdminTaskDisable, map[string]any{"task_id": taskID})
 	writeSuccess(c, map[string]string{"message": "Task disabled"})
 }
 
@@ -120,5 +124,6 @@ func (h *Handler) AdminStopTask(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventAdminTaskStop, map[string]any{"task_id": taskID})
 	writeSuccess(c, map[string]string{"message": "Task stopped"})
 }

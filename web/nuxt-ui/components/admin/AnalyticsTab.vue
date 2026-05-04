@@ -6,12 +6,13 @@ import type {
   MetricTimelineEntry, CohortMetrics, HourlyHeatmapCell, QualityBucket,
   PeriodComparison, Funnel, DeviceBucket, MediaDetail, RetentionGrid,
   AnomalyReport, IPSummary, ModuleDiagnostics, MetricForecast,
-  RangeComparison, AlertRule, AlertResult,
+  RangeComparison, AlertRule, AlertResult, AuditLogEntry,
 } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime, formatBytes } from '~/utils/format'
 
 const analyticsApi = useAnalyticsApi()
+const adminApi = useAdminApi()
 const toast = useToast()
 
 // ── Filtering & view-state ──────────────────────────────────────────────────
@@ -167,6 +168,39 @@ onMounted(() => {
 const ipSummary = ref<IPSummary | null>(null)
 const diagnostics = ref<ModuleDiagnostics | null>(null)
 
+// Admin actions feed — pulls from the audit-log table (which trackServerEvent
+// mirrors auditable events into) so the dashboard can show "who did what" in
+// one place without cross-referencing module logs. The optional category
+// filter narrows the list to a subset of related actions (e.g. backups only).
+const adminActions = ref<AuditLogEntry[]>([])
+const adminActionsLoading = ref(false)
+const adminActionsCategory = ref<'all' | 'governance' | 'curation' | 'config' | 'tasks'>('all')
+// Map of category → audit_log action prefixes / exact matches. The audit_log
+// `action` column carries the analytics event name (collection_create,
+// backup_restore, etc.), so simple prefix matching is enough for grouping.
+const ADMIN_ACTION_CATEGORIES: Record<string, (action: string) => boolean> = {
+  governance: a => a.startsWith('user_role') || a.startsWith('deletion_request') || a === 'admin_action' || a === 'bulk_delete' || a === 'bulk_update' || a === 'account_delete',
+  curation: a => a.startsWith('collection_') || a.startsWith('smart_playlist_') || a.startsWith('chapter_') || a.startsWith('auto_tag_') || a === 'thumbnail_upload',
+  config: a => a === 'config_update' || a === 'follower_settings_update' || a.startsWith('api_token_'),
+  tasks: a => a.startsWith('admin_task_') || a.startsWith('backup_') || a.startsWith('scan_') || a === 'thumbnail_cleanup',
+}
+const filteredAdminActions = computed(() => {
+  if (adminActionsCategory.value === 'all') return adminActions.value
+  const pred = ADMIN_ACTION_CATEGORIES[adminActionsCategory.value]
+  return pred ? adminActions.value.filter(e => pred(e.action)) : adminActions.value
+})
+async function loadAdminActions() {
+  adminActionsLoading.value = true
+  try {
+    const resp = await adminApi.getAuditLog({ limit: 100, offset: 0 })
+    adminActions.value = resp?.items ?? []
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to load admin actions', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    adminActionsLoading.value = false
+  }
+}
+
 // Forecasts — one per headline metric. Rendered next to the period
 // comparison so admins see "is this growing?" alongside "vs last week".
 const forecastViews = ref<MetricForecast | null>(null)
@@ -220,7 +254,7 @@ const PANEL_KEYS = [
   'gaps', 'devices', 'retention', 'topUsers', 'topSearches', 'activeStreams',
   'errorPaths', 'failedLogins', 'recent', 'drill', 'topMedia',
   'contentPerf', 'daily', 'ips', 'diagnostics', 'forecast', 'rangeCompare',
-  'alerts',
+  'alerts', 'adminActions',
 ] as const
 type PanelKey = typeof PANEL_KEYS[number]
 const panelVisibility = ref<Record<PanelKey, boolean>>(
@@ -255,9 +289,9 @@ const PRESETS: Record<string, PanelKey[] | 'all'> = {
     'contentPerf', 'funnel', 'recent'],
   Operations: ['comparison', 'timeline', 'bandwidth', 'errorsChart',
     'errorPaths', 'failedLogins', 'activeStreams', 'quality', 'devices',
-    'ips', 'diagnostics', 'recent', 'drill'],
+    'ips', 'diagnostics', 'recent', 'drill', 'adminActions'],
   Security: ['comparison', 'errorsChart', 'errorPaths', 'failedLogins',
-    'ips', 'recent', 'drill'],
+    'ips', 'recent', 'drill', 'adminActions'],
   Content: ['cohort', 'timeline', 'topMedia', 'contentPerf', 'topSearches',
     'gaps', 'funnel', 'quality'],
 }
@@ -541,6 +575,10 @@ async function load() {
 
     const failed = results.filter(x => x.status === 'rejected')
     if (failed.length) toast.add({ title: `${failed.length} analytics endpoint(s) failed`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+    // Admin actions feed pulls from a different endpoint (audit-log table,
+    // not analytics_events) so it can't ride the Promise.allSettled batch
+    // above. Fire it alongside but don't block the dashboard render on it.
+    loadAdminActions()
   } finally {
     loading.value = false
   }
@@ -1818,6 +1856,61 @@ const hasTrafficActivity = computed(() =>
     </UCard>
 
     <!-- Recent Activity Feed -->
+    <!-- Admin actions feed — every governance/curation/config/task event
+         that flows through trackServerEvent's auditable list lands in
+         audit_log; this panel surfaces it without leaving the analytics
+         tab. Category chips narrow to a related subset for focused
+         reviews ("show me all backup ops today"). -->
+    <UCard v-if="panelVisibility.adminActions">
+      <template #header>
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-shield-check" class="size-4" />
+            Admin Actions
+            <span v-if="adminActionsLoading" class="text-xs font-normal text-muted">(loading…)</span>
+            <span v-else class="text-xs font-normal text-muted">({{ filteredAdminActions.length }})</span>
+          </div>
+          <div class="flex items-center gap-1 text-xs">
+            <UButton
+              v-for="cat in (['all','governance','curation','config','tasks'] as const)"
+              :key="cat"
+              size="xs"
+              :variant="adminActionsCategory === cat ? 'solid' : 'subtle'"
+              :color="adminActionsCategory === cat ? 'primary' : 'neutral'"
+              :label="cat"
+              @click="adminActionsCategory = cat"
+            />
+            <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-refresh-cw" @click="loadAdminActions" />
+          </div>
+        </div>
+      </template>
+      <div v-if="!adminActionsLoading && filteredAdminActions.length === 0" class="text-center text-sm text-muted py-3 italic">
+        No admin actions in this category yet.
+      </div>
+      <div v-else class="divide-y divide-default max-h-72 overflow-y-auto">
+        <div
+          v-for="a in filteredAdminActions"
+          :key="a.id"
+          class="py-1.5 px-1 flex items-start gap-2 text-sm hover:bg-muted/10 rounded"
+        >
+          <UBadge
+            :color="a.success ? 'neutral' : 'error'"
+            variant="subtle"
+            size="xs"
+          >
+            {{ a.action }}
+          </UBadge>
+          <div class="flex-1 min-w-0 text-xs">
+            <span v-if="a.username" class="font-medium">{{ a.username }}</span>
+            <span v-else class="italic text-muted">(system)</span>
+            <span v-if="a.resource" class="ml-2 font-mono text-muted truncate" :title="a.resource">{{ a.resource }}</span>
+            <span v-if="a.ip_address" class="ml-2 font-mono text-muted/70">{{ a.ip_address }}</span>
+          </div>
+          <span class="text-xs text-muted shrink-0">{{ new Date(a.timestamp).toLocaleTimeString() }}</span>
+        </div>
+      </div>
+    </UCard>
+
     <UCard v-if="panelVisibility.recent && recentActivity.length > 0">
       <template #header>
         <div class="font-semibold flex items-center gap-2">
@@ -2116,6 +2209,24 @@ const hasTrafficActivity = computed(() =>
                 <p class="text-[10px] text-muted mt-1 italic">
                   Bars in the early range (warning) often mean the intro is losing viewers; bars near 100% (success) mean the media is being completed.
                 </p>
+              </div>
+              <!-- Search clickthrough — queries that landed viewers on this
+                   item, inferred from search→view correlation in the same
+                   session within 5 minutes. Empty when no traffic arrived
+                   from the search box. -->
+              <div v-if="mediaDetail.search_sources && mediaDetail.search_sources.length > 0" class="mt-4">
+                <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-1">Search queries that landed here</p>
+                <div class="space-y-1">
+                  <div
+                    v-for="(s, i) in mediaDetail.search_sources"
+                    :key="i"
+                    class="flex items-center gap-2 text-xs"
+                  >
+                    <UIcon name="i-lucide-search" class="size-3 text-muted shrink-0" />
+                    <span class="font-mono truncate flex-1" :title="s.query">{{ s.query }}</span>
+                    <UBadge size="xs" variant="subtle" color="primary">{{ s.count }}</UBadge>
+                  </div>
+                </div>
               </div>
             </div>
             <div v-else class="text-center text-sm text-muted py-4">

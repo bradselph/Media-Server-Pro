@@ -511,6 +511,21 @@ export interface ModuleDiagnostics {
     healthy: boolean
 }
 
+// Compact health snapshot for external uptime monitors. Same backend
+// state as ModuleDiagnostics, framed for "is this running OK right now?"
+// rather than "what's it doing internally?". flush_lag_seconds > ~60
+// means the persistence ticker is stuck; alert on it.
+export interface AnalyticsHealth {
+    healthy: boolean
+    status: string
+    cache_entries: number
+    dirty_days: number
+    active_subscribers: number
+    last_flush: string
+    flush_lag_seconds: number
+    checked_at: string
+}
+
 // Admin-defined threshold check against a DailyStats metric. Persisted
 // to browser localStorage and re-evaluated on every dashboard load.
 export interface AlertRule {
@@ -609,6 +624,14 @@ export interface MediaDetail {
     view_timeline: MetricTimelineEntry[]
     playback_timeline: MetricTimelineEntry[]
     abandonment: AbandonmentBucket[]
+    search_sources: SearchClickthrough[]
+}
+
+// Search query that preceded a view of this media item, inferred from the
+// event timeline (search → view within the same session, ≤5 minutes).
+export interface SearchClickthrough {
+    query: string
+    count: number
 }
 
 // Per-user aggregated analytics returned by /admin/users/:username/analytics.

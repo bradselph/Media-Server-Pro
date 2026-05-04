@@ -49,6 +49,11 @@ type Module struct {
 	// flush loop can drain it without blocking the hot event path.
 	dirtyDays map[string]struct{}
 	dirtyMu   sync.Mutex
+	// lastFlush records when the last successful flushDirtyDailyStats run
+	// completed. Read by AnalyticsHealth so external monitors can detect a
+	// stuck flush loop (lag >> 30s ticker = something is wrong).
+	lastFlush   time.Time
+	lastFlushMu sync.RWMutex
 	// aggCache memoises expensive aggregation queries (top-users, top-searches,
 	// error-paths, heatmap, devices, etc.) for ~30s so dashboard refreshes
 	// don't hammer the analytics_events table with the same scan repeatedly.
@@ -236,6 +241,9 @@ func (m *Module) flushDirtyDailyStats(ctx context.Context) {
 			m.markDailyDirty(date)
 		}
 	}
+	m.lastFlushMu.Lock()
+	m.lastFlush = time.Now()
+	m.lastFlushMu.Unlock()
 }
 
 // loadDailyStats hydrates the in-memory dailyStats map from the database.

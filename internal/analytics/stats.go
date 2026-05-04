@@ -1387,14 +1387,24 @@ type AbandonmentBucket struct {
 
 // MediaDetail aggregates everything an admin would want to see for a single
 // media item — the cached ViewStats plus a 30-day timeline of views and
-// playbacks plus the abandonment histogram. Returned by GET
-// /admin/analytics/media/:id.
+// playbacks plus the abandonment histogram plus the search queries that
+// landed on this item. Returned by GET /admin/analytics/media/:id.
 type MediaDetail struct {
 	MediaID          string                `json:"media_id"`
 	Stats            models.ViewStats      `json:"stats"`
 	ViewTimeline     []MetricTimelineEntry `json:"view_timeline"`
 	PlaybackTimeline []MetricTimelineEntry `json:"playback_timeline"`
 	Abandonment      []AbandonmentBucket   `json:"abandonment"`
+	SearchSources    []SearchClickthrough  `json:"search_sources"`
+}
+
+// SearchClickthrough captures a search query that preceded a view of a given
+// media item. Counts are inferred by correlating view events with the most
+// recent search event from the same session within a 5-minute window — no
+// extra client-side instrumentation required.
+type SearchClickthrough struct {
+	Query string `json:"query"`
+	Count int    `json:"count"`
 }
 
 // IPBucket pairs an IP address with traffic volume metrics. The dashboard
@@ -1534,6 +1544,53 @@ type ModuleDiagnostics struct {
 	MediaTracked     int  `json:"media_tracked"`
 	MaxReconstruct   int  `json:"max_reconstruct_events"`
 	Healthy          bool `json:"healthy"`
+}
+
+// AnalyticsHealth is a compact health snapshot suitable for external uptime
+// monitors and cron pollers. Returns enough state for an alert rule like
+// "page if !healthy OR flush_lag_seconds > 120 OR dirty_days > 50".
+type AnalyticsHealth struct {
+	Healthy           bool      `json:"healthy"`
+	Status            string    `json:"status"`
+	CacheEntries      int       `json:"cache_entries"`
+	DirtyDays         int       `json:"dirty_days"`
+	ActiveSubscribers int       `json:"active_subscribers"`
+	LastFlush         time.Time `json:"last_flush"`         // zero if never flushed
+	FlushLagSeconds   float64   `json:"flush_lag_seconds"`  // seconds since last successful flush
+	CheckedAt         time.Time `json:"checked_at"`
+}
+
+// Health returns a compact module-health snapshot. See AnalyticsHealth.
+//
+// Cheap — all reads are in-memory under existing fine-grained locks. Safe to
+// call from a public route (no DB I/O), so no rate limiting is required.
+func (m *Module) AnalyticsHealth() AnalyticsHealth {
+	now := time.Now()
+	h := AnalyticsHealth{CheckedAt: now}
+	m.healthMu.RLock()
+	h.Healthy = m.healthy
+	h.Status = m.healthMsg
+	m.healthMu.RUnlock()
+	if m.cache != nil {
+		m.cache.mu.Lock()
+		h.CacheEntries = len(m.cache.entries)
+		m.cache.mu.Unlock()
+	}
+	m.dirtyMu.Lock()
+	h.DirtyDays = len(m.dirtyDays)
+	m.dirtyMu.Unlock()
+	if m.subs != nil {
+		m.subs.mu.RLock()
+		h.ActiveSubscribers = len(m.subs.subs)
+		m.subs.mu.RUnlock()
+	}
+	m.lastFlushMu.RLock()
+	h.LastFlush = m.lastFlush
+	m.lastFlushMu.RUnlock()
+	if !h.LastFlush.IsZero() {
+		h.FlushLagSeconds = now.Sub(h.LastFlush).Seconds()
+	}
+	return h
 }
 
 // GetDiagnostics returns the module's internal counters. Cheap — all data
@@ -1913,6 +1970,122 @@ func (m *Module) GetMediaDetail(ctx context.Context, mediaID string, days int) M
 			Range: strconv.Itoa(i*10) + "-" + strconv.Itoa((i+1)*10) + "%",
 			Count: count,
 		}
+	}
+	out.SearchSources = m.searchClickthroughForMedia(ctx, mediaID, days, 10)
+	return out
+}
+
+// searchClickthroughForMedia infers which search queries led to a view of
+// the given media item. For each view event in the window, finds the most
+// recent search event from the same session (or same user, when no session
+// id is available) within 5 minutes and counts the resulting query.
+//
+// Window choice: 5 minutes is long enough to capture "search → scroll →
+// click → load player" in slow conditions but short enough that a totally
+// unrelated later view from the same session isn't attributed to the
+// earlier search.
+func (m *Module) searchClickthroughForMedia(ctx context.Context, mediaID string, days, limit int) []SearchClickthrough {
+	if mediaID == "" || m.eventRepo == nil {
+		return nil
+	}
+	if days <= 0 {
+		days = 30
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	cutoff := time.Now().AddDate(0, 0, -days).Format(time.RFC3339)
+	views, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		Type:      "view",
+		MediaID:   mediaID,
+		StartDate: cutoff,
+		Limit:     5000,
+	})
+	if err != nil {
+		m.log.Error("searchClickthroughForMedia: list views: %v", err)
+		return nil
+	}
+	if len(views) == 0 {
+		return nil
+	}
+	searches, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		Type:      EventSearch,
+		StartDate: cutoff,
+		Limit:     20000,
+	})
+	if err != nil {
+		m.log.Error("searchClickthroughForMedia: list searches: %v", err)
+		return nil
+	}
+	if len(searches) == 0 {
+		return nil
+	}
+	// Build a lookup: session_id (or user_id when no session) → searches
+	// sorted by timestamp ascending. Each list is small per key (typically
+	// <50), so a linear scan per view event is cheap.
+	type searchEvent struct {
+		ts    time.Time
+		query string
+	}
+	bySession := make(map[string][]searchEvent)
+	byUser := make(map[string][]searchEvent)
+	for _, ev := range searches {
+		q, _ := ev.Data["query"].(string)
+		if q == "" {
+			continue
+		}
+		s := searchEvent{ts: ev.Timestamp, query: q}
+		if ev.SessionID != "" {
+			bySession[ev.SessionID] = append(bySession[ev.SessionID], s)
+		} else if ev.UserID != "" {
+			byUser[ev.UserID] = append(byUser[ev.UserID], s)
+		}
+	}
+	const window = 5 * time.Minute
+	queryCounts := make(map[string]int)
+	for _, view := range views {
+		var candidates []searchEvent
+		if view.SessionID != "" {
+			candidates = bySession[view.SessionID]
+		} else if view.UserID != "" {
+			candidates = byUser[view.UserID]
+		}
+		// Pick the most recent search whose timestamp is at or before the
+		// view AND within the window. A linear backward scan handles the
+		// typical small candidate list cheaply.
+		var best searchEvent
+		var found bool
+		for _, s := range candidates {
+			if s.ts.After(view.Timestamp) {
+				continue
+			}
+			if view.Timestamp.Sub(s.ts) > window {
+				continue
+			}
+			if !found || s.ts.After(best.ts) {
+				best = s
+				found = true
+			}
+		}
+		if found {
+			queryCounts[best.query]++
+		}
+	}
+	if len(queryCounts) == 0 {
+		return nil
+	}
+	out := make([]SearchClickthrough, 0, len(queryCounts))
+	for q, c := range queryCounts {
+		out = append(out, SearchClickthrough{Query: q, Count: c})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Query < out[j].Query
+	})
+	if len(out) > limit {
+		out = out[:limit]
 	}
 	return out
 }
