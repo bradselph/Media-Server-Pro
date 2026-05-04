@@ -641,3 +641,47 @@ func TestEvaluateAlerts_UnknownOperatorDoesNotTrigger(t *testing.T) {
 		t.Errorf("unknown operator should not trigger, got %+v", results)
 	}
 }
+
+// ── Health snapshot (stats.go AnalyticsHealth) ──────────────────────────────
+
+func TestAnalyticsHealth_BeforeFirstFlushReportsZeroLag(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	m.healthMu.Lock()
+	m.healthy = true
+	m.healthMsg = "Running"
+	m.healthMu.Unlock()
+	h := m.AnalyticsHealth()
+	if !h.Healthy || h.Status != "Running" {
+		t.Errorf("expected healthy=true status=Running, got %+v", h)
+	}
+	// LastFlush is the zero time before the first flush, and FlushLagSeconds
+	// must NOT report time.Since(zero) — that would be ~57 years on every
+	// call and trigger every alert immediately.
+	if !h.LastFlush.IsZero() {
+		t.Errorf("expected zero last_flush before first flush, got %v", h.LastFlush)
+	}
+	if h.FlushLagSeconds != 0 {
+		t.Errorf("expected 0s flush lag before first flush, got %f", h.FlushLagSeconds)
+	}
+}
+
+func TestAnalyticsHealth_AfterFlushReportsLag(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	m.lastFlushMu.Lock()
+	m.lastFlush = time.Now().Add(-45 * time.Second)
+	m.lastFlushMu.Unlock()
+	h := m.AnalyticsHealth()
+	if h.FlushLagSeconds < 44 || h.FlushLagSeconds > 60 {
+		t.Errorf("expected ~45s flush lag, got %f", h.FlushLagSeconds)
+	}
+}
+
+func TestAnalyticsHealth_CountsDirtyDays(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	m.markDailyDirty("2026-01-01")
+	m.markDailyDirty("2026-01-02")
+	m.markDailyDirty("2026-01-03")
+	if h := m.AnalyticsHealth(); h.DirtyDays != 3 {
+		t.Errorf("expected 3 dirty days, got %d", h.DirtyDays)
+	}
+}

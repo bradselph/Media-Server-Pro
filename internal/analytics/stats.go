@@ -1536,6 +1536,53 @@ type ModuleDiagnostics struct {
 	Healthy          bool `json:"healthy"`
 }
 
+// AnalyticsHealth is a compact health snapshot suitable for external uptime
+// monitors and cron pollers. Returns enough state for an alert rule like
+// "page if !healthy OR flush_lag_seconds > 120 OR dirty_days > 50".
+type AnalyticsHealth struct {
+	Healthy           bool      `json:"healthy"`
+	Status            string    `json:"status"`
+	CacheEntries      int       `json:"cache_entries"`
+	DirtyDays         int       `json:"dirty_days"`
+	ActiveSubscribers int       `json:"active_subscribers"`
+	LastFlush         time.Time `json:"last_flush"`         // zero if never flushed
+	FlushLagSeconds   float64   `json:"flush_lag_seconds"`  // seconds since last successful flush
+	CheckedAt         time.Time `json:"checked_at"`
+}
+
+// Health returns a compact module-health snapshot. See AnalyticsHealth.
+//
+// Cheap — all reads are in-memory under existing fine-grained locks. Safe to
+// call from a public route (no DB I/O), so no rate limiting is required.
+func (m *Module) AnalyticsHealth() AnalyticsHealth {
+	now := time.Now()
+	h := AnalyticsHealth{CheckedAt: now}
+	m.healthMu.RLock()
+	h.Healthy = m.healthy
+	h.Status = m.healthMsg
+	m.healthMu.RUnlock()
+	if m.cache != nil {
+		m.cache.mu.Lock()
+		h.CacheEntries = len(m.cache.entries)
+		m.cache.mu.Unlock()
+	}
+	m.dirtyMu.Lock()
+	h.DirtyDays = len(m.dirtyDays)
+	m.dirtyMu.Unlock()
+	if m.subs != nil {
+		m.subs.mu.RLock()
+		h.ActiveSubscribers = len(m.subs.subs)
+		m.subs.mu.RUnlock()
+	}
+	m.lastFlushMu.RLock()
+	h.LastFlush = m.lastFlush
+	m.lastFlushMu.RUnlock()
+	if !h.LastFlush.IsZero() {
+		h.FlushLagSeconds = now.Sub(h.LastFlush).Seconds()
+	}
+	return h
+}
+
 // GetDiagnostics returns the module's internal counters. Cheap — all data
 // is in-memory under existing locks.
 func (m *Module) GetDiagnostics() ModuleDiagnostics {

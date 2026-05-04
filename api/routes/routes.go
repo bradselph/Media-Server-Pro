@@ -688,6 +688,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/analytics/anomalies", h.AdminGetAnomalies)
 	adminGrp.GET("/analytics/ips", h.AdminGetIPSummary)
 	adminGrp.GET("/analytics/diagnostics", h.AdminGetAnalyticsDiagnostics)
+	adminGrp.GET("/analytics/health", h.AdminGetAnalyticsHealth)
 	adminGrp.GET("/analytics/forecast", h.AdminGetMetricForecast)
 	adminGrp.GET("/analytics/export-all", h.AdminExportAll)
 	adminGrp.GET("/analytics/range-compare", h.AdminGetRangeComparison)

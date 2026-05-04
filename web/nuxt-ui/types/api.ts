@@ -511,6 +511,21 @@ export interface ModuleDiagnostics {
     healthy: boolean
 }
 
+// Compact health snapshot for external uptime monitors. Same backend
+// state as ModuleDiagnostics, framed for "is this running OK right now?"
+// rather than "what's it doing internally?". flush_lag_seconds > ~60
+// means the persistence ticker is stuck; alert on it.
+export interface AnalyticsHealth {
+    healthy: boolean
+    status: string
+    cache_entries: number
+    dirty_days: number
+    active_subscribers: number
+    last_flush: string
+    flush_lag_seconds: number
+    checked_at: string
+}
+
 // Admin-defined threshold check against a DailyStats metric. Persisted
 // to browser localStorage and re-evaluated on every dashboard load.
 export interface AlertRule {

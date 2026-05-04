@@ -890,6 +890,21 @@ func (h *Handler) AdminGetAnalyticsDiagnostics(c *gin.Context) {
 	writeSuccess(c, h.analytics.GetDiagnostics())
 }
 
+// AdminGetAnalyticsHealth returns a compact health snapshot suitable for
+// external uptime monitors and cron pollers. Reports module healthy state,
+// flush lag, and live subscriber count. Returns 503 with available=false if
+// the analytics module is not initialised so monitors don't get a stale 200.
+func (h *Handler) AdminGetAnalyticsHealth(c *gin.Context) {
+	if h.analytics == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"available": false,
+			"healthy":   false,
+		})
+		return
+	}
+	writeSuccess(c, h.analytics.AnalyticsHealth())
+}
+
 // AdminGetAnomalies returns daily metrics that spiked or dipped beyond
 // the rolling-window threshold. Query: z (default 2.5), window (1-90,
 // default 14).
