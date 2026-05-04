@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AnalyticsSummary, DailyStats, TopMediaItem, EventStats, EventTypeCounts, AnalyticsEvent, ContentPerformanceItem, UserAnalytics } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
-import { formatWatchTime } from '~/utils/format'
+import { formatWatchTime, formatBytes } from '~/utils/format'
 
 const analyticsApi = useAnalyticsApi()
 const toast = useToast()
@@ -218,13 +218,40 @@ const trafficGroups = computed<TrafficGroup[]>(() => {
       title: 'Admin & System',
       items: [
         { label: 'Admin Actions', value: s.today_admin_actions ?? 0, icon: 'i-lucide-shield', color: 'text-slate-500' },
+        { label: 'Bulk Deletes', value: s.today_bulk_deletes ?? 0, icon: 'i-lucide-trash', color: 'text-error' },
+        { label: 'Bulk Updates', value: s.today_bulk_updates ?? 0, icon: 'i-lucide-edit', color: 'text-warning' },
+        { label: 'Role Changes', value: s.today_user_role_changes ?? 0, icon: 'i-lucide-user-cog', color: 'text-primary' },
+        { label: 'Prefs Changed', value: s.today_preferences_changes ?? 0, icon: 'i-lucide-sliders', color: 'text-muted' },
         { label: 'Tokens Created', value: s.today_api_tokens_created ?? 0, icon: 'i-lucide-key-round', color: 'text-fuchsia-500' },
         { label: 'Tokens Revoked', value: s.today_api_tokens_revoked ?? 0, icon: 'i-lucide-key-square', color: 'text-muted' },
         { label: 'Media Deletions', value: s.today_media_deletions ?? 0, icon: 'i-lucide-trash-2', color: 'text-error' },
         { label: 'Server Errors', value: s.today_server_errors ?? 0, icon: 'i-lucide-alert-octagon', color: 'text-red-600' },
+        { label: 'Mature Blocked', value: s.today_mature_blocked ?? 0, icon: 'i-lucide-shield-x', color: 'text-warning' },
+        { label: 'Permission Denied', value: s.today_permission_denied ?? 0, icon: 'i-lucide-lock', color: 'text-error' },
       ],
     },
   ]
+})
+
+// Server-health summary — surfaces failure-side counters in one place so
+// operators can see at a glance whether the server is misbehaving today
+// without scanning the whole 24-card breakdown.
+const serverHealth = computed(() => {
+  const s = summary.value
+  if (!s) return null
+  const errors = (s.today_server_errors ?? 0) + (s.today_hls_errors ?? 0) + (s.today_uploads_failed ?? 0)
+  const blocks = (s.today_mature_blocked ?? 0) + (s.today_permission_denied ?? 0) + (s.today_logins_failed ?? 0)
+  return {
+    errors,
+    blocks,
+    serverErrors: s.today_server_errors ?? 0,
+    hlsErrors: s.today_hls_errors ?? 0,
+    uploadFails: s.today_uploads_failed ?? 0,
+    matureBlocked: s.today_mature_blocked ?? 0,
+    permDenied: s.today_permission_denied ?? 0,
+    failedLogins: s.today_logins_failed ?? 0,
+    healthy: errors === 0,
+  }
 })
 
 // Whether ANY traffic metric has activity today — used to gate the whole
@@ -277,13 +304,15 @@ const hasTrafficActivity = computed(() =>
       <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
     </div>
 
-    <!-- Summary cards (6 metrics) -->
-    <div v-if="summary" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+    <!-- Summary cards (8 metrics — added today bandwidth + active streams). -->
+    <div v-if="summary" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
       <UCard
         v-for="item in [
           { label: 'Total Views', value: (summary.total_views ?? 0).toLocaleString(), icon: 'i-lucide-eye' },
           { label: 'Today Views', value: (summary.today_views ?? 0).toLocaleString(), icon: 'i-lucide-calendar' },
           { label: 'Watch Time', value: formatWatchTime(summary.total_watch_time), icon: 'i-lucide-clock' },
+          { label: 'Today Bandwidth', value: formatBytes(summary.today_bytes_served ?? 0), icon: 'i-lucide-network' },
+          { label: 'Streams Today', value: (summary.today_stream_starts ?? 0).toLocaleString(), icon: 'i-lucide-play-circle' },
           { label: 'Total Events', value: (summary.total_events ?? 0).toLocaleString(), icon: 'i-lucide-zap' },
           { label: 'Unique Clients', value: (summary.unique_clients ?? 0).toLocaleString(), icon: 'i-lucide-users' },
           { label: 'Active Sessions', value: (summary.active_sessions ?? 0).toLocaleString(), icon: 'i-lucide-activity' },
@@ -300,6 +329,27 @@ const hasTrafficActivity = computed(() =>
         </div>
       </UCard>
     </div>
+
+    <!-- Server Health banner — only shows when something abnormal is happening
+         today. Splits into "errors" (bad) and "blocks" (security signal). -->
+    <UAlert
+      v-if="serverHealth && (serverHealth.errors > 0 || serverHealth.blocks > 0)"
+      :color="serverHealth.errors > 0 ? 'error' : 'warning'"
+      variant="subtle"
+      :icon="serverHealth.errors > 0 ? 'i-lucide-alert-octagon' : 'i-lucide-shield-alert'"
+      :title="serverHealth.errors > 0 ? `Server health: ${serverHealth.errors} error(s) today` : `Security activity: ${serverHealth.blocks} block(s) today`"
+    >
+      <template #description>
+        <div class="text-xs flex flex-wrap gap-x-4 gap-y-1 mt-1">
+          <span v-if="serverHealth.serverErrors > 0">5xx responses: <strong>{{ serverHealth.serverErrors }}</strong></span>
+          <span v-if="serverHealth.hlsErrors > 0">HLS errors: <strong>{{ serverHealth.hlsErrors }}</strong></span>
+          <span v-if="serverHealth.uploadFails > 0">Upload failures: <strong>{{ serverHealth.uploadFails }}</strong></span>
+          <span v-if="serverHealth.failedLogins > 0">Failed logins: <strong>{{ serverHealth.failedLogins }}</strong></span>
+          <span v-if="serverHealth.matureBlocked > 0">Mature blocked: <strong>{{ serverHealth.matureBlocked }}</strong></span>
+          <span v-if="serverHealth.permDenied > 0">Permission denied: <strong>{{ serverHealth.permDenied }}</strong></span>
+        </div>
+      </template>
+    </UAlert>
 
     <!-- Today's Traffic Breakdown — grouped, only shows non-zero counters so
          a quiet day stays visually quiet instead of rendering 24 zero cards. -->
@@ -439,8 +489,16 @@ const hasTrafficActivity = computed(() =>
       </template>
       <div class="divide-y divide-default max-h-48 overflow-y-auto">
         <div v-for="(a, i) in recentActivity" :key="i" class="py-1.5 flex items-center gap-2 text-sm">
-          <UBadge :label="a.type" :color="a.type === 'error' ? 'error' : 'neutral'" variant="subtle" size="xs" />
-          <span class="flex-1 truncate text-muted" :title="a.filename">{{ a.filename }}</span>
+          <UBadge :label="a.type" :color="a.type === 'error' || a.type === 'server_error' || a.type === 'login_failed' ? 'error' : 'neutral'" variant="subtle" size="xs" />
+          <span class="flex-1 truncate text-muted">
+            <!-- Media events: filename. Auth/admin events: username + IP.
+                 Both display to keep the feed scannable. -->
+            <span v-if="a.filename" :title="a.filename">{{ a.filename }}</span>
+            <span v-else-if="a.username" class="font-medium">{{ a.username }}</span>
+            <span v-else-if="a.ip_address" class="font-mono text-xs">{{ a.ip_address }}</span>
+            <span v-else class="italic">(system)</span>
+            <span v-if="a.username && a.ip_address" class="ml-2 font-mono text-xs text-muted/70">{{ a.ip_address }}</span>
+          </span>
           <span class="text-xs text-muted shrink-0">{{ a.timestamp ? new Date(a.timestamp * 1000).toLocaleTimeString() : '' }}</span>
         </div>
       </div>

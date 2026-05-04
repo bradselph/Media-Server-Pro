@@ -72,6 +72,17 @@ const (
 	EventAPITokenRevoke   = "api_token_revoke"
 	EventAdminAction      = "admin_action"
 	EventServerError      = "server_error"
+
+	// Engagement / access-control / admin-bulk events. Each one corresponds to
+	// a column on daily_stats and a today_<x> field on the summary.
+	EventStreamStart        = "stream_start"
+	EventStreamEnd          = "stream_end"
+	EventMatureBlocked      = "mature_blocked"
+	EventPermissionDenied   = "permission_denied"
+	EventPreferencesChange  = "preferences_change"
+	EventBulkDelete         = "bulk_delete"
+	EventBulkUpdate         = "bulk_update"
+	EventUserRoleChange     = "user_role_change"
 )
 
 // ClientEventInput holds parameters for SubmitClientEvent.
@@ -197,6 +208,16 @@ func (m *Module) TrackTrafficEvent(ctx context.Context, params TrafficEventParam
 		UserAgent: params.UserAgent,
 		Data:      data,
 	})
+}
+
+// TrackServerError records a 5xx response or recovered panic so the dashboard
+// can show a real-time server-health signal. Called from middleware so every
+// handler benefits without per-call instrumentation.
+func (m *Module) TrackServerError(ctx context.Context, params TrafficEventParams) {
+	if params.Type == "" {
+		params.Type = EventServerError
+	}
+	m.TrackTrafficEvent(ctx, params)
 }
 
 // TrackDownload records a media download event.

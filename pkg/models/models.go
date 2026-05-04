@@ -570,6 +570,19 @@ type DailyStats struct {
 	APITokensRevoked   int `json:"api_tokens_revoked" gorm:"column:api_tokens_revoked;not null;default:0"`
 	AdminActions       int `json:"admin_actions" gorm:"column:admin_actions;not null;default:0"`
 	ServerErrors       int `json:"server_errors" gorm:"column:server_errors;not null;default:0"`
+
+	// Engagement / access-control / admin-bulk traffic. BytesServed is the
+	// only float64 column — populated from stream-end event payloads, not
+	// counted as a discrete tick.
+	StreamStarts       int     `json:"stream_starts" gorm:"column:stream_starts;not null;default:0"`
+	StreamEnds         int     `json:"stream_ends" gorm:"column:stream_ends;not null;default:0"`
+	BytesServed        int64   `json:"bytes_served" gorm:"column:bytes_served;not null;default:0"`
+	MatureBlocked      int     `json:"mature_blocked" gorm:"column:mature_blocked;not null;default:0"`
+	PermissionDenied   int     `json:"permission_denied" gorm:"column:permission_denied;not null;default:0"`
+	PreferencesChanges int     `json:"preferences_changes" gorm:"column:preferences_changes;not null;default:0"`
+	BulkDeletes        int     `json:"bulk_deletes" gorm:"column:bulk_deletes;not null;default:0"`
+	BulkUpdates        int     `json:"bulk_updates" gorm:"column:bulk_updates;not null;default:0"`
+	UserRoleChanges    int     `json:"user_role_changes" gorm:"column:user_role_changes;not null;default:0"`
 }
 
 // TableName specifies the table name for GORM.

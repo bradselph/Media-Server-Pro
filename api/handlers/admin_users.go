@@ -207,6 +207,25 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 
 	h.logAdminAction(c, &adminLogActionParams{Action: "update_user", Target: username, Details: updates})
 
+	// Emit a user_role_change event when role/type/enabled changed —
+	// auditable, dashboardable, and useful for security review.
+	if _, ok := updates["role"]; ok {
+		h.trackServerEvent(c, "user_role_change", map[string]any{
+			"username": username,
+			"role":     req.Role,
+		})
+	} else if _, ok := updates["type"]; ok {
+		h.trackServerEvent(c, "user_role_change", map[string]any{
+			"username": username,
+			"type":     req.Type,
+		})
+	} else if req.Enabled != nil {
+		h.trackServerEvent(c, "user_role_change", map[string]any{
+			"username": username,
+			"enabled":  *req.Enabled,
+		})
+	}
+
 	user, err := h.auth.GetUser(c.Request.Context(), username)
 	if err != nil {
 		h.log.Error("Failed to fetch updated user %s: %v", username, err)

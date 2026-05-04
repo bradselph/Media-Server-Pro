@@ -51,6 +51,17 @@ type Summary struct {
 	TodayAPITokensRevoked   int `json:"today_api_tokens_revoked"`
 	TodayAdminActions       int `json:"today_admin_actions"`
 	TodayServerErrors       int `json:"today_server_errors"`
+
+	// Engagement / access-control / admin-bulk projections.
+	TodayStreamStarts       int   `json:"today_stream_starts"`
+	TodayStreamEnds         int   `json:"today_stream_ends"`
+	TodayBytesServed        int64 `json:"today_bytes_served"`
+	TodayMatureBlocked      int   `json:"today_mature_blocked"`
+	TodayPermissionDenied   int   `json:"today_permission_denied"`
+	TodayPreferencesChanges int   `json:"today_preferences_changes"`
+	TodayBulkDeletes        int   `json:"today_bulk_deletes"`
+	TodayBulkUpdates        int   `json:"today_bulk_updates"`
+	TodayUserRoleChanges    int   `json:"today_user_role_changes"`
 }
 
 // Stats holds statistics for metrics export.
@@ -152,6 +163,31 @@ func (m *Module) updateDailyStatsLocked(event models.AnalyticsEvent, today strin
 		daily.AdminActions++
 	case EventServerError:
 		daily.ServerErrors++
+	case EventStreamStart:
+		daily.StreamStarts++
+	case EventStreamEnd:
+		daily.StreamEnds++
+		// stream_end events carry the bytes_sent total for the session; sum
+		// these into BytesServed so the dashboard can show a real bandwidth
+		// number rather than a session count alone.
+		if bs, ok := event.Data["bytes_sent"].(float64); ok && bs > 0 {
+			daily.BytesServed += int64(bs)
+		}
+		if bs, ok := event.Data["bytes_sent"].(int64); ok && bs > 0 {
+			daily.BytesServed += bs
+		}
+	case EventMatureBlocked:
+		daily.MatureBlocked++
+	case EventPermissionDenied:
+		daily.PermissionDenied++
+	case EventPreferencesChange:
+		daily.PreferencesChanges++
+	case EventBulkDelete:
+		daily.BulkDeletes++
+	case EventBulkUpdate:
+		daily.BulkUpdates++
+	case EventUserRoleChange:
+		daily.UserRoleChanges++
 	}
 }
 
@@ -575,6 +611,15 @@ func (m *Module) GetSummary(ctx context.Context) Summary {
 		summary.TodayAPITokensRevoked = daily.APITokensRevoked
 		summary.TodayAdminActions = daily.AdminActions
 		summary.TodayServerErrors = daily.ServerErrors
+		summary.TodayStreamStarts = daily.StreamStarts
+		summary.TodayStreamEnds = daily.StreamEnds
+		summary.TodayBytesServed = daily.BytesServed
+		summary.TodayMatureBlocked = daily.MatureBlocked
+		summary.TodayPermissionDenied = daily.PermissionDenied
+		summary.TodayPreferencesChanges = daily.PreferencesChanges
+		summary.TodayBulkDeletes = daily.BulkDeletes
+		summary.TodayBulkUpdates = daily.BulkUpdates
+		summary.TodayUserRoleChanges = daily.UserRoleChanges
 	}
 	for _, stats := range m.mediaStats {
 		summary.TotalViews += stats.TotalViews
@@ -742,6 +787,28 @@ func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 		daily.AdminActions++
 	case EventServerError:
 		daily.ServerErrors++
+	case EventStreamStart:
+		daily.StreamStarts++
+	case EventStreamEnd:
+		daily.StreamEnds++
+		if bs, ok := event.Data["bytes_sent"].(float64); ok && bs > 0 {
+			daily.BytesServed += int64(bs)
+		}
+		if bs, ok := event.Data["bytes_sent"].(int64); ok && bs > 0 {
+			daily.BytesServed += bs
+		}
+	case EventMatureBlocked:
+		daily.MatureBlocked++
+	case EventPermissionDenied:
+		daily.PermissionDenied++
+	case EventPreferencesChange:
+		daily.PreferencesChanges++
+	case EventBulkDelete:
+		daily.BulkDeletes++
+	case EventBulkUpdate:
+		daily.BulkUpdates++
+	case EventUserRoleChange:
+		daily.UserRoleChanges++
 	case "playback":
 		// Reconstruct TotalWatchTime in daily stats (mirrors live path in applyPlaybackToDailyStatsLocked).
 		m.applyPlaybackToDailyStatsLocked(event, daily)

@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/api/handlers"
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/auth"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/logger"
@@ -21,6 +22,52 @@ import (
 	"media-server-pro/pkg/models"
 	"media-server-pro/web"
 )
+
+// ginAnalyticsErrorTracker returns a middleware that emits a server_error
+// analytics event whenever the response status is 5xx. Mounting this at the
+// engine level means every handler — including those that call c.JSON or
+// c.AbortWithStatus directly — contributes to the dashboard's server-health
+// signal without per-handler instrumentation.
+//
+// Static-asset paths and HEAD requests are skipped to keep the volume of
+// "real" backend errors clean from CDN-style 404 noise.
+func ginAnalyticsErrorTracker(analyticsMod *analytics.Module) gin.HandlerFunc {
+	if analyticsMod == nil {
+		return func(c *gin.Context) { c.Next() }
+	}
+	skipPrefixes := []string{"/_nuxt/", "/web/static/", "/favicon", "/thumbnails/"}
+	return func(c *gin.Context) {
+		c.Next()
+		status := c.Writer.Status()
+		if status < 500 {
+			return
+		}
+		path := c.Request.URL.Path
+		for _, p := range skipPrefixes {
+			if strings.HasPrefix(path, p) {
+				return
+			}
+		}
+		userID, sessionID := "", ""
+		if v, ok := c.Get("session"); ok {
+			if s, sok := v.(*models.Session); sok && s != nil {
+				userID = s.UserID
+				sessionID = s.ID
+			}
+		}
+		analyticsMod.TrackServerError(c.Request.Context(), analytics.TrafficEventParams{
+			UserID:    userID,
+			SessionID: sessionID,
+			IPAddress: c.ClientIP(),
+			UserAgent: c.Request.UserAgent(),
+			Data: map[string]any{
+				"status": status,
+				"method": c.Request.Method,
+				"path":   path,
+			},
+		})
+	}
+}
 
 const (
 	pathMedia             = "/media"
@@ -325,6 +372,11 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 
 	// Apply session middleware to all routes
 	r.Use(sessionAuth(authModule))
+
+	// Track 5xx responses as server_error analytics events. Mounted here so
+	// it sees the final response status from every downstream handler. No-op
+	// when analytics is disabled.
+	r.Use(ginAnalyticsErrorTracker(h.Analytics()))
 
 	// -----------------------------------------------------------------------
 	// Direct routes (not under /api)

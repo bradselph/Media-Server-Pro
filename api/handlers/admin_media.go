@@ -458,12 +458,14 @@ func (h *Handler) processOneBulkMediaItem(c *gin.Context, id, action string, upd
 		}
 		h.cleanupDeletedMedia(c.Request.Context(), id, path)
 		h.logAdminAction(c, &adminLogActionParams{Action: "bulk_delete_media", Target: id})
+		h.trackServerEvent(c, "bulk_delete", map[string]any{"media_id": id, "scope": "media"})
 		return nil
 	case "update":
 		if err := h.media.UpdateMetadata(path, updates); err != nil {
 			return err
 		}
 		h.logAdminAction(c, &adminLogActionParams{Action: "bulk_update_media", Target: id})
+		h.trackServerEvent(c, "bulk_update", map[string]any{"media_id": id, "scope": "media"})
 		return nil
 	default:
 		return fmt.Errorf("unsupported bulk action: %s", action)

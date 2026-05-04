@@ -339,8 +339,28 @@ export interface AnalyticsSummary {
     today_api_tokens_revoked?: number
     today_admin_actions?: number
     today_server_errors?: number
+    today_stream_starts?: number
+    today_stream_ends?: number
+    today_bytes_served?: number
+    today_mature_blocked?: number
+    today_permission_denied?: number
+    today_preferences_changes?: number
+    today_bulk_deletes?: number
+    today_bulk_updates?: number
+    today_user_role_changes?: number
     top_viewed: TopMediaItem[]
-    recent_activity: { type: string; media_id: string; filename: string; timestamp: number }[]
+    // Recent activity carries optional user/IP context so non-media events
+    // (login, register, admin_action, etc.) render with attribution rather
+    // than a blank filename row.
+    recent_activity: {
+        type: string
+        media_id: string
+        filename: string
+        user_id?: string
+        username?: string
+        ip_address?: string
+        timestamp: number
+    }[]
 }
 
 // Per-user aggregated analytics returned by /admin/users/:username/analytics.
@@ -427,6 +447,15 @@ export interface DailyStats {
     api_tokens_revoked: number
     admin_actions: number
     server_errors: number
+    stream_starts: number
+    stream_ends: number
+    bytes_served: number
+    mature_blocked: number
+    permission_denied: number
+    preferences_changes: number
+    bulk_deletes: number
+    bulk_updates: number
+    user_role_changes: number
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

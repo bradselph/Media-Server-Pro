@@ -410,6 +410,15 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 	// response reflects exactly what was committed, preventing a discrepancy that
 	// would make the client think one value was saved when another was stored.
 	prefs.Validate()
+	// Track which fields the patch actually touched (key set, not values) so
+	// the audit log doesn't record sensitive things like custom EQ presets,
+	// while still showing operators what kind of preferences a user is
+	// changing — useful for detecting suspicious patterns.
+	keys := make([]string, 0, len(incoming))
+	for k := range incoming {
+		keys = append(keys, k)
+	}
+	h.trackServerEvent(c, "preferences_change", map[string]any{"fields": keys})
 	writeSuccess(c, prefs)
 }
 

@@ -188,7 +188,16 @@ var tableDefs = []struct {
 			api_tokens_created    INT     NOT NULL DEFAULT 0,
 			api_tokens_revoked    INT     NOT NULL DEFAULT 0,
 			admin_actions         INT     NOT NULL DEFAULT 0,
-			server_errors         INT     NOT NULL DEFAULT 0
+			server_errors         INT     NOT NULL DEFAULT 0,
+			stream_starts         INT     NOT NULL DEFAULT 0,
+			stream_ends           INT     NOT NULL DEFAULT 0,
+			bytes_served          BIGINT  NOT NULL DEFAULT 0,
+			mature_blocked        INT     NOT NULL DEFAULT 0,
+			permission_denied     INT     NOT NULL DEFAULT 0,
+			preferences_changes   INT     NOT NULL DEFAULT 0,
+			bulk_deletes          INT     NOT NULL DEFAULT 0,
+			bulk_updates          INT     NOT NULL DEFAULT 0,
+			user_role_changes     INT     NOT NULL DEFAULT 0
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"audit_log", `
 		CREATE TABLE IF NOT EXISTS audit_log (
@@ -693,6 +702,18 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		// claude_conversations: cli_session_id is captured from the `claude`
 		// CLI init event so subsequent turns can resume with --resume.
 		{"claude_conversations", "cli_session_id", "VARCHAR(64) NOT NULL DEFAULT '' AFTER model"},
+		// daily_stats expansion: existing deployments need these columns added
+		// when the server upgrades. The CREATE TABLE above carries them too,
+		// so a fresh install gets them in one shot.
+		{"daily_stats", "stream_starts", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "stream_ends", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "bytes_served", "BIGINT NOT NULL DEFAULT 0"},
+		{"daily_stats", "mature_blocked", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "permission_denied", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "preferences_changes", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "bulk_deletes", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "bulk_updates", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "user_role_changes", "INT NOT NULL DEFAULT 0"},
 	}
 	for _, col := range columns {
 		if err := m.ensureColumn(ctx, col.table, col.column, col.def); err != nil {

@@ -360,6 +360,13 @@ func NewHandler(deps HandlerDeps) *Handler {
 	return h
 }
 
+// Analytics returns the wired analytics module (may be nil when analytics is
+// disabled or not yet started). Exposed so the routes layer can mount the
+// 5xx error-tracking middleware without a duplicate dependency injection.
+func (h *Handler) Analytics() *analytics.Module {
+	return h.analytics
+}
+
 // getSession retrieves the session from the gin context.
 func getSession(c *gin.Context) *models.Session {
 	if v, exists := c.Get("session"); exists {
@@ -370,30 +377,103 @@ func getSession(c *gin.Context) *models.Session {
 	return nil
 }
 
-// trackServerEvent emits a server-side traffic event with the caller's
-// session, IP, and User-Agent automatically attached. Returns silently when
-// analytics is disabled so call sites don't have to repeat the nil-guard.
+// auditableEventTypes lists event types that, in addition to bumping the
+// dashboard counters via analytics, also deserve a row in the admin-readable
+// audit_log table. These are the human-meaningful state-change events an
+// operator would want to review later ("who deleted this", "when did this
+// user log in", "did anyone try to bypass the mature gate").
 //
-// `data` may be nil. The eventType must be one of the analytics.Event*
-// constants — accepting arbitrary strings here would defeat the
-// updateDailyStatsLocked switch and silently drop counts.
+// Excluded on purpose: high-volume telemetry (view, playback, play, pause,
+// resume, seek, complete, error, quality_change, search, download, stream_*).
+// Those events would flood the audit_log without adding review value beyond
+// what the analytics drill-down already provides.
+var auditableEventTypes = map[string]bool{
+	analytics.EventLogin:              true,
+	analytics.EventLoginFailed:        true,
+	analytics.EventLogout:             true,
+	analytics.EventRegister:           true,
+	analytics.EventAgeGatePass:        true,
+	analytics.EventFavoriteAdd:        true,
+	analytics.EventFavoriteRemove:     true,
+	analytics.EventRatingSet:          true,
+	analytics.EventPlaylistCreate:     true,
+	analytics.EventPlaylistDelete:     true,
+	analytics.EventPlaylistItemAdd:    true,
+	analytics.EventUploadSuccess:      true,
+	analytics.EventUploadFailed:       true,
+	analytics.EventPasswordChange:     true,
+	analytics.EventAccountDelete:      true,
+	analytics.EventAPITokenCreate:     true,
+	analytics.EventAPITokenRevoke:     true,
+	analytics.EventMediaDeleted:       true,
+	analytics.EventHLSError:           true,
+	analytics.EventMatureBlocked:      true,
+	analytics.EventPermissionDenied:   true,
+	analytics.EventPreferencesChange:  true,
+	analytics.EventBulkDelete:         true,
+	analytics.EventBulkUpdate:         true,
+	analytics.EventUserRoleChange:     true,
+	analytics.EventServerError:        true,
+}
+
+// trackServerEvent emits a server-side traffic event with the caller's
+// session, IP, and User-Agent automatically attached, AND — for event types
+// in auditableEventTypes — writes a parallel audit_log row so admins can
+// review the action in the existing Audit Log UI rather than having to drill
+// raw analytics events.
+//
+// Returns silently when analytics is disabled so call sites don't have to
+// repeat the nil-guard. `data` may be nil. The eventType must be one of the
+// analytics.Event* constants — accepting arbitrary strings here would defeat
+// the updateDailyStatsLocked switch and silently drop counts.
 func (h *Handler) trackServerEvent(c *gin.Context, eventType string, data map[string]any) {
-	if h.analytics == nil {
-		return
-	}
-	userID, sessionID := "", ""
+	userID, sessionID, username := "", "", ""
 	if sess := getSession(c); sess != nil {
 		userID = sess.UserID
 		sessionID = sess.ID
+		username = sess.Username
 	}
-	h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
-		Type:      eventType,
-		UserID:    userID,
-		SessionID: sessionID,
-		IPAddress: c.ClientIP(),
-		UserAgent: c.Request.UserAgent(),
-		Data:      data,
-	})
+	if h.analytics != nil {
+		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
+			Type:      eventType,
+			UserID:    userID,
+			SessionID: sessionID,
+			IPAddress: c.ClientIP(),
+			UserAgent: c.Request.UserAgent(),
+			Data:      data,
+		})
+	}
+	// Mirror auditable events into audit_log so the existing admin review UI
+	// surfaces them. Failure to write the audit row is non-fatal — the
+	// analytics row above is the canonical record of the event.
+	if h.admin != nil && auditableEventTypes[eventType] {
+		// Pull a "resource" string out of data when callers passed one of the
+		// well-known keys (media_id, playlist_id, token_id, username, target).
+		// Falls back to empty.
+		resource := ""
+		if data != nil {
+			for _, k := range []string{"media_id", "playlist_id", "token_id", "username", "target", "resource"} {
+				if v, ok := data[k]; ok {
+					if s, ok := v.(string); ok && s != "" {
+						resource = s
+						break
+					}
+				}
+			}
+		}
+		// login_failed and server_error are intrinsically failure rows;
+		// everything else reaching this helper succeeded by definition.
+		success := eventType != analytics.EventLoginFailed && eventType != analytics.EventServerError && eventType != analytics.EventUploadFailed && eventType != analytics.EventHLSError && eventType != analytics.EventMatureBlocked && eventType != analytics.EventPermissionDenied
+		h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
+			UserID:    userID,
+			Username:  username,
+			Action:    eventType,
+			Resource:  resource,
+			Details:   data,
+			IPAddress: c.ClientIP(),
+			Success:   success,
+		})
+	}
 }
 
 // getUser retrieves the user from the gin context.
@@ -616,6 +696,11 @@ func (h *Handler) logAdminActionResult(c *gin.Context, p *adminLogResultParams) 
 // checkMatureAccess verifies the current user has permission to access mature content.
 // isMature must be sourced from the caller's already-resolved MediaItem to avoid a
 // secondary lookup and its fail-open failure mode. Returns true if access is allowed.
+//
+// Every denial path emits a `mature_blocked` analytics event with a reason
+// code so the admin dashboard surfaces blocked-access patterns (e.g. a user
+// repeatedly attempting flagged content, a permission misconfiguration, etc.)
+// without operators having to grep server logs.
 func (h *Handler) checkMatureAccess(c *gin.Context, isMature bool) bool {
 	if !isMature {
 		return true
@@ -626,6 +711,10 @@ func (h *Handler) checkMatureAccess(c *gin.Context, isMature bool) bool {
 		writeError(c, http.StatusUnauthorized,
 			msgMatureAccessDenied+
 				"Please log in to access mature content.")
+		h.trackServerEvent(c, analytics.EventMatureBlocked, map[string]any{
+			"reason": "no_session",
+			"path":   c.Request.URL.Path,
+		})
 		return false
 	}
 
@@ -635,6 +724,10 @@ func (h *Handler) checkMatureAccess(c *gin.Context, isMature bool) bool {
 		writeError(c, http.StatusForbidden,
 			msgMatureAccessDenied+
 				"Enable mature content viewing in your profile settings.")
+		h.trackServerEvent(c, analytics.EventMatureBlocked, map[string]any{
+			"reason":   "user_not_in_context",
+			"username": session.Username,
+		})
 		return false
 	}
 
@@ -643,6 +736,10 @@ func (h *Handler) checkMatureAccess(c *gin.Context, isMature bool) bool {
 		writeError(c, http.StatusForbidden,
 			"Access denied: Your account does not have permission to view mature content (18+). "+
 				"Contact an administrator if you believe this is an error.")
+		h.trackServerEvent(c, analytics.EventMatureBlocked, map[string]any{
+			"reason":   "permission_revoked",
+			"username": session.Username,
+		})
 		return false
 	}
 
@@ -651,6 +748,10 @@ func (h *Handler) checkMatureAccess(c *gin.Context, isMature bool) bool {
 		writeError(c, http.StatusForbidden,
 			msgMatureAccessDenied+
 				"Enable mature content viewing in your profile settings.")
+		h.trackServerEvent(c, analytics.EventMatureBlocked, map[string]any{
+			"reason":   "preference_off",
+			"username": session.Username,
+		})
 		return false
 	}
 

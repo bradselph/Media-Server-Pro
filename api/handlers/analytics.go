@@ -43,16 +43,32 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 	recentEvents := h.analytics.GetRecentEvents(c.Request.Context(), 20)
 	recentActivity := make([]map[string]any, 0, len(recentEvents))
 	for _, event := range recentEvents {
-		filename := event.MediaID
-		// Analytics keys are stable UUIDs — resolve to human-readable names.
-		if mediaItem, err := h.media.GetMediaByID(event.MediaID); err == nil && mediaItem != nil {
-			filename = mediaItem.Name
+		filename := ""
+		if event.MediaID != "" {
+			// Analytics keys are stable UUIDs — resolve to human-readable names.
+			if mediaItem, err := h.media.GetMediaByID(event.MediaID); err == nil && mediaItem != nil {
+				filename = mediaItem.Name
+			} else {
+				filename = event.MediaID
+			}
+		}
+		// Resolve UserID → username so non-media events (login, logout,
+		// admin_action, etc.) render as "<username> · <type>" instead of
+		// blank rows. Auth lookup failures fall back to the raw user_id.
+		username := ""
+		if event.UserID != "" && h.auth != nil {
+			if u, err := h.auth.GetUserByID(c.Request.Context(), event.UserID); err == nil && u != nil {
+				username = u.Username
+			}
 		}
 		recentActivity = append(recentActivity, map[string]any{
-			"type":      event.Type,
-			"media_id":  event.MediaID,
-			"filename":  filename,
-			"timestamp": event.Timestamp.Unix(),
+			"type":       event.Type,
+			"media_id":   event.MediaID,
+			"filename":   filename,
+			"user_id":    event.UserID,
+			"username":   username,
+			"ip_address": event.IPAddress,
+			"timestamp":  event.Timestamp.Unix(),
 		})
 	}
 
@@ -90,6 +106,15 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 		"today_api_tokens_revoked":    summary.TodayAPITokensRevoked,
 		"today_admin_actions":         summary.TodayAdminActions,
 		"today_server_errors":         summary.TodayServerErrors,
+		"today_stream_starts":         summary.TodayStreamStarts,
+		"today_stream_ends":           summary.TodayStreamEnds,
+		"today_bytes_served":          summary.TodayBytesServed,
+		"today_mature_blocked":        summary.TodayMatureBlocked,
+		"today_permission_denied":     summary.TodayPermissionDenied,
+		"today_preferences_changes":   summary.TodayPreferencesChanges,
+		"today_bulk_deletes":          summary.TodayBulkDeletes,
+		"today_bulk_updates":          summary.TodayBulkUpdates,
+		"today_user_role_changes":     summary.TodayUserRoleChanges,
 	})
 }
 
