@@ -3,7 +3,20 @@ name: Dev Patch Version
 on:
   push:
     branches: [ development ]
+    # Match CI's paths-ignore so docs/asset-only pushes don't spin up the
+    # runner just to bump a dev build label nobody will see.
     paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '**.png'
+      - '**.jpg'
+      - '**.gif'
+      - '**.svg'
+      - '**.ico'
+      - 'assets/**'
+      - '*.editorconfig'
       - 'VERSION'
       - 'CHANGELOG.md'
 

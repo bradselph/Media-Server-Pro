@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  # Push CI: every dev push gets fast feedback; every main commit gates the
+  # release pipeline (release-version triggers off CI completion on main).
   push:
     branches: [main, development]
     paths-ignore:
@@ -18,8 +20,13 @@ on:
       - 'VERSION'
       - 'CHANGELOG.md'
       - 'cmd/server/main.go'
+
+  # PR CI: only run for forks. Internal PRs (development → main) re-test the
+  # same commits that already passed CI on the dev push and will be re-tested
+  # on the main push after merge — running CI a third time on the merge ref
+  # was burning ~6–9 minutes of self-hosted runner per PR for no new signal.
   pull_request:
-    branches: [main, development]
+    branches: [main]
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -36,9 +43,9 @@ on:
       - 'CHANGELOG.md'
       - 'cmd/server/main.go'
 
-# One CI run per branch at a time; a new push cancels the previous run.
-# This group is ONLY entered by real code pushes — auto-version commits are
-# excluded by paths-ignore above (they only touch VERSION/CHANGELOG/main.go).
+# One CI run per ref at a time; a new push cancels the previous run.
+# Auto-version commits are excluded by paths-ignore (they only touch
+# VERSION/CHANGELOG/main.go).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -50,6 +57,9 @@ jobs:
   # ─── Go: build, vet, test, security ────────────────────────────────────────
   go:
     name: Go Build, Test & Security
+    # Skip pull_request runs from the same repo — those commits already got
+    # push CI on the source branch. Only fork PRs need a separate CI pass.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: [self-hosted, Linux, X64, media-server]
     steps:
       - uses: actions/checkout@v5
@@ -86,6 +96,7 @@ jobs:
   # ─── Nuxt UI: typecheck + production build ───────────────────────────────
   nuxt-ui:
     name: Nuxt UI Build & Typecheck
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: [self-hosted, Linux, X64, media-server]
     defaults:
       run:
