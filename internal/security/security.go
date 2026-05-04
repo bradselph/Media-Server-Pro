@@ -53,14 +53,13 @@ func init() {
 		"::1/128",        // IPv6 loopback
 		"fc00::/7",       // IPv6 unique local
 	}
+	// privateRanges contains hardcoded valid CIDR strings; ParseCIDR errors
+	// should never occur. No logger is available at init time, so any failure
+	// here is silently skipped — the resulting privateCIDRs list will simply
+	// be incomplete and TrustedProxyIPs will reject affected ranges.
 	for _, cidr := range privateRanges {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err == nil {
+		if _, ipNet, err := net.ParseCIDR(cidr); err == nil {
 			privateCIDRs = append(privateCIDRs, ipNet)
-		} else {
-			// NOTE: This should never happen since privateRanges contains hardcoded valid CIDR strings.
-			// If this occurs (e.g., due to code corruption), TrustedProxyIPs will silently fail to parse these ranges.
-			// No logger available at init time; consider adding an error handler during Module startup.
 		}
 	}
 }
