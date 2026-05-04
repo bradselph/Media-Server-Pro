@@ -110,6 +110,11 @@ services:
       TZ:           "${TZ:-UTC}"
       # Compose already waits for service_healthy on db; skip the extra probe.
       WAIT_FOR_DB:  "0"
+    # Persist config.json inside the app-data volume (/data/app) so admin
+    # settings survive `docker compose down` + rebuilds. Without this the
+    # binary writes config.json into /app (image layer), which is wiped on
+    # every `--build`.
+    command: ["server", "-config", "/data/app/config.json"]
     ports:
       - "${SERVER_BIND:-0.0.0.0}:${SERVER_PORT:-8080}:${SERVER_PORT:-8080}"
     volumes:
