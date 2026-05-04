@@ -1376,14 +1376,192 @@ func classifyBrowserFamily(ua string) string {
 	}
 }
 
+// AbandonmentBucket pairs a 10-percentile progress range with how many
+// playback events stopped within that range. The frontend renders this as
+// a histogram so editors / curators can see where viewers drop off.
+type AbandonmentBucket struct {
+	Range string `json:"range"` // "0-10%", "10-20%", … "90-100%"
+	Count int    `json:"count"`
+}
+
 // MediaDetail aggregates everything an admin would want to see for a single
 // media item — the cached ViewStats plus a 30-day timeline of views and
-// playbacks. Returned by GET /admin/analytics/media/:id.
+// playbacks plus the abandonment histogram. Returned by GET
+// /admin/analytics/media/:id.
 type MediaDetail struct {
-	MediaID         string                `json:"media_id"`
-	Stats           models.ViewStats      `json:"stats"`
-	ViewTimeline    []MetricTimelineEntry `json:"view_timeline"`
+	MediaID          string                `json:"media_id"`
+	Stats            models.ViewStats      `json:"stats"`
+	ViewTimeline     []MetricTimelineEntry `json:"view_timeline"`
 	PlaybackTimeline []MetricTimelineEntry `json:"playback_timeline"`
+	Abandonment      []AbandonmentBucket   `json:"abandonment"`
+}
+
+// IPBucket pairs an IP address with traffic volume metrics. The dashboard
+// uses this for spotting abusive scrapers and rate-limit candidates.
+type IPBucket struct {
+	IPAddress  string `json:"ip_address"`
+	Events     int    `json:"events"`
+	UniqueUserIDs int `json:"unique_user_ids"`
+	BytesSent  int64  `json:"bytes_sent"` // from stream_end events
+	LastSeen   time.Time `json:"last_seen"`
+}
+
+// IPSummary holds the per-IP report. UniqueIPs is the unique-IP count
+// across the entire window; TopByEvents and TopByBytes are the leaderboards.
+type IPSummary struct {
+	UniqueIPs   int        `json:"unique_ips"`
+	TopByEvents []IPBucket `json:"top_by_events"`
+	TopByBytes  []IPBucket `json:"top_by_bytes"`
+}
+
+// GetIPSummary aggregates events by IP address: unique-IP count, top IPs by
+// event volume, top IPs by bandwidth (from stream_end's bytes_sent payload).
+// Memoised 60s — this is the most expensive single aggregation we expose,
+// scanning up to 100k events with two output rankings.
+func (m *Module) GetIPSummary(ctx context.Context, days int, limit int) IPSummary {
+	if days <= 0 {
+		days = 30
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if m.eventRepo == nil {
+		return IPSummary{}
+	}
+	cacheKey := "ip|" + strconv.Itoa(days) + "|" + strconv.Itoa(limit)
+	return memo(m.cache, cacheKey, 60*time.Second, func() IPSummary {
+		return m.computeIPSummary(ctx, days, limit)
+	})
+}
+
+func (m *Module) computeIPSummary(ctx context.Context, days, limit int) IPSummary {
+	out := IPSummary{}
+	cutoff := time.Now().AddDate(0, 0, -days).Format(time.RFC3339)
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		StartDate: cutoff,
+		Limit:     100000,
+	})
+	if err != nil {
+		m.log.Error("GetIPSummary: list events: %v", err)
+		return out
+	}
+	type bucket struct {
+		events    int
+		users     map[string]struct{}
+		bytes     int64
+		lastSeen  time.Time
+	}
+	rows := make(map[string]*bucket)
+	for _, ev := range events {
+		ip := ev.IPAddress
+		if ip == "" {
+			continue
+		}
+		b, ok := rows[ip]
+		if !ok {
+			b = &bucket{users: make(map[string]struct{})}
+			rows[ip] = b
+		}
+		b.events++
+		if ev.UserID != "" {
+			b.users[ev.UserID] = struct{}{}
+		}
+		if ev.Timestamp.After(b.lastSeen) {
+			b.lastSeen = ev.Timestamp
+		}
+		// Stream-end events carry bytes_sent — sum them so the top-by-bytes
+		// list reflects real bandwidth not just request count.
+		if ev.Type == EventStreamEnd {
+			if bs, ok := ev.Data["bytes_sent"].(float64); ok && bs > 0 {
+				b.bytes += int64(bs)
+			}
+			if bs, ok := ev.Data["bytes_sent"].(int64); ok && bs > 0 {
+				b.bytes += bs
+			}
+		}
+	}
+	out.UniqueIPs = len(rows)
+	flat := make([]IPBucket, 0, len(rows))
+	for ip, b := range rows {
+		flat = append(flat, IPBucket{
+			IPAddress:     ip,
+			Events:        b.events,
+			UniqueUserIDs: len(b.users),
+			BytesSent:     b.bytes,
+			LastSeen:      b.lastSeen,
+		})
+	}
+	// Two rankings: by event volume and by bandwidth. Both are useful —
+	// a high-bandwidth IP with few events is probably a long stream
+	// (legit), while a high-event IP with low bandwidth is likely a
+	// scraper hitting metadata endpoints.
+	byEvents := append([]IPBucket(nil), flat...)
+	sort.Slice(byEvents, func(i, j int) bool {
+		if byEvents[i].Events != byEvents[j].Events {
+			return byEvents[i].Events > byEvents[j].Events
+		}
+		return byEvents[i].LastSeen.After(byEvents[j].LastSeen)
+	})
+	byBytes := append([]IPBucket(nil), flat...)
+	sort.Slice(byBytes, func(i, j int) bool {
+		if byBytes[i].BytesSent != byBytes[j].BytesSent {
+			return byBytes[i].BytesSent > byBytes[j].BytesSent
+		}
+		return byBytes[i].Events > byBytes[j].Events
+	})
+	if limit > 0 {
+		if len(byEvents) > limit {
+			byEvents = byEvents[:limit]
+		}
+		if len(byBytes) > limit {
+			byBytes = byBytes[:limit]
+		}
+	}
+	out.TopByEvents = byEvents
+	out.TopByBytes = byBytes
+	return out
+}
+
+// ModuleDiagnostics exposes the analytics module's own internal health so
+// admins can debug "why is the dashboard slow / stale" without server log
+// access.
+type ModuleDiagnostics struct {
+	CacheEntries     int  `json:"cache_entries"`
+	DirtyDays        int  `json:"dirty_days"`
+	ActiveSubscribers int `json:"active_subscribers"`
+	SessionsTracked  int  `json:"sessions_tracked"`
+	MediaTracked     int  `json:"media_tracked"`
+	MaxReconstruct   int  `json:"max_reconstruct_events"`
+	Healthy          bool `json:"healthy"`
+}
+
+// GetDiagnostics returns the module's internal counters. Cheap — all data
+// is in-memory under existing locks.
+func (m *Module) GetDiagnostics() ModuleDiagnostics {
+	d := ModuleDiagnostics{MaxReconstruct: m.maxEvents}
+	if m.cache != nil {
+		m.cache.mu.Lock()
+		d.CacheEntries = len(m.cache.entries)
+		m.cache.mu.Unlock()
+	}
+	m.dirtyMu.Lock()
+	d.DirtyDays = len(m.dirtyDays)
+	m.dirtyMu.Unlock()
+	if m.subs != nil {
+		m.subs.mu.RLock()
+		d.ActiveSubscribers = len(m.subs.subs)
+		m.subs.mu.RUnlock()
+	}
+	m.sessionsMu.RLock()
+	d.SessionsTracked = len(m.sessions)
+	m.sessionsMu.RUnlock()
+	m.statsMu.RLock()
+	d.MediaTracked = len(m.mediaStats)
+	m.statsMu.RUnlock()
+	m.healthMu.RLock()
+	d.Healthy = m.healthy
+	m.healthMu.RUnlock()
+	return d
 }
 
 // Anomaly captures a single per-day metric spike or dip that exceeds the
@@ -1691,6 +1869,11 @@ func (m *Module) GetMediaDetail(ctx context.Context, mediaID string, days int) M
 	}
 	viewByDay := make(map[string]int)
 	playbackByDay := make(map[string]int)
+	// Abandonment histogram: 10 buckets covering 0-100% progress. Each
+	// playback event whose data carries a `progress` value increments the
+	// bucket containing that percentage. The "100%" edge case lands in the
+	// last bucket (90-100%).
+	abandonmentBuckets := make([]int, 10)
 	for _, ev := range events {
 		date := ev.Timestamp.Format(dateFormat)
 		switch ev.Type {
@@ -1699,6 +1882,19 @@ func (m *Module) GetMediaDetail(ctx context.Context, mediaID string, days int) M
 		case "playback":
 			if dur, ok := ev.Data["duration"].(float64); ok && dur > 0 {
 				playbackByDay[date]++
+			}
+			if progress, ok := ev.Data["progress"].(float64); ok {
+				if progress < 0 {
+					progress = 0
+				}
+				if progress > 100 {
+					progress = 100
+				}
+				idx := int(progress / 10)
+				if idx >= 10 {
+					idx = 9
+				}
+				abandonmentBuckets[idx]++
 			}
 		}
 	}
@@ -1709,6 +1905,13 @@ func (m *Module) GetMediaDetail(ctx context.Context, mediaID string, days int) M
 		date := now.AddDate(0, 0, -i).Format(dateFormat)
 		out.ViewTimeline = append(out.ViewTimeline, MetricTimelineEntry{Date: date, Value: float64(viewByDay[date])})
 		out.PlaybackTimeline = append(out.PlaybackTimeline, MetricTimelineEntry{Date: date, Value: float64(playbackByDay[date])})
+	}
+	out.Abandonment = make([]AbandonmentBucket, 10)
+	for i, count := range abandonmentBuckets {
+		out.Abandonment[i] = AbandonmentBucket{
+			Range: strconv.Itoa(i*10) + "-" + strconv.Itoa((i+1)*10) + "%",
+			Count: count,
+		}
 	}
 	return out
 }

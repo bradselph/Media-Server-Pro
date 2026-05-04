@@ -686,6 +686,8 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/analytics/stream", h.AdminStreamEvents)
 	adminGrp.GET("/analytics/retention", h.AdminGetRetention)
 	adminGrp.GET("/analytics/anomalies", h.AdminGetAnomalies)
+	adminGrp.GET("/analytics/ips", h.AdminGetIPSummary)
+	adminGrp.GET("/analytics/diagnostics", h.AdminGetAnalyticsDiagnostics)
 	adminGrp.GET(routeUserByName+"/analytics", h.AdminGetUserAnalytics)
 
 	// Configuration management routes

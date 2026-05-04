@@ -5,7 +5,7 @@ import type {
   TopUserEntry, SearchQueryEntry, FailedLoginEntry, ErrorPathEntry,
   MetricTimelineEntry, CohortMetrics, HourlyHeatmapCell, QualityBucket,
   PeriodComparison, Funnel, DeviceBucket, MediaDetail, RetentionGrid,
-  AnomalyReport,
+  AnomalyReport, IPSummary, ModuleDiagnostics,
 } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime, formatBytes } from '~/utils/format'
@@ -62,6 +62,10 @@ const cmpLogins = ref<PeriodComparison | null>(null)
 // is happening today.
 const anomalies = ref<AnomalyReport | null>(null)
 
+// Per-IP traffic summary + analytics module's own diagnostics.
+const ipSummary = ref<IPSummary | null>(null)
+const diagnostics = ref<ModuleDiagnostics | null>(null)
+
 // Funnel + device/browser breakdown + per-media drill + retention grid.
 const funnel = ref<Funnel | null>(null)
 const devices = ref<DeviceBucket[]>([])
@@ -80,7 +84,7 @@ const PANEL_KEYS = [
   'traffic', 'distribution', 'hourly', 'heatmap', 'funnel', 'quality',
   'gaps', 'devices', 'retention', 'topUsers', 'topSearches', 'activeStreams',
   'errorPaths', 'failedLogins', 'recent', 'drill', 'topMedia',
-  'contentPerf', 'daily',
+  'contentPerf', 'daily', 'ips', 'diagnostics',
 ] as const
 type PanelKey = typeof PANEL_KEYS[number]
 const panelVisibility = ref<Record<PanelKey, boolean>>(
@@ -104,6 +108,32 @@ watch(panelVisibility, (v) => {
   if (!import.meta.client) return
   try { localStorage.setItem('analytics:panelVisibility', JSON.stringify(v)) } catch { /* quota / privacy mode — ignore */ }
 }, { deep: true })
+
+// Built-in presets — quick-switch dashboard layouts admins can apply with
+// one click. Each preset is a list of panels to enable; everything else
+// gets hidden. "All" restores the default (everything on).
+const PRESETS: Record<string, PanelKey[] | 'all'> = {
+  All: 'all',
+  Engagement: ['cohort', 'comparison', 'timeline', 'bandwidth', 'traffic',
+    'distribution', 'retention', 'topUsers', 'topMedia', 'topSearches',
+    'contentPerf', 'funnel', 'recent'],
+  Operations: ['comparison', 'timeline', 'bandwidth', 'errorsChart',
+    'errorPaths', 'failedLogins', 'activeStreams', 'quality', 'devices',
+    'ips', 'diagnostics', 'recent', 'drill'],
+  Security: ['comparison', 'errorsChart', 'errorPaths', 'failedLogins',
+    'ips', 'recent', 'drill'],
+  Content: ['cohort', 'timeline', 'topMedia', 'contentPerf', 'topSearches',
+    'gaps', 'funnel', 'quality'],
+}
+function applyPreset(name: string) {
+  const preset = PRESETS[name]
+  if (preset === 'all') {
+    for (const k of PANEL_KEYS) panelVisibility.value[k] = true
+    return
+  }
+  const enable = new Set(preset)
+  for (const k of PANEL_KEYS) panelVisibility.value[k] = enable.has(k)
+}
 
 // ── Live event tail (SSE) ───────────────────────────────────────────────────
 // Opens an EventSource against /api/admin/analytics/stream and pushes new
@@ -324,6 +354,8 @@ async function load() {
       analyticsApi.getDeviceBreakdown(30),                          // 26
       analyticsApi.getRetention(12),                                // 27
       analyticsApi.getAnomalies(2.5, 14),                           // 28
+      analyticsApi.getIPSummary(30, 15),                            // 29
+      analyticsApi.getDiagnostics(),                                // 30
     ])
     if (period.value !== capturedPeriod) return
     const r = (i: number) => results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<unknown>).value : null
@@ -360,6 +392,8 @@ async function load() {
     }
     if (r(27) !== null) retention.value = r(27) as RetentionGrid
     if (r(28) !== null) anomalies.value = r(28) as AnomalyReport
+    if (r(29) !== null) ipSummary.value = r(29) as IPSummary
+    if (r(30) !== null) diagnostics.value = r(30) as ModuleDiagnostics
 
     const failed = results.filter(x => x.status === 'rejected')
     if (failed.length) toast.add({ title: `${failed.length} analytics endpoint(s) failed`, color: 'warning', icon: 'i-lucide-alert-triangle' })
@@ -649,15 +683,25 @@ const hasTrafficActivity = computed(() =>
           <UButton icon="i-lucide-layout-dashboard" label="Panels" variant="outline" color="neutral" size="xs" />
           <template #content>
             <div class="p-3 max-h-96 overflow-y-auto space-y-1.5 text-sm">
+              <div class="mb-3">
+                <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-1.5">Presets</p>
+                <div class="flex flex-wrap gap-1">
+                  <UButton
+                    v-for="name in Object.keys(PRESETS)"
+                    :key="name"
+                    :label="name"
+                    size="xs"
+                    variant="outline"
+                    color="neutral"
+                    @click="applyPreset(name)"
+                  />
+                </div>
+                <p class="text-[10px] text-muted mt-1.5 italic">
+                  One-click layout switches; individual toggles below override.
+                </p>
+              </div>
               <div class="flex items-center justify-between mb-2">
                 <span class="text-xs uppercase tracking-wide font-semibold text-muted">Show panels</span>
-                <UButton
-                  size="xs"
-                  variant="ghost"
-                  color="neutral"
-                  label="Reset"
-                  @click="for (const k of PANEL_KEYS) panelVisibility[k] = true"
-                />
               </div>
               <label v-for="k in PANEL_KEYS" :key="k" class="flex items-center gap-2 cursor-pointer hover:bg-muted/10 rounded px-1 py-0.5">
                 <UCheckbox v-model="panelVisibility[k]" />
@@ -1228,6 +1272,42 @@ const hasTrafficActivity = computed(() =>
       </UCard>
     </div>
 
+    <!-- Per-IP traffic — two side-by-side leaderboards (by event volume,
+         by bandwidth) so admins can spot scrapers (high events, low bytes)
+         vs heavy streamers (low events, high bytes). -->
+    <UCard v-if="panelVisibility.ips && ipSummary && ipSummary.unique_ips > 0">
+      <template #header>
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-semibold flex items-center gap-2">
+            <UIcon name="i-lucide-network" class="size-4" />
+            IP Traffic — {{ ipSummary.unique_ips.toLocaleString() }} unique IPs (last 30 days)
+          </div>
+        </div>
+      </template>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div>
+          <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-2">By event volume</p>
+          <div class="divide-y divide-default max-h-72 overflow-y-auto">
+            <div v-for="ip in ipSummary.top_by_events" :key="`e-${ip.ip_address}`" class="py-1.5 flex items-center gap-2 text-xs">
+              <span class="flex-1 font-mono truncate">{{ ip.ip_address }}</span>
+              <UBadge color="neutral" variant="subtle" size="xs">{{ ip.events.toLocaleString() }}</UBadge>
+              <span class="text-muted shrink-0">{{ ip.unique_user_ids }}u</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-2">By bandwidth</p>
+          <div class="divide-y divide-default max-h-72 overflow-y-auto">
+            <div v-for="ip in ipSummary.top_by_bytes" :key="`b-${ip.ip_address}`" class="py-1.5 flex items-center gap-2 text-xs">
+              <span class="flex-1 font-mono truncate">{{ ip.ip_address }}</span>
+              <UBadge color="primary" variant="subtle" size="xs">{{ formatBytes(ip.bytes_sent) }}</UBadge>
+              <span class="text-muted shrink-0">{{ ip.events.toLocaleString() }}e</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </UCard>
+
     <!-- Quality breakdown + content gaps — two side-by-side panels showing
          (a) which resolutions are eating bandwidth, (b) what users are
          searching for that the catalog doesn't cover. -->
@@ -1769,6 +1849,34 @@ const hasTrafficActivity = computed(() =>
                 ]"
                 :height="160"
               />
+              <!-- Playback abandonment histogram. Each bucket = a 10%
+                   progress range (0-10, 10-20, …); the bar height is the
+                   count of playback events that stopped in that range.
+                   Strong drop-offs at the start/end signal "intro too
+                   long" or "credits skipped" patterns. -->
+              <div v-if="mediaDetail.abandonment && mediaDetail.abandonment.some(b => b.count > 0)" class="mt-4">
+                <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-1">Playback abandonment</p>
+                <div class="flex items-end gap-1 h-24">
+                  <div
+                    v-for="(b, i) in mediaDetail.abandonment"
+                    :key="i"
+                    class="flex-1 flex flex-col items-center justify-end gap-0.5 group relative"
+                  >
+                    <div
+                      :class="['w-full rounded-t transition-colors min-h-[2px]',
+                        i < 2 ? 'bg-warning/70' :
+                        i >= 8 ? 'bg-emerald-500/70' :
+                        'bg-primary/70']"
+                      :style="{ height: `${Math.max(2, (b.count / Math.max(...mediaDetail.abandonment.map(x => x.count), 1)) * 100)}%` }"
+                      :title="`${b.range}: ${b.count} playbacks ended in this range`"
+                    />
+                    <span class="text-[9px] text-muted leading-none">{{ b.range }}</span>
+                  </div>
+                </div>
+                <p class="text-[10px] text-muted mt-1 italic">
+                  Bars in the early range (warning) often mean the intro is losing viewers; bars near 100% (success) mean the media is being completed.
+                </p>
+              </div>
             </div>
             <div v-else class="text-center text-sm text-muted py-4">
               No data available for this item.
@@ -1862,6 +1970,48 @@ const hasTrafficActivity = computed(() =>
         <template #hls_starts-cell="{ row }">{{ (row.original.hls_starts ?? 0).toLocaleString() }}</template>
         <template #admin_actions-cell="{ row }">{{ (row.original.admin_actions ?? 0).toLocaleString() }}</template>
       </UTable>
+    </UCard>
+
+    <!-- Module diagnostics — analytics module's own internal counters.
+         Helps debug "why is the dashboard slow / stale" without server
+         log access. Hidden by default to keep the page tidy; admins
+         re-enable it from the panels menu when investigating. -->
+    <UCard v-if="panelVisibility.diagnostics && diagnostics" :ui="{ body: 'p-3' }">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2 text-muted">
+          <UIcon name="i-lucide-activity" class="size-4" />
+          Analytics Module Diagnostics
+          <UBadge :color="diagnostics.healthy ? 'success' : 'error'" variant="subtle" size="xs">
+            {{ diagnostics.healthy ? 'Healthy' : 'Unhealthy' }}
+          </UBadge>
+        </div>
+      </template>
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
+        <div>
+          <p class="font-bold text-highlighted">{{ diagnostics.cache_entries.toLocaleString() }}</p>
+          <p class="text-muted">Cached aggregations</p>
+        </div>
+        <div>
+          <p class="font-bold text-highlighted">{{ diagnostics.dirty_days.toLocaleString() }}</p>
+          <p class="text-muted">Dirty days (pending flush)</p>
+        </div>
+        <div>
+          <p class="font-bold text-highlighted">{{ diagnostics.active_subscribers.toLocaleString() }}</p>
+          <p class="text-muted">Live SSE subscribers</p>
+        </div>
+        <div>
+          <p class="font-bold text-highlighted">{{ diagnostics.sessions_tracked.toLocaleString() }}</p>
+          <p class="text-muted">In-mem sessions</p>
+        </div>
+        <div>
+          <p class="font-bold text-highlighted">{{ diagnostics.media_tracked.toLocaleString() }}</p>
+          <p class="text-muted">Tracked media items</p>
+        </div>
+        <div>
+          <p class="font-bold text-highlighted">{{ diagnostics.max_reconstruct_events.toLocaleString() }}</p>
+          <p class="text-muted">Max reconstruct cap</p>
+        </div>
+      </div>
     </UCard>
 
     <!-- Empty state -->

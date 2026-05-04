@@ -475,6 +475,42 @@ export interface DeviceBucket {
     unique_users: number
 }
 
+// One bucket of the playback abandonment histogram. The dashboard
+// renders the 10 buckets as a horizontal bar chart so curators can see
+// where viewers drop off in a media item.
+export interface AbandonmentBucket {
+    range: string
+    count: number
+}
+
+// One IP's traffic snapshot: total events, unique users behind that IP,
+// total bytes streamed (from stream_end events), and last-seen timestamp.
+export interface IPBucket {
+    ip_address: string
+    events: number
+    unique_user_ids: number
+    bytes_sent: number
+    last_seen: string
+}
+
+export interface IPSummary {
+    unique_ips: number
+    top_by_events: IPBucket[]
+    top_by_bytes: IPBucket[]
+}
+
+// Analytics module's internal counters — exposed so admins can debug
+// "why is the dashboard slow / stale" without server log access.
+export interface ModuleDiagnostics {
+    cache_entries: number
+    dirty_days: number
+    active_subscribers: number
+    sessions_tracked: number
+    media_tracked: number
+    max_reconstruct_events: number
+    healthy: boolean
+}
+
 // Anomaly detection — one daily metric whose value is statistically
 // far from its rolling baseline. The dashboard renders these as a
 // banner at the top so admins notice incidents within a day.
@@ -522,6 +558,7 @@ export interface MediaDetail {
     }
     view_timeline: MetricTimelineEntry[]
     playback_timeline: MetricTimelineEntry[]
+    abandonment: AbandonmentBucket[]
 }
 
 // Per-user aggregated analytics returned by /admin/users/:username/analytics.

@@ -692,6 +692,35 @@ func (h *Handler) fetchExportRows(c *gin.Context, panel string) ([]map[string]an
 	}
 }
 
+// AdminGetIPSummary returns unique-IP count + top IPs by events / bytes.
+// Query: days (1-365, default 30), limit (1-100, default 20).
+func (h *Handler) AdminGetIPSummary(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{})
+		return
+	}
+	days := 30
+	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
+		days = d
+	}
+	limit := 20
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
+		limit = l
+	}
+	writeSuccess(c, h.analytics.GetIPSummary(c.Request.Context(), days, limit))
+}
+
+// AdminGetAnalyticsDiagnostics exposes the analytics module's internal
+// health counters (cache size, dirty-day flush queue, active SSE subs,
+// in-memory session/media counts).
+func (h *Handler) AdminGetAnalyticsDiagnostics(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{"available": false})
+		return
+	}
+	writeSuccess(c, h.analytics.GetDiagnostics())
+}
+
 // AdminGetAnomalies returns daily metrics that spiked or dipped beyond
 // the rolling-window threshold. Query: z (default 2.5), window (1-90,
 // default 14).
