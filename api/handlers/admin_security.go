@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/security"
 )
 
@@ -66,7 +67,7 @@ type addIPListReq struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
-func (h *Handler) addToIPList(c *gin.Context, addFn func(ip, comment, addedBy string, expiresAt *time.Time) error, successMsg string) {
+func (h *Handler) addToIPList(c *gin.Context, addFn func(ip, comment, addedBy string, expiresAt *time.Time) error, successMsg, listName string) {
 	if !h.requireSecurity(c) {
 		return
 	}
@@ -83,21 +84,26 @@ func (h *Handler) addToIPList(c *gin.Context, addFn func(ip, comment, addedBy st
 		writeError(c, http.StatusBadRequest, "Invalid IP address")
 		return
 	}
+	h.trackServerEvent(c, analytics.EventSecurityIPListMutate, map[string]any{
+		"list":   listName,
+		"action": "add",
+		"ip":     req.IP,
+	})
 	writeSuccess(c, map[string]string{"message": successMsg})
 }
 
 // AddToWhitelist adds an IP to the whitelist
 func (h *Handler) AddToWhitelist(c *gin.Context) {
-	h.addToIPList(c, h.security.AddToWhitelist, "Added to whitelist")
+	h.addToIPList(c, h.security.AddToWhitelist, "Added to whitelist", "whitelist")
 }
 
 // AddToBlacklist adds an IP to the blacklist
 func (h *Handler) AddToBlacklist(c *gin.Context) {
-	h.addToIPList(c, h.security.AddToBlacklist, "Added to blacklist")
+	h.addToIPList(c, h.security.AddToBlacklist, "Added to blacklist", "blacklist")
 }
 
 // removeFromIPList binds the JSON body (ip), calls removeFn(ip), and responds with 404 and notFoundMsg if not found.
-func (h *Handler) removeFromIPList(c *gin.Context, removeFn func(string) bool, notFoundMsg string) {
+func (h *Handler) removeFromIPList(c *gin.Context, removeFn func(string) bool, notFoundMsg, listName string) {
 	if !h.requireSecurity(c) {
 		return
 	}
@@ -111,12 +117,17 @@ func (h *Handler) removeFromIPList(c *gin.Context, removeFn func(string) bool, n
 		writeError(c, http.StatusNotFound, notFoundMsg)
 		return
 	}
+	h.trackServerEvent(c, analytics.EventSecurityIPListMutate, map[string]any{
+		"list":   listName,
+		"action": "remove",
+		"ip":     req.IP,
+	})
 	writeSuccess(c, nil)
 }
 
 // RemoveFromWhitelist removes an IP from the whitelist
 func (h *Handler) RemoveFromWhitelist(c *gin.Context) {
-	h.removeFromIPList(c, h.security.RemoveFromWhitelist, "IP not found in whitelist")
+	h.removeFromIPList(c, h.security.RemoveFromWhitelist, "IP not found in whitelist", "whitelist")
 }
 
 // GetBlacklist returns the IP blacklist as a flat array.
@@ -126,7 +137,7 @@ func (h *Handler) GetBlacklist(c *gin.Context) {
 
 // RemoveFromBlacklist removes an IP from the blacklist
 func (h *Handler) RemoveFromBlacklist(c *gin.Context) {
-	h.removeFromIPList(c, h.security.RemoveFromBlacklist, "IP not found in blacklist")
+	h.removeFromIPList(c, h.security.RemoveFromBlacklist, "IP not found in blacklist", "blacklist")
 }
 
 // GetBannedIPs returns currently banned IPs as a typed array.
@@ -194,6 +205,13 @@ func (h *Handler) BanIP(c *gin.Context) {
 	}
 
 	h.security.BanIP(req.IP, duration, reason)
+	h.trackServerEvent(c, analytics.EventSecurityIPListMutate, map[string]any{
+		"list":     "ban",
+		"action":   "add",
+		"ip":       req.IP,
+		"duration": duration.String(),
+		"reason":   reason,
+	})
 	writeSuccess(c, map[string]string{"message": "IP banned"})
 }
 
@@ -219,5 +237,10 @@ func (h *Handler) UnbanIP(c *gin.Context) {
 	}
 
 	h.security.UnbanIP(req.IP)
+	h.trackServerEvent(c, analytics.EventSecurityIPListMutate, map[string]any{
+		"list":   "ban",
+		"action": "remove",
+		"ip":     req.IP,
+	})
 	writeSuccess(c, nil)
 }

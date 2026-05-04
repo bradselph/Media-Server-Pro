@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/auth"
 	"media-server-pro/pkg/models"
 )
@@ -103,7 +104,7 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{Action: "create_user", Target: req.Username})
+	h.trackServerEvent(c, analytics.EventUserCreate, map[string]any{"username": req.Username})
 
 	writeSuccess(c, user)
 }
@@ -205,7 +206,7 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{Action: "update_user", Target: username, Details: updates})
+	h.trackServerEvent(c, analytics.EventUserUpdate, map[string]any{"username": username, "fields": updates})
 
 	// Emit a user_role_change event when role/type/enabled changed —
 	// auditable, dashboardable, and useful for security review.
@@ -259,7 +260,7 @@ func (h *Handler) AdminDeleteUser(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{Action: "delete_user", Target: username})
+	h.trackServerEvent(c, analytics.EventUserDelete, map[string]any{"username": username})
 	writeSuccess(c, nil)
 }
 
@@ -294,7 +295,7 @@ func (h *Handler) AdminChangePassword(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{Action: "change_password", Target: username})
+	h.trackServerEvent(c, analytics.EventUserPasswordChange, map[string]any{"username": username, "scope": "user"})
 	writeSuccess(c, map[string]string{"status": "password_changed"})
 }
 
@@ -328,7 +329,7 @@ func (h *Handler) AdminChangeOwnPassword(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{Action: "change_admin_password"})
+	h.trackServerEvent(c, analytics.EventUserPasswordChange, map[string]any{"scope": "admin"})
 	writeSuccess(c, map[string]string{"status": "password_changed"})
 }
 
@@ -387,17 +388,17 @@ func (h *Handler) AdminBulkUsers(c *gin.Context) {
 		case "delete":
 			opErr = h.auth.DeleteUser(c.Request.Context(), username)
 			if opErr == nil {
-				h.logAdminAction(c, &adminLogActionParams{Action: "bulk_delete_user", Target: username})
+				h.trackServerEvent(c, analytics.EventBulkUserDelete, map[string]any{"username": username})
 			}
 		case "enable":
 			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]any{"enabled": true})
 			if opErr == nil {
-				h.logAdminAction(c, &adminLogActionParams{Action: "bulk_enable_user", Target: username})
+				h.trackServerEvent(c, analytics.EventBulkUserEnable, map[string]any{"username": username})
 			}
 		case "disable":
 			opErr = h.auth.UpdateUser(c.Request.Context(), username, map[string]any{"enabled": false})
 			if opErr == nil {
-				h.logAdminAction(c, &adminLogActionParams{Action: "bulk_disable_user", Target: username})
+				h.trackServerEvent(c, analytics.EventBulkUserDisable, map[string]any{"username": username})
 			}
 		}
 		if opErr != nil {

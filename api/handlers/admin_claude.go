@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/admin"
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/claude"
 )
 
@@ -70,9 +71,7 @@ func (h *Handler) AdminClaudeUpdateConfig(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	h.logAdminAction(c, &adminLogActionParams{
-		Action: "claude.settings.update", Target: "claude", Details: body,
-	})
+	h.trackServerEvent(c, analytics.EventClaudeConfigUpdate, map[string]any{"settings": body})
 	writeSuccess(c, h.claude.PublicConfig())
 }
 
@@ -96,9 +95,7 @@ func (h *Handler) AdminClaudeKillSwitch(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	h.logAdminAction(c, &adminLogActionParams{
-		Action: "claude.kill_switch", Target: "claude", Details: map[string]any{"on": body.On},
-	})
+	h.trackServerEvent(c, analytics.EventClaudeConfigUpdate, map[string]any{"kill_switch": body.On})
 	writeSuccess(c, map[string]any{"kill_switch": h.claude.PublicConfig().KillSwitch})
 }
 
@@ -163,9 +160,7 @@ func (h *Handler) AdminClaudeDeleteConversation(c *gin.Context) {
 		writeError(c, http.StatusNotFound, err.Error())
 		return
 	}
-	h.logAdminAction(c, &adminLogActionParams{
-		Action: "claude.conversation.delete", Target: id,
-	})
+	h.trackServerEvent(c, analytics.EventBulkDelete, map[string]any{"scope": "claude_conversation", "conversation_id": id})
 	writeSuccess(c, map[string]any{"deleted": id})
 }
 

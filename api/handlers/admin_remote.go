@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/config"
 )
 
@@ -102,6 +103,10 @@ func (h *Handler) CreateRemoteSource(c *gin.Context) {
 		Username string `json:"username,omitempty"`
 		Enabled  bool   `json:"enabled"`
 	}
+	h.trackServerEvent(c, analytics.EventRemoteStoreUpdate, map[string]any{
+		"action": "create",
+		"name":   source.Name,
+	})
 	writeSuccess(c, createRemoteSourceResponse{
 		Name:     source.Name,
 		URL:      source.URL,
@@ -174,6 +179,10 @@ func (h *Handler) SyncRemoteSource(c *gin.Context) {
 		}
 	}()
 
+	h.trackServerEvent(c, analytics.EventRemoteStoreUpdate, map[string]any{
+		"action": "sync",
+		"name":   sourceName,
+	})
 	writeSuccess(c, map[string]string{"status": "sync_started"})
 }
 
@@ -220,6 +229,10 @@ func (h *Handler) DeleteRemoteSource(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventRemoteStoreUpdate, map[string]any{
+		"action": "delete",
+		"name":   sourceName,
+	})
 	writeSuccess(c, map[string]string{"message": "Source removed"})
 }
 
@@ -256,6 +269,10 @@ func (h *Handler) CleanRemoteCache(c *gin.Context) {
 		return
 	}
 	removed := h.remote.CleanCache()
+	h.trackServerEvent(c, analytics.EventRemoteStoreUpdate, map[string]any{
+		"action":  "clean_cache",
+		"removed": removed,
+	})
 	writeSuccess(c, map[string]int{"removed": removed})
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/extractor"
 	"media-server-pro/pkg/helpers"
 )
@@ -45,6 +46,11 @@ func (h *Handler) AddExtractorItem(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventExtractorRun, map[string]any{
+		"action": "add",
+		"url":    req.URL,
+		"title":  req.Title,
+	})
 	writeSuccess(c, item)
 }
 
@@ -79,6 +85,7 @@ func (h *Handler) RemoveExtractorItem(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventExtractorRun, map[string]any{"action": "remove", "id": id})
 	writeSuccess(c, map[string]string{"status": "removed"})
 }
 

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/analytics"
 )
 
 // RestartServer initiates a server restart via self-exec.
@@ -18,7 +20,7 @@ func (h *Handler) RestartServer(c *gin.Context) {
 		return
 	}
 	h.log.Warn("Server restart requested by admin")
-	h.logAdminAction(c, &adminLogActionParams{Action: "restart_server", Target: "initiated"})
+	h.trackServerEvent(c, analytics.EventServerRestart, map[string]any{"status": "initiated"})
 
 	writeSuccess(c, map[string]any{
 		"message": "Server restart initiated. The server will restart in a few seconds.",
@@ -91,7 +93,7 @@ func (h *Handler) ShutdownServer(c *gin.Context) {
 		return
 	}
 	h.log.Warn("Server shutdown requested by admin")
-	h.logAdminAction(c, &adminLogActionParams{Action: "shutdown_server", Target: "initiated"})
+	h.trackServerEvent(c, analytics.EventServerShutdown, map[string]any{"status": "initiated"})
 
 	writeSuccess(c, map[string]any{
 		"message": "Server shutdown initiated. The server will shut down in a few seconds.",

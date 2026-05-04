@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/media"
 	"media-server-pro/pkg/models"
 )
@@ -69,6 +70,7 @@ func (h *Handler) ClassifyRunTask(c *gin.Context) {
 		writeError(c, http.StatusConflict, err.Error())
 		return
 	}
+	h.trackServerEvent(c, analytics.EventClassifyRun, map[string]any{"scope": "task"})
 	writeSuccess(c, map[string]any{
 		"message": "HF classification task started.",
 	})
@@ -100,6 +102,7 @@ func (h *Handler) ClassifyClearTags(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Failed to clear tags: "+err.Error())
 		return
 	}
+	h.trackServerEvent(c, analytics.EventClassifyRun, map[string]any{"scope": "clear_tags", "media_id": req.ID})
 	writeSuccess(c, map[string]any{
 		"message": "Tags cleared.",
 		"id":      req.ID,
@@ -218,6 +221,7 @@ func (h *Handler) ClassifyDirectory(c *gin.Context) {
 		return
 	}
 	go h.runClassifyDirectoryBackground(dirPath)
+	h.trackServerEvent(c, analytics.EventClassifyRun, map[string]any{"scope": "directory", "directory": dirPath})
 	c.JSON(http.StatusAccepted, models.APIResponse{
 		Success: true,
 		Data: map[string]any{
@@ -264,6 +268,7 @@ func (h *Handler) ClassifyAllPending(c *gin.Context) {
 	}
 	go h.runClassifyAllPendingBackground(pending)
 
+	h.trackServerEvent(c, analytics.EventClassifyRun, map[string]any{"scope": "all_pending", "count": len(pending)})
 	c.JSON(http.StatusAccepted, models.APIResponse{
 		Success: true,
 		Data: map[string]any{

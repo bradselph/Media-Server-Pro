@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/receiver"
 	"media-server-pro/pkg/helpers"
@@ -264,6 +265,10 @@ func (h *Handler) ReceiverPair(c *gin.Context) {
 	if err := h.follower.Reload(reloadCtx); err != nil {
 		// Settings saved but the loop didn't restart cleanly. Surface the reload
 		// error so the caller knows the WS may still be using stale config.
+		h.trackServerEvent(c, analytics.EventReceiverPair, map[string]any{
+			"master_url":   masterURL,
+			"reload_error": err.Error(),
+		})
 		writeSuccess(c, gin.H{
 			"saved":         true,
 			"reload_error":  err.Error(),
@@ -271,6 +276,7 @@ func (h *Handler) ReceiverPair(c *gin.Context) {
 		})
 		return
 	}
+	h.trackServerEvent(c, analytics.EventReceiverPair, map[string]any{"master_url": masterURL})
 	writeSuccess(c, gin.H{
 		"saved":         true,
 		"reload_status": h.follower.GetStatus(),
@@ -388,6 +394,11 @@ func (h *Handler) AdminPeerConnect(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventReceiverPair, map[string]any{
+		"scope":    "peer_connect",
+		"peer_url": peerURL,
+		"our_url":  ourURL,
+	})
 	writeSuccess(c, gin.H{
 		"paired":   true,
 		"peer_url": peerURL,
@@ -426,6 +437,7 @@ func (h *Handler) AdminReceiverRemoveSlave(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventReceiverUnpair, map[string]any{"slave_id": slaveID})
 	writeSuccess(c, gin.H{"message": "slave removed"})
 }
 
