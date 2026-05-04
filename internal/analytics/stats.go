@@ -497,6 +497,9 @@ type TopUserEntry struct {
 // back to the retention window. SQL GROUP BY isn't a good fit here because
 // the metric switch (views vs watch-time vs uploads) needs per-event payload
 // inspection, so the aggregation stays in Go.
+//
+// Memoised for 30s — the dashboard fires this on every load + auto-refresh
+// and the underlying event scan is expensive enough to want a cache hit.
 func (m *Module) GetTopUsers(ctx context.Context, metric, since, until string, limit int) []TopUserEntry {
 	if m.eventRepo == nil {
 		return nil
@@ -504,6 +507,15 @@ func (m *Module) GetTopUsers(ctx context.Context, metric, since, until string, l
 	if limit <= 0 {
 		limit = 10
 	}
+	cacheKey := "topusers|" + metric + "|" + since + "|" + until + "|" + strconv.Itoa(limit)
+	return memo(m.cache, cacheKey, 30*time.Second, func() []TopUserEntry {
+		return m.computeTopUsers(ctx, metric, since, until, limit)
+	})
+}
+
+// computeTopUsers is the un-cached implementation. Split out so memo()
+// can wrap it without recursion.
+func (m *Module) computeTopUsers(ctx context.Context, metric, since, until string, limit int) []TopUserEntry {
 	// Pull a generous window — repo caps at 10k internally so this is a
 	// soft request, not an unbounded scan. retention pruning is the real
 	// upper bound on row count.
@@ -600,7 +612,7 @@ type SearchQueryEntry struct {
 // [since, until], with the empty-result share alongside. limit caps the rows
 // returned (default 20). Queries are case-insensitive and trimmed; the
 // original casing of the most-recent occurrence is preserved for display.
-// Empty since/until disables that side of the filter.
+// Empty since/until disables that side of the filter. Memoised 30s.
 func (m *Module) GetTopSearches(ctx context.Context, since, until string, limit int) []SearchQueryEntry {
 	if m.eventRepo == nil {
 		return nil
@@ -608,6 +620,13 @@ func (m *Module) GetTopSearches(ctx context.Context, since, until string, limit 
 	if limit <= 0 {
 		limit = 20
 	}
+	cacheKey := "topsearches|" + since + "|" + until + "|" + strconv.Itoa(limit)
+	return memo(m.cache, cacheKey, 30*time.Second, func() []SearchQueryEntry {
+		return m.computeTopSearches(ctx, since, until, limit)
+	})
+}
+
+func (m *Module) computeTopSearches(ctx context.Context, since, until string, limit int) []SearchQueryEntry {
 	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
 		Type:      EventSearch,
 		StartDate: since,
@@ -670,7 +689,8 @@ type FailedLoginEntry struct {
 
 // GetRecentFailedLogins returns up to limit recent login_failed events
 // in [since, until]. Sorted newest first — same order the repo returns from
-// List.
+// List. Memoised 15s (shorter than the others — security-review use case
+// wants near-real-time).
 func (m *Module) GetRecentFailedLogins(ctx context.Context, since, until string, limit int) []FailedLoginEntry {
 	if m.eventRepo == nil {
 		return nil
@@ -678,6 +698,13 @@ func (m *Module) GetRecentFailedLogins(ctx context.Context, since, until string,
 	if limit <= 0 {
 		limit = 50
 	}
+	cacheKey := "failedlogins|" + since + "|" + until + "|" + strconv.Itoa(limit)
+	return memo(m.cache, cacheKey, 15*time.Second, func() []FailedLoginEntry {
+		return m.computeRecentFailedLogins(ctx, since, until, limit)
+	})
+}
+
+func (m *Module) computeRecentFailedLogins(ctx context.Context, since, until string, limit int) []FailedLoginEntry {
 	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
 		Type:      EventLoginFailed,
 		StartDate: since,
@@ -716,6 +743,7 @@ type ErrorPathEntry struct {
 // GetErrorPaths aggregates server_error events into a (method, path, status)
 // table sorted by count descending. Events are scanned in [since, until]
 // (default = retention window). Returned rows capped by limit (default 25).
+// Memoised 30s.
 func (m *Module) GetErrorPaths(ctx context.Context, since, until string, limit int) []ErrorPathEntry {
 	if m.eventRepo == nil {
 		return nil
@@ -723,6 +751,13 @@ func (m *Module) GetErrorPaths(ctx context.Context, since, until string, limit i
 	if limit <= 0 {
 		limit = 25
 	}
+	cacheKey := "errorpaths|" + since + "|" + until + "|" + strconv.Itoa(limit)
+	return memo(m.cache, cacheKey, 30*time.Second, func() []ErrorPathEntry {
+		return m.computeErrorPaths(ctx, since, until, limit)
+	})
+}
+
+func (m *Module) computeErrorPaths(ctx context.Context, since, until string, limit int) []ErrorPathEntry {
 	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
 		Type:      EventServerError,
 		StartDate: since,
@@ -802,8 +837,19 @@ type CohortMetrics struct {
 
 // GetCohortMetrics computes DAU, WAU, MAU and stickiness ratios from the raw
 // event stream. Events without a user_id (anonymous traffic) are excluded —
-// those numbers belong on a separate "unique IPs" metric.
+// those numbers belong on a separate "unique IPs" metric. Memoised 60s
+// (these only change as new events arrive; the dashboard refresh cadence
+// gives plenty of opportunity to see updates).
 func (m *Module) GetCohortMetrics(ctx context.Context) CohortMetrics {
+	if m.eventRepo == nil {
+		return CohortMetrics{}
+	}
+	return memo(m.cache, "cohort", 60*time.Second, func() CohortMetrics {
+		return m.computeCohortMetrics(ctx)
+	})
+}
+
+func (m *Module) computeCohortMetrics(ctx context.Context) CohortMetrics {
 	out := CohortMetrics{}
 	if m.eventRepo == nil {
 		return out
@@ -857,6 +903,7 @@ type HourlyHeatmapCell struct {
 // GetHourlyHeatmap returns a 7×24 grid of event counts, scanned over the
 // last `days` days (default 30). The frontend renders this as a calendar
 // heatmap so admins can see traffic peak hours per weekday at a glance.
+// Memoised 60s — heatmap shape changes slowly relative to dashboard refresh.
 func (m *Module) GetHourlyHeatmap(ctx context.Context, days int) []HourlyHeatmapCell {
 	if m.eventRepo == nil {
 		return nil
@@ -864,6 +911,13 @@ func (m *Module) GetHourlyHeatmap(ctx context.Context, days int) []HourlyHeatmap
 	if days <= 0 {
 		days = 30
 	}
+	cacheKey := "heatmap|" + strconv.Itoa(days)
+	return memo(m.cache, cacheKey, 60*time.Second, func() []HourlyHeatmapCell {
+		return m.computeHourlyHeatmap(ctx, days)
+	})
+}
+
+func (m *Module) computeHourlyHeatmap(ctx context.Context, days int) []HourlyHeatmapCell {
 	cutoff := time.Now().AddDate(0, 0, -days).Format(time.RFC3339)
 	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
 		StartDate: cutoff,
@@ -904,7 +958,7 @@ type QualityBucket struct {
 // GetQualityBreakdown groups stream activity by reported quality tier so
 // admins can see how much of their bandwidth is going to which resolution.
 // Empty / unknown quality buckets under "(unspecified)" rather than being
-// dropped — bytes still need to be accounted for somewhere.
+// dropped — bytes still need to be accounted for somewhere. Memoised 60s.
 func (m *Module) GetQualityBreakdown(ctx context.Context, days int) []QualityBucket {
 	if m.eventRepo == nil {
 		return nil
@@ -912,6 +966,13 @@ func (m *Module) GetQualityBreakdown(ctx context.Context, days int) []QualityBuc
 	if days <= 0 {
 		days = 30
 	}
+	cacheKey := "quality|" + strconv.Itoa(days)
+	return memo(m.cache, cacheKey, 60*time.Second, func() []QualityBucket {
+		return m.computeQualityBreakdown(ctx, days)
+	})
+}
+
+func (m *Module) computeQualityBreakdown(ctx context.Context, days int) []QualityBucket {
 	cutoff := time.Now().AddDate(0, 0, -days).Format(time.RFC3339)
 	starts, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
 		Type:      EventStreamStart,
@@ -1073,10 +1134,18 @@ type Funnel struct {
 // GetFunnel scans events in the last `days` days and computes view →
 // playback → completion conversion rates, both overall and split by
 // authenticated/anonymous traffic. days <= 0 falls back to 30.
+// Memoised 60s.
 func (m *Module) GetFunnel(ctx context.Context, days int) Funnel {
 	if days <= 0 {
 		days = 30
 	}
+	cacheKey := "funnel|" + strconv.Itoa(days)
+	return memo(m.cache, cacheKey, 60*time.Second, func() Funnel {
+		return m.computeFunnel(ctx, days)
+	})
+}
+
+func (m *Module) computeFunnel(ctx context.Context, days int) Funnel {
 	out := Funnel{WindowDays: days}
 	if m.eventRepo == nil {
 		return out
@@ -1168,7 +1237,7 @@ type DeviceBucket struct {
 // GetDeviceBreakdown classifies events by user-agent family (mobile / tablet
 // / desktop / bot / unknown) and by browser/OS family. Returns two slices
 // the dashboard renders side by side. Pure parsing — no external geoip /
-// device-detection service.
+// device-detection service. Memoised 60s.
 //
 // The classification is intentionally coarse: full UA-parsing libraries
 // have heavy dependency cost and frequent false positives. The categories
@@ -1179,6 +1248,21 @@ func (m *Module) GetDeviceBreakdown(ctx context.Context, days int) (devices, bro
 	if days <= 0 {
 		days = 30
 	}
+	if m.eventRepo == nil {
+		return nil, nil
+	}
+	cacheKey := "devices|" + strconv.Itoa(days)
+	type devBundle struct {
+		Devices, Browsers []DeviceBucket
+	}
+	bundle := memo(m.cache, cacheKey, 60*time.Second, func() devBundle {
+		d, b := m.computeDeviceBreakdown(ctx, days)
+		return devBundle{Devices: d, Browsers: b}
+	})
+	return bundle.Devices, bundle.Browsers
+}
+
+func (m *Module) computeDeviceBreakdown(ctx context.Context, days int) (devices, browsers []DeviceBucket) {
 	if m.eventRepo == nil {
 		return nil, nil
 	}

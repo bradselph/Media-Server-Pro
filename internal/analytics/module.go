@@ -49,6 +49,10 @@ type Module struct {
 	// flush loop can drain it without blocking the hot event path.
 	dirtyDays map[string]struct{}
 	dirtyMu   sync.Mutex
+	// aggCache memoises expensive aggregation queries (top-users, top-searches,
+	// error-paths, heatmap, devices, etc.) for ~30s so dashboard refreshes
+	// don't hammer the analytics_events table with the same scan repeatedly.
+	cache *aggCache
 }
 
 // NewModule creates a new analytics module.
@@ -71,6 +75,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 		done:                 make(chan struct{}),
 		maxEvents:            cfg.Get().Analytics.MaxReconstructEvents,
 		dirtyDays:            make(map[string]struct{}),
+		cache:                newAggCache(),
 	}, nil
 }
 
