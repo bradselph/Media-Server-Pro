@@ -3,6 +3,8 @@ package analytics
 import (
 	"context"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"media-server-pro/internal/repositories"
@@ -474,6 +476,408 @@ func (m *Module) GetUserStats(ctx context.Context, userID string, limit int) Use
 		}
 	}
 	return stats
+}
+
+// TopUserEntry pairs a user with one numeric metric for leaderboard rendering.
+type TopUserEntry struct {
+	UserID         string  `json:"user_id"`
+	Username       string  `json:"username,omitempty"` // resolved by handler when possible
+	Metric         float64 `json:"metric"`
+	TotalViews     int     `json:"total_views"`
+	TotalWatchTime float64 `json:"total_watch_time"`
+	TotalUploads   int     `json:"total_uploads"`
+	TotalDownloads int     `json:"total_downloads"`
+	TotalEvents    int     `json:"total_events"`
+}
+
+// GetTopUsers returns the top N users by the given metric. metric is one of:
+// "views", "watch_time", "uploads", "downloads", "events". Computed by
+// scanning recent events under the analytics retention window — not perfect
+// for full-history reports but matches the rest of the dashboard's window
+// and avoids a separate per-user persistence layer.
+func (m *Module) GetTopUsers(ctx context.Context, metric string, limit int) []TopUserEntry {
+	if m.eventRepo == nil {
+		return nil
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	// Pull a generous window — repo caps at 10k internally so this is a
+	// soft request, not an unbounded scan. retention pruning is the real
+	// upper bound on row count.
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{Limit: 50000})
+	if err != nil {
+		m.log.Error("GetTopUsers: list events: %v", err)
+		return nil
+	}
+
+	type bucket struct {
+		userID                                                  string
+		views, playbacks, completions, uploads, downloads, evts int
+		watchTime                                               float64
+	}
+	rows := make(map[string]*bucket)
+	for _, ev := range events {
+		if ev.UserID == "" {
+			continue
+		}
+		b, ok := rows[ev.UserID]
+		if !ok {
+			b = &bucket{userID: ev.UserID}
+			rows[ev.UserID] = b
+		}
+		b.evts++
+		switch ev.Type {
+		case "view":
+			b.views++
+		case "playback":
+			pos, _ := ev.Data["position"].(float64)
+			dur, _ := ev.Data["duration"].(float64)
+			if dur > 0 {
+				b.playbacks++
+				w := pos
+				if w > dur {
+					w = dur
+				}
+				if w > 0 {
+					b.watchTime += w
+				}
+			}
+		case EventDownload:
+			b.downloads++
+		case EventUploadSuccess:
+			b.uploads++
+		}
+	}
+	out := make([]TopUserEntry, 0, len(rows))
+	for _, b := range rows {
+		out = append(out, TopUserEntry{
+			UserID:         b.userID,
+			TotalViews:     b.views,
+			TotalWatchTime: b.watchTime,
+			TotalUploads:   b.uploads,
+			TotalDownloads: b.downloads,
+			TotalEvents:    b.evts,
+		})
+	}
+	for i := range out {
+		switch metric {
+		case "watch_time":
+			out[i].Metric = out[i].TotalWatchTime
+		case "uploads":
+			out[i].Metric = float64(out[i].TotalUploads)
+		case "downloads":
+			out[i].Metric = float64(out[i].TotalDownloads)
+		case "events":
+			out[i].Metric = float64(out[i].TotalEvents)
+		default: // "views"
+			out[i].Metric = float64(out[i].TotalViews)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Metric > out[j].Metric })
+	if limit > 0 && limit < len(out) {
+		out = out[:limit]
+	}
+	return out
+}
+
+// SearchQueryEntry pairs a normalised search query with its frequency and
+// whether the search ever returned zero results. "Empty" queries surface the
+// search-experience signal that the audit added to every search event.
+type SearchQueryEntry struct {
+	Query      string `json:"query"`
+	Count      int    `json:"count"`
+	EmptyCount int    `json:"empty_count"` // how many of those occurrences returned 0 results
+}
+
+// GetTopSearches returns the most frequent search queries seen in recent
+// events, with the empty-result share alongside. limit caps the rows returned
+// (default 20). Queries are case-insensitive and trimmed; the original casing
+// of the most-recent occurrence is preserved for display.
+func (m *Module) GetTopSearches(ctx context.Context, limit int) []SearchQueryEntry {
+	if m.eventRepo == nil {
+		return nil
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		Type:  EventSearch,
+		Limit: 10000,
+	})
+	if err != nil {
+		m.log.Error("GetTopSearches: list events: %v", err)
+		return nil
+	}
+	type bucket struct {
+		display    string
+		count      int
+		emptyCount int
+	}
+	rows := make(map[string]*bucket)
+	for _, ev := range events {
+		raw, _ := ev.Data["query"].(string)
+		q := strings.TrimSpace(raw)
+		if q == "" {
+			continue
+		}
+		key := strings.ToLower(q)
+		b, ok := rows[key]
+		if !ok {
+			b = &bucket{display: q}
+			rows[key] = b
+		}
+		b.count++
+		if empty, ok := ev.Data["empty"].(bool); ok && empty {
+			b.emptyCount++
+		}
+	}
+	out := make([]SearchQueryEntry, 0, len(rows))
+	for _, b := range rows {
+		out = append(out, SearchQueryEntry{Query: b.display, Count: b.count, EmptyCount: b.emptyCount})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Query < out[j].Query
+	})
+	if limit > 0 && limit < len(out) {
+		out = out[:limit]
+	}
+	return out
+}
+
+// FailedLoginEntry summarises a recent failed login attempt for the security
+// review panel — IP, attempted username (when present in the event payload),
+// and timestamp. Recent N entries; deduplication is the caller's call.
+type FailedLoginEntry struct {
+	IPAddress string    `json:"ip_address"`
+	Username  string    `json:"username,omitempty"`
+	UserAgent string    `json:"user_agent,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+	Reason    string    `json:"reason,omitempty"`
+}
+
+// GetRecentFailedLogins returns up to limit recent login_failed events.
+// Sorted newest first — same order the repo returns from List.
+func (m *Module) GetRecentFailedLogins(ctx context.Context, limit int) []FailedLoginEntry {
+	if m.eventRepo == nil {
+		return nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		Type:  EventLoginFailed,
+		Limit: limit,
+	})
+	if err != nil {
+		m.log.Error("GetRecentFailedLogins: list events: %v", err)
+		return nil
+	}
+	out := make([]FailedLoginEntry, 0, len(events))
+	for _, ev := range events {
+		username, _ := ev.Data["username"].(string)
+		reason, _ := ev.Data["reason"].(string)
+		out = append(out, FailedLoginEntry{
+			IPAddress: ev.IPAddress,
+			Username:  username,
+			UserAgent: ev.UserAgent,
+			Timestamp: ev.Timestamp,
+			Reason:    reason,
+		})
+	}
+	return out
+}
+
+// ErrorPathEntry groups server_error events by HTTP path so operators can see
+// which routes are failing without scanning the raw event stream.
+type ErrorPathEntry struct {
+	Path     string    `json:"path"`
+	Method   string    `json:"method"`
+	Status   int       `json:"status"`
+	Count    int       `json:"count"`
+	LastSeen time.Time `json:"last_seen"`
+}
+
+// GetErrorPaths aggregates server_error events into a (method, path, status)
+// table sorted by count descending. Recent N events scanned (default 1000),
+// returned rows capped by limit (default 25).
+func (m *Module) GetErrorPaths(ctx context.Context, limit int) []ErrorPathEntry {
+	if m.eventRepo == nil {
+		return nil
+	}
+	if limit <= 0 {
+		limit = 25
+	}
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		Type:  EventServerError,
+		Limit: 1000,
+	})
+	if err != nil {
+		m.log.Error("GetErrorPaths: list events: %v", err)
+		return nil
+	}
+	type bucket struct {
+		path, method string
+		status       int
+		count        int
+		last         time.Time
+	}
+	rows := make(map[string]*bucket)
+	for _, ev := range events {
+		path, _ := ev.Data["path"].(string)
+		method, _ := ev.Data["method"].(string)
+		status := 500
+		switch s := ev.Data["status"].(type) {
+		case int:
+			status = s
+		case float64:
+			status = int(s)
+		}
+		key := method + " " + path + " " + strconv.Itoa(status)
+		b, ok := rows[key]
+		if !ok {
+			b = &bucket{path: path, method: method, status: status}
+			rows[key] = b
+		}
+		b.count++
+		if ev.Timestamp.After(b.last) {
+			b.last = ev.Timestamp
+		}
+	}
+	out := make([]ErrorPathEntry, 0, len(rows))
+	for _, b := range rows {
+		out = append(out, ErrorPathEntry{
+			Path:     b.path,
+			Method:   b.method,
+			Status:   b.status,
+			Count:    b.count,
+			LastSeen: b.last,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].LastSeen.After(out[j].LastSeen)
+	})
+	if limit > 0 && limit < len(out) {
+		out = out[:limit]
+	}
+	return out
+}
+
+// MetricTimelineEntry is one bucket on a daily-stats time-series chart.
+type MetricTimelineEntry struct {
+	Date  string  `json:"date"`
+	Value float64 `json:"value"`
+}
+
+// GetMetricTimeline returns a per-day series of the named metric over the
+// last `days` days, gap-filled with zeros so charts render evenly. The metric
+// names are the same as the JSON tags on DailyStats (e.g. "total_views",
+// "bytes_served", "logins"). Unknown metrics return all zeros.
+func (m *Module) GetMetricTimeline(metric string, days int) []MetricTimelineEntry {
+	if days <= 0 {
+		days = 30
+	}
+	m.statsMu.RLock()
+	defer m.statsMu.RUnlock()
+	now := time.Now()
+	out := make([]MetricTimelineEntry, 0, days)
+	for i := days - 1; i >= 0; i-- {
+		date := now.AddDate(0, 0, -i).Format(dateFormat)
+		entry := MetricTimelineEntry{Date: date, Value: 0}
+		if d, ok := m.dailyStats[date]; ok && d != nil {
+			entry.Value = dailyStatField(d, metric)
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+// dailyStatField returns the numeric value of the named metric on a
+// DailyStats row. Mirrors the JSON tags used in API responses.
+func dailyStatField(d *models.DailyStats, metric string) float64 {
+	switch metric {
+	case "total_views":
+		return float64(d.TotalViews)
+	case "unique_users":
+		return float64(d.UniqueUsers)
+	case "total_watch_time":
+		return d.TotalWatchTime
+	case "new_users":
+		return float64(d.NewUsers)
+	case "logins":
+		return float64(d.Logins)
+	case "logins_failed":
+		return float64(d.LoginsFailed)
+	case "logouts":
+		return float64(d.Logouts)
+	case "registrations":
+		return float64(d.Registrations)
+	case "age_gate_passes":
+		return float64(d.AgeGatePasses)
+	case "downloads":
+		return float64(d.Downloads)
+	case "searches":
+		return float64(d.Searches)
+	case "favorites_added":
+		return float64(d.FavoritesAdded)
+	case "favorites_removed":
+		return float64(d.FavoritesRemoved)
+	case "ratings_set":
+		return float64(d.RatingsSet)
+	case "playlists_created":
+		return float64(d.PlaylistsCreated)
+	case "playlists_deleted":
+		return float64(d.PlaylistsDeleted)
+	case "playlist_items_added":
+		return float64(d.PlaylistItemsAdded)
+	case "uploads_succeeded":
+		return float64(d.UploadsSucceeded)
+	case "uploads_failed":
+		return float64(d.UploadsFailed)
+	case "password_changes":
+		return float64(d.PasswordChanges)
+	case "account_deletions":
+		return float64(d.AccountDeletions)
+	case "hls_starts":
+		return float64(d.HLSStarts)
+	case "hls_errors":
+		return float64(d.HLSErrors)
+	case "media_deletions":
+		return float64(d.MediaDeletions)
+	case "api_tokens_created":
+		return float64(d.APITokensCreated)
+	case "api_tokens_revoked":
+		return float64(d.APITokensRevoked)
+	case "admin_actions":
+		return float64(d.AdminActions)
+	case "server_errors":
+		return float64(d.ServerErrors)
+	case "stream_starts":
+		return float64(d.StreamStarts)
+	case "stream_ends":
+		return float64(d.StreamEnds)
+	case "bytes_served":
+		return float64(d.BytesServed)
+	case "mature_blocked":
+		return float64(d.MatureBlocked)
+	case "permission_denied":
+		return float64(d.PermissionDenied)
+	case "preferences_changes":
+		return float64(d.PreferencesChanges)
+	case "bulk_deletes":
+		return float64(d.BulkDeletes)
+	case "bulk_updates":
+		return float64(d.BulkUpdates)
+	case "user_role_changes":
+		return float64(d.UserRoleChanges)
+	}
+	return 0
 }
 
 // GetMediaStats returns a copy of statistics for a media item so callers cannot mutate internal state.

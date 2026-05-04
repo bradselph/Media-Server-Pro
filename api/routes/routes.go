@@ -669,6 +669,11 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/audit-log/export", h.AdminExportAuditLog)
 	adminGrp.GET("/logs", h.GetServerLogs)
 	adminGrp.GET("/analytics/export", h.AdminExportAnalytics)
+	adminGrp.GET("/analytics/top-users", h.AdminGetTopUsers)
+	adminGrp.GET("/analytics/top-searches", h.AdminGetTopSearches)
+	adminGrp.GET("/analytics/failed-logins", h.AdminGetFailedLogins)
+	adminGrp.GET("/analytics/error-paths", h.AdminGetErrorPaths)
+	adminGrp.GET("/analytics/timeline", h.AdminGetMetricTimeline)
 	adminGrp.GET(routeUserByName+"/analytics", h.AdminGetUserAnalytics)
 
 	// Configuration management routes

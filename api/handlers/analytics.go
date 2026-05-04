@@ -324,6 +324,94 @@ func (h *Handler) GetEventsByMedia(c *gin.Context) {
 	writeSuccess(c, events)
 }
 
+// AdminGetTopUsers returns a leaderboard of users ranked by the chosen
+// metric. Query params: metric (views|watch_time|uploads|downloads|events,
+// default views), limit (1-200, default 10). Resolves user_id → username
+// best-effort so the dashboard can render names.
+func (h *Handler) AdminGetTopUsers(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	metric := c.DefaultQuery("metric", "views")
+	limit := 10
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 200 {
+		limit = l
+	}
+	rows := h.analytics.GetTopUsers(c.Request.Context(), metric, limit)
+	if h.auth != nil {
+		for i := range rows {
+			if rows[i].UserID == "" {
+				continue
+			}
+			if u, err := h.auth.GetUserByID(c.Request.Context(), rows[i].UserID); err == nil && u != nil {
+				rows[i].Username = u.Username
+			}
+		}
+	}
+	writeSuccess(c, rows)
+}
+
+// AdminGetTopSearches returns the most-frequent search queries with the
+// empty-result share alongside, so admins can see what users want and what
+// the catalog is missing. Query params: limit (1-100, default 20).
+func (h *Handler) AdminGetTopSearches(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	limit := 20
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 100 {
+		limit = l
+	}
+	writeSuccess(c, h.analytics.GetTopSearches(c.Request.Context(), limit))
+}
+
+// AdminGetFailedLogins returns recent login_failed events for security review.
+// Query params: limit (1-200, default 50).
+func (h *Handler) AdminGetFailedLogins(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	limit := 50
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 200 {
+		limit = l
+	}
+	writeSuccess(c, h.analytics.GetRecentFailedLogins(c.Request.Context(), limit))
+}
+
+// AdminGetErrorPaths returns a (method, path, status) breakdown of recent
+// 5xx responses so operators can see which routes are misbehaving without
+// drilling raw events. Query params: limit (1-200, default 25).
+func (h *Handler) AdminGetErrorPaths(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	limit := 25
+	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 200 {
+		limit = l
+	}
+	writeSuccess(c, h.analytics.GetErrorPaths(c.Request.Context(), limit))
+}
+
+// AdminGetMetricTimeline returns a per-day series for charting.
+// Query params: metric (one of the DailyStats JSON tags), days (1-365, default 30).
+// Returns gap-filled entries (zeros for missing days) so charts are continuous.
+func (h *Handler) AdminGetMetricTimeline(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	metric := strings.TrimSpace(c.DefaultQuery("metric", "total_views"))
+	days := 30
+	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
+		days = d
+	}
+	writeSuccess(c, h.analytics.GetMetricTimeline(metric, days))
+}
+
 // AdminGetUserAnalytics returns aggregated per-user analytics for the user
 // whose username is in the URL param (mounted under /users/:username/analytics
 // to match the rest of the admin user routes). Restricted to admins.
