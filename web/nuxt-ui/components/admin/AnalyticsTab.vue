@@ -5,7 +5,7 @@ import type {
   TopUserEntry, SearchQueryEntry, FailedLoginEntry, ErrorPathEntry,
   MetricTimelineEntry, CohortMetrics, HourlyHeatmapCell, QualityBucket,
   PeriodComparison, Funnel, DeviceBucket, MediaDetail, RetentionGrid,
-  AnomalyReport, IPSummary, ModuleDiagnostics,
+  AnomalyReport, IPSummary, ModuleDiagnostics, MetricForecast,
 } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime, formatBytes } from '~/utils/format'
@@ -66,6 +66,13 @@ const anomalies = ref<AnomalyReport | null>(null)
 const ipSummary = ref<IPSummary | null>(null)
 const diagnostics = ref<ModuleDiagnostics | null>(null)
 
+// Forecasts — one per headline metric. Rendered next to the period
+// comparison so admins see "is this growing?" alongside "vs last week".
+const forecastViews = ref<MetricForecast | null>(null)
+const forecastStreams = ref<MetricForecast | null>(null)
+const forecastBandwidth = ref<MetricForecast | null>(null)
+const forecastErrors = ref<MetricForecast | null>(null)
+
 // Funnel + device/browser breakdown + per-media drill + retention grid.
 const funnel = ref<Funnel | null>(null)
 const devices = ref<DeviceBucket[]>([])
@@ -84,7 +91,7 @@ const PANEL_KEYS = [
   'traffic', 'distribution', 'hourly', 'heatmap', 'funnel', 'quality',
   'gaps', 'devices', 'retention', 'topUsers', 'topSearches', 'activeStreams',
   'errorPaths', 'failedLogins', 'recent', 'drill', 'topMedia',
-  'contentPerf', 'daily', 'ips', 'diagnostics',
+  'contentPerf', 'daily', 'ips', 'diagnostics', 'forecast',
 ] as const
 type PanelKey = typeof PANEL_KEYS[number]
 const panelVisibility = ref<Record<PanelKey, boolean>>(
@@ -356,6 +363,10 @@ async function load() {
       analyticsApi.getAnomalies(2.5, 14),                           // 28
       analyticsApi.getIPSummary(30, 15),                            // 29
       analyticsApi.getDiagnostics(),                                // 30
+      analyticsApi.getForecast('total_views', 14),                  // 31
+      analyticsApi.getForecast('stream_starts', 14),                // 32
+      analyticsApi.getForecast('bytes_served', 14),                 // 33
+      analyticsApi.getForecast('server_errors', 14),                // 34
     ])
     if (period.value !== capturedPeriod) return
     const r = (i: number) => results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<unknown>).value : null
@@ -394,6 +405,10 @@ async function load() {
     if (r(28) !== null) anomalies.value = r(28) as AnomalyReport
     if (r(29) !== null) ipSummary.value = r(29) as IPSummary
     if (r(30) !== null) diagnostics.value = r(30) as ModuleDiagnostics
+    if (r(31) !== null) forecastViews.value = r(31) as MetricForecast
+    if (r(32) !== null) forecastStreams.value = r(32) as MetricForecast
+    if (r(33) !== null) forecastBandwidth.value = r(33) as MetricForecast
+    if (r(34) !== null) forecastErrors.value = r(34) as MetricForecast
 
     const failed = results.filter(x => x.status === 'rejected')
     if (failed.length) toast.add({ title: `${failed.length} analytics endpoint(s) failed`, color: 'warning', icon: 'i-lucide-alert-triangle' })
@@ -676,6 +691,20 @@ const hasTrafficActivity = computed(() =>
           :href="analyticsApi.exportCsv(period)"
           download
         />
+        <!-- Export-all bundle — single zip with one CSV per panel. Useful
+             for archival snapshots or sharing dashboard state with a peer
+             without screenshot-and-paste. -->
+        <UButton
+          icon="i-lucide-package"
+          label="Bundle"
+          variant="outline"
+          color="neutral"
+          size="xs"
+          tag="a"
+          :href="analyticsApi.exportAllUrl()"
+          download
+          title="Download a ZIP containing every panel as CSV"
+        />
         <!-- Panels visibility menu — admins can hide widgets they don't
              care about. Choices persist to localStorage so the layout
              survives reloads. -->
@@ -896,6 +925,52 @@ const hasTrafficActivity = computed(() =>
         </div>
       </UCard>
     </div>
+
+    <!-- Forecast strip — linear-trend projections of tomorrow's metrics
+         alongside their direction. Renders as 4 small cards because the
+         signal we want is "up / down / flat" plus a number, not a chart. -->
+    <UCard v-if="panelVisibility.forecast && (forecastViews || forecastStreams || forecastBandwidth || forecastErrors)" :ui="{ body: 'p-3' }">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-telescope" class="size-4" />
+          14-Day Trend Forecast
+        </div>
+      </template>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <template v-for="f in [
+          { label: 'Views', cmp: forecastViews },
+          { label: 'Streams', cmp: forecastStreams },
+          { label: 'Bandwidth', cmp: forecastBandwidth, isBytes: true },
+          { label: 'Server Errors', cmp: forecastErrors, isError: true },
+        ]" :key="f.label">
+          <div v-if="f.cmp">
+            <div class="flex items-center gap-1 mb-0.5">
+              <UIcon
+                :name="f.cmp.direction === 'up' ? 'i-lucide-trending-up' :
+                       f.cmp.direction === 'down' ? 'i-lucide-trending-down' :
+                       'i-lucide-minus'"
+                :class="[
+                  f.cmp.direction === 'up' && f.isError ? 'text-error' :
+                  f.cmp.direction === 'up' ? 'text-success' :
+                  f.cmp.direction === 'down' && f.isError ? 'text-success' :
+                  f.cmp.direction === 'down' ? 'text-warning' :
+                  'text-muted',
+                  'size-4'
+                ]"
+              />
+              <span class="text-xs text-muted">{{ f.label }}</span>
+            </div>
+            <p class="text-base font-bold text-highlighted truncate"
+               :title="`Slope: ${f.cmp.slope.toFixed(2)} per day; ±${f.cmp.confidence_band.toFixed(1)} band`">
+              {{ f.isBytes ? formatBytes(f.cmp.projection) : Math.round(f.cmp.projection).toLocaleString() }}
+            </p>
+            <p class="text-[10px] text-muted">
+              tomorrow ±{{ f.isBytes ? formatBytes(f.cmp.confidence_band) : f.cmp.confidence_band.toFixed(0) }}
+            </p>
+          </div>
+        </template>
+      </div>
+    </UCard>
 
     <!-- Engagement timeline — overlays views, streams, uploads, and logins
          on a single chart so operators can see how the four highest-signal

@@ -110,6 +110,7 @@ import type {
     AnomalyReport,
     IPSummary,
     ModuleDiagnostics,
+    MetricForecast,
     UpdateInfo,
     UserAnalytics,
     UpdateStatus,
@@ -978,6 +979,11 @@ export function useAnalyticsApi() {
         // Analytics module's internal diagnostics counters.
         getDiagnostics: () =>
             api.get<ModuleDiagnostics>('/api/admin/analytics/diagnostics'),
+        // Linear-trend projection of a single metric.
+        getForecast: (metric: string, days?: number) =>
+            api.get<MetricForecast>(`/api/admin/analytics/forecast${buildQS({metric, days: days || undefined})}`),
+        // Export-all bundle URL for <a download>.
+        exportAllUrl: () => '/api/admin/analytics/export-all',
         // Export-panel URL builder. Used by <a download> links so the
         // browser handles the file save dialog rather than the JS layer.
         exportPanelUrl: (panel: string, format: 'csv' | 'json' = 'csv', extra: Record<string, string | number | undefined> = {}) =>

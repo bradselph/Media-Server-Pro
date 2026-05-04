@@ -1916,6 +1916,84 @@ func (m *Module) GetMediaDetail(ctx context.Context, mediaID string, days int) M
 	return out
 }
 
+// MetricForecast holds the linear-trend projection for one metric.
+// Slope is per-day; the projected value is "tomorrow's" point on the line.
+// ConfidenceBand is one standard deviation of the residuals — a rough
+// "the actual could be ±this much" indicator. Not a statistical CI.
+type MetricForecast struct {
+	Metric         string  `json:"metric"`
+	WindowDays     int     `json:"window_days"`
+	Slope          float64 `json:"slope"`            // Δvalue per day
+	Intercept      float64 `json:"intercept"`
+	Projection     float64 `json:"projection"`       // tomorrow's value on the trend line
+	ConfidenceBand float64 `json:"confidence_band"`  // 1σ of residuals
+	Direction      string  `json:"direction"`        // "up" | "down" | "flat"
+}
+
+// GetMetricForecast fits a least-squares line to the last `windowDays` of
+// the named metric and projects one day forward. Used to render simple
+// "is this growing?" indicators alongside the period comparison.
+//
+// This is intentionally a low-ceremony forecast — no seasonality, no ARIMA,
+// no anomaly correction. The point is to detect a sustained trend over the
+// last week or two, not predict next quarter.
+func (m *Module) GetMetricForecast(metric string, windowDays int) MetricForecast {
+	if windowDays <= 0 {
+		windowDays = 14
+	}
+	out := MetricForecast{Metric: metric, WindowDays: windowDays, Direction: "flat"}
+	series := m.GetMetricTimeline(metric, windowDays)
+	n := len(series)
+	if n < 3 {
+		// Not enough points for a meaningful trend.
+		return out
+	}
+	// Least-squares slope/intercept on (x = day index, y = value).
+	var sumX, sumY, sumXY, sumX2 float64
+	for i, e := range series {
+		x := float64(i)
+		y := e.Value
+		sumX += x
+		sumY += y
+		sumXY += x * y
+		sumX2 += x * x
+	}
+	fn := float64(n)
+	denom := fn*sumX2 - sumX*sumX
+	if denom == 0 {
+		// All x's identical (impossible here) or degenerate — return flat.
+		return out
+	}
+	out.Slope = (fn*sumXY - sumX*sumY) / denom
+	out.Intercept = (sumY - out.Slope*sumX) / fn
+	out.Projection = out.Slope*float64(n) + out.Intercept
+	if out.Projection < 0 {
+		// Negative counts are nonsense for the metrics we forecast.
+		out.Projection = 0
+	}
+	// Residual standard deviation — a rough "noise band" around the line.
+	var residSqr float64
+	for i, e := range series {
+		predicted := out.Slope*float64(i) + out.Intercept
+		residSqr += (e.Value - predicted) * (e.Value - predicted)
+	}
+	out.ConfidenceBand = sqrt(residSqr / fn)
+
+	// Direction — sign of slope, but treat slopes within 5% of the mean as
+	// flat to avoid declaring a trend on noise alone.
+	mean := sumY / fn
+	threshold := 0.05 * mean
+	if mean == 0 {
+		threshold = 0.5 // tiny absolute threshold when baseline is zero
+	}
+	if out.Slope > threshold {
+		out.Direction = "up"
+	} else if out.Slope < -threshold {
+		out.Direction = "down"
+	}
+	return out
+}
+
 // GetMetricTimeline returns a per-day series of the named metric over the
 // last `days` days, gap-filled with zeros so charts render evenly. The metric
 // names are the same as the JSON tags on DailyStats (e.g. "total_views",

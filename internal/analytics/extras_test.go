@@ -266,3 +266,208 @@ func TestGetAnomalies_NoFlagOnFlatBaseline(t *testing.T) {
 		t.Errorf("expected zero anomalies on empty data, got %+v", r.Anomalies)
 	}
 }
+
+// ── IP summary ─────────────────────────────────────────────────────────────
+
+func TestGetIPSummary_AggregatesAndRanks(t *testing.T) {
+	now := time.Now()
+	events := []*models.AnalyticsEvent{
+		// IP A: many small events → top by events
+		{Type: "view", IPAddress: "1.1.1.1", UserID: "u1", Timestamp: now},
+		{Type: "view", IPAddress: "1.1.1.1", UserID: "u1", Timestamp: now},
+		{Type: "view", IPAddress: "1.1.1.1", UserID: "u2", Timestamp: now},
+		{Type: "search", IPAddress: "1.1.1.1", Timestamp: now},
+		// IP B: one event but huge bytes → top by bytes
+		{Type: EventStreamEnd, IPAddress: "2.2.2.2", UserID: "u3", Timestamp: now,
+			Data: map[string]any{"bytes_sent": 1_000_000_000.0}},
+		// Empty IP must be ignored.
+		{Type: "view", IPAddress: "", Timestamp: now},
+	}
+	m := moduleWithEvents(t, events)
+	s := m.GetIPSummary(context.Background(), 30, 10)
+	if s.UniqueIPs != 2 {
+		t.Errorf("expected 2 unique IPs, got %d", s.UniqueIPs)
+	}
+	if len(s.TopByEvents) == 0 || s.TopByEvents[0].IPAddress != "1.1.1.1" {
+		t.Errorf("expected 1.1.1.1 first by events, got %+v", s.TopByEvents)
+	}
+	if len(s.TopByBytes) == 0 || s.TopByBytes[0].IPAddress != "2.2.2.2" {
+		t.Errorf("expected 2.2.2.2 first by bytes, got %+v", s.TopByBytes)
+	}
+	if s.TopByEvents[0].UniqueUserIDs != 2 {
+		t.Errorf("expected 2 unique user_ids on 1.1.1.1, got %d", s.TopByEvents[0].UniqueUserIDs)
+	}
+}
+
+func TestGetIPSummary_BytesFromStreamEndOnly(t *testing.T) {
+	// Bytes from non-stream_end events must be ignored — stream_start
+	// events also carry quality but never bytes_sent yet, and accidentally
+	// summing arbitrary numeric "bytes_sent" fields would corrupt the
+	// bandwidth ranking.
+	now := time.Now()
+	events := []*models.AnalyticsEvent{
+		{Type: "view", IPAddress: "1.1.1.1", Timestamp: now,
+			Data: map[string]any{"bytes_sent": 999.0}},
+	}
+	m := moduleWithEvents(t, events)
+	s := m.GetIPSummary(context.Background(), 30, 10)
+	if len(s.TopByBytes) > 0 && s.TopByBytes[0].BytesSent != 0 {
+		t.Errorf("non-stream_end bytes_sent should be ignored, got %d", s.TopByBytes[0].BytesSent)
+	}
+}
+
+// ── Diagnostics ────────────────────────────────────────────────────────────
+
+func TestGetDiagnostics_ReportsModuleState(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	// Pre-populate state so the counts aren't all zero.
+	m.cache.set("k", 1, time.Minute)
+	m.markDailyDirty(time.Now().Format(dateFormat))
+	sub := m.Subscribe(4)
+	defer sub.Cancel()
+	d := m.GetDiagnostics()
+	if d.CacheEntries != 1 {
+		t.Errorf("expected 1 cache entry, got %d", d.CacheEntries)
+	}
+	if d.DirtyDays != 1 {
+		t.Errorf("expected 1 dirty day, got %d", d.DirtyDays)
+	}
+	if d.ActiveSubscribers != 1 {
+		t.Errorf("expected 1 subscriber, got %d", d.ActiveSubscribers)
+	}
+}
+
+// ── Abandonment histogram ──────────────────────────────────────────────────
+
+func TestGetMediaDetail_AbandonmentHistogram(t *testing.T) {
+	now := time.Now()
+	events := []*models.AnalyticsEvent{
+		// Three playbacks at different progress points.
+		{Type: "playback", MediaID: "m1", Timestamp: now,
+			Data: map[string]any{"duration": 600.0, "progress": 5.0}},
+		{Type: "playback", MediaID: "m1", Timestamp: now,
+			Data: map[string]any{"duration": 600.0, "progress": 55.0}},
+		{Type: "playback", MediaID: "m1", Timestamp: now,
+			Data: map[string]any{"duration": 600.0, "progress": 100.0}},
+	}
+	m := moduleWithEvents(t, events)
+	d := m.GetMediaDetail(context.Background(), "m1", 30)
+	if len(d.Abandonment) != 10 {
+		t.Fatalf("expected 10 abandonment buckets, got %d", len(d.Abandonment))
+	}
+	// 0-10% bucket should have 1 (progress=5).
+	if d.Abandonment[0].Count != 1 {
+		t.Errorf("expected 1 in 0-10%% bucket, got %d", d.Abandonment[0].Count)
+	}
+	// 50-60% bucket should have 1 (progress=55).
+	if d.Abandonment[5].Count != 1 {
+		t.Errorf("expected 1 in 50-60%% bucket, got %d", d.Abandonment[5].Count)
+	}
+	// 90-100% bucket should have 1 (progress=100; landed in last bucket
+	// per the inclusive-upper-bound policy).
+	if d.Abandonment[9].Count != 1 {
+		t.Errorf("expected 1 in 90-100%% bucket, got %d", d.Abandonment[9].Count)
+	}
+}
+
+func TestGetMediaDetail_AbandonmentClampsOutOfRange(t *testing.T) {
+	now := time.Now()
+	events := []*models.AnalyticsEvent{
+		// Forged out-of-range progress values must clamp into 0-100.
+		{Type: "playback", MediaID: "m1", Timestamp: now,
+			Data: map[string]any{"duration": 600.0, "progress": -50.0}},
+		{Type: "playback", MediaID: "m1", Timestamp: now,
+			Data: map[string]any{"duration": 600.0, "progress": 200.0}},
+	}
+	m := moduleWithEvents(t, events)
+	d := m.GetMediaDetail(context.Background(), "m1", 30)
+	// -50 → bucket 0; 200 → bucket 9. Anywhere else means the clamp leaked.
+	if d.Abandonment[0].Count != 1 {
+		t.Errorf("negative progress should clamp to bucket 0, got %d", d.Abandonment[0].Count)
+	}
+	if d.Abandonment[9].Count != 1 {
+		t.Errorf("over-100 progress should clamp to bucket 9, got %d", d.Abandonment[9].Count)
+	}
+	for i := 1; i <= 8; i++ {
+		if d.Abandonment[i].Count != 0 {
+			t.Errorf("bucket %d should be empty after clamp, got %d", i, d.Abandonment[i].Count)
+		}
+	}
+}
+
+// ── Period comparison ──────────────────────────────────────────────────────
+
+func TestGetPeriodComparison_ComputesDelta(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	now := time.Now()
+	// Seed dailyStats with synthetic numbers spanning two windows of 3 days.
+	for i := 0; i < 3; i++ {
+		date := now.AddDate(0, 0, -i).Format(dateFormat)
+		m.dailyStats[date] = &models.DailyStats{Date: date, TotalViews: 20}
+	}
+	for i := 3; i < 6; i++ {
+		date := now.AddDate(0, 0, -i).Format(dateFormat)
+		m.dailyStats[date] = &models.DailyStats{Date: date, TotalViews: 10}
+	}
+	cmp := m.GetPeriodComparison("total_views", 3)
+	if cmp.Current != 60 {
+		t.Errorf("expected current=60 (3×20), got %f", cmp.Current)
+	}
+	if cmp.Previous != 30 {
+		t.Errorf("expected previous=30 (3×10), got %f", cmp.Previous)
+	}
+	if cmp.DeltaAbsolute != 30 {
+		t.Errorf("expected delta=30, got %f", cmp.DeltaAbsolute)
+	}
+	if cmp.DeltaPct < 99 || cmp.DeltaPct > 101 {
+		t.Errorf("expected ~100%% delta, got %f", cmp.DeltaPct)
+	}
+}
+
+func TestGetPeriodComparison_SentinelOnZeroPrevious(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	today := time.Now().Format(dateFormat)
+	m.dailyStats[today] = &models.DailyStats{Date: today, TotalViews: 50}
+	cmp := m.GetPeriodComparison("total_views", 1)
+	// previous=0 + current>0 → sentinel 100% (frontend treats specially).
+	if cmp.DeltaPct != 100 {
+		t.Errorf("expected sentinel 100%% on zero-prev, got %f", cmp.DeltaPct)
+	}
+}
+
+// ── Metric timeline ────────────────────────────────────────────────────────
+
+func TestGetMetricTimeline_GapFills(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	today := time.Now().Format(dateFormat)
+	m.dailyStats[today] = &models.DailyStats{Date: today, TotalViews: 99}
+	tl := m.GetMetricTimeline("total_views", 7)
+	if len(tl) != 7 {
+		t.Fatalf("expected 7 entries (gap-filled), got %d", len(tl))
+	}
+	// Today's value is the last entry (index 6) and must equal 99.
+	if tl[6].Value != 99 {
+		t.Errorf("expected today's value=99, got %f", tl[6].Value)
+	}
+	// Days with no DailyStats entry must come back as 0, not omitted.
+	for i := 0; i < 6; i++ {
+		if tl[i].Value != 0 {
+			t.Errorf("expected gap day %s to be 0, got %f", tl[i].Date, tl[i].Value)
+		}
+	}
+}
+
+func TestGetMetricTimeline_UnknownMetric(t *testing.T) {
+	m := moduleWithEvents(t, nil)
+	today := time.Now().Format(dateFormat)
+	m.dailyStats[today] = &models.DailyStats{Date: today, TotalViews: 99}
+	tl := m.GetMetricTimeline("not_a_metric", 5)
+	if len(tl) != 5 {
+		t.Fatalf("expected 5 entries even for unknown metric, got %d", len(tl))
+	}
+	for _, e := range tl {
+		if e.Value != 0 {
+			t.Errorf("unknown metric should yield all zeros, got %s=%f", e.Date, e.Value)
+		}
+	}
+}

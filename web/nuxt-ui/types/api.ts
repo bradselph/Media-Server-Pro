@@ -511,6 +511,20 @@ export interface ModuleDiagnostics {
     healthy: boolean
 }
 
+// Linear-trend projection for one metric — slope per day, tomorrow's
+// projected value, and a residual-stddev confidence band. Direction is
+// "up" / "down" / "flat" based on a small threshold around the mean so a
+// noisy series isn't declared trending.
+export interface MetricForecast {
+    metric: string
+    window_days: number
+    slope: number
+    intercept: number
+    projection: number
+    confidence_band: number
+    direction: 'up' | 'down' | 'flat'
+}
+
 // Anomaly detection — one daily metric whose value is statistically
 // far from its rolling baseline. The dashboard renders these as a
 // banner at the top so admins notice incidents within a day.

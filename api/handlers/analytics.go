@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"archive/zip"
 	"crypto/sha256"
 	"encoding/csv"
 	"encoding/json"
@@ -424,6 +425,72 @@ func (h *Handler) AdminGetErrorPaths(c *gin.Context) {
 	writeSuccess(c, h.analytics.GetErrorPaths(c.Request.Context(), since, until, limit))
 }
 
+// AdminExportAll bundles every supported analytics panel into one ZIP
+// download — single-click backup of the dashboard's current state. Each
+// panel becomes its own CSV inside the archive, named after the panel.
+//
+// Errors writing one panel don't abort the whole archive; the panel is
+// skipped and a "_errors.txt" entry records which ones failed so the
+// admin sees what's missing.
+func (h *Handler) AdminExportAll(c *gin.Context) {
+	if h.analytics == nil {
+		writeError(c, http.StatusServiceUnavailable, "Analytics is not available")
+		return
+	}
+	panels := []string{
+		"top-users", "top-searches", "failed-logins", "error-paths",
+		"quality", "devices", "content-gaps", "daily", "heatmap",
+	}
+	filename := "analytics-bundle-" + time.Now().Format("20060102-150405") + ".zip"
+	c.Header(headerContentDisposition, safeContentDisposition(filename))
+	c.Header(headerContentType, "application/zip")
+	c.Status(http.StatusOK)
+
+	zw := zip.NewWriter(c.Writer)
+	defer func() { _ = zw.Close() }()
+
+	var errors []string
+	for _, panel := range panels {
+		rows, headers, err := h.fetchExportRows(c, panel)
+		if err != nil {
+			errors = append(errors, panel+": "+err.Error())
+			continue
+		}
+		w, err := zw.Create(panel + ".csv")
+		if err != nil {
+			errors = append(errors, panel+": create entry: "+err.Error())
+			continue
+		}
+		csvWriter := csv.NewWriter(w)
+		if writeErr := csvWriter.Write(headers); writeErr != nil {
+			errors = append(errors, panel+": write header: "+writeErr.Error())
+			continue
+		}
+		for _, row := range rows {
+			rec := make([]string, len(headers))
+			for i, h := range headers {
+				rec[i] = exportFieldToString(row[h])
+			}
+			if writeErr := csvWriter.Write(rec); writeErr != nil {
+				errors = append(errors, panel+": write row: "+writeErr.Error())
+				break
+			}
+		}
+		csvWriter.Flush()
+		if writeErr := csvWriter.Error(); writeErr != nil {
+			errors = append(errors, panel+": flush: "+writeErr.Error())
+		}
+	}
+	if len(errors) > 0 {
+		w, err := zw.Create("_errors.txt")
+		if err == nil {
+			for _, e := range errors {
+				_, _ = w.Write([]byte(e + "\n"))
+			}
+		}
+	}
+}
+
 // AdminStreamEvents serves a Server-Sent Events feed of live analytics
 // events. Each new TrackEvent broadcasts to every active subscriber; the
 // frontend opens an EventSource and renders a live tail panel.
@@ -690,6 +757,23 @@ func (h *Handler) fetchExportRows(c *gin.Context, panel string) ([]map[string]an
 	default:
 		return nil, nil, fmt.Errorf("unknown panel %q", panel)
 	}
+}
+
+// AdminGetMetricForecast returns a linear-trend projection for one metric.
+// Query: metric (DailyStats JSON tag, default total_views), days (1-90,
+// default 14). The response includes slope, projection (tomorrow's value),
+// and a residual-stddev confidence band.
+func (h *Handler) AdminGetMetricForecast(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{})
+		return
+	}
+	metric := strings.TrimSpace(c.DefaultQuery("metric", "total_views"))
+	days := 14
+	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 90 {
+		days = d
+	}
+	writeSuccess(c, h.analytics.GetMetricForecast(metric, days))
 }
 
 // AdminGetIPSummary returns unique-IP count + top IPs by events / bytes.
