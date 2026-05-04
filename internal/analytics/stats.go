@@ -1049,6 +1049,305 @@ func (m *Module) GetContentGaps(ctx context.Context, since, until string, minEmp
 	return out
 }
 
+// FunnelStage is one step on a conversion funnel — name, count, and the
+// percentage of the previous stage that reached this stage. The first stage's
+// FromPreviousPct is 100.
+type FunnelStage struct {
+	Stage           string  `json:"stage"`
+	Count           int64   `json:"count"`
+	FromPreviousPct float64 `json:"from_previous_pct"`
+	FromTopPct      float64 `json:"from_top_pct"`
+}
+
+// Funnel holds the canonical view → playback → completion conversion funnel
+// plus aggregate breakdown by authenticated vs anonymous traffic. Anonymous
+// traffic typically has different conversion characteristics so it gets its
+// own row in the dashboard.
+type Funnel struct {
+	WindowDays    int           `json:"window_days"`
+	Stages        []FunnelStage `json:"stages"`        // overall
+	Authenticated []FunnelStage `json:"authenticated"` // user_id != ""
+	Anonymous     []FunnelStage `json:"anonymous"`     // user_id == ""
+}
+
+// GetFunnel scans events in the last `days` days and computes view →
+// playback → completion conversion rates, both overall and split by
+// authenticated/anonymous traffic. days <= 0 falls back to 30.
+func (m *Module) GetFunnel(ctx context.Context, days int) Funnel {
+	if days <= 0 {
+		days = 30
+	}
+	out := Funnel{WindowDays: days}
+	if m.eventRepo == nil {
+		return out
+	}
+	cutoff := time.Now().AddDate(0, 0, -days).Format(time.RFC3339)
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		StartDate: cutoff,
+		Limit:     100000,
+	})
+	if err != nil {
+		m.log.Error("GetFunnel: list events: %v", err)
+		return out
+	}
+	var (
+		views, playbacks, completions             int64
+		viewsAuth, playbacksAuth, completionsAuth int64
+		viewsAnon, playbacksAnon, completionsAnon int64
+	)
+	for _, ev := range events {
+		auth := ev.UserID != ""
+		switch ev.Type {
+		case "view":
+			views++
+			if auth {
+				viewsAuth++
+			} else {
+				viewsAnon++
+			}
+		case "playback":
+			// Only count playback events that actually represent a real
+			// playback attempt (have a duration). Without this guard, the
+			// frontend can flood playback events that never carried a
+			// duration and inflate the middle of the funnel.
+			if dur, ok := ev.Data["duration"].(float64); ok && dur > 0 {
+				playbacks++
+				if auth {
+					playbacksAuth++
+				} else {
+					playbacksAnon++
+				}
+				if progress, ok := ev.Data["progress"].(float64); ok && progress >= 90 {
+					completions++
+					if auth {
+						completionsAuth++
+					} else {
+						completionsAnon++
+					}
+				}
+			}
+		}
+	}
+	out.Stages = buildFunnelStages(views, playbacks, completions)
+	out.Authenticated = buildFunnelStages(viewsAuth, playbacksAuth, completionsAuth)
+	out.Anonymous = buildFunnelStages(viewsAnon, playbacksAnon, completionsAnon)
+	return out
+}
+
+func buildFunnelStages(views, playbacks, completions int64) []FunnelStage {
+	stages := []FunnelStage{
+		{Stage: "Views", Count: views},
+		{Stage: "Playbacks", Count: playbacks},
+		{Stage: "Completions", Count: completions},
+	}
+	// Top is always 100% by definition.
+	if views > 0 {
+		stages[0].FromPreviousPct = 100
+		stages[0].FromTopPct = 100
+		// Playbacks vs views.
+		stages[1].FromPreviousPct = float64(playbacks) / float64(views) * 100
+		stages[1].FromTopPct = stages[1].FromPreviousPct
+		// Completions vs playbacks (NOT views — that would dilute the
+		// completion-rate signal with people who never started playing).
+		if playbacks > 0 {
+			stages[2].FromPreviousPct = float64(completions) / float64(playbacks) * 100
+		}
+		stages[2].FromTopPct = float64(completions) / float64(views) * 100
+	}
+	return stages
+}
+
+// DeviceBucket is one row of the device-family breakdown — bucket label,
+// event count, and unique-user count.
+type DeviceBucket struct {
+	Family      string `json:"family"`
+	Events      int    `json:"events"`
+	UniqueUsers int    `json:"unique_users"`
+}
+
+// GetDeviceBreakdown classifies events by user-agent family (mobile / tablet
+// / desktop / bot / unknown) and by browser/OS family. Returns two slices
+// the dashboard renders side by side. Pure parsing — no external geoip /
+// device-detection service.
+//
+// The classification is intentionally coarse: full UA-parsing libraries
+// have heavy dependency cost and frequent false positives. The categories
+// here cover the realistic decision-making the admin needs ("are mobile
+// users completing playbacks?") without pretending to identify exact
+// browser versions.
+func (m *Module) GetDeviceBreakdown(ctx context.Context, days int) (devices, browsers []DeviceBucket) {
+	if days <= 0 {
+		days = 30
+	}
+	if m.eventRepo == nil {
+		return nil, nil
+	}
+	cutoff := time.Now().AddDate(0, 0, -days).Format(time.RFC3339)
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		StartDate: cutoff,
+		Limit:     100000,
+	})
+	if err != nil {
+		m.log.Error("GetDeviceBreakdown: list events: %v", err)
+		return nil, nil
+	}
+	type bucket struct {
+		events int
+		users  map[string]struct{}
+	}
+	devMap := make(map[string]*bucket)
+	brwMap := make(map[string]*bucket)
+	add := func(m map[string]*bucket, key, userID string) {
+		b, ok := m[key]
+		if !ok {
+			b = &bucket{users: make(map[string]struct{})}
+			m[key] = b
+		}
+		b.events++
+		if userID != "" {
+			b.users[userID] = struct{}{}
+		}
+	}
+	for _, ev := range events {
+		if ev.UserAgent == "" {
+			add(devMap, "(unknown)", ev.UserID)
+			add(brwMap, "(unknown)", ev.UserID)
+			continue
+		}
+		add(devMap, classifyDeviceFamily(ev.UserAgent), ev.UserID)
+		add(brwMap, classifyBrowserFamily(ev.UserAgent), ev.UserID)
+	}
+	flatten := func(m map[string]*bucket) []DeviceBucket {
+		out := make([]DeviceBucket, 0, len(m))
+		for k, v := range m {
+			out = append(out, DeviceBucket{Family: k, Events: v.events, UniqueUsers: len(v.users)})
+		}
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Events != out[j].Events {
+				return out[i].Events > out[j].Events
+			}
+			return out[i].Family < out[j].Family
+		})
+		return out
+	}
+	return flatten(devMap), flatten(brwMap)
+}
+
+// classifyDeviceFamily groups a UA string into device categories. Order
+// matters — bot detection comes first because some bots impersonate mobile
+// browsers and we don't want them in the "Mobile" bucket.
+func classifyDeviceFamily(ua string) string {
+	low := strings.ToLower(ua)
+	switch {
+	case strings.Contains(low, "bot"),
+		strings.Contains(low, "spider"),
+		strings.Contains(low, "crawler"),
+		strings.Contains(low, "curl/"),
+		strings.Contains(low, "wget/"),
+		strings.Contains(low, "python-requests"),
+		strings.Contains(low, "go-http-client"):
+		return "Bot / Tool"
+	case strings.Contains(low, "ipad"),
+		strings.Contains(low, "tablet"):
+		return "Tablet"
+	case strings.Contains(low, "iphone"),
+		strings.Contains(low, "android"),
+		strings.Contains(low, "mobile"):
+		return "Mobile"
+	case strings.Contains(low, "smarttv"),
+		strings.Contains(low, "tizen"),
+		strings.Contains(low, "webos"),
+		strings.Contains(low, "googletv"),
+		strings.Contains(low, "appletv"):
+		return "TV"
+	case strings.Contains(low, "windows"),
+		strings.Contains(low, "macintosh"),
+		strings.Contains(low, "linux"),
+		strings.Contains(low, "x11"):
+		return "Desktop"
+	default:
+		return "Other"
+	}
+}
+
+// classifyBrowserFamily extracts a coarse browser family. Order matters
+// because Edge UAs contain "Chrome" too; check Edge first.
+func classifyBrowserFamily(ua string) string {
+	low := strings.ToLower(ua)
+	switch {
+	case strings.Contains(low, "edg/"):
+		return "Edge"
+	case strings.Contains(low, "firefox/"):
+		return "Firefox"
+	case strings.Contains(low, "opr/"), strings.Contains(low, "opera/"):
+		return "Opera"
+	case strings.Contains(low, "vivaldi/"):
+		return "Vivaldi"
+	case strings.Contains(low, "chrome/"):
+		return "Chrome"
+	case strings.Contains(low, "safari/"):
+		return "Safari"
+	default:
+		return "Other"
+	}
+}
+
+// MediaDetail aggregates everything an admin would want to see for a single
+// media item — the cached ViewStats plus a 30-day timeline of views and
+// playbacks. Returned by GET /admin/analytics/media/:id.
+type MediaDetail struct {
+	MediaID         string                `json:"media_id"`
+	Stats           models.ViewStats      `json:"stats"`
+	ViewTimeline    []MetricTimelineEntry `json:"view_timeline"`
+	PlaybackTimeline []MetricTimelineEntry `json:"playback_timeline"`
+}
+
+// GetMediaDetail returns the per-media analytics drill panel. Builds
+// per-day timelines from raw events filtered to this MediaID, falling
+// back to zeros when the day has no activity.
+func (m *Module) GetMediaDetail(ctx context.Context, mediaID string, days int) MediaDetail {
+	out := MediaDetail{MediaID: mediaID}
+	if mediaID == "" || m.eventRepo == nil {
+		return out
+	}
+	if days <= 0 {
+		days = 30
+	}
+	out.Stats = *m.GetMediaStats(mediaID)
+	cutoff := time.Now().AddDate(0, 0, -days).Format(time.RFC3339)
+	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
+		MediaID:   mediaID,
+		StartDate: cutoff,
+		Limit:     20000,
+	})
+	if err != nil {
+		m.log.Error("GetMediaDetail: list events for %s: %v", mediaID, err)
+		return out
+	}
+	viewByDay := make(map[string]int)
+	playbackByDay := make(map[string]int)
+	for _, ev := range events {
+		date := ev.Timestamp.Format(dateFormat)
+		switch ev.Type {
+		case "view":
+			viewByDay[date]++
+		case "playback":
+			if dur, ok := ev.Data["duration"].(float64); ok && dur > 0 {
+				playbackByDay[date]++
+			}
+		}
+	}
+	out.ViewTimeline = make([]MetricTimelineEntry, 0, days)
+	out.PlaybackTimeline = make([]MetricTimelineEntry, 0, days)
+	now := time.Now()
+	for i := days - 1; i >= 0; i-- {
+		date := now.AddDate(0, 0, -i).Format(dateFormat)
+		out.ViewTimeline = append(out.ViewTimeline, MetricTimelineEntry{Date: date, Value: float64(viewByDay[date])})
+		out.PlaybackTimeline = append(out.PlaybackTimeline, MetricTimelineEntry{Date: date, Value: float64(playbackByDay[date])})
+	}
+	return out
+}
+
 // GetMetricTimeline returns a per-day series of the named metric over the
 // last `days` days, gap-filled with zeros so charts render evenly. The metric
 // names are the same as the JSON tags on DailyStats (e.g. "total_views",

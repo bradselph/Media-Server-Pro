@@ -422,6 +422,57 @@ func (h *Handler) AdminGetErrorPaths(c *gin.Context) {
 	writeSuccess(c, h.analytics.GetErrorPaths(c.Request.Context(), since, until, limit))
 }
 
+// AdminGetFunnel returns the view → playback → completion conversion funnel.
+// Query: days (1-365, default 30).
+func (h *Handler) AdminGetFunnel(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{})
+		return
+	}
+	days := 30
+	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
+		days = d
+	}
+	writeSuccess(c, h.analytics.GetFunnel(c.Request.Context(), days))
+}
+
+// AdminGetDeviceBreakdown returns event counts by device family AND by
+// browser family. Query: days (1-365, default 30).
+func (h *Handler) AdminGetDeviceBreakdown(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{})
+		return
+	}
+	days := 30
+	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
+		days = d
+	}
+	devices, browsers := h.analytics.GetDeviceBreakdown(c.Request.Context(), days)
+	writeSuccess(c, map[string]any{
+		"devices":  devices,
+		"browsers": browsers,
+	})
+}
+
+// AdminGetMediaAnalytics returns per-media drill-down: cached stats plus a
+// 30-day view + playback timeline. Mirrors the per-user pattern.
+// URL param: id (media stable UUID). Query: days (1-365, default 30).
+func (h *Handler) AdminGetMediaAnalytics(c *gin.Context) {
+	if h.analytics == nil {
+		writeSuccess(c, map[string]any{})
+		return
+	}
+	id, ok := RequireParamID(c, "id")
+	if !ok {
+		return
+	}
+	days := 30
+	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
+		days = d
+	}
+	writeSuccess(c, h.analytics.GetMediaDetail(c.Request.Context(), id, days))
+}
+
 // AdminGetCohortMetrics returns DAU / WAU / MAU plus stickiness ratios.
 func (h *Handler) AdminGetCohortMetrics(c *gin.Context) {
 	if h.analytics == nil {

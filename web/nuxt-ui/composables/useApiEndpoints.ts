@@ -103,6 +103,9 @@ import type {
     HourlyHeatmapCell,
     QualityBucket,
     PeriodComparison,
+    Funnel,
+    DeviceBucket,
+    MediaDetail,
     UpdateInfo,
     UserAnalytics,
     UpdateStatus,
@@ -950,6 +953,15 @@ export function useAnalyticsApi() {
         // Current-vs-previous-window totals for one metric.
         getPeriodComparison: (metric: string, days?: number) =>
             api.get<PeriodComparison>(`/api/admin/analytics/comparison${buildQS({metric, days: days || undefined})}`),
+        // View → Playback → Completion conversion funnel.
+        getFunnel: (days?: number) =>
+            api.get<Funnel>(`/api/admin/analytics/funnel${buildQS({days: days || undefined})}`),
+        // Device + browser breakdown (parsed from User-Agent).
+        getDeviceBreakdown: (days?: number) =>
+            api.get<{ devices: DeviceBucket[]; browsers: DeviceBucket[] }>(`/api/admin/analytics/devices${buildQS({days: days || undefined})}`),
+        // Per-media analytics drill-down.
+        getMediaAnalytics: (mediaId: string, days?: number) =>
+            api.get<MediaDetail>(`/api/admin/analytics/media/${encodeURIComponent(mediaId)}${buildQS({days: days || undefined})}`),
         // Live snapshot of active streaming sessions (already enriched with filename).
         getActiveStreams: () =>
             api.get<Array<{ id: string; media_id: string; filename: string; user_id: string; ip_address: string; quality: string; position: number; started_at: number; last_update: number; bytes_sent: number }>>(`/api/admin/streams`),

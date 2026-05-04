@@ -448,6 +448,49 @@ export interface PeriodComparison {
     window_days: number
 }
 
+// One stage of a conversion funnel. from_top_pct is relative to the first
+// stage (always 100); from_previous_pct is the step-over-step rate, which
+// is what the dashboard shades to highlight drop-off.
+export interface FunnelStage {
+    stage: string
+    count: number
+    from_previous_pct: number
+    from_top_pct: number
+}
+
+// View → Playback → Completion funnel split by overall / authenticated /
+// anonymous traffic. Anonymous traffic typically converts differently (the
+// auth gate is itself a step) so it gets its own row.
+export interface Funnel {
+    window_days: number
+    stages: FunnelStage[]
+    authenticated: FunnelStage[]
+    anonymous: FunnelStage[]
+}
+
+// Device or browser breakdown row.
+export interface DeviceBucket {
+    family: string
+    events: number
+    unique_users: number
+}
+
+// Per-media analytics drill payload — the cached stats plus a 30-day
+// view + playback timeline so the modal can render a sparkline.
+export interface MediaDetail {
+    media_id: string
+    stats: {
+        total_views: number
+        completion_rate: number
+        last_viewed: string
+        unique_viewers: number
+        avg_watch_duration: number
+        peak_concurrent: number
+    }
+    view_timeline: MetricTimelineEntry[]
+    playback_timeline: MetricTimelineEntry[]
+}
+
 // Per-user aggregated analytics returned by /admin/users/:username/analytics.
 // Field names mirror the Go UserStats struct so the codegen pipeline doesn't
 // need a translation step. All counts default to 0 for inactive users.
