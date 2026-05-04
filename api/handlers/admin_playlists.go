@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/playlist"
 	"media-server-pro/pkg/models"
 )
@@ -108,9 +109,10 @@ func (h *Handler) AdminBulkDeletePlaylists(c *gin.Context) {
 	if errs == nil {
 		errs = []string{}
 	}
-	h.logAdminActionResult(c, &adminLogResultParams{
-		Action: "bulk_delete_playlists",
-		Target: fmt.Sprintf("%d playlists", successCount), Success: failedCount == 0,
+	h.trackServerEvent(c, analytics.EventBulkDelete, map[string]any{
+		"scope":   "playlists",
+		"success": successCount,
+		"failed":  failedCount,
 	})
 	writeSuccess(c, map[string]any{
 		"success": successCount,
@@ -199,7 +201,7 @@ func (h *Handler) AdminUpdatePlaylist(c *gin.Context) {
 		}
 		return
 	}
-	h.logAdminAction(c, &adminLogActionParams{Action: "update_playlist", Target: playlistID})
+	h.trackServerEvent(c, analytics.EventPlaylistUpdate, map[string]any{"playlist_id": playlistID})
 	writeSuccess(c, map[string]string{"message": "Playlist updated"})
 }
 

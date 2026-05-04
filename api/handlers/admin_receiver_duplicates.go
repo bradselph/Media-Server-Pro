@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/duplicates"
 )
 
@@ -18,12 +19,7 @@ func (h *Handler) AdminScanLocalDuplicates(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Scan failed: "+err.Error())
 		return
 	}
-	session := getSession(c)
-	if session != nil {
-		h.logAdminAction(c, &adminLogActionParams{
-			UserID: session.UserID, Username: session.Username, Action: "scan_local_duplicates",
-		})
-	}
+	h.trackServerEvent(c, analytics.EventScanRun, map[string]any{"scope": "duplicates"})
 	writeSuccess(c, gin.H{"message": "duplicate scan complete"})
 }
 
@@ -86,9 +82,10 @@ func (h *Handler) AdminResolveDuplicate(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{
-		UserID: userID, Username: resolvedBy, Action: "resolve_duplicate",
-		Target: id, Details: map[string]any{"action": body.Action},
+	_ = userID // session resolution is handled inside trackServerEvent
+	h.trackServerEvent(c, analytics.EventReceiverDuplicateResolve, map[string]any{
+		"duplicate_id": id,
+		"action":       body.Action,
 	})
 
 	writeSuccess(c, gin.H{"message": "duplicate resolved", "action": body.Action})

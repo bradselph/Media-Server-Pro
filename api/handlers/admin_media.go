@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/thumbnails"
 	"media-server-pro/pkg/helpers"
@@ -303,7 +304,7 @@ func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 
 	path = newPath
 
-	h.logAdminAction(c, &adminLogActionParams{Action: "update_media", Target: path})
+	h.trackServerEvent(c, analytics.EventMediaUpdate, map[string]any{"media_id": id, "path": path})
 
 	updatedItem, getErr := h.media.GetMedia(path)
 	if getErr == nil && updatedItem != nil {
@@ -331,7 +332,7 @@ func (h *Handler) AdminDeleteMedia(c *gin.Context) {
 	// These are best-effort — failures are logged but do not block the delete response.
 	h.cleanupDeletedMedia(c.Request.Context(), id, path)
 
-	h.logAdminAction(c, &adminLogActionParams{Action: "delete_media", Target: path})
+	h.trackServerEvent(c, analytics.EventMediaDelete, map[string]any{"media_id": id, "path": path})
 	writeSuccess(c, map[string]string{"message": "Media deleted"})
 }
 
@@ -457,14 +458,12 @@ func (h *Handler) processOneBulkMediaItem(c *gin.Context, id, action string, upd
 			return err
 		}
 		h.cleanupDeletedMedia(c.Request.Context(), id, path)
-		h.logAdminAction(c, &adminLogActionParams{Action: "bulk_delete_media", Target: id})
 		h.trackServerEvent(c, "bulk_delete", map[string]any{"media_id": id, "scope": "media"})
 		return nil
 	case "update":
 		if err := h.media.UpdateMetadata(path, updates); err != nil {
 			return err
 		}
-		h.logAdminAction(c, &adminLogActionParams{Action: "bulk_update_media", Target: id})
 		h.trackServerEvent(c, "bulk_update", map[string]any{"media_id": id, "scope": "media"})
 		return nil
 	default:

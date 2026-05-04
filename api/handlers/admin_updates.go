@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/admin"
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/updater"
 	"media-server-pro/pkg/models"
@@ -71,8 +72,9 @@ func (h *Handler) ApplyUpdate(c *gin.Context) {
 		return
 	}
 
-	h.logAdminActionResult(c, &adminLogResultParams{
-		Action: "apply_update", Target: status.Stage, Success: status.Error == "",
+	h.trackServerEvent(c, analytics.EventUpdaterApply, map[string]any{
+		"stage":   status.Stage,
+		"success": status.Error == "",
 	})
 	writeSuccess(c, status)
 }
@@ -210,8 +212,10 @@ func (h *Handler) SetUpdateConfig(c *gin.Context) {
 		return
 	}
 
-	h.logAdminAction(c, &adminLogActionParams{Action: "update_updater_config", Target: "updater_settings",
-		Details: map[string]any{"update_method": req.UpdateMethod, "branch": req.Branch}})
+	h.trackServerEvent(c, analytics.EventUpdaterConfigUpdate, map[string]any{
+		"update_method": req.UpdateMethod,
+		"branch":        req.Branch,
+	})
 
 	cfg := h.config.Get()
 	writeSuccess(c, map[string]any{

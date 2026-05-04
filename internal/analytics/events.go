@@ -127,6 +127,45 @@ const (
 	EventAdminTaskDisable       = "admin_task_disable"
 	EventAdminTaskStop          = "admin_task_stop"
 	EventFollowerSettingsUpdate = "follower_settings_update"
+
+	// User management events. Account creation/update/deletion is a sensitive
+	// operation; these flow through analytics so the dashboard's "today's
+	// admin activity" panel reflects the real change rate.
+	EventUserCreate          = "user_create"
+	EventUserUpdate          = "user_update"
+	EventUserDelete          = "user_delete"
+	EventUserPasswordChange  = "user_password_change"
+	EventBulkUserDelete      = "bulk_user_delete"
+	EventBulkUserEnable      = "bulk_user_enable"
+	EventBulkUserDisable     = "bulk_user_disable"
+
+	// Media + lifecycle + auxiliary admin events.
+	EventMediaUpdate         = "media_update"
+	EventMediaDelete         = "media_delete"
+	EventServerRestart       = "server_restart"
+	EventServerShutdown      = "server_shutdown"
+	EventPlaylistUpdate      = "playlist_update"
+	EventPlaylistImport      = "playlist_import"
+	EventReceiverDuplicateResolve = "receiver_duplicate_resolve"
+	EventClaudeApprovalAct   = "claude_approval_act"
+	EventClaudeConfigUpdate  = "claude_config_update"
+	EventClaudePromptSend    = "claude_prompt_send"
+	EventUpdaterApply        = "updater_apply"
+	EventUpdaterConfigUpdate = "updater_config_update"
+
+	// Classification + scanner-pipeline events not yet covered.
+	EventClassifyRun         = "classify_run"
+	EventCategorizerRun      = "categorizer_run"
+	EventValidatorRun        = "validator_run"
+	EventDiscoveryRun        = "discovery_run"
+	EventDownloaderJobCreate = "downloader_job_create"
+	EventDownloaderJobCancel = "downloader_job_cancel"
+	EventCrawlerRun          = "crawler_run"
+	EventExtractorRun        = "extractor_run"
+	EventSecurityIPListMutate = "security_ip_list_mutate"
+	EventReceiverPair        = "receiver_pair"
+	EventReceiverUnpair      = "receiver_unpair"
+	EventRemoteStoreUpdate   = "remote_store_update"
 )
 
 // ClientEventInput holds parameters for SubmitClientEvent.
