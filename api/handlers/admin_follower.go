@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/config"
 )
 
@@ -132,6 +133,10 @@ func (h *Handler) UpdateFollowerSettings(c *gin.Context) {
 		// Settings are saved; only the reload failed. Surface a 200 with a
 		// non-error reload note so the UI can show the status without
 		// implying the save itself failed.
+		h.trackServerEvent(c, analytics.EventFollowerSettingsUpdate, map[string]any{
+			"master_url":   masterURL,
+			"reload_error": err.Error(),
+		})
 		writeSuccess(c, gin.H{
 			"saved":         true,
 			"reload_error":  err.Error(),
@@ -139,6 +144,9 @@ func (h *Handler) UpdateFollowerSettings(c *gin.Context) {
 		})
 		return
 	}
+	h.trackServerEvent(c, analytics.EventFollowerSettingsUpdate, map[string]any{
+		"master_url": masterURL,
+	})
 	writeSuccess(c, gin.H{
 		"saved":         true,
 		"reload_status": h.follower.GetStatus(),

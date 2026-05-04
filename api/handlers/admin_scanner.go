@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/scanner"
 	"media-server-pro/pkg/models"
@@ -76,6 +77,12 @@ func (h *Handler) ScanContent(c *gin.Context) {
 	allResults := h.scanConfiguredDirectories(cfg)
 	autoFlagged, reviewNeeded, clean := h.processScanResults(allResults, req.AutoApply)
 
+	h.trackServerEvent(c, analytics.EventScanRun, map[string]any{
+		"scanned":            len(allResults),
+		"auto_flagged_count": autoFlagged,
+		"review_queue_count": reviewNeeded,
+		"auto_apply":         req.AutoApply,
+	})
 	writeSuccess(c, map[string]any{
 		"stats":              h.scanner.GetStats(),
 		"scanned":            len(allResults),
@@ -172,6 +179,12 @@ func (h *Handler) BatchReviewAction(c *gin.Context) {
 		}
 	}
 
+	h.trackServerEvent(c, analytics.EventScanReview, map[string]any{
+		"action":  req.Action,
+		"updated": updated,
+		"total":   len(req.IDs),
+		"scope":   "batch",
+	})
 	writeSuccess(c, map[string]any{
 		"updated": updated,
 		"total":   len(req.IDs),
@@ -217,6 +230,10 @@ func (h *Handler) ApproveContent(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventScanReview, map[string]any{
+		"action":   "approve",
+		"media_id": id,
+	})
 	writeSuccess(c, nil)
 }
 
@@ -242,5 +259,9 @@ func (h *Handler) RejectContent(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventScanReview, map[string]any{
+		"action":   "reject",
+		"media_id": id,
+	})
 	writeSuccess(c, nil)
 }

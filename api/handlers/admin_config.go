@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/analytics"
 )
 
 // redactSensitiveConfigKeys returns a copy of m with sensitive values replaced by "[REDACTED]".
@@ -150,7 +152,19 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 		}
 	}
 
+	// Audit-log the change with redacted secrets so the existing review UI
+	// surfaces it. The trackServerEvent below also writes an analytics row,
+	// but logAdminAction is kept here because it carries the redacted-details
+	// payload (the analytics path stores keys-only to avoid leaking secrets).
 	h.logAdminAction(c, &adminLogActionParams{Action: "update_config", Target: "configuration", Details: redactSensitiveConfigKeys(updates)})
+	keys := make([]string, 0, len(updates))
+	for k := range updates {
+		keys = append(keys, k)
+	}
+	h.trackServerEvent(c, analytics.EventConfigUpdate, map[string]any{
+		"keys":             keys,
+		"restart_required": restartRequired,
+	})
 	result := map[string]any{
 		"config":           h.admin.GetConfigMap(),
 		"restart_required": restartRequired,

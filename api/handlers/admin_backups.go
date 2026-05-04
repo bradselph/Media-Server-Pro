@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/backup"
 )
 
@@ -56,6 +57,10 @@ func (h *Handler) CreateBackupV2(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventBackupCreate, map[string]any{
+		"backup_type": req.BackupType,
+		"description": req.Description,
+	})
 	writeSuccess(c, backupInfo)
 }
 
@@ -76,6 +81,9 @@ func (h *Handler) RestoreBackup(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventBackupRestore, map[string]any{
+		"backup_id": backupID,
+	})
 	writeSuccess(c, map[string]string{"message": "Backup restored"})
 }
 
@@ -96,5 +104,8 @@ func (h *Handler) DeleteBackup(c *gin.Context) {
 		return
 	}
 
+	h.trackServerEvent(c, analytics.EventBackupDelete, map[string]any{
+		"backup_id": backupID,
+	})
 	writeSuccess(c, nil)
 }
