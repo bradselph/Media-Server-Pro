@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -209,11 +210,16 @@ func (h *Handler) resolveHLSJobForServe(c *gin.Context, jobID string) (*models.H
 		return nil, false
 	}
 	// Only refresh the access timestamp for jobs that are still usable.
-	// Failed and cancelled jobs must not be kept alive by access timestamps —
-	// CleanInactiveJobs uses LastAccess as the sole gate for removal, so
-	// recording access on a failed job prevents it from ever being cleaned up.
-	if job.Status == models.HLSStatusRunning || job.Status == models.HLSStatusPending || job.Status == models.HLSStatusCompleted {
+	// Terminal failure states (Failed, Canceled) must NOT be kept alive by
+	// access timestamps — CleanInactiveJobs uses LastAccess as the sole gate
+	// for removal, so recording access on a terminal-failure job would prevent
+	// it from ever being cleaned up. The allowlist below is intentional: any
+	// new HLSStatus constant should be considered explicitly.
+	switch job.Status {
+	case models.HLSStatusRunning, models.HLSStatusPending, models.HLSStatusCompleted:
 		h.hls.RecordAccess(jobID)
+	case models.HLSStatusFailed, models.HLSStatusCanceled:
+		// terminal failure — do not extend lifetime
 	}
 	return job, true
 }
@@ -228,11 +234,15 @@ func (h *Handler) withResolvedHLSJob(c *gin.Context, jobID, notFoundMsg string, 
 			// Headers/body already flushed; cannot change status code.
 			return
 		}
-		if errors.Is(err, hls.ErrNotReady) {
+		switch {
+		case errors.Is(err, hls.ErrNotReady):
 			writeError(c, http.StatusServiceUnavailable, "HLS transcoding in progress, retry shortly")
-			return
+		case errors.Is(err, os.ErrNotExist):
+			writeError(c, http.StatusNotFound, notFoundMsg)
+		default:
+			h.log.Error("HLS serve error: %v", err)
+			writeError(c, http.StatusInternalServerError, "HLS serve failed")
 		}
-		writeError(c, http.StatusNotFound, notFoundMsg)
 	}
 }
 

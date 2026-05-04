@@ -443,6 +443,12 @@ export interface AuditLogEntry {
     success: boolean
 }
 
+export interface AuditLogResponse {
+    items: AuditLogEntry[]
+    total: number
+    total_pages: number
+}
+
 export interface LogEntry {
     timestamp: string
     level: string

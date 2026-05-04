@@ -22,10 +22,11 @@ async function load(reset = false) {
   try {
     const data = await adminApi.getAuditLog({ offset: offset.value, limit: PAGE })
     if (!mounted) return
+    const items = data?.items ?? []
     if (reset) {
-      entries.value = data ?? []
+      entries.value = items
     } else {
-      entries.value = [...entries.value, ...(data ?? [])]
+      entries.value = [...entries.value, ...items]
     }
   } catch (e: unknown) {
     if (!mounted) return

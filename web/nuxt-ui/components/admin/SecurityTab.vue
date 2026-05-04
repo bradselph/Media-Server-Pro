@@ -75,8 +75,10 @@ async function saveSecurityToggle(
     toast.add({ title: 'Security settings saved', color: 'success', icon: 'i-lucide-check' })
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
-    // reload to revert UI state
-    await loadSecurityConfig()
+    // Reload from server. If the reload itself fails, refs were never mutated
+    // (we only update them in the success path above) so USwitch will continue
+    // to render the pre-toggle state via :model-value.
+    try { await loadSecurityConfig() } catch { /* refs already correct */ }
   } finally {
     configSaving.value = false
   }
@@ -169,9 +171,8 @@ async function loadBanned() {
 }
 
 async function addToList(type: 'whitelist' | 'blacklist') {
-  // FND-0214: Clear stale error from previous attempt at entry, so the validation
-  // branch below can set a fresh message that survives the function exit.
-  ipError.value = ''
+  // ipError is cleared by the input's @input handler as the user types;
+  // no redundant clear needed here.
   if (!newIP.value) return
   if (!isValidIPCIDR(newIP.value.trim())) {
     ipError.value = 'Invalid IP address or CIDR format'
@@ -441,7 +442,7 @@ watch(subTab, (v) => {
             </div>
             <USwitch
               :model-value="httpsEnabled"
-              :disabled="configSaving"
+              :disabled="configSaving || configLoading"
               aria-label="Enable HTTPS"
               @update:model-value="v => saveSecurityToggle('server', 'enable_https', v)"
             />
@@ -453,7 +454,7 @@ watch(subTab, (v) => {
             </div>
             <USwitch
               :model-value="hstsEnabled"
-              :disabled="configSaving"
+              :disabled="configSaving || configLoading"
               aria-label="Enable HSTS"
               @update:model-value="v => saveSecurityToggle('security', 'hsts_enabled', v)"
             />
@@ -465,7 +466,7 @@ watch(subTab, (v) => {
             </div>
             <USwitch
               :model-value="corsEnabled"
-              :disabled="configSaving"
+              :disabled="configSaving || configLoading"
               aria-label="Enable CORS"
               @update:model-value="v => saveSecurityToggle('security', 'cors_enabled', v)"
             />
