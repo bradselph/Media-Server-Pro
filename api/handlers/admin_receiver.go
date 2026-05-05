@@ -244,6 +244,16 @@ func (h *Handler) ReceiverPair(c *gin.Context) {
 		return
 	}
 
+	// SSRF guard: this endpoint is gated by the receiver API key (any paired
+	// peer), so without this check a peer could redirect this server's follower
+	// at internal/private hosts (loopback, link-local, RFC1918) and pull data
+	// out of the operator's network. AdminPeerConnect performs the same check
+	// at admin_receiver.go:329; mirror it here.
+	if err := helpers.ValidateURLForSSRF(masterURL); err != nil {
+		writeError(c, http.StatusBadRequest, "master_url rejected: "+err.Error())
+		return
+	}
+
 	// Reject pairings that would point this server back at itself — protects
 	// against accidental loops where the user supplied their own URL.
 	if u.Host == c.Request.Host {

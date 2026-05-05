@@ -14,6 +14,7 @@ import (
 
 	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/config"
+	"media-server-pro/pkg/helpers"
 )
 
 // followerSettingsResponse is the JSON shape returned by
@@ -198,6 +199,13 @@ func (h *Handler) TestFollowerPairing(c *gin.Context) {
 		u.Scheme = "ws"
 	default:
 		writeError(c, http.StatusBadRequest, "master_url scheme must be http or https")
+		return
+	}
+	// SSRF guard: even though this endpoint is admin-only, refuse to probe
+	// loopback/private addresses so the test button can't be used to
+	// fingerprint the operator's internal network through error messages.
+	if err := helpers.ValidateURLForSSRF(masterURL); err != nil {
+		writeError(c, http.StatusBadRequest, "master_url rejected: "+err.Error())
 		return
 	}
 	u.Path = "/ws/receiver"

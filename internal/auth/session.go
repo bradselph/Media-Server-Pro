@@ -91,13 +91,20 @@ func (m *Module) CleanupExpiredSessions(ctx context.Context) error {
 }
 
 // getOrLoadSession returns the session from cache or loads it from the repository and caches it.
+// Checks both m.sessions and m.adminSessions on read, and routes lazy-loaded sessions into the
+// correct map based on Role so that admin sessions don't accumulate in m.sessions after cache
+// eviction or in multi-instance deployments.
 func (m *Module) getOrLoadSession(ctx context.Context, sessionID string) (*models.Session, error) {
 	m.sessionsMu.RLock()
-	session, exists := m.sessions[sessionID]
-	m.sessionsMu.RUnlock()
-	if exists {
+	if session, exists := m.sessions[sessionID]; exists {
+		m.sessionsMu.RUnlock()
 		return session, nil
 	}
+	if admin, exists := m.adminSessions[sessionID]; exists {
+		m.sessionsMu.RUnlock()
+		return &admin.Session, nil
+	}
+	m.sessionsMu.RUnlock()
 	session, err := m.sessionRepo.Get(ctx, sessionID)
 	if err != nil {
 		if errors.Is(err, ErrSessionNotFound) {
@@ -111,6 +118,16 @@ func (m *Module) getOrLoadSession(ctx context.Context, sessionID string) (*model
 	if existing, ok := m.sessions[sessionID]; ok {
 		m.sessionsMu.Unlock()
 		return existing, nil
+	}
+	if admin, ok := m.adminSessions[sessionID]; ok {
+		m.sessionsMu.Unlock()
+		return &admin.Session, nil
+	}
+	if session.Role == models.RoleAdmin {
+		admin := &models.AdminSession{Session: *session}
+		m.adminSessions[sessionID] = admin
+		m.sessionsMu.Unlock()
+		return &admin.Session, nil
 	}
 	m.sessions[sessionID] = session
 	m.sessionsMu.Unlock()

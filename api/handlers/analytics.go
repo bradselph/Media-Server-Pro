@@ -76,48 +76,48 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 	}
 
 	writeSuccess(c, map[string]any{
-		"total_events":                summary.TotalEvents,
-		"active_sessions":             summary.ActiveSessions,
-		"today_views":                 summary.TodayViews,
-		"total_views":                 summary.TotalViews,
-		"total_media":                 summary.TotalMedia,
-		"total_watch_time":            summary.TotalWatchTime,
-		"unique_clients":              globalStats.UniqueClients,
-		"top_viewed":                  topViewed,
-		"recent_activity":             recentActivity,
-		"today_logins":                summary.TodayLogins,
-		"today_logins_failed":         summary.TodayLoginsFailed,
-		"today_logouts":               summary.TodayLogouts,
-		"today_registrations":         summary.TodayRegistrations,
-		"today_age_gate_passes":       summary.TodayAgeGatePasses,
-		"today_downloads":             summary.TodayDownloads,
-		"today_searches":              summary.TodaySearches,
-		"today_favorites_added":       summary.TodayFavoritesAdded,
-		"today_favorites_removed":     summary.TodayFavoritesRemoved,
-		"today_ratings_set":           summary.TodayRatingsSet,
-		"today_playlists_created":     summary.TodayPlaylistsCreated,
-		"today_playlists_deleted":     summary.TodayPlaylistsDeleted,
-		"today_playlist_items_added":  summary.TodayPlaylistItemsAdded,
-		"today_uploads_succeeded":     summary.TodayUploadsSucceeded,
-		"today_uploads_failed":        summary.TodayUploadsFailed,
-		"today_password_changes":      summary.TodayPasswordChanges,
-		"today_account_deletions":     summary.TodayAccountDeletions,
-		"today_hls_starts":            summary.TodayHLSStarts,
-		"today_hls_errors":            summary.TodayHLSErrors,
-		"today_media_deletions":       summary.TodayMediaDeletions,
-		"today_api_tokens_created":    summary.TodayAPITokensCreated,
-		"today_api_tokens_revoked":    summary.TodayAPITokensRevoked,
-		"today_admin_actions":         summary.TodayAdminActions,
-		"today_server_errors":         summary.TodayServerErrors,
-		"today_stream_starts":         summary.TodayStreamStarts,
-		"today_stream_ends":           summary.TodayStreamEnds,
-		"today_bytes_served":          summary.TodayBytesServed,
-		"today_mature_blocked":        summary.TodayMatureBlocked,
-		"today_permission_denied":     summary.TodayPermissionDenied,
-		"today_preferences_changes":   summary.TodayPreferencesChanges,
-		"today_bulk_deletes":          summary.TodayBulkDeletes,
-		"today_bulk_updates":          summary.TodayBulkUpdates,
-		"today_user_role_changes":     summary.TodayUserRoleChanges,
+		"total_events":               summary.TotalEvents,
+		"active_sessions":            summary.ActiveSessions,
+		"today_views":                summary.TodayViews,
+		"total_views":                summary.TotalViews,
+		"total_media":                summary.TotalMedia,
+		"total_watch_time":           summary.TotalWatchTime,
+		"unique_clients":             globalStats.UniqueClients,
+		"top_viewed":                 topViewed,
+		"recent_activity":            recentActivity,
+		"today_logins":               summary.TodayLogins,
+		"today_logins_failed":        summary.TodayLoginsFailed,
+		"today_logouts":              summary.TodayLogouts,
+		"today_registrations":        summary.TodayRegistrations,
+		"today_age_gate_passes":      summary.TodayAgeGatePasses,
+		"today_downloads":            summary.TodayDownloads,
+		"today_searches":             summary.TodaySearches,
+		"today_favorites_added":      summary.TodayFavoritesAdded,
+		"today_favorites_removed":    summary.TodayFavoritesRemoved,
+		"today_ratings_set":          summary.TodayRatingsSet,
+		"today_playlists_created":    summary.TodayPlaylistsCreated,
+		"today_playlists_deleted":    summary.TodayPlaylistsDeleted,
+		"today_playlist_items_added": summary.TodayPlaylistItemsAdded,
+		"today_uploads_succeeded":    summary.TodayUploadsSucceeded,
+		"today_uploads_failed":       summary.TodayUploadsFailed,
+		"today_password_changes":     summary.TodayPasswordChanges,
+		"today_account_deletions":    summary.TodayAccountDeletions,
+		"today_hls_starts":           summary.TodayHLSStarts,
+		"today_hls_errors":           summary.TodayHLSErrors,
+		"today_media_deletions":      summary.TodayMediaDeletions,
+		"today_api_tokens_created":   summary.TodayAPITokensCreated,
+		"today_api_tokens_revoked":   summary.TodayAPITokensRevoked,
+		"today_admin_actions":        summary.TodayAdminActions,
+		"today_server_errors":        summary.TodayServerErrors,
+		"today_stream_starts":        summary.TodayStreamStarts,
+		"today_stream_ends":          summary.TodayStreamEnds,
+		"today_bytes_served":         summary.TodayBytesServed,
+		"today_mature_blocked":       summary.TodayMatureBlocked,
+		"today_permission_denied":    summary.TodayPermissionDenied,
+		"today_preferences_changes":  summary.TodayPreferencesChanges,
+		"today_bulk_deletes":         summary.TodayBulkDeletes,
+		"today_bulk_updates":         summary.TodayBulkUpdates,
+		"today_user_role_changes":    summary.TodayUserRoleChanges,
 	})
 }
 
@@ -209,10 +209,10 @@ func (h *Handler) GetContentPerformance(c *gin.Context) {
 // SubmitEvent receives and processes analytics events from clients
 func (h *Handler) SubmitEvent(c *gin.Context) {
 	var req struct {
-		Type      string                 `json:"type"`
-		MediaID   string                 `json:"media_id"`
-		SessionID string                 `json:"session_id"`
-		Duration  float64                `json:"duration"`
+		Type      string         `json:"type"`
+		MediaID   string         `json:"media_id"`
+		SessionID string         `json:"session_id"`
+		Duration  float64        `json:"duration"`
 		Data      map[string]any `json:"data"`
 	}
 	if !BindJSON(c, &req, "") {
@@ -599,7 +599,12 @@ func (h *Handler) AdminExportPanel(c *gin.Context) {
 	}
 	c.Header(headerContentType, "text/csv")
 	w := csv.NewWriter(c.Writer)
-	defer w.Flush()
+	defer func() {
+		w.Flush()
+		if err := w.Error(); err != nil {
+			h.log.Error("export: csv flush: %v", err)
+		}
+	}()
 	if err := w.Write(headers); err != nil {
 		h.log.Error("export: write csv header: %v", err)
 		return
