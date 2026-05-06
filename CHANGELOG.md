@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.13.0] - 2026-05-06 (minor)
+
+- fix: admin user editing, registration default tier, category pagination
+- Update updater.go
+- Update admin_users.go
+- fix(api): add SSRF protection and improve error handling
+
+
 ## [1.12.0] - 2026-05-04 (minor)
 
 - fix(docker): persist config.json in app-data volume
