@@ -80,11 +80,13 @@ func (h *Handler) AdminCreateUser(c *gin.Context) {
 	}
 
 	if req.Type == "" {
-		req.Type = "standard"
+		req.Type = h.config.Get().Auth.DefaultUserType
+		if req.Type == "" {
+			req.Type = "standard"
+		}
 	}
-	// FND-0331: whitelist allowed Type values; reject unknown types to prevent persistence of arbitrary strings.
-	if req.Type != "standard" && req.Type != "guest" {
-		writeError(c, http.StatusBadRequest, `type must be "standard" or "guest"`)
+	if !h.isValidUserType(req.Type) {
+		writeError(c, http.StatusBadRequest, "type must be one of the configured user types")
 		return
 	}
 	user, err := h.auth.CreateUser(c.Request.Context(), auth.CreateUserParams{
@@ -172,8 +174,8 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 		updates["email"] = req.Email
 	}
 	if req.Type != "" {
-		if req.Type != "standard" && req.Type != "guest" {
-			writeError(c, http.StatusBadRequest, `type must be "standard" or "guest"`)
+		if !h.isValidUserType(req.Type) {
+			writeError(c, http.StatusBadRequest, "type must be one of the configured user types")
 			return
 		}
 		updates["type"] = req.Type

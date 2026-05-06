@@ -76,12 +76,27 @@ const editForm = reactive({
   },
 })
 
-const USER_TYPE_OPTIONS = [
-  { label: 'Standard', value: 'standard' },
-  { label: 'Premium', value: 'premium' },
-  { label: 'Trial', value: 'trial' },
-  { label: 'Guest', value: 'guest' },
-]
+// Pulled from the configured Auth.UserTypes list so the dropdown stays in sync
+// with whatever tiers the admin has defined (defaults: premium, standard, basic, guest).
+const userTypeOptions = ref<Array<{ label: string; value: string }>>([])
+async function loadUserTypeOptions() {
+  try {
+    const cfg = await adminApi.getConfig() as { auth?: { user_types?: Array<{ name: string }> } }
+    const types = cfg?.auth?.user_types ?? []
+    userTypeOptions.value = types.map(t => ({
+      label: t.name.charAt(0).toUpperCase() + t.name.slice(1),
+      value: t.name,
+    }))
+  } catch {
+    // Fallback to the built-in defaults if config fetch fails
+    userTypeOptions.value = [
+      { label: 'Premium', value: 'premium' },
+      { label: 'Standard', value: 'standard' },
+      { label: 'Basic', value: 'basic' },
+      { label: 'Guest', value: 'guest' },
+    ]
+  }
+}
 const editLoading = ref(false)
 const editError = ref('')
 
@@ -284,7 +299,10 @@ async function handleDelete() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadUserTypeOptions()
+})
 </script>
 
 <template>
@@ -425,7 +443,7 @@ onMounted(load)
             />
           </UFormField>
           <UFormField label="User Type" description="Affects feature access and display grouping">
-            <USelect v-model="editForm.type" :items="USER_TYPE_OPTIONS" />
+            <USelect v-model="editForm.type" :items="userTypeOptions" />
           </UFormField>
           <UFormField label="Status">
             <div class="flex items-center gap-2">

@@ -432,9 +432,10 @@ export function useRatingsApi() {
 export function useCategoryBrowseApi() {
     return {
         getStats: () => api.get<CategoryStats>('/api/browse/categories'),
-        getByCategory: (category: string, limit?: number) => {
+        getByCategory: (category: string, limit?: number, offset?: number) => {
             const limitPart = limit ? `&limit=${limit}` : ''
-            return api.get<CategoryBrowseResponse>(`/api/browse/categories?category=${encodeURIComponent(category)}${limitPart}`)
+            const offsetPart = offset ? `&offset=${offset}` : ''
+            return api.get<CategoryBrowseResponse>(`/api/browse/categories?category=${encodeURIComponent(category)}${limitPart}${offsetPart}`)
         },
     }
 }

@@ -272,11 +272,15 @@ func (h *Handler) Register(c *gin.Context) {
 		}
 	}
 
+	defaultType := h.config.Get().Auth.DefaultUserType
+	if defaultType == "" {
+		defaultType = "standard"
+	}
 	user, err := h.auth.CreateUser(c.Request.Context(), auth.CreateUserParams{
 		Username: req.Username,
 		Password: req.Password,
 		Email:    req.Email,
-		UserType: "standard",
+		UserType: defaultType,
 		Role:     models.RoleViewer,
 	})
 	if err != nil {
