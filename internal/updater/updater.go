@@ -1267,7 +1267,7 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 	status.Progress = 35
 	m.publishBuildStatus(status)
 
-	frontendDir := filepath.Join(dir, "web", "frontend")
+	frontendDir := filepath.Join(dir, "web", "nuxt-ui")
 	if _, statErr := os.Stat(frontendDir); statErr == nil {
 		m.log.Info("Source update: npm ci in %s", frontendDir)
 		// Use npm ci without --prefer-offline so it works on fresh servers with no cache

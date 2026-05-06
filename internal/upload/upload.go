@@ -280,10 +280,14 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 		if m.store != nil && !m.store.IsLocal() {
 			// Remote backend: os.Remove cannot delete S3 objects; use the store API.
 			if remoteRelKey != "" {
-				_ = m.store.Remove(context.Background(), remoteRelKey)
+				if rmErr := m.store.Remove(context.Background(), remoteRelKey); rmErr != nil {
+					m.log.Warn("Failed to remove oversized upload from remote store (%s): %v", remoteRelKey, rmErr)
+				}
 			}
 		} else if destPath != "" {
-			_ = os.Remove(destPath)
+			if rmErr := os.Remove(destPath); rmErr != nil {
+				m.log.Warn("Failed to remove oversized upload (%s): %v", destPath, rmErr)
+			}
 		}
 		progress.Status = UploadStatusFailed
 		progress.Error = "file exceeds size limit"

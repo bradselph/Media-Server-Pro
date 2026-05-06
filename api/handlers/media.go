@@ -371,8 +371,7 @@ func (h *Handler) GetMedia(c *gin.Context) {
 		if h.receiver != nil {
 			if ri := h.receiver.GetMediaItem(id); ri != nil {
 				isMature := ri.IsMature || h.isReceiverItemMature(ri.ContentFingerprint)
-				if isMature && !h.canViewMatureContent(c) {
-					writeError(c, http.StatusForbidden, msgMatureContent)
+				if !h.checkMatureAccess(c, isMature) {
 					return
 				}
 				writeSuccess(c, &models.MediaItem{
@@ -503,13 +502,13 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 
 	// Enrich with thumbnail URLs and duration from the media module
 	type browseItem struct {
-		ID           string      `json:"id"`
-		Name         string      `json:"name"`
-		Category     string      `json:"category"`
-		Confidence   float64     `json:"confidence"`
-		Duration     float64     `json:"duration,omitempty"`
-		DetectedInfo any `json:"detected_info,omitempty"`
-		ThumbnailURL string      `json:"thumbnail_url,omitempty"`
+		ID           string  `json:"id"`
+		Name         string  `json:"name"`
+		Category     string  `json:"category"`
+		Confidence   float64 `json:"confidence"`
+		Duration     float64 `json:"duration,omitempty"`
+		DetectedInfo any     `json:"detected_info,omitempty"`
+		ThumbnailURL string  `json:"thumbnail_url,omitempty"`
 	}
 	results := make([]browseItem, 0, len(items))
 	for _, item := range items {
@@ -570,20 +569,28 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		// This makes slave media fully transparent — same URL pattern as local.
 		if h.receiver != nil {
 			if item := h.receiver.GetMediaItem(id); item != nil {
-				// Receiver items inherit the mature flag from the scanner if the
-				// master has scanned the same content. If the fingerprint matches a
-				// mature local item, deny access for unauthorized callers.
-				if h.isReceiverItemMature(item.ContentFingerprint) && !h.canViewMatureContent(c) {
-					writeError(c, http.StatusForbidden, msgMatureContent)
+				// Combine the slave's own IsMature flag with the master's
+				// fingerprint-based detection so an item is gated when either
+				// path flags it. Use checkMatureAccess (not canViewMatureContent)
+				// for consistent 401/403 status codes, login-prompt messaging,
+				// and mature_blocked analytics with the local-media branch.
+				isMature := item.IsMature || h.isReceiverItemMature(item.ContentFingerprint)
+				if !h.checkMatureAccess(c, isMature) {
 					return
 				}
 				// Enforce per-user or per-IP stream limits for receiver-sourced media.
 				if session != nil {
-					streamKey := session.UserID
-					maxStreams := 3 // default fallback if user lookup fails
-					if user, err := h.auth.GetUser(c.Request.Context(), session.Username); err == nil {
-						maxStreams = h.getUserStreamLimit(user.Type)
+					user, err := h.auth.GetUser(c.Request.Context(), session.Username)
+					if err != nil {
+						h.log.Warn("Failed to look up user %s for receiver stream limit check: %v", session.Username, err)
+						// Fail closed to match the local and extractor branches: a
+						// transient DB outage should not silently downgrade the
+						// stream limit to a permissive default.
+						writeError(c, http.StatusServiceUnavailable, "Unable to verify stream permissions")
+						return
 					}
+					streamKey := session.UserID
+					maxStreams := h.getUserStreamLimit(user.Type)
 					if maxStreams > 0 && !h.streaming.CanStartStream(streamKey, maxStreams) {
 						writeError(c, http.StatusTooManyRequests, msgMaxStreams)
 						return

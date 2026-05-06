@@ -134,7 +134,10 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 	if _, err := os.Stat(p.OutputDir); err == nil {
 		m.log.Warn("Output directory exists but HLS validation failed, cleaning up before regeneration: %s", p.OutputDir)
 		if err := os.RemoveAll(p.OutputDir); err != nil {
-			m.log.Error("Failed to clean up corrupted HLS directory: %v", err)
+			// Stale segments mixed with a fresh transcode produce a broken playlist
+			// (orphan .ts files, mismatched byte ranges). Fail loud instead of
+			// silently regenerating into a corrupted directory.
+			return nil, fmt.Errorf("failed to clean up corrupted HLS directory %s: %w", p.OutputDir, err)
 		}
 	}
 	if err := os.MkdirAll(p.OutputDir, 0o755); err != nil { //nolint:gosec // G301: HLS output dirs need world-read for serving
