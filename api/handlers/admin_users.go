@@ -180,8 +180,9 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 	}
 	if req.Permissions != nil {
 		validPermKeys := map[string]bool{
-			"can_view_mature": true, "can_download": true, "can_upload": true,
-			"can_create_playlists": true, "can_view_analytics": true,
+			"can_stream": true, "can_download": true, "can_upload": true,
+			"can_delete": true, "can_manage": true, "can_view_mature": true,
+			"can_create_playlists": true,
 		}
 		for k, v := range req.Permissions {
 			if !validPermKeys[k] {
