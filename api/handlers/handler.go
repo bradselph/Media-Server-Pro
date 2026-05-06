@@ -1112,6 +1112,16 @@ func (h *Handler) getUserType(cfg *config.Config, user *models.User) *config.Use
 	return nil
 }
 
+// isValidUserType reports whether name matches a configured user type.
+func (h *Handler) isValidUserType(name string) bool {
+	for _, ut := range h.config.Get().Auth.UserTypes {
+		if ut.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // checkFeatureEnabled checks that a module is non-nil and that a config flag
 // reports the feature as enabled. Returns false (and writes the appropriate
 // 503 or 404 error) if either check fails.

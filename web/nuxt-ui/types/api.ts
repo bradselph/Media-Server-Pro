@@ -1215,6 +1215,8 @@ export interface CategoryBrowseResponse {
     category: string
     items: CategoryBrowseItem[]
     total: number
+    offset?: number
+    limit?: number
 }
 
 // Generated from api_spec/openapi.yaml — do not edit manually

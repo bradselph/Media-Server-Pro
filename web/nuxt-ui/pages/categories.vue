@@ -15,6 +15,7 @@ const toast = useToast()
 
 const stats = ref<CategoryStats | null>(null)
 const items = ref<CategoryBrowseItem[]>([])
+const totalItems = ref(0)
 const selectedCategory = ref<string>((route.query.category as string) || '')
 const loading = ref(false)
 const error = ref('')
@@ -40,29 +41,34 @@ async function loadStats() {
   }
 }
 
-async function loadCategory(cat: string) {
+async function loadCategory(cat: string, page = 1) {
   selectedCategory.value = cat
-  categoryPage.value = 1
+  categoryPage.value = page
   router.replace({ query: { category: cat } })
   loading.value = true
   error.value = ''
   try {
-    const res = await browseApi.getByCategory(cat)
+    const offset = (page - 1) * ITEMS_PER_PAGE
+    const res = await browseApi.getByCategory(cat, ITEMS_PER_PAGE, offset)
     items.value = res?.items ?? []
+    totalItems.value = res?.total ?? items.value.length
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Failed to load'
     items.value = []
+    totalItems.value = 0
   } finally {
     loading.value = false
   }
 }
 
-const paginatedItems = computed(() => {
-  const start = (categoryPage.value - 1) * ITEMS_PER_PAGE
-  return items.value.slice(start, start + ITEMS_PER_PAGE)
+watch(categoryPage, p => {
+  if (selectedCategory.value) loadCategory(selectedCategory.value, p)
 })
 
-const totalCategoryPages = computed(() => Math.ceil(items.value.length / ITEMS_PER_PAGE))
+// Items are now server-paginated, so the page slice IS the response.
+const paginatedItems = computed(() => items.value)
+
+const totalCategoryPages = computed(() => Math.max(1, Math.ceil(totalItems.value / ITEMS_PER_PAGE)))
 
 // Sort key for grouping TV Shows by show name, Music by artist
 const grouped = computed(() => {

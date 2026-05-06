@@ -481,7 +481,9 @@ func (h *Handler) GetCategories(c *gin.Context) {
 
 // GetCategoryBrowse returns user-facing categorized items for a given category.
 // When no category is specified, returns category counts (stats).
-// Accepts ?category=TV+Shows&limit=N (default 200, max 500).
+// Accepts ?category=TV+Shows&limit=N&offset=N (default limit 200, max 500).
+// Response always includes the full category total so the SPA can paginate
+// across the slice — without it, categories with >limit items silently truncate.
 func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 	if !h.requireCategorizer(c) {
 		return
@@ -491,6 +493,10 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 500 {
 		limit = l
 	}
+	offset := 0
+	if o, err := strconv.Atoi(c.Query("offset")); err == nil && o >= 0 {
+		offset = o
+	}
 
 	if category == "" {
 		stats := h.categorizer.GetStats()
@@ -499,8 +505,19 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 	}
 
 	items := h.categorizer.GetByCategory(categorizer.Category(category))
+	total := len(items)
 
-	// Enrich with thumbnail URLs and duration from the media module
+	// Window the slice before enriching so we don't pay the
+	// GetMediaByID + thumbnail lookup cost on items we'll discard.
+	end := offset + limit
+	if offset > total {
+		offset = total
+	}
+	if end > total {
+		end = total
+	}
+	pageItems := items[offset:end]
+
 	type browseItem struct {
 		ID           string  `json:"id"`
 		Name         string  `json:"name"`
@@ -510,8 +527,8 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 		DetectedInfo any     `json:"detected_info,omitempty"`
 		ThumbnailURL string  `json:"thumbnail_url,omitempty"`
 	}
-	results := make([]browseItem, 0, len(items))
-	for _, item := range items {
+	results := make([]browseItem, 0, len(pageItems))
+	for _, item := range pageItems {
 		bi := browseItem{
 			ID:           item.ID,
 			Name:         item.Name,
@@ -530,14 +547,12 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 		results = append(results, bi)
 	}
 
-	if limit < len(results) {
-		results = results[:limit]
-	}
-
 	writeSuccess(c, map[string]any{
 		"category": category,
 		"items":    results,
-		"total":    len(results),
+		"total":    total,
+		"offset":   offset,
+		"limit":    limit,
 	})
 }
 
