@@ -210,7 +210,6 @@ async function bulkAddToPlaylist() {
         >
           <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
             <img
-              v-if="item.thumbnail_url || true"
               :src="mediaApi.getThumbnailUrl(item.id)"
               :alt="getDisplayTitle(item)"
               width="320"
