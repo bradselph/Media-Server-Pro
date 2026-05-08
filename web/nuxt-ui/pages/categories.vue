@@ -276,7 +276,7 @@ watch(() => authStore.user, (user) => {
 
       <!-- Pagination for flat grid -->
       <div v-if="!grouped && totalCategoryPages > 1" class="flex justify-center pt-4">
-        <UPagination v-model:page="categoryPage" :total="items.length" :items-per-page="ITEMS_PER_PAGE" />
+        <UPagination v-model:page="categoryPage" :total="totalItems" :items-per-page="ITEMS_PER_PAGE" />
       </div>
     </div>
 
