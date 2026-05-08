@@ -1224,8 +1224,10 @@ watch(mediaId, (id, oldId) => {
             </div>
           </Transition>
 
-          <!-- Mobile skip buttons (visible on touch devices, single tap) -->
-          <div class="absolute inset-0 flex items-center justify-between pointer-events-none md:hidden z-10">
+          <!-- Mobile skip buttons (visible on touch devices, single tap).
+               bottom-20 keeps the zones above the PlayerControls bar so its
+               buttons stay tappable even during the controls fade transition. -->
+          <div class="absolute inset-x-0 top-0 bottom-20 flex items-center justify-between pointer-events-none md:hidden z-10">
             <!-- Skip back -->
             <button
               class="pointer-events-auto w-1/4 h-full flex items-center justify-center transition-colors"
@@ -1931,3 +1933,19 @@ watch(mediaId, (id, oldId) => {
     </template>
   </UModal>
 </template>
+
+<style scoped>
+/* When the wrapper enters native fullscreen, drop the navbar/safe-area
+   subtraction so the video fills the screen instead of leaving a black
+   band at the bottom (which made the picture look zoomed/cropped). */
+.player-wrapper:fullscreen {
+  height: 100dvh;
+  width: 100vw;
+  border-radius: 0;
+}
+.player-wrapper:fullscreen video {
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
+}
+</style>
