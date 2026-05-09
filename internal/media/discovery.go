@@ -409,9 +409,20 @@ func (m *Module) checkFFProbe() {
 	}
 }
 
-// Scan scans configured directories for media files
+// Scan scans configured directories for media files.
+// Concurrent calls are coalesced — when a scan is already running, this
+// returns nil immediately. The caller can use IsScanning() to distinguish
+// "skipped" from "ran successfully" if it cares. This prevents the initial
+// boot scan, the tasks-scheduler initial run (T+10s after startup), the
+// metadata-cleanup task, the downloader post-import trigger, and admin
+// manual scans from doubling up on directory walks.
 func (m *Module) Scan() error {
 	m.healthMu.Lock()
+	if m.scanning {
+		m.healthMu.Unlock()
+		m.log.Debug("Scan already in progress; skipping concurrent call")
+		return nil
+	}
 	m.scanning = true
 	m.healthMu.Unlock()
 	defer func() {
