@@ -302,6 +302,11 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			setReadDeadline(conn, wsReadDeadline, m.log)
 			catalogSlaveID, catalogItems, catalogFull := data.SlaveID, data.Items, data.Full
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						m.log.Error("WS catalog push panicked for %s: %v", catalogSlaveID, r)
+					}
+				}()
 				count, err := m.PushCatalog(&CatalogPushRequest{
 					SlaveID: catalogSlaveID,
 					Items:   catalogItems,
