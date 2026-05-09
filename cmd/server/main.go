@@ -674,13 +674,18 @@ func registerTasks(
 	cfg *config.Manager,
 	log *logger.Logger,
 ) {
-	// Media library scan — discovers new/removed files every hour
+	// Media library scan — discovers new/removed files every hour.
+	// Gated on Features.EnableAutoDiscovery so the flag is honoured at tick
+	// time (not just at startup); when it's off the task tick is a no-op.
 	scheduler.RegisterTask(tasks.TaskRegistration{
 		ID:          "media-scan",
 		Name:        "Media Library Scan",
 		Description: "Scans configured directories for new and removed media files",
 		Schedule:    1 * time.Hour,
 		Func: func(_ context.Context) error {
+			if !cfg.Get().Features.EnableAutoDiscovery {
+				return nil
+			}
 			if err := mediaModule.Scan(); err != nil {
 				return err
 			}

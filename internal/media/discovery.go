@@ -92,8 +92,6 @@ type Module struct {
 	healthy          bool
 	healthMsg        string
 	healthMu         sync.RWMutex
-	scanTicker       *time.Ticker
-	scanDone         chan struct{}
 	scanCtx          context.Context    // Canceled on shutdown; used by background saves
 	scanCancel       context.CancelFunc // Cancels background scans on shutdown
 	version          int64
@@ -244,7 +242,6 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 		metadata:         make(map[string]*Metadata),
 		fingerprintIndex: make(map[string]string),
 		dataDir:          cfg.Get().Directories.Data,
-		scanDone:         make(chan struct{}),
 	}, nil
 }
 
@@ -329,30 +326,22 @@ func (m *Module) Start(_ context.Context) error {
 		}
 	}()
 
-	// Start background scan loop
-	cfg := m.config.Get()
-	if cfg.Features.EnableAutoDiscovery {
-		m.scanTicker = time.NewTicker(1 * time.Hour)
-		go m.scanLoop()
-	}
-
+	// Periodic re-scans are driven by the tasks scheduler ("media-scan" task,
+	// registered in cmd/server/main.go). The scheduler honours the
+	// EnableAutoDiscovery feature flag at tick time and also feeds fresh data
+	// into the suggestions module after each scan, so the media module no
+	// longer runs its own duplicate ticker here.
 	m.log.Info("Media module started (metadata load and scan running in background)")
 	return nil
 }
 
-// Stop gracefully stops the module. When EnableAutoDiscovery is false, scanDone is not closed (scanTicker is nil).
+// Stop gracefully stops the module.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping media module...")
 
 	// Cancel any running background scans (also cancels in-flight background saves)
 	if m.scanCancel != nil {
 		m.scanCancel()
-	}
-
-	// Stop periodic scan loop
-	if m.scanTicker != nil {
-		m.scanTicker.Stop()
-		close(m.scanDone)
 	}
 
 	// Save metadata using a background context with a generous deadline.
@@ -417,20 +406,6 @@ func (m *Module) checkFFProbe() {
 		m.log.Info("ffprobe found at %s, extended metadata extraction enabled", path)
 	} else {
 		m.log.Warn("ffprobe not found, extended metadata extraction disabled")
-	}
-}
-
-// scanLoop runs periodic media scans
-func (m *Module) scanLoop() {
-	for {
-		select {
-		case <-m.scanTicker.C:
-			if err := m.Scan(); err != nil {
-				m.log.Error("Periodic scan failed: %v", err)
-			}
-		case <-m.scanDone:
-			return
-		}
 	}
 }
 
