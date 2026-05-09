@@ -82,10 +82,6 @@ type Module struct {
 	healthy          bool
 	healthMsg        string
 	healthMu         sync.RWMutex
-	cleanupTicker    *time.Ticker
-	cleanupTickerMu  sync.Mutex
-	cleanupDone      chan struct{}
-	stopOnce         sync.Once
 }
 
 type loginAttempt struct {
@@ -114,7 +110,6 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 		loginAttempts:    make(map[string]*loginAttempt),
 		sessionUpdateSem: make(chan struct{}, 100), // bound concurrent session-persist goroutines
 		dataDir:          cfg.Get().Directories.Data,
-		cleanupDone:      make(chan struct{}),
 	}, nil
 }
 
@@ -148,7 +143,9 @@ func (m *Module) Start(ctx context.Context) error {
 		return err
 	}
 
-	m.startCleanupLoop()
+	// Periodic expired-session cleanup runs out of the tasks scheduler
+	// ("session-cleanup" task in cmd/server/main.go) so this module no
+	// longer manages its own cleanup ticker.
 	m.setHealth(true, "Running")
 	m.log.Info("Authentication module started with %d users", len(m.users))
 	return nil
@@ -224,28 +221,9 @@ func (m *Module) ensureDefaultAdminWithHealth(_ context.Context) error {
 	return nil
 }
 
-// startCleanupLoop starts the background session cleanup ticker and goroutine.
-func (m *Module) startCleanupLoop() {
-	m.cleanupTickerMu.Lock()
-	m.cleanupTicker = time.NewTicker(5 * time.Minute)
-	m.cleanupTickerMu.Unlock()
-	go m.cleanupLoop()
-}
-
 // Stop gracefully stops the module
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping authentication module...")
-
-	m.stopOnce.Do(func() {
-		m.cleanupTickerMu.Lock()
-		ticker := m.cleanupTicker
-		m.cleanupTickerMu.Unlock()
-		if ticker != nil {
-			ticker.Stop()
-			close(m.cleanupDone)
-		}
-	})
-
 	m.log.Debug("Auth module stopped (repositories handle persistence)")
 
 	m.setHealth(false, "Stopped")
@@ -266,33 +244,3 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
-// cleanupLoop periodically cleans up expired sessions.
-// Recover on panic so one failure does not stop cleanup forever.
-func (m *Module) cleanupLoop() {
-	for {
-		// Read cleanupTicker under lock for defense-in-depth synchronization.
-		// While the initial write is protected by happens-before on goroutine start,
-		// explicit locking ensures all reads are synchronized.
-		m.cleanupTickerMu.Lock()
-		ticker := m.cleanupTicker
-		m.cleanupTickerMu.Unlock()
-		if ticker == nil {
-			// Ticker not initialized yet; avoid panic on closed channel.
-			return
-		}
-		select {
-		case <-ticker.C:
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						m.log.Error("Session cleanup panic recovered, continuing: %v", r)
-						m.setHealth(false, fmt.Sprintf("Cleanup panicked: %v", r))
-					}
-				}()
-				m.cleanupExpiredSessions()
-			}()
-		case <-m.cleanupDone:
-			return
-		}
-	}
-}

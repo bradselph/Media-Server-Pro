@@ -689,9 +689,20 @@ func (m *Module) startSession(req StreamRequest, position int64) *models.StreamS
 		// Pass a copy so the analytics layer can't accidentally mutate the
 		// session struct that the streaming module is still tracking.
 		snap := *session
-		go hook(&snap)
+		go m.runSessionHook("onSessionStart", hook, &snap)
 	}
 	return session
+}
+
+// runSessionHook invokes a session-lifecycle hook with panic recovery so a
+// faulty analytics callback can't kill the per-session goroutine silently.
+func (m *Module) runSessionHook(name string, hook func(*models.StreamSession), snap *models.StreamSession) {
+	defer func() {
+		if r := recover(); r != nil {
+			m.log.Error("Streaming %s hook panicked: %v", name, r)
+		}
+	}()
+	hook(snap)
 }
 
 // endSession removes a streaming session
@@ -706,7 +717,7 @@ func (m *Module) endSession(sessionID string) {
 	if exists {
 		if hook := m.onSessionEnd; hook != nil {
 			snap := *session
-			go hook(&snap)
+			go m.runSessionHook("onSessionEnd", hook, &snap)
 		}
 	}
 }

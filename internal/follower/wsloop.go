@@ -144,6 +144,8 @@ func (m *Module) connectAndRun(ctx context.Context) error {
 		_ = conn.SetReadDeadline(time.Now().Add(wsReadDeadline))
 		writeMu.Lock()
 		defer writeMu.Unlock()
+		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline))
+		defer func() { _ = conn.SetWriteDeadline(time.Time{}) }()
 		return conn.WriteMessage(websocket.PongMessage, []byte(data))
 	})
 
@@ -279,6 +281,7 @@ func (m *Module) connectAndRun(ctx context.Context) error {
 		case <-ctx.Done():
 			streamCancel()
 			writeMu.Lock()
+			_ = conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline))
 			_ = conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "shutdown"))
 			_ = conn.Close()
@@ -352,6 +355,11 @@ func hashCatalog(items []*catalogItem) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// wsWriteDeadline bounds how long any single WebSocket frame can take to
+// flush before we give up. Without this WriteJSON has no inherent timeout
+// and a stalled master can hang the follower's writer goroutine forever.
+const wsWriteDeadline = 10 * time.Second
+
 // sendJSON serializes a typed message and writes it under writeMu so multiple
 // goroutines never interleave writes on the same WS connection.
 func sendJSON(conn *websocket.Conn, writeMu *sync.Mutex, msgType string, data any) error {
@@ -362,6 +370,8 @@ func sendJSON(conn *websocket.Conn, writeMu *sync.Mutex, msgType string, data an
 	msg := wsMessage{Type: msgType, Data: raw}
 	writeMu.Lock()
 	defer writeMu.Unlock()
+	_ = conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline))
+	defer func() { _ = conn.SetWriteDeadline(time.Time{}) }()
 	return conn.WriteJSON(msg)
 }
 

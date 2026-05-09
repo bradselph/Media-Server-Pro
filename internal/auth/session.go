@@ -73,15 +73,7 @@ func (m *Module) cleanupExpiredSessionsCache() {
 	m.cleanupExpiredLoginAttempts()
 }
 
-// cleanupExpiredSessions removes expired sessions from DB and cache (used by internal ticker).
-func (m *Module) cleanupExpiredSessions() {
-	if err := m.sessionRepo.DeleteExpired(context.Background()); err != nil {
-		m.log.Warn("Failed to cleanup expired sessions: %v", err)
-	}
-	m.cleanupExpiredSessionsCache()
-}
-
-// CleanupExpiredSessions removes expired sessions from storage and cache (public method for background tasks).
+// CleanupExpiredSessions removes expired sessions from storage and cache (called by the tasks-scheduler "session-cleanup" task).
 func (m *Module) CleanupExpiredSessions(ctx context.Context) error {
 	if err := m.sessionRepo.DeleteExpired(ctx); err != nil {
 		return err

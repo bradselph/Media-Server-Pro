@@ -102,6 +102,11 @@ type StreamDelivery struct {
 	Body        io.ReadCloser
 }
 
+// wsWriteDeadline bounds how long any single WebSocket frame can take to
+// flush before we give up. Without this WriteJSON / WriteMessage have no
+// inherent timeout and a slow peer can hang the writer goroutine forever.
+const wsWriteDeadline = 10 * time.Second
+
 // slaveWS represents an active WebSocket connection from a slave.
 type slaveWS struct {
 	slaveID  string
@@ -113,6 +118,8 @@ type slaveWS struct {
 }
 
 // sendJSON sends a typed JSON message to the slave.
+// A write deadline is applied so a slow/stalled peer can't hang the writer
+// goroutine indefinitely — without it WriteJSON has no inherent timeout.
 func (s *slaveWS) sendJSON(msgType string, data any) error {
 	raw, err := json.Marshal(data)
 	if err != nil {
@@ -121,6 +128,8 @@ func (s *slaveWS) sendJSON(msgType string, data any) error {
 	msg := wsMessage{Type: msgType, Data: raw}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	_ = s.conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline))
+	defer func() { _ = s.conn.SetWriteDeadline(time.Time{}) }()
 	return s.conn.WriteJSON(msg)
 }
 
@@ -190,7 +199,6 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Start ping ticker — stopped when done channel is closed on disconnect
-	const wsPingWriteTimeout = 10 * time.Second
 	go func() {
 		ticker := time.NewTicker(wsPingInterval)
 		defer ticker.Stop()
@@ -198,7 +206,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			select {
 			case <-ticker.C:
 				sw.mu.Lock()
-				_ = conn.SetWriteDeadline(time.Now().Add(wsPingWriteTimeout))
+				_ = conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline))
 				err := conn.WriteMessage(websocket.PingMessage, nil)
 				_ = conn.SetWriteDeadline(time.Time{})
 				sw.mu.Unlock()
@@ -294,6 +302,11 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			setReadDeadline(conn, wsReadDeadline, m.log)
 			catalogSlaveID, catalogItems, catalogFull := data.SlaveID, data.Items, data.Full
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						m.log.Error("WS catalog push panicked for %s: %v", catalogSlaveID, r)
+					}
+				}()
 				count, err := m.PushCatalog(&CatalogPushRequest{
 					SlaveID: catalogSlaveID,
 					Items:   catalogItems,

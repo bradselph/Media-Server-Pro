@@ -14,6 +14,19 @@ import (
 	"media-server-pro/internal/logger"
 )
 
+// wsRelayWriteDeadline bounds how long any WebSocket frame can take to flush
+// before we give up. Without it WriteMessage can hang the proxy goroutine
+// indefinitely when one side stops reading (TCP backpressure on a stuck peer).
+const wsRelayWriteDeadline = 10 * time.Second
+
+// writeMessageWithDeadline applies a write deadline so a stalled peer cannot
+// hang the proxy goroutine on WriteMessage.
+func writeMessageWithDeadline(conn *websocket.Conn, msgType int, data []byte) error {
+	_ = conn.SetWriteDeadline(time.Now().Add(wsRelayWriteDeadline))
+	defer func() { _ = conn.SetWriteDeadline(time.Time{}) }()
+	return conn.WriteMessage(msgType, data)
+}
+
 var wsUpgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
@@ -73,7 +86,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			_ = httpResp.Body.Close()
 		}
 		log.Warn("Downloader WS dial failed: %v", err)
-		_ = adminConn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Cannot connect to downloader"}`))
+		_ = writeMessageWithDeadline(adminConn, websocket.TextMessage, []byte(`{"type":"error","message":"Cannot connect to downloader"}`))
 		_ = adminConn.Close()
 		return
 	}
@@ -90,7 +103,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		_ = adminConn.Close()
 		return
 	}
-	if err := dlConn.WriteMessage(websocket.TextMessage, registerMsg); err != nil {
+	if err := writeMessageWithDeadline(dlConn, websocket.TextMessage, registerMsg); err != nil {
 		log.Warn("Failed to register clientId with downloader: %v", err)
 		_ = dlConn.Close()
 		_ = adminConn.Close()
@@ -108,7 +121,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		_ = adminConn.Close()
 		return
 	}
-	if err := adminConn.WriteMessage(websocket.TextMessage, connectedMsg); err != nil {
+	if err := writeMessageWithDeadline(adminConn, websocket.TextMessage, connectedMsg); err != nil {
 		log.Warn("Failed to send connected message to admin: %v", err)
 		_ = dlConn.Close()
 		_ = adminConn.Close()
@@ -153,7 +166,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return
 			}
-			if err := dlConn.WriteMessage(msgType, data); err != nil {
+			if err := writeMessageWithDeadline(dlConn, msgType, data); err != nil {
 				return
 			}
 		}
@@ -165,7 +178,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return
 		}
-		if err := adminConn.WriteMessage(msgType, data); err != nil {
+		if err := writeMessageWithDeadline(adminConn, msgType, data); err != nil {
 			return
 		}
 	}
