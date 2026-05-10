@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.14.0] - 2026-05-10 (minor)
+
+- fix(receiver): add panic recovery to per-message catalog push goroutine
+- fix(streaming): add panic recovery to per-session analytics hooks
+- fix(downloader): apply write deadlines to bidirectional WebSocket proxy
+- fix(receiver,follower): add write deadlines to WebSocket sendJSON
+- fix(media): coalesce concurrent Scan() calls
+- fix(auth): drop duplicate session-cleanup ticker, leave it to tasks scheduler
+- fix(media): drop duplicate scanLoop, gate media-scan task on EnableAutoDiscovery
+- fix(categories): pagination total uses server count, not current page slice
+- fix(search): drop dead 'item.thumbnail_url || true' v-if guard
+- fix(player): mobile fullscreen no longer crops video, skip zones don't block controls
+
+
 ## [1.13.0] - 2026-05-06 (minor)
 
 - fix: admin user editing, registration default tier, category pagination
