@@ -13,6 +13,10 @@ import (
 
 const (
 	msgDownloaderOffline = "Downloader service is offline"
+	// maxDownloaderURLLength caps detect/download request URLs so a forged
+	// caller can't push the SSRF validator and DNS lookup through huge inputs.
+	// 2048 covers every browser-emitted URL with substantial headroom.
+	maxDownloaderURLLength = 2048
 )
 
 func (h *Handler) checkDownloaderEnabled(c *gin.Context) bool {
@@ -82,6 +86,10 @@ func (h *Handler) AdminDownloaderDetect(c *gin.Context) {
 		return
 	}
 
+	if len(req.URL) > maxDownloaderURLLength {
+		writeError(c, http.StatusBadRequest, "URL is too long")
+		return
+	}
 	if err := helpers.ValidateURLForSSRF(req.URL); err != nil {
 		writeError(c, http.StatusBadRequest, "Invalid URL: "+err.Error())
 		return
@@ -133,6 +141,10 @@ func (h *Handler) AdminDownloaderDownload(c *gin.Context) {
 		return
 	}
 
+	if len(req.URL) > maxDownloaderURLLength {
+		writeError(c, http.StatusBadRequest, "URL is too long")
+		return
+	}
 	if err := helpers.ValidateURLForSSRF(req.URL); err != nil {
 		writeError(c, http.StatusBadRequest, "Invalid URL: "+err.Error())
 		return
