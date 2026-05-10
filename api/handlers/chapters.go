@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"math"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +12,22 @@ import (
 	"media-server-pro/internal/analytics"
 	"media-server-pro/pkg/models"
 )
+
+// chapterMaxTimeSeconds caps chapter timestamps so a forged request cannot
+// store NaN/Inf or absurdly large values that break sorting and the player UI.
+// 7 days is well beyond any legitimate media duration.
+const (
+	chapterMaxTimeSeconds = 7 * 24 * 60 * 60
+	chapterMaxLabelLength = 255
+)
+
+// validateChapterTime rejects NaN/Inf and out-of-range values.
+func validateChapterTime(v float64) bool {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return false
+	}
+	return v >= 0 && v <= chapterMaxTimeSeconds
+}
 
 // ListChapters returns chapters for a given media ID, sorted by start_time.
 // Query param: media_id (required)
@@ -73,13 +90,23 @@ func (h *Handler) CreateChapter(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "label is required")
 		return
 	}
-	if req.StartTime < 0 {
-		writeError(c, http.StatusBadRequest, "start_time must be >= 0")
+	if len(req.Label) > chapterMaxLabelLength {
+		writeError(c, http.StatusBadRequest, "label is too long")
 		return
 	}
-	if req.EndTime != nil && *req.EndTime <= req.StartTime {
-		writeError(c, http.StatusBadRequest, "end_time must be > start_time")
+	if !validateChapterTime(req.StartTime) {
+		writeError(c, http.StatusBadRequest, "start_time is out of range")
 		return
+	}
+	if req.EndTime != nil {
+		if !validateChapterTime(*req.EndTime) {
+			writeError(c, http.StatusBadRequest, "end_time is out of range")
+			return
+		}
+		if *req.EndTime <= req.StartTime {
+			writeError(c, http.StatusBadRequest, "end_time must be > start_time")
+			return
+		}
 	}
 
 	db := h.database.GORM()
@@ -163,13 +190,17 @@ func (h *Handler) UpdateChapter(c *gin.Context) {
 	newLabel := chapter.Label
 
 	if req.StartTime != nil {
-		if *req.StartTime < 0 {
-			writeError(c, http.StatusBadRequest, "start_time must be >= 0")
+		if !validateChapterTime(*req.StartTime) {
+			writeError(c, http.StatusBadRequest, "start_time is out of range")
 			return
 		}
 		newStartTime = *req.StartTime
 	}
 	if req.EndTime != nil {
+		if !validateChapterTime(*req.EndTime) {
+			writeError(c, http.StatusBadRequest, "end_time is out of range")
+			return
+		}
 		if *req.EndTime <= newStartTime {
 			writeError(c, http.StatusBadRequest, "end_time must be > start_time")
 			return
@@ -179,6 +210,10 @@ func (h *Handler) UpdateChapter(c *gin.Context) {
 	if req.Label != nil {
 		if *req.Label == "" {
 			writeError(c, http.StatusBadRequest, "label cannot be empty")
+			return
+		}
+		if len(*req.Label) > chapterMaxLabelLength {
+			writeError(c, http.StatusBadRequest, "label is too long")
 			return
 		}
 		newLabel = *req.Label
