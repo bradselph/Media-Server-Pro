@@ -483,9 +483,14 @@ func (h *Handler) AdminExportAll(c *gin.Context) {
 	}
 	if len(errors) > 0 {
 		w, err := zw.Create("_errors.txt")
-		if err == nil {
+		if err != nil {
+			h.log.Warn("export-all: create _errors.txt failed: %v", err)
+		} else {
 			for _, e := range errors {
-				_, _ = w.Write([]byte(e + "\n"))
+				if _, werr := w.Write([]byte(e + "\n")); werr != nil {
+					h.log.Warn("export-all: write _errors.txt failed: %v", werr)
+					break
+				}
 			}
 		}
 	}
