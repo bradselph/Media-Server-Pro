@@ -226,6 +226,14 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "media_id required")
 		return
 	}
+	// Cap the free-form Data map so a client can't push thousands of keys
+	// through the analytics pipeline. The dashboard panels never read more
+	// than a handful of well-known keys (duration, ip, etc.).
+	const maxSubmitEventDataKeys = 64
+	if len(req.Data) > maxSubmitEventDataKeys {
+		writeError(c, http.StatusBadRequest, "event data has too many fields")
+		return
+	}
 	if req.Duration > 0 {
 		if req.Data == nil {
 			req.Data = make(map[string]any)
