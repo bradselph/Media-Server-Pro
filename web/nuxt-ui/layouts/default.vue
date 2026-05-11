@@ -139,6 +139,10 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
 // Avatar dropdown menu items — per handoff §6.1: Profile, Admin (if admin),
 // Logout. Nuxt UI's UDropdownMenu expects a 2D array of groups; each group
 // renders as a section with a separator between.
+//
+// The "Private session" toggle (retention plan B.2) is grouped between the
+// account links and Logout. When on, useApi attaches X-MSP-Private to every
+// request and the backend skips watch-history / analytics writes.
 const avatarMenuItems = computed(() => {
   const primary: Array<{ label: string; icon: string; to?: string; onSelect?: () => void }> = [
     { label: 'Profile', icon: 'i-lucide-user', to: '/profile' },
@@ -148,8 +152,14 @@ const avatarMenuItems = computed(() => {
   if (authStore.isAdmin) {
     primary.push({ label: 'Admin', icon: 'i-lucide-shield', to: '/admin' })
   }
+  const privacyGroup = [{
+    label: authStore.privateSession ? 'Private session — On' : 'Private session — Off',
+    icon: authStore.privateSession ? 'i-lucide-shield-check' : 'i-lucide-shield',
+    onSelect: () => authStore.togglePrivateSession(),
+  }]
   return [
     primary,
+    privacyGroup,
     [{ label: 'Log out', icon: 'i-lucide-log-out', onSelect: handleLogout }],
   ]
 })
@@ -325,7 +335,9 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
 
           <!-- Avatar dropdown (logged-in) — per handoff §6.1: circle w/ initial
                letter on an accent gradient, opens popover with Profile, Admin,
-               Logout. Closes on outside-click and Escape via UDropdownMenu. -->
+               Logout. Closes on outside-click and Escape via UDropdownMenu.
+               A small shield badge overlays the avatar when the user has
+               toggled their session to private (retention plan B.2). -->
           <template v-if="authStore.isLoggedIn">
             <UDropdownMenu
               :items="avatarMenuItems"
@@ -333,11 +345,19 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
               class="hidden md:block"
             >
               <button
-                class="inline-flex items-center justify-center size-8 rounded-full text-white text-sm font-bold cursor-pointer hover:brightness-110 transition-[filter] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-page)]"
+                class="relative inline-flex items-center justify-center size-8 rounded-full text-white text-sm font-bold cursor-pointer hover:brightness-110 transition-[filter] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-page)]"
                 style="background: linear-gradient(135deg, oklch(62% 0.13 var(--accent-hue)), oklch(72% 0.13 calc(var(--accent-hue) + 40)));"
-                :aria-label="`Account menu for ${authStore.username}`"
+                :aria-label="`Account menu for ${authStore.username}${authStore.privateSession ? ' (private session active)' : ''}`"
               >
                 {{ (authStore.username || '?').charAt(0).toUpperCase() }}
+                <span
+                  v-if="authStore.privateSession"
+                  class="absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center size-4 rounded-full bg-[var(--surface-page)] ring-1 ring-[var(--accent)] text-[var(--accent-soft)]"
+                  aria-hidden="true"
+                  title="Private session is on — history and analytics are paused"
+                >
+                  <UIcon name="i-lucide-shield-check" class="size-2.5" />
+                </span>
               </button>
             </UDropdownMenu>
           </template>

@@ -377,6 +377,21 @@ func getSession(c *gin.Context) *models.Session {
 	return nil
 }
 
+// isPrivateSession returns true when the caller has opted into a private
+// session for this request via the X-MSP-Private header. Handlers that
+// touch persistent history (watch history, playback positions, analytics
+// events tied to a user/session) MUST honor this and skip the write.
+//
+// Public counters (e.g. media.IncrementViews) are unaffected because they
+// don't expose per-user history; only writes that would surface in the
+// user's own /history, /favorites, or analytics drill-downs are gated.
+func isPrivateSession(c *gin.Context) bool {
+	if v := c.GetHeader("X-MSP-Private"); v == "1" || strings.EqualFold(v, "true") {
+		return true
+	}
+	return false
+}
+
 // auditableEventTypes lists event types that, in addition to bumping the
 // dashboard counters via analytics, also deserve a row in the admin-readable
 // audit_log table. These are the human-meaningful state-change events an

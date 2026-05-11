@@ -1,12 +1,24 @@
 /**
  * Typed API client that unwraps the Go JSON envelope { success, data, message }.
  */
+import { isPrivateSession } from '~/stores/auth'
 
 interface GoEnvelope<T> {
     success: boolean
     data?: T
     message?: string
     error?: string
+}
+
+/**
+ * Build the headers for an outgoing API request. Always sets Content-Type
+ * for JSON requests; when the user has the private-session toggle on, also
+ * attaches X-MSP-Private so the backend knows to skip history / analytics
+ * writes for this request.
+ */
+function buildHeaders(base: Record<string, string>): Record<string, string> {
+    if (isPrivateSession()) base['X-MSP-Private'] = '1'
+    return base
 }
 
 class ApiError extends Error {
@@ -66,7 +78,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     const opts: RequestInit = {
         method,
         credentials: 'include',
-        headers: {'Content-Type': 'application/json'},
+        headers: buildHeaders({'Content-Type': 'application/json'}),
     }
     if (body !== undefined) {
         opts.body = JSON.stringify(body)
@@ -77,7 +89,12 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 
 async function requestForm<T>(method: string, url: string, form: FormData): Promise<T> {
     // Do NOT set Content-Type — the browser must set it with the multipart boundary.
-    const res = await fetch(url, { method, credentials: 'include', body: form })
+    const res = await fetch(url, {
+        method,
+        credentials: 'include',
+        body: form,
+        headers: buildHeaders({}),
+    })
     return parseEnvelope<T>(res)
 }
 
@@ -91,6 +108,7 @@ function requestFormWithProgress<T>(
         const xhr = new XMLHttpRequest()
         xhr.open(method, url)
         xhr.withCredentials = true
+        if (isPrivateSession()) xhr.setRequestHeader('X-MSP-Private', '1')
         xhr.upload.addEventListener('progress', (e) => {
             if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
         })

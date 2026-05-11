@@ -1001,6 +1001,15 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 		username = session.Username
 	}
 
+	// Private session (B.2 retention plan): the client has asked us not to
+	// record this view in their history. Skip every per-user side effect
+	// (resume position, watch history, completion bump) but still return
+	// 200 so the player UI behaves normally.
+	if isPrivateSession(c) {
+		writeSuccess(c, map[string]string{"status": "private"})
+		return
+	}
+
 	if userID != "" {
 		var progress float64
 		if req.Duration > 0 {

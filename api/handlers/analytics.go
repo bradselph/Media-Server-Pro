@@ -258,6 +258,15 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 		sessionID = "anon-" + fmt.Sprintf("%x", hash[:8])
 	}
 
+	// Private session (B.2 retention plan): skip the analytics write and
+	// the completion record so this view never appears in the user's
+	// history or in admin per-user drill-downs. We still acknowledge the
+	// request so the client doesn't see an error or retry.
+	if isPrivateSession(c) {
+		writeSuccess(c, map[string]string{"status": "private"})
+		return
+	}
+
 	if h.analytics != nil {
 		h.analytics.SubmitClientEvent(c.Request.Context(), analytics.ClientEventInput{
 			Type:      req.Type,

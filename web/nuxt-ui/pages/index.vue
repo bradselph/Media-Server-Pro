@@ -271,8 +271,44 @@ async function loadRecommendations() {
     if (rec.status === 'fulfilled') recommended.value = dedup(rec.value ?? [])
     if (recent.status === 'fulfilled') recentlyAdded.value = dedup(recent.value ?? [])
     if (newSince.status === 'fulfilled' && newSince.value?.total > 0) newSinceLastVisit.value = newSince.value
+    // Batch-fetch resume positions for the top continueWatching items so the
+    // hero can show "Resume X:XX / Y:YY". The Suggestion type doesn't carry
+    // playback position itself — it's derived from /api/playback/batch.
+    void loadResumePositions()
   } catch { /* non-critical */ }
 }
+
+// Resume-as-hero — playback positions for continueWatching items so the
+// hero can swap from "trending[0]" to the user's in-progress item with a
+// formatted "Resume X:XX / Y:YY" CTA.
+const resumePositions = ref<Record<string, number>>({})
+
+async function loadResumePositions() {
+  if (!authStore.isLoggedIn || continueWatching.value.length === 0) return
+  const ids = continueWatching.value.slice(0, 5).map(s => s.media_id).filter(Boolean)
+  if (ids.length === 0) return
+  try {
+    const r = await playbackApi.getBatchPositions(ids)
+    if (!indexMounted) return
+    resumePositions.value = r?.positions ?? {}
+  } catch { /* non-critical */ }
+}
+
+// Resume-as-hero selection. Pick the most-recent in-progress item that is
+// neither too early (< 30s — user probably just opened it) nor too late
+// (within 60s of the end — they're done). Falls back to null when nothing
+// qualifies, in which case the hero shows trending[0] as before.
+const resumeHero = computed(() => {
+  if (!authStore.isLoggedIn) return null
+  for (const s of continueWatching.value) {
+    const pos = resumePositions.value[s.media_id]
+    const dur = s.duration ?? 0
+    if (!pos || pos <= 30) continue
+    if (dur > 0 && pos >= dur - 60) continue
+    return { suggestion: s, position: pos, duration: dur }
+  }
+  return null
+})
 
 // When the user logs in mid-session (logged-out → logged-in), reload
 // recommendations and refresh the grid with their preference-based limit.
@@ -686,15 +722,18 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- Hero — compact banner per design handoff §6.2 -->
-  <template v-if="authStore.isLoggedIn ? trending.length > 0 : general.length > 0">
+  <!-- Hero — compact banner per design handoff §6.2.
+       Returning logged-in users with an in-progress item see THAT as the
+       hero (Resume-as-hero, retention plan B.4); everyone else sees the
+       top-trending / general suggestion. -->
+  <template v-if="resumeHero || (authStore.isLoggedIn ? trending.length > 0 : general.length > 0)">
     <div
       class="relative overflow-hidden min-h-[240px] flex items-end"
-      :style="{ background: getItemGradient((authStore.isLoggedIn ? trending[0] : general[0]).media_id) }"
+      :style="{ background: getItemGradient((resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).media_id) }"
     >
       <!-- Actual media thumbnail as background -->
       <img
-        :src="mediaApi.getThumbnailUrl((authStore.isLoggedIn ? trending[0] : general[0]).media_id)"
+        :src="mediaApi.getThumbnailUrl((resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).media_id)"
         class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
         aria-hidden="true"
         @error="($event.target as HTMLImageElement).style.display='none'"
@@ -706,33 +745,55 @@ onUnmounted(() => {
       <div class="relative z-10 max-w-[1400px] mx-auto px-5 pb-6 w-full">
         <div class="flex items-end gap-4 flex-wrap">
           <div class="flex-1 min-w-0 space-y-2.5">
-            <span class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">Featured</span>
+            <span class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">
+              {{ resumeHero ? 'Resume where you left off' : 'Featured' }}
+            </span>
             <h1
               class="font-extrabold text-white leading-tight line-clamp-2"
               style="font-size: clamp(28px, 4vw, 44px); text-wrap: pretty;"
             >
-              {{ getDisplayTitle(authStore.isLoggedIn ? trending[0] : general[0]) }}
+              {{ getDisplayTitle(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])) }}
             </h1>
+            <!-- Resume progress bar — only on the resume variant. -->
+            <div
+              v-if="resumeHero && resumeHero.duration > 0"
+              class="h-1 max-w-md rounded-full bg-white/15 overflow-hidden"
+              aria-hidden="true"
+            >
+              <div
+                class="h-full bg-[var(--accent)] rounded-full"
+                :style="{ width: `${Math.min(100, (resumeHero.position / resumeHero.duration) * 100)}%` }"
+              />
+            </div>
             <!-- Tag chips — pulled from the suggestion's reasons (max 3) so
                  the hero stays in sync with whichever categorisation the
                  server is using; if reasons aren't available we fall back
                  to the single category label. No emoji per plan §3.1. -->
             <div class="flex gap-1.5 flex-wrap">
-              <template v-if="(authStore.isLoggedIn ? trending[0] : general[0]).reasons?.length">
+              <template v-if="(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).reasons?.length">
                 <span
-                  v-for="r in (authStore.isLoggedIn ? trending[0] : general[0]).reasons!.slice(0, 3)"
+                  v-for="r in (resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).reasons!.slice(0, 3)"
                   :key="r"
                   class="inline-flex items-center gap-1 bg-white/10 border border-white/15 backdrop-blur-md rounded-full px-2 py-0.5 text-[10px] font-semibold text-white/85"
                 >{{ r }}</span>
               </template>
               <span
-                v-else-if="(authStore.isLoggedIn ? trending[0] : general[0]).category"
+                v-else-if="(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).category"
                 class="inline-flex items-center gap-1 bg-white/10 border border-white/15 backdrop-blur-md rounded-full px-2 py-0.5 text-[10px] font-semibold text-white/85"
-              >{{ (authStore.isLoggedIn ? trending[0] : general[0]).category }}</span>
+              >{{ (resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).category }}</span>
             </div>
           </div>
           <div class="flex gap-2 flex-wrap shrink-0">
             <NuxtLink
+              v-if="resumeHero"
+              :to="`/player?id=${encodeURIComponent(resumeHero.suggestion.media_id)}&t=${Math.floor(resumeHero.position)}`"
+              class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-5 py-2.5 text-[13px] font-bold no-underline hover:brightness-110 transition-all"
+            >
+              <UIcon name="i-lucide-play" class="size-4" />
+              Resume {{ formatDuration(Math.floor(resumeHero.position)) }}<span v-if="resumeHero.duration > 0"> / {{ formatDuration(resumeHero.duration) }}</span>
+            </NuxtLink>
+            <NuxtLink
+              v-else
               :to="`/player?id=${encodeURIComponent((authStore.isLoggedIn ? trending[0] : general[0]).media_id)}`"
               class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-5 py-2.5 text-[13px] font-bold no-underline hover:brightness-110 transition-all"
             >
