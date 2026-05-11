@@ -371,20 +371,34 @@ async function surpriseMe() {
   } catch { /* non-critical */ }
 }
 
-// Tag filter — single active tag (clicking a card tag sets this; clear X removes it)
-const filterTag = ref('')
+// Tag filter — supports both single-click-on-card (sets one tag, OR mode)
+// AND the /browse tag-cloud flow which deep-links here via ?tags=a,b,c&tag_mode=and.
+// `filterTags` is the authoritative set; `filterTag` (computed) preserves the
+// pre-existing "first active tag" semantics that other call sites read.
+const initialTagsFromQuery = ((route.query.tags as string | undefined) ?? '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean)
+const filterTags = ref<Set<string>>(new Set(initialTagsFromQuery))
+const tagMode = ref<'and' | 'or'>(route.query.tag_mode === 'and' ? 'and' : 'or')
+const filterTag = computed(() => [...filterTags.value][0] ?? '')
 
 // Hide watched toggle — only active for logged-in users
 const hideWatched = ref(route.query.hide_watched === 'true')
 
 function setTagFilter(tag: string) {
-  filterTag.value = tag
+  // Single-tag flow from a media card. Replace the current set and reset to
+  // OR mode so accidental AND mode from the previous nav doesn't filter
+  // everything away on the next click.
+  filterTags.value = new Set([tag])
+  tagMode.value = 'or'
   params.page = 1
   load()
 }
 
 function clearTagFilter() {
-  filterTag.value = ''
+  filterTags.value = new Set()
+  tagMode.value = 'or'
   params.page = 1
   load()
 }
@@ -419,7 +433,7 @@ const hasActiveFilters = computed(() =>
   params.sort_order !== 'asc' ||
   params.min_rating > 0 ||
   !!params.search ||
-  !!filterTag.value ||
+  filterTags.value.size > 0 ||
   hideWatched.value,
 )
 
@@ -430,7 +444,8 @@ function clearAllFilters() {
   params.sort_order = 'asc'
   params.min_rating = 0
   params.search = ''
-  filterTag.value = ''
+  filterTags.value = new Set()
+  tagMode.value = 'or'
   hideWatched.value = false
   params.page = 1
 }
@@ -452,7 +467,7 @@ watch(() => route.query.search, (q) => {
 // Uses router.replace so the browser back button is not polluted.
 let urlSyncTimer: ReturnType<typeof setTimeout> | null = null
 watch(
-  [() => params.type, () => params.category, () => params.sort_by, () => params.sort_order, () => params.min_rating, () => params.search, hideWatched],
+  [() => params.type, () => params.category, () => params.sort_by, () => params.sort_order, () => params.min_rating, () => params.search, hideWatched, filterTags, tagMode],
   () => {
     if (urlSyncTimer) clearTimeout(urlSyncTimer)
     urlSyncTimer = setTimeout(() => {
@@ -464,10 +479,38 @@ watch(
       if (params.min_rating > 0) query.min_rating = String(params.min_rating)
       if (params.search) query.search = params.search
       if (hideWatched.value) query.hide_watched = 'true'
+      if (filterTags.value.size > 0) {
+        query.tags = [...filterTags.value].join(',')
+        if (tagMode.value === 'and') query.tag_mode = 'and'
+      }
       router.replace({ query })
     }, 300)
   },
+  { deep: true },
 )
+
+// React to deep-link changes from the /browse page: when the user clicks
+// Apply, the URL gains ?tags=...&tag_mode=... and the existing query is
+// replaced. We watch the query so changes are picked up without a full
+// reload.
+watch(() => route.query.tags, (raw) => {
+  const list = (typeof raw === 'string' ? raw : '').split(',').map(s => s.trim()).filter(Boolean)
+  const next = new Set(list)
+  // Cheap set equality (size + every member shared)
+  if (next.size !== filterTags.value.size || [...next].some(t => !filterTags.value.has(t))) {
+    filterTags.value = next
+    params.page = 1
+    load()
+  }
+})
+watch(() => route.query.tag_mode, (m) => {
+  const next: 'and' | 'or' = m === 'and' ? 'and' : 'or'
+  if (next !== tagMode.value) {
+    tagMode.value = next
+    params.page = 1
+    load()
+  }
+})
 
 async function load() {
   const seq = ++loadSeq
@@ -483,7 +526,9 @@ async function load() {
       ...paramsWithoutRating,
       type: params.type === 'all' ? '' : params.type,
       category: params.category === 'all' ? '' : params.category,
-      ...(filterTag.value ? { tags: [filterTag.value] } : {}),
+      ...(filterTags.value.size > 0
+        ? { tags: [...filterTags.value], ...(tagMode.value === 'and' ? { tag_mode: 'and' as const } : {}) }
+        : {}),
       ...(hideWatched.value && authStore.isLoggedIn ? { hide_watched: true } : {}),
       ...(params.min_rating > 0 && authStore.isLoggedIn ? { min_rating: params.min_rating } : {}),
     }
@@ -1111,18 +1156,33 @@ onUnmounted(() => {
         aria-label="Pick a random item to watch"
         @click="surpriseMe"
       />
-      <!-- Active tag filter chip -->
-      <UButton
-        v-if="filterTag"
-        :label="filterTag"
-        icon="i-lucide-tag"
-        trailing-icon="i-lucide-x"
-        variant="soft"
-        color="primary"
-        size="sm"
-        aria-label="Clear tag filter"
-        @click="clearTagFilter"
-      />
+      <!-- Active tag filter chips. Single-tag flows (card click) show one
+           chip; the tag-cloud flow from /browse shows one chip per tag plus
+           an AND/OR pill so the user can see and clear the active filter. -->
+      <template v-if="filterTags.size > 0">
+        <span
+          v-if="filterTags.size > 1"
+          class="inline-flex items-center gap-1 rounded-full bg-[var(--accent-bg-weak)] text-[var(--accent-soft)] border border-[var(--accent-border)] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+          :title="`Tag match mode: ${tagMode}`"
+        >
+          {{ tagMode === 'and' ? 'AND' : 'OR' }}
+        </span>
+        <UButton
+          v-for="t in [...filterTags]"
+          :key="t"
+          :label="t"
+          icon="i-lucide-tag"
+          trailing-icon="i-lucide-x"
+          variant="soft"
+          color="primary"
+          size="sm"
+          :aria-label="`Remove tag filter ${t}`"
+          @click="() => {
+            const next = new Set(filterTags); next.delete(t); filterTags = next
+            params.page = 1; load()
+          }"
+        />
+      </template>
       <!-- Hide watched toggle (logged-in users only) -->
       <UButton
         v-if="authStore.isLoggedIn"

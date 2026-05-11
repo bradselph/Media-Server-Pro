@@ -251,8 +251,20 @@ func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repos
 		query = query.Where("LOWER(path) REGEXP ?", `\.(mp3|wav|flac|aac|ogg|m4a|wma|aiff|alac|opus|ape|mka)$`)
 	}
 	if len(filter.Tags) > 0 {
-		// Subquery: paths that have at least one of the given tags (OR)
-		query = query.Where("path IN (SELECT path FROM media_tags WHERE tag IN ?)", filter.Tags)
+		if filter.TagsAll {
+			// AND mode (tag-cloud browse with mode=and). Group rows by
+			// path, count how many of the queried tags each path has, and
+			// require the count to equal the number of requested tags. The
+			// HAVING clause runs against COUNT(DISTINCT tag) so duplicate
+			// rows in media_tags don't inflate the match count.
+			query = query.Where(
+				"path IN (SELECT path FROM media_tags WHERE tag IN ? GROUP BY path HAVING COUNT(DISTINCT tag) = ?)",
+				filter.Tags, len(filter.Tags),
+			)
+		} else {
+			// OR mode (default): paths that carry at least one of the tags.
+			query = query.Where("path IN (SELECT path FROM media_tags WHERE tag IN ?)", filter.Tags)
+		}
 	}
 
 	// Count total matches before pagination

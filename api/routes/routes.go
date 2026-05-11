@@ -455,6 +455,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET(pathMedia+"/:id", h.GetMedia)
 	api.GET(pathMedia+"/:id/collections", h.GetMediaCollections)
 
+	// Tag cloud — public read; the handler filters out mature tags for
+	// callers without the mature-view permission. Powers /browse.
+	api.GET("/tags", h.GetTagCounts)
+
 	// Playback
 	api.GET("/playback", requireAuth(), h.GetPlaybackPosition)
 	api.GET("/playback/batch", requireAuth(), h.GetBatchPlaybackPositions)

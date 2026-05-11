@@ -85,7 +85,8 @@ type MediaFilter struct {
 	IsMature *bool    // filter by mature flag
 	Search   string   // substring match on path or category (LIKE %search%)
 	Type     string   // "video" or "audio" — filters by path extension (matches discovery logic)
-	Tags     []string // filter by tags (OR — item must have at least one of these)
+	Tags     []string // filter by tags (default OR — item must have at least one of these)
+	TagsAll  bool     // when true, item must have ALL of the listed tags (AND mode)
 	SortBy   string   // column to sort by: "views", "date_added", "path"
 	SortDesc bool     // descending sort
 	Limit    int      // max results (0 = no limit)

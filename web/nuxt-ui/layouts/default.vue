@@ -95,7 +95,7 @@ const shortcutsModal = ref<{ open: boolean } | null>(null)
 const navLinks = computed(() => {
   const links = [
     { label: 'Home', to: '/', icon: 'i-lucide-house' },
-    { label: 'Browse', to: '/?view=browse', icon: 'i-lucide-compass' },
+    { label: 'Browse', to: '/browse', icon: 'i-lucide-tags' },
   ]
   if (authStore.isLoggedIn) {
     links.push(
@@ -113,7 +113,7 @@ const navLinks = computed(() => {
 const mobileNavLinks = computed(() => {
   const links = [
     { label: 'Home', to: '/', icon: 'i-lucide-house' },
-    { label: 'Browse', to: '/?view=browse', icon: 'i-lucide-compass' },
+    { label: 'Browse', to: '/browse', icon: 'i-lucide-tags' },
   ]
   if (authStore.isLoggedIn) {
     links.push(

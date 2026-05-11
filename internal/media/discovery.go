@@ -1240,6 +1240,7 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 		Search:   filter.Search,
 		Type:     string(filter.Type),
 		Tags:     filter.Tags,
+		TagsAll:  filter.TagsAll,
 		SortDesc: filter.SortDesc,
 		Limit:    limit,
 		Offset:   offset,
@@ -1285,6 +1286,9 @@ type Filter struct {
 	Category string
 	Search   string
 	Tags     []string
+	// TagsAll switches tag matching to AND mode: when true, an item must
+	// carry every tag in Tags; default (false) is OR — at least one match.
+	TagsAll  bool
 	IsMature *bool
 	SortBy   string
 	SortDesc bool
@@ -1386,9 +1390,27 @@ func (f Filter) matchesSearch(item *models.MediaItem) bool {
 	return false
 }
 
-// matchesTags checks whether the item has at least one of the filter's required tags.
+// matchesTags checks whether the item matches the filter's tag set.
+// Default behaviour is OR: the item passes if it has at least one of the
+// listed tags. When TagsAll is true the match becomes AND: every listed
+// tag must be present on the item. An empty Tags slice matches all items.
 func (f Filter) matchesTags(item *models.MediaItem) bool {
 	if len(f.Tags) == 0 {
+		return true
+	}
+	if f.TagsAll {
+		for _, tag := range f.Tags {
+			found := false
+			for _, itemTag := range item.Tags {
+				if tag == itemTag {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		}
 		return true
 	}
 	for _, tag := range f.Tags {
@@ -1411,6 +1433,52 @@ func (m *Module) GetCategories() []*models.MediaCategory {
 		cats = append(cats, cat)
 	}
 	return cats
+}
+
+// TagCount pairs a tag name with the number of media items that carry it.
+// Used by the /api/tags endpoint to power the tag-cloud browse page.
+type TagCount struct {
+	Tag   string `json:"tag"`
+	Count int    `json:"count"`
+}
+
+// GetTagCounts returns the aggregate tag → item-count distribution across
+// the entire catalog. Mature-flagged items are excluded when includeMature
+// is false so that anonymous / non-permissioned callers do not see tags
+// that only appear on adult content. The list is sorted by count descending,
+// then alphabetically for stable ordering at ties.
+func (m *Module) GetTagCounts(includeMature bool) []TagCount {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	counts := make(map[string]int, 128)
+	for _, item := range m.media {
+		if item == nil {
+			continue
+		}
+		if item.IsMature && !includeMature {
+			continue
+		}
+		for _, t := range item.Tags {
+			t = strings.TrimSpace(t)
+			if t == "" {
+				continue
+			}
+			counts[t]++
+		}
+	}
+
+	out := make([]TagCount, 0, len(counts))
+	for tag, n := range counts {
+		out = append(out, TagCount{Tag: tag, Count: n})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Tag < out[j].Tag
+	})
+	return out
 }
 
 // HasFingerprint reports whether a content fingerprint matches any local media file.

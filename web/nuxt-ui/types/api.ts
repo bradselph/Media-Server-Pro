@@ -190,8 +190,10 @@ export interface MediaListParams {
     mature?: boolean
     /** Filter to items the user has rated at or above this value (1–5). */
     min_rating?: number
-    /** Filter by tags (OR logic — item must have at least one). Serialised as comma-joined string. */
+    /** Filter by tags (default OR — item must have at least one). Serialised as comma-joined string. */
     tags?: string[]
+    /** Tag match mode. "and" requires every tag in `tags`; "or" requires any (default). */
+    tag_mode?: 'and' | 'or'
     /** Exclude items the authenticated user has already completed watching. */
     hide_watched?: boolean
 }
