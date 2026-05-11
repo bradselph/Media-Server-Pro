@@ -795,6 +795,11 @@ watch(playlistIdParam, async id => {
   try {
     const pl = await playlistApi.get(id)
     playlistItems.value = pl?.items ?? []
+    // Tell the Now Playing sidebar to pin this playlist so its Playlist tab
+    // tracks the source the user is playing from.
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('msp:playlist-context', { detail: { id } }))
+    }
   } catch { playlistItems.value = [] }
 }, { immediate: true })
 

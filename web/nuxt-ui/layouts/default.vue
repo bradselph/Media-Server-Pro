@@ -188,11 +188,46 @@ onMounted(() => document.addEventListener('keydown', handleSlashShortcut))
 onUnmounted(() => document.removeEventListener('keydown', handleSlashShortcut))
 
 const playbackStore = usePlaybackStore()
-const miniPlayerVisible = computed(() =>
-  !!playbackStore.mediaInfo &&
-  !!playbackStore.currentMediaId &&
-  route.path !== '/player',
-)
+
+// The Now Playing sidebar replaces the bottom-overlay MiniPlayer. On desktop
+// it lifts the floating "?" help button only when the user has collapsed the
+// sidebar to its rail width; on mobile it occupies a 60px bottom dock and we
+// keep the help button above it the same way the MiniPlayer used to.
+const sidebarState = useSidebarState()
+
+const SIDEBAR_HIDDEN_ROUTES = new Set(['/player', '/login', '/signup', '/register', '/admin-login'])
+const sidebarVisible = computed(() => !SIDEBAR_HIDDEN_ROUTES.has(route.path))
+
+// Reflect sidebar state to <body data-sidebar="..."> so the CSS rules in
+// main.css can pad <main> for the docked sidebar. Mobile (<md) is handled
+// by the dock, which sits below content rather than beside it — no padding
+// is added there.
+const isMobileViewport = ref(false)
+function syncMobileViewport() {
+  if (typeof window === 'undefined') return
+  isMobileViewport.value = window.matchMedia('(max-width: 768px)').matches
+}
+onMounted(() => {
+  syncMobileViewport()
+  window.addEventListener('resize', syncMobileViewport)
+})
+onUnmounted(() => {
+  if (typeof window !== 'undefined') window.removeEventListener('resize', syncMobileViewport)
+})
+
+watchEffect(() => {
+  if (typeof document === 'undefined') return
+  if (!sidebarVisible.value || isMobileViewport.value) {
+    document.body.dataset.sidebar = 'off'
+    return
+  }
+  document.body.dataset.sidebar = sidebarState.open.value ? 'open' : 'rail'
+})
+
+// Floating "?" help button positioning. On mobile the sidebar shows as a
+// 60px bottom dock, so lift the button above it. On desktop the sidebar is
+// right-docked and never overlaps the help button, so keep it at 20px.
+const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport.value)
 </script>
 
 <template>
@@ -390,18 +425,21 @@ const miniPlayerVisible = computed(() =>
       </UContainer>
     </footer>
 
-    <!-- Mini player (appears when navigating away from player) -->
-    <MiniPlayer />
+    <!-- Now Playing sidebar — right-docked on desktop, bottom dock on mobile.
+         Replaces the previous bottom-overlay MiniPlayer. Hidden on /player
+         and auth routes via SIDEBAR_HIDDEN_ROUTES. -->
+    <NowPlayingSidebar v-if="ageGateChecked && !ageGateOpen" />
 
     <!-- Floating help button — discoverability for the keyboard shortcuts
-         modal (per prototype). Lifts above the mini-player when it's
-         visible so the two never overlap. Hidden on /player itself, where
-         shortcuts are already obvious in the controls. -->
+         modal. On mobile the sidebar shows as a 60px bottom dock, so lift
+         the button above it. On desktop the sidebar is right-docked and
+         never overlaps, so keep the button at 20px. Hidden on /player
+         where shortcuts are already visible in the controls. -->
     <button
       v-if="ageGateChecked && !ageGateOpen && route.path !== '/player'"
       type="button"
       class="fixed right-5 z-[60] inline-flex items-center justify-center size-9 rounded-full font-mono text-sm text-muted bg-elevated/85 backdrop-blur border border-default shadow-lg transition-[bottom,color] hover:text-default focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-      :style="{ bottom: miniPlayerVisible ? '70px' : '20px' }"
+      :style="{ bottom: helpButtonLifted ? '70px' : '20px' }"
       aria-label="Keyboard shortcuts (?)"
       title="Keyboard shortcuts (?)"
       @click="() => { if (shortcutsModal) shortcutsModal.open = true }"
