@@ -163,14 +163,14 @@ function apply() {
           type="button"
           class="px-3 py-1.5 transition-colors"
           :class="mode === 'and' ? 'bg-[var(--accent)] text-white' : 'text-muted hover:text-default'"
-          aria-pressed="mode === 'and'"
+          :aria-pressed="mode === 'and'"
           @click="mode = 'and'"
         >AND (all)</button>
         <button
           type="button"
           class="px-3 py-1.5 transition-colors border-l border-default"
           :class="mode === 'or' ? 'bg-[var(--accent)] text-white' : 'text-muted hover:text-default'"
-          aria-pressed="mode === 'or'"
+          :aria-pressed="mode === 'or'"
           @click="mode = 'or'"
         >OR (any)</button>
       </div>
