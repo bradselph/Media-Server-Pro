@@ -3,7 +3,8 @@ import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, 
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatRelativeDate, formatDuration } from '~/utils/format'
-import { useAPITokensApi, useRatingsApi, useSuggestionsApi } from '~/composables/useApiEndpoints'
+import { useAPITokensApi, useRatingsApi, useSuggestionsApi, useSavedSearchesApi } from '~/composables/useApiEndpoints'
+import type { SavedSearch } from '~/composables/useApiEndpoints'
 
 const ACCENT_HUE_KEY = 'msp-accent-hue'
 const ACCENT_PRESETS = [
@@ -364,6 +365,29 @@ async function loadMyRatings() {
   finally { if (profileMounted) ratingsLoading.value = false }
 }
 
+// Saved searches (retention plan B.5)
+const savedSearchesApi = useSavedSearchesApi()
+const savedSearches = ref<SavedSearch[]>([])
+const savedSearchesLoading = ref(false)
+
+async function loadSavedSearches() {
+  savedSearchesLoading.value = true
+  try {
+    savedSearches.value = (await savedSearchesApi.list()) ?? []
+  } catch { /* non-critical */ }
+  finally { if (profileMounted) savedSearchesLoading.value = false }
+}
+
+async function deleteSavedSearch(id: string) {
+  try {
+    await savedSearchesApi.delete(id)
+    savedSearches.value = savedSearches.value.filter(s => s.id !== id)
+    toast.add({ title: 'Saved search removed', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Could not delete saved search', color: 'error', icon: 'i-lucide-alert-circle' })
+  }
+}
+
 // API Tokens
 const tokens = ref<APIToken[]>([])
 const tokensLoading = ref(false)
@@ -439,7 +463,7 @@ async function revokeToken(id: string) {
 let hasFetched = false
 function loadAll() {
   hasFetched = true
-  loadPrefs(); loadHistory(); loadStorageUsage(); loadTokens(); loadMyRatings()
+  loadPrefs(); loadHistory(); loadStorageUsage(); loadTokens(); loadMyRatings(); loadSavedSearches()
 }
 onMounted(() => { if (!authStore.isLoading && authStore.user) loadAll() })
 watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
@@ -710,6 +734,57 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
         <template #footer>
           <UButton :loading="prefsSaving" icon="i-lucide-save" label="Save Preferences" @click="savePrefs" />
         </template>
+      </UCard>
+
+      <!-- Saved searches — soft subscriptions (retention plan B.5) -->
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2 font-semibold">
+            <UIcon name="i-lucide-bookmark" class="size-4" />
+            Saved Searches
+            <span v-if="savedSearches.length > 0" class="ml-auto text-xs font-mono text-muted">
+              {{ savedSearches.length }}
+            </span>
+          </div>
+        </template>
+        <p class="text-xs text-muted mb-3">
+          Saved from the
+          <NuxtLink to="/search" class="underline hover:text-default">search page</NuxtLink>.
+          New matches appear as a row on your home page.
+        </p>
+        <div v-if="savedSearchesLoading" class="text-sm text-muted py-4">Loading…</div>
+        <div v-else-if="savedSearches.length === 0" class="text-sm text-muted py-4">
+          No saved searches yet. Run a search you'd like to revisit and hit "Save this search".
+        </div>
+        <ul v-else class="space-y-2">
+          <li
+            v-for="s in savedSearches"
+            :key="s.id"
+            class="flex items-center gap-3 px-3 py-2 rounded-md border border-default"
+          >
+            <UIcon name="i-lucide-search" class="size-4 text-muted shrink-0" />
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium truncate">{{ s.name }}</p>
+              <p class="text-xs text-muted truncate">
+                <span v-if="s.query">"{{ s.query }}"</span>
+                <span v-if="s.tags.length > 0"> · tags: {{ s.tags.join(', ') }} ({{ s.tag_mode }})</span>
+                <span v-if="s.media_type"> · {{ s.media_type }}</span>
+              </p>
+            </div>
+            <NuxtLink
+              :to="{ path: '/search', query: { q: s.query } }"
+              class="text-xs text-[var(--accent-soft)] underline hover:text-default"
+            >Open</NuxtLink>
+            <UButton
+              icon="i-lucide-trash-2"
+              size="xs"
+              variant="ghost"
+              color="error"
+              aria-label="Delete saved search"
+              @click="deleteSavedSearch(s.id)"
+            />
+          </li>
+        </ul>
       </UCard>
 
       <!-- Watch history -->

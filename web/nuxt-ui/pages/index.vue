@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem, Playlist, MediaStats } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
-import { useApiEndpoints, useFavoritesApi, usePlaylistApi } from '~/composables/useApiEndpoints'
+import { useApiEndpoints, useFavoritesApi, usePlaylistApi, useSavedSearchesApi } from '~/composables/useApiEndpoints'
+import type { SavedSearch } from '~/composables/useApiEndpoints'
 import { resolveComponent } from 'vue'
 import { formatDuration, formatBytes, formatRelativeDate, formatResolution } from '~/utils/format'
 import { blurHashToDataUrl } from '~/utils/blurhash'
@@ -310,6 +311,54 @@ const resumeHero = computed(() => {
   return null
 })
 
+// ── Saved searches (retention plan B.5) ─────────────────────────────
+// Fetches the user's saved searches and, for each one, queries /api/media
+// scoped to the search's filters AND added-since last_seen_at. The home
+// page renders one row per saved search that returned at least one match.
+const savedSearches = ref<SavedSearch[]>([])
+const savedSearchMatches = ref<Record<string, MediaItem[]>>({})
+const savedSearchesApi = useSavedSearchesApi()
+
+async function loadSavedSearches() {
+  if (!authStore.isLoggedIn) return
+  try {
+    const list = await savedSearchesApi.list()
+    if (!indexMounted) return
+    savedSearches.value = list ?? []
+    // Fan out one /api/media query per saved search. Failures degrade
+    // gracefully — an empty matches map just means the row doesn't render.
+    const matches: Record<string, MediaItem[]> = {}
+    await Promise.all(savedSearches.value.map(async (s) => {
+      try {
+        const res = await mediaApi.list({
+          search: s.query || '',
+          tags: s.tags?.length ? s.tags : undefined,
+          tag_mode: s.tag_mode,
+          type: s.media_type || '',
+          sort_by: 'date_added',
+          sort_order: 'desc',
+          limit: 12,
+        })
+        const cutoff = new Date(s.last_seen_at).getTime()
+        const recent = (res.items ?? []).filter(i => {
+          if (!i.date_added) return false
+          return new Date(i.date_added).getTime() > cutoff
+        })
+        if (recent.length > 0) matches[s.id] = recent
+      } catch { /* per-search failure ignored */ }
+    }))
+    if (indexMounted) savedSearchMatches.value = matches
+  } catch { /* non-critical */ }
+}
+
+async function dismissSavedSearchRow(id: string) {
+  // Touch the row server-side so it stops appearing until new matches show up.
+  try { await savedSearchesApi.touch(id) } catch { /* non-critical */ }
+  const next = { ...savedSearchMatches.value }
+  delete next[id]
+  savedSearchMatches.value = next
+}
+
 // When the user logs in mid-session (logged-out → logged-in), reload
 // recommendations and refresh the grid with their preference-based limit.
 // This watcher is NOT immediate — loadRecommendations() is called from onMounted
@@ -319,6 +368,7 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
   if (loggedIn) {
     general.value = []
     loadRecommendations()
+    loadSavedSearches()
     const pref = authStore.user?.preferences?.items_per_page
     if (pref && pref !== params.limit) {
       params.limit = pref
@@ -333,6 +383,8 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
     newSinceLastVisit.value = null
     onDeck.value = []
     userRatings.value = {}
+    savedSearches.value = []
+    savedSearchMatches.value = {}
     loadGeneralSuggestions()
   }
 }, { immediate: false })
@@ -615,8 +667,14 @@ onMounted(() => {
   load()
   // Fetch recommendations for already-logged-in users (page refresh).
   // When the user logs in mid-session, the watch above handles this instead.
-  if (authStore.isLoggedIn) { loadRecommendations(); loadFavorites(); loadMyPlaylists() }
-  else loadGeneralSuggestions()
+  if (authStore.isLoggedIn) {
+    loadRecommendations()
+    loadFavorites()
+    loadMyPlaylists()
+    loadSavedSearches()
+  } else {
+    loadGeneralSuggestions()
+  }
 })
 
 // View mode — initialized from user preference; supports 'grid', 'list', and 'compact'
@@ -937,6 +995,56 @@ onUnmounted(() => {
         to="/"
         @thumbnail-error="onSuggestionThumbnailError"
       />
+
+      <!-- Saved-search rows (retention plan B.5).
+           One row per saved search that has any items added since the user
+           last viewed the row. Dismissing the row touches the search so it
+           re-appears only when something new shows up. -->
+      <template v-for="s in savedSearches" :key="s.id">
+        <div v-if="savedSearchMatches[s.id]?.length" class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
+              <UIcon name="i-lucide-bookmark-check" class="size-4 text-[var(--accent)]" />
+              New for: {{ s.name }}
+              <span class="text-xs font-mono text-muted">({{ savedSearchMatches[s.id]?.length ?? 0 }})</span>
+            </h2>
+            <UButton
+              icon="i-lucide-check"
+              label="Mark seen"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              @click="dismissSavedSearchRow(s.id)"
+            />
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <NuxtLink
+              v-for="item in savedSearchMatches[s.id]"
+              :key="item.id"
+              :to="`/player?id=${encodeURIComponent(item.id)}`"
+              class="group block"
+            >
+              <div class="relative aspect-video rounded-lg overflow-hidden bg-muted media-card-lift scanline-thumb">
+                <img
+                  :src="mediaApi.getThumbnailUrl(item.id)"
+                  :alt="getDisplayTitle(item)"
+                  width="320"
+                  height="180"
+                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                  loading="lazy"
+                  @error="($event.target as HTMLImageElement).style.display='none'"
+                />
+                <div v-if="item.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
+                  {{ formatDuration(item.duration) }}
+                </div>
+              </div>
+              <p class="mt-1.5 text-xs font-medium truncate group-hover:text-primary transition-colors">
+                {{ getDisplayTitle(item) }}
+              </p>
+            </NuxtLink>
+          </div>
+        </div>
+      </template>
       <!-- New Since Last Visit -->
       <div v-if="newSinceLastVisit && newSinceLastVisit.items.length > 0" class="space-y-3">
         <div class="flex items-center justify-between">

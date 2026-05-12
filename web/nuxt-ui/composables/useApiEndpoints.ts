@@ -431,6 +431,40 @@ export function useRatingsApi() {
     }
 }
 
+// ── Saved searches (retention plan B.5) ──────────────────────────────────────
+
+export interface SavedSearch {
+    id: string
+    name: string
+    query: string
+    tags: string[]
+    tag_mode: 'and' | 'or'
+    media_type: string
+    created_at: string
+    last_seen_at: string
+}
+
+export interface SavedSearchCreate {
+    name: string
+    query?: string
+    tags?: string[]
+    tag_mode?: 'and' | 'or'
+    media_type?: string
+}
+
+export function useSavedSearchesApi() {
+    return {
+        list: () => api.get<SavedSearch[]>('/api/preferences/saved_searches'),
+        create: (data: SavedSearchCreate) =>
+            api.post<SavedSearch>('/api/preferences/saved_searches', data),
+        delete: (id: string) =>
+            api.delete<{ deleted: string }>(`/api/preferences/saved_searches/${encodeURIComponent(id)}`),
+        // Updates last_seen_at on the server so the "new since" diff resets.
+        touch: (id: string) =>
+            api.post<void>(`/api/preferences/saved_searches/${encodeURIComponent(id)}/seen`),
+    }
+}
+
 // ── Tags ──────────────────────────────────────────────────────────────────────
 
 export interface TagCount {

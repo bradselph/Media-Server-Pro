@@ -596,6 +596,30 @@ type FavoriteRecord struct {
 	AddedAt   time.Time
 }
 
+// SavedSearchRepository provides per-user saved-search storage. Saved
+// searches are soft subscriptions: the homepage shows new matches added
+// since the user's last visit to that saved search.
+type SavedSearchRepository interface {
+	Create(ctx context.Context, rec *SavedSearchRecord) error
+	Delete(ctx context.Context, id, userID string) error
+	List(ctx context.Context, userID string) ([]*SavedSearchRecord, error)
+	Get(ctx context.Context, id, userID string) (*SavedSearchRecord, error)
+	UpdateLastSeen(ctx context.Context, id, userID string, seenAt time.Time) error
+}
+
+// SavedSearchRecord represents a single user-saved search.
+type SavedSearchRecord struct {
+	ID         string
+	UserID     string
+	Name       string
+	Query      string
+	Tags       []string
+	TagMode    string // "or" (default) or "and"
+	MediaType  string // optional filter ("video", "audio", "image", or "")
+	CreatedAt  time.Time
+	LastSeenAt time.Time
+}
+
 // DataDeletionRequestRepository provides data deletion request storage.
 type DataDeletionRequestRepository interface {
 	Create(ctx context.Context, req *DataDeletionRequestRecord) error
