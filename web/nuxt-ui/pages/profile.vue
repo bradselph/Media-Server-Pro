@@ -700,6 +700,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               { key: 'shuffle_enabled', label: 'Shuffle by Default' },
               { key: 'show_buffer_bar', label: 'Buffer Bar in Player' },
               { key: 'download_prompt', label: 'Ask Quality on Download' },
+              { key: 'autoplay_similar', label: 'Autoplay Similar at Queue End' },
             ]" :key="toggle.key" class="flex items-center gap-2">
               <USwitch :model-value="!!(prefs as Record<string, unknown>)[toggle.key]" @update:model-value="(prefs as Record<string, unknown>)[toggle.key] = $event" />
               <span class="text-sm">{{ toggle.label }}</span>

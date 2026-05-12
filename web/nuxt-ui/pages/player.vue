@@ -123,8 +123,37 @@ function mobileSkip(delta: number) {
   mobileSkipTimer = setTimeout(() => { mobileSkipDir.value = null }, 600)
 }
 
-// Auto-next: play next suggestion when current media ends (non-playlist context)
-const autoNextEnabled = ref(true)
+// Autoplay-similar (retention plan B.3): when the queue empties and the
+// current item finishes, the player keeps the session going by loading a
+// similar item. The boolean is initialized from the user's preference
+// (defaults to true for new accounts) so per-session toggles via the
+// player UI don't clobber the saved choice. Persisted back to the
+// preference whenever the user toggles it via the player button.
+const autoNextEnabled = ref(authStore.user?.preferences?.autoplay_similar ?? true)
+
+// Keep the toggle in sync if the user changes the preference in /profile
+// while the player is open. We don't auto-save here — that's done at the
+// click handler so anonymous viewers never get a server round-trip.
+watch(
+  () => authStore.user?.preferences?.autoplay_similar,
+  (v) => { if (typeof v === 'boolean') autoNextEnabled.value = v },
+)
+
+function toggleAutoNext() {
+  autoNextEnabled.value = !autoNextEnabled.value
+  // Persist the choice for logged-in users so it survives a reload. Errors
+  // are non-critical — the toggle still works for this session.
+  if (authStore.isLoggedIn) {
+    const { updatePreferences } = useApiEndpoints()
+    updatePreferences({ autoplay_similar: autoNextEnabled.value }).catch(() => {})
+    if (authStore.user) {
+      authStore.user.preferences = {
+        ...authStore.user.preferences,
+        autoplay_similar: autoNextEnabled.value,
+      }
+    }
+  }
+}
 
 // Buffer health bar — fraction of media buffered ahead
 const bufferedFraction = computed(() => {
@@ -1551,7 +1580,7 @@ watch(mediaId, (id, oldId) => {
               :variant="autoNextEnabled ? 'solid' : 'outline'"
               :color="autoNextEnabled ? 'primary' : 'neutral'"
               size="sm"
-              @click="autoNextEnabled = !autoNextEnabled"
+              @click="toggleAutoNext"
             />
             <UButton
               v-if="authStore.isLoggedIn"

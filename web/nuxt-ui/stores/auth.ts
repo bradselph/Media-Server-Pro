@@ -40,6 +40,7 @@ function defaultPreferences(): UserPreferences {
         shuffle_enabled: false,
         show_buffer_bar: true,
         download_prompt: true,
+        autoplay_similar: true,
         // FND-0046: Include custom_eq_presets field (even if undefined) for type consistency
         // between default and server-normalized preferences.
         custom_eq_presets: undefined,

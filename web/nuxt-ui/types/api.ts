@@ -47,6 +47,9 @@ export interface UserPreferences {
     shuffle_enabled: boolean
     show_buffer_bar: boolean
     download_prompt: boolean
+    // Retention plan B.3 — when true (default), the player will auto-load
+    // a similar item when the current item ends and the queue is empty.
+    autoplay_similar: boolean
 }
 
 export interface User {

@@ -149,6 +149,12 @@ type UserPreferences struct {
 	ShuffleEnabled  bool `json:"shuffle_enabled" db:"shuffle_enabled" gorm:"default:false"`
 	ShowBufferBar   bool `json:"show_buffer_bar" db:"show_buffer_bar" gorm:"not null"`
 	DownloadPrompt  bool `json:"download_prompt" db:"download_prompt" gorm:"not null"`
+	// AutoplaySimilar (retention plan B.3): when true and the queue is
+	// empty, the player auto-loads a similar item via the suggestions API
+	// when the current item finishes. Defaults to true at the API level
+	// for logged-in users (set in defaultUserPreferences) so the session
+	// keeps rolling without explicit opt-in.
+	AutoplaySimilar bool `json:"autoplay_similar" db:"autoplay_similar" gorm:"not null;default:true"`
 }
 
 // TableName specifies the table name for GORM

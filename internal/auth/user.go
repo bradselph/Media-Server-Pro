@@ -98,6 +98,7 @@ func defaultUserPreferences() models.UserPreferences {
 		ShowTrending:         true,
 		ShowBufferBar:        true,
 		DownloadPrompt:       true,
+		AutoplaySimilar:      true,
 	}
 }
 
