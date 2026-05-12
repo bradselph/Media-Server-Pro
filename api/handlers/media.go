@@ -90,6 +90,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		Category: c.Query("category"),
 		Search:   truncateQuery(c.Query("search"), 200),
 		Tags:     tags,
+		TagsAll:  strings.EqualFold(c.Query("tag_mode"), "and"),
 		IsMature: isMature,
 		SortBy:   sortBy,
 		SortDesc: c.Query("sort_order") == "desc",
@@ -477,6 +478,20 @@ func (h *Handler) ScanMedia(c *gin.Context) {
 func (h *Handler) GetCategories(c *gin.Context) {
 	categories := h.media.GetCategories()
 	writeSuccess(c, categories)
+}
+
+// GetTagCounts returns the aggregate tag → item-count distribution across
+// the library, powering the tag-cloud browse page (retention plan B.1).
+// Mature tags are filtered out for callers without the mature-view permission
+// so anonymous browsers and standard users do not see adult-content tags
+// they can't access anyway.
+func (h *Handler) GetTagCounts(c *gin.Context) {
+	if h.media == nil {
+		writeSuccess(c, []any{})
+		return
+	}
+	tags := h.media.GetTagCounts(h.canViewMatureContent(c))
+	writeSuccess(c, tags)
 }
 
 // GetCategoryBrowse returns user-facing categorized items for a given category.
@@ -999,6 +1014,15 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 		userID = session.UserID
 		sessionID = session.ID
 		username = session.Username
+	}
+
+	// Private session (B.2 retention plan): the client has asked us not to
+	// record this view in their history. Skip every per-user side effect
+	// (resume position, watch history, completion bump) but still return
+	// 200 so the player UI behaves normally.
+	if isPrivateSession(c) {
+		writeSuccess(c, map[string]string{"status": "private"})
+		return
 	}
 
 	if userID != "" {

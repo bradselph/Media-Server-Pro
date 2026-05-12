@@ -228,12 +228,14 @@ export function useMediaApi() {
             const qs = new URLSearchParams()
             if (params) {
                 // Backend reads query param "sort" (see handlers.ListMedia), not sort_by.
-                const {page, limit, sort_order, sort_by, sort, tags, hide_watched, ...rest} = params
+                const {page, limit, sort_order, sort_by, sort, tags, tag_mode, hide_watched, ...rest} = params
                 Object.entries(rest).forEach(([k, v]) => {
                     if (v !== undefined && v !== '' && typeof v !== 'object') qs.set(k, String(v))
                 })
                 // tags is an array — serialise as comma-joined string (backend splits on comma)
                 if (tags && tags.length > 0) qs.set('tags', tags.join(','))
+                // tag_mode: only forward when AND was requested (backend defaults to OR).
+                if (tag_mode === 'and') qs.set('tag_mode', 'and')
                 // hide_watched is a boolean — only send when true to avoid adding a false param
                 if (hide_watched) qs.set('hide_watched', 'true')
                 const sortKey = sort ?? sort_by
@@ -426,6 +428,56 @@ export function useRatingsApi() {
     return {
         record: (id: string, rating: number) => api.post<void>('/api/ratings', {id, rating}),
         getMyRatings: () => api.get<RatedItem[]>('/api/ratings'),
+    }
+}
+
+// ── Saved searches (retention plan B.5) ──────────────────────────────────────
+
+export interface SavedSearch {
+    id: string
+    name: string
+    query: string
+    tags: string[]
+    tag_mode: 'and' | 'or'
+    media_type: string
+    created_at: string
+    last_seen_at: string
+}
+
+export interface SavedSearchCreate {
+    name: string
+    query?: string
+    tags?: string[]
+    tag_mode?: 'and' | 'or'
+    media_type?: string
+}
+
+export function useSavedSearchesApi() {
+    return {
+        list: () => api.get<SavedSearch[]>('/api/preferences/saved_searches'),
+        create: (data: SavedSearchCreate) =>
+            api.post<SavedSearch>('/api/preferences/saved_searches', data),
+        delete: (id: string) =>
+            api.delete<{ deleted: string }>(`/api/preferences/saved_searches/${encodeURIComponent(id)}`),
+        // Updates last_seen_at on the server so the "new since" diff resets.
+        touch: (id: string) =>
+            api.post<void>(`/api/preferences/saved_searches/${encodeURIComponent(id)}/seen`),
+    }
+}
+
+// ── Tags ──────────────────────────────────────────────────────────────────────
+
+export interface TagCount {
+    tag: string
+    count: number
+}
+
+export function useTagsApi() {
+    return {
+        // Returns the full tag → item-count distribution. The backend already
+        // filters out mature tags for callers without the mature-view
+        // permission, so the frontend can render the response as-is.
+        list: () => api.get<TagCount[]>('/api/tags'),
     }
 }
 

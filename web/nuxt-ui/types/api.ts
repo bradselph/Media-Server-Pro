@@ -47,6 +47,9 @@ export interface UserPreferences {
     shuffle_enabled: boolean
     show_buffer_bar: boolean
     download_prompt: boolean
+    // Retention plan B.3 — when true (default), the player will auto-load
+    // a similar item when the current item ends and the queue is empty.
+    autoplay_similar: boolean
 }
 
 export interface User {
@@ -190,8 +193,10 @@ export interface MediaListParams {
     mature?: boolean
     /** Filter to items the user has rated at or above this value (1–5). */
     min_rating?: number
-    /** Filter by tags (OR logic — item must have at least one). Serialised as comma-joined string. */
+    /** Filter by tags (default OR — item must have at least one). Serialised as comma-joined string. */
     tags?: string[]
+    /** Tag match mode. "and" requires every tag in `tags`; "or" requires any (default). */
+    tag_mode?: 'and' | 'or'
     /** Exclude items the authenticated user has already completed watching. */
     hide_watched?: boolean
 }

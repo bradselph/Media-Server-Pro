@@ -201,6 +201,31 @@ body {
     box-shadow: 0 20px 44px rgba(0,0,0,0.55), 0 0 0 1px var(--accent-border);
 }
 
+/* ── Now Playing sidebar layout offset ──────────────────────────────────
+   When the sidebar is open, push <main> in so the sidebar doesn't overlap
+   page content. <body data-sidebar="open|rail|off"> is set from default.vue
+   based on useSidebarState. Mobile keeps padding 0 — the sidebar collapses
+   to a bottom dock there. */
+:root {
+    --sb-width-open: 340px;
+    --sb-width-rail: 56px;
+    --sb-width-mobile: 60px;
+}
+
+@media (min-width: 769px) {
+    body[data-sidebar="open"] main { padding-right: var(--sb-width-open); }
+    body[data-sidebar="rail"] main { padding-right: var(--sb-width-rail); }
+    body[data-sidebar="off"]  main { padding-right: 0; }
+}
+
+/* Thin scrollbar variant used inside the sidebar lists. The global
+   ::-webkit-scrollbar is already 6px wide; this just hides the thumb on
+   tracks until hover so the sidebar reads as a flat panel. */
+.scroll-thin::-webkit-scrollbar-thumb { background: transparent; }
+.scroll-thin:hover::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--ui-border) 60%, transparent);
+}
+
 /* Print styles — hide nav/footer chrome, show content cleanly */
 @media print {
     header, footer, nav, aside,

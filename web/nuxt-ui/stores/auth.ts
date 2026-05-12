@@ -40,10 +40,41 @@ function defaultPreferences(): UserPreferences {
         shuffle_enabled: false,
         show_buffer_bar: true,
         download_prompt: true,
+        autoplay_similar: true,
         // FND-0046: Include custom_eq_presets field (even if undefined) for type consistency
         // between default and server-normalized preferences.
         custom_eq_presets: undefined,
     }
+}
+
+// Private-session flag is module-scoped so it survives Pinia store
+// rehydration in dev hot-reload AND so useApi (which is imported before
+// the auth store is mounted) can read it via the exported getter without
+// triggering a store dependency.
+const privateSessionFlag = ref(false)
+
+const LS_PRIVATE_SESSION = 'msp-private-session'
+
+if (typeof window !== 'undefined') {
+    // Restore on first import so the next page reload (or refresh) honors
+    // the user's prior toggle. Cleared explicitly on logout.
+    privateSessionFlag.value = window.localStorage.getItem(LS_PRIVATE_SESSION) === '1'
+    watch(privateSessionFlag, v => {
+        try {
+            if (v) window.localStorage.setItem(LS_PRIVATE_SESSION, '1')
+            else window.localStorage.removeItem(LS_PRIVATE_SESSION)
+        } catch { /* localStorage may be blocked */ }
+    })
+}
+
+/**
+ * Exported for useApi.ts to read at request-build time. Returns the
+ * current value of the private-session flag without forcing a Pinia
+ * store creation (useApi runs at module-load time inside
+ * useApiEndpoints.ts and cannot depend on Pinia being mounted).
+ */
+export function isPrivateSession(): boolean {
+    return privateSessionFlag.value
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -58,6 +89,10 @@ export const useAuthStore = defineStore('auth', () => {
     const isLoggedIn = computed(() => !!user.value)
     const isAdmin = computed(() => user.value?.role === 'admin')
     const username = computed(() => user.value?.username ?? '')
+    // Private-session toggle (B.2 retention plan). When on, useApi attaches
+    // X-MSP-Private: 1 to every request and the backend skips history/
+    // analytics writes for the duration of the toggle.
+    const privateSession = privateSessionFlag
 
     async function fetchSession() {
         isLoading.value = true
@@ -124,7 +159,17 @@ export const useAuthStore = defineStore('auth', () => {
         }
         // Clear local user state even if server logout failed, for best-effort UX.
         user.value = null
+        // Reset the private-session flag on logout so the next user that
+        // signs in on this device starts in normal mode.
+        privateSessionFlag.value = false
     }
 
-    return {user, allowGuests, isLoading, isLoggedIn, isAdmin, username, thumbnailNonce, fetchSession, login, logout}
+    function togglePrivateSession() {
+        privateSessionFlag.value = !privateSessionFlag.value
+    }
+
+    return {
+        user, allowGuests, isLoading, isLoggedIn, isAdmin, username, thumbnailNonce,
+        privateSession, fetchSession, login, logout, togglePrivateSession,
+    }
 })

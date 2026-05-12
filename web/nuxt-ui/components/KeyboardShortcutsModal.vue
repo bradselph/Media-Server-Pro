@@ -32,6 +32,11 @@ const PLAYER_SHORTCUTS = [
 
 const GLOBAL_SHORTCUTS = [
   { key: '?', desc: 'Show this shortcuts reference' },
+  { key: '/', desc: 'Focus the nav search field' },
+  { key: 'Q', desc: 'Toggle the Now Playing sidebar' },
+  { key: '[', desc: 'Expand the sidebar' },
+  { key: ']', desc: 'Collapse the sidebar to a rail' },
+  { key: 'N', desc: 'Skip to next item in the queue' },
 ]
 </script>
 

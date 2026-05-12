@@ -2,6 +2,7 @@
 import type { MediaItem, Playlist } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration, formatBytes } from '~/utils/format'
+import { useSavedSearchesApi } from '~/composables/useApiEndpoints'
 
 definePageMeta({ layout: 'default', title: 'Search' })
 
@@ -9,6 +10,7 @@ const route = useRoute()
 const router = useRouter()
 const mediaApi = useMediaApi()
 const playlistApi = usePlaylistApi()
+const savedSearchesApi = useSavedSearchesApi()
 const authStore = useAuthStore()
 const toast = useToast()
 
@@ -102,6 +104,28 @@ async function bulkAddToPlaylist() {
   selectionMode.value = false
   bulkAdding.value = false
 }
+
+// ── Save this search (retention plan B.5) ─────────────────────────────
+const savingSearch = ref(false)
+async function saveCurrentSearch() {
+  const q = query.value.trim()
+  if (!q || !authStore.isLoggedIn) return
+  savingSearch.value = true
+  try {
+    await savedSearchesApi.create({ name: q, query: q, tag_mode: 'or' })
+    toast.add({
+      title: 'Search saved',
+      description: 'You\'ll see new matches on the homepage when they show up.',
+      color: 'success',
+      icon: 'i-lucide-bookmark-check',
+    })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Could not save search'
+    toast.add({ title: msg, color: 'error', icon: 'i-lucide-alert-circle' })
+  } finally {
+    savingSearch.value = false
+  }
+}
 </script>
 
 <template>
@@ -131,6 +155,17 @@ async function bulkAddToPlaylist() {
         color="neutral"
         size="sm"
         @click="toggleSelectionMode"
+      />
+      <UButton
+        v-if="query && authStore.isLoggedIn && items.length > 0"
+        icon="i-lucide-bookmark-plus"
+        label="Save this search"
+        variant="outline"
+        color="primary"
+        size="sm"
+        :loading="savingSearch"
+        title="Save so you can spot new matches on the home page"
+        @click="saveCurrentSearch"
       />
     </div>
 

@@ -95,7 +95,7 @@ const shortcutsModal = ref<{ open: boolean } | null>(null)
 const navLinks = computed(() => {
   const links = [
     { label: 'Home', to: '/', icon: 'i-lucide-house' },
-    { label: 'Browse', to: '/?view=browse', icon: 'i-lucide-compass' },
+    { label: 'Browse', to: '/browse', icon: 'i-lucide-tags' },
   ]
   if (authStore.isLoggedIn) {
     links.push(
@@ -113,7 +113,7 @@ const navLinks = computed(() => {
 const mobileNavLinks = computed(() => {
   const links = [
     { label: 'Home', to: '/', icon: 'i-lucide-house' },
-    { label: 'Browse', to: '/?view=browse', icon: 'i-lucide-compass' },
+    { label: 'Browse', to: '/browse', icon: 'i-lucide-tags' },
   ]
   if (authStore.isLoggedIn) {
     links.push(
@@ -139,6 +139,10 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
 // Avatar dropdown menu items — per handoff §6.1: Profile, Admin (if admin),
 // Logout. Nuxt UI's UDropdownMenu expects a 2D array of groups; each group
 // renders as a section with a separator between.
+//
+// The "Private session" toggle (retention plan B.2) is grouped between the
+// account links and Logout. When on, useApi attaches X-MSP-Private to every
+// request and the backend skips watch-history / analytics writes.
 const avatarMenuItems = computed(() => {
   const primary: Array<{ label: string; icon: string; to?: string; onSelect?: () => void }> = [
     { label: 'Profile', icon: 'i-lucide-user', to: '/profile' },
@@ -148,8 +152,14 @@ const avatarMenuItems = computed(() => {
   if (authStore.isAdmin) {
     primary.push({ label: 'Admin', icon: 'i-lucide-shield', to: '/admin' })
   }
+  const privacyGroup = [{
+    label: authStore.privateSession ? 'Private session — On' : 'Private session — Off',
+    icon: authStore.privateSession ? 'i-lucide-shield-check' : 'i-lucide-shield',
+    onSelect: () => authStore.togglePrivateSession(),
+  }]
   return [
     primary,
+    privacyGroup,
     [{ label: 'Log out', icon: 'i-lucide-log-out', onSelect: handleLogout }],
   ]
 })
@@ -188,11 +198,46 @@ onMounted(() => document.addEventListener('keydown', handleSlashShortcut))
 onUnmounted(() => document.removeEventListener('keydown', handleSlashShortcut))
 
 const playbackStore = usePlaybackStore()
-const miniPlayerVisible = computed(() =>
-  !!playbackStore.mediaInfo &&
-  !!playbackStore.currentMediaId &&
-  route.path !== '/player',
-)
+
+// The Now Playing sidebar replaces the bottom-overlay MiniPlayer. On desktop
+// it lifts the floating "?" help button only when the user has collapsed the
+// sidebar to its rail width; on mobile it occupies a 60px bottom dock and we
+// keep the help button above it the same way the MiniPlayer used to.
+const sidebarState = useSidebarState()
+
+const SIDEBAR_HIDDEN_ROUTES = new Set(['/player', '/login', '/signup', '/register', '/admin-login'])
+const sidebarVisible = computed(() => !SIDEBAR_HIDDEN_ROUTES.has(route.path))
+
+// Reflect sidebar state to <body data-sidebar="..."> so the CSS rules in
+// main.css can pad <main> for the docked sidebar. Mobile (<md) is handled
+// by the dock, which sits below content rather than beside it — no padding
+// is added there.
+const isMobileViewport = ref(false)
+function syncMobileViewport() {
+  if (typeof window === 'undefined') return
+  isMobileViewport.value = window.matchMedia('(max-width: 768px)').matches
+}
+onMounted(() => {
+  syncMobileViewport()
+  window.addEventListener('resize', syncMobileViewport)
+})
+onUnmounted(() => {
+  if (typeof window !== 'undefined') window.removeEventListener('resize', syncMobileViewport)
+})
+
+watchEffect(() => {
+  if (typeof document === 'undefined') return
+  if (!sidebarVisible.value || isMobileViewport.value) {
+    document.body.dataset.sidebar = 'off'
+    return
+  }
+  document.body.dataset.sidebar = sidebarState.open.value ? 'open' : 'rail'
+})
+
+// Floating "?" help button positioning. On mobile the sidebar shows as a
+// 60px bottom dock, so lift the button above it. On desktop the sidebar is
+// right-docked and never overlaps the help button, so keep it at 20px.
+const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport.value)
 </script>
 
 <template>
@@ -290,7 +335,9 @@ const miniPlayerVisible = computed(() =>
 
           <!-- Avatar dropdown (logged-in) — per handoff §6.1: circle w/ initial
                letter on an accent gradient, opens popover with Profile, Admin,
-               Logout. Closes on outside-click and Escape via UDropdownMenu. -->
+               Logout. Closes on outside-click and Escape via UDropdownMenu.
+               A small shield badge overlays the avatar when the user has
+               toggled their session to private (retention plan B.2). -->
           <template v-if="authStore.isLoggedIn">
             <UDropdownMenu
               :items="avatarMenuItems"
@@ -298,11 +345,19 @@ const miniPlayerVisible = computed(() =>
               class="hidden md:block"
             >
               <button
-                class="inline-flex items-center justify-center size-8 rounded-full text-white text-sm font-bold cursor-pointer hover:brightness-110 transition-[filter] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-page)]"
+                class="relative inline-flex items-center justify-center size-8 rounded-full text-white text-sm font-bold cursor-pointer hover:brightness-110 transition-[filter] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-page)]"
                 style="background: linear-gradient(135deg, oklch(62% 0.13 var(--accent-hue)), oklch(72% 0.13 calc(var(--accent-hue) + 40)));"
-                :aria-label="`Account menu for ${authStore.username}`"
+                :aria-label="`Account menu for ${authStore.username}${authStore.privateSession ? ' (private session active)' : ''}`"
               >
                 {{ (authStore.username || '?').charAt(0).toUpperCase() }}
+                <span
+                  v-if="authStore.privateSession"
+                  class="absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center size-4 rounded-full bg-[var(--surface-page)] ring-1 ring-[var(--accent)] text-[var(--accent-soft)]"
+                  aria-hidden="true"
+                  title="Private session is on — history and analytics are paused"
+                >
+                  <UIcon name="i-lucide-shield-check" class="size-2.5" />
+                </span>
               </button>
             </UDropdownMenu>
           </template>
@@ -390,18 +445,21 @@ const miniPlayerVisible = computed(() =>
       </UContainer>
     </footer>
 
-    <!-- Mini player (appears when navigating away from player) -->
-    <MiniPlayer />
+    <!-- Now Playing sidebar — right-docked on desktop, bottom dock on mobile.
+         Replaces the previous bottom-overlay MiniPlayer. Hidden on /player
+         and auth routes via SIDEBAR_HIDDEN_ROUTES. -->
+    <NowPlayingSidebar v-if="ageGateChecked && !ageGateOpen" />
 
     <!-- Floating help button — discoverability for the keyboard shortcuts
-         modal (per prototype). Lifts above the mini-player when it's
-         visible so the two never overlap. Hidden on /player itself, where
-         shortcuts are already obvious in the controls. -->
+         modal. On mobile the sidebar shows as a 60px bottom dock, so lift
+         the button above it. On desktop the sidebar is right-docked and
+         never overlaps, so keep the button at 20px. Hidden on /player
+         where shortcuts are already visible in the controls. -->
     <button
       v-if="ageGateChecked && !ageGateOpen && route.path !== '/player'"
       type="button"
       class="fixed right-5 z-[60] inline-flex items-center justify-center size-9 rounded-full font-mono text-sm text-muted bg-elevated/85 backdrop-blur border border-default shadow-lg transition-[bottom,color] hover:text-default focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-      :style="{ bottom: miniPlayerVisible ? '70px' : '20px' }"
+      :style="{ bottom: helpButtonLifted ? '70px' : '20px' }"
       aria-label="Keyboard shortcuts (?)"
       title="Keyboard shortcuts (?)"
       @click="() => { if (shortcutsModal) shortcutsModal.open = true }"

@@ -455,6 +455,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET(pathMedia+"/:id", h.GetMedia)
 	api.GET(pathMedia+"/:id/collections", h.GetMediaCollections)
 
+	// Tag cloud — public read; the handler filters out mature tags for
+	// callers without the mature-view permission. Powers /browse.
+	api.GET("/tags", h.GetTagCounts)
+
 	// Playback
 	api.GET("/playback", requireAuth(), h.GetPlaybackPosition)
 	api.GET("/playback/batch", requireAuth(), h.GetBatchPlaybackPositions)
@@ -503,6 +507,14 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// User preferences routes (protected)
 	api.GET("/preferences", requireAuth(), h.GetPreferences)
 	api.POST("/preferences", requireAuth(), h.UpdatePreferences)
+
+	// Saved searches — soft subscriptions (retention plan B.5). Returns
+	// the user's stored search definitions; the homepage row uses these
+	// to surface new matches added since LastSeenAt.
+	api.GET("/preferences/saved_searches", requireAuth(), h.ListSavedSearches)
+	api.POST("/preferences/saved_searches", requireAuth(), h.CreateSavedSearch)
+	api.DELETE("/preferences/saved_searches/:id", requireAuth(), h.DeleteSavedSearch)
+	api.POST("/preferences/saved_searches/:id/seen", requireAuth(), h.TouchSavedSearch)
 
 	// User password change (protected)
 	api.POST("/auth/change-password", requireAuth(), h.ChangePassword)

@@ -508,6 +508,19 @@ var tableDefs = []struct {
 			INDEX idx_ddr_status   (status),
 			INDEX idx_ddr_created  (created_at)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"saved_searches", `
+		CREATE TABLE IF NOT EXISTS saved_searches (
+			id           VARCHAR(36)  PRIMARY KEY,
+			user_id      VARCHAR(255) NOT NULL,
+			name         VARCHAR(255) NOT NULL,
+			query        VARCHAR(255) NOT NULL DEFAULT '',
+			tags         TEXT,
+			tag_mode     VARCHAR(8)   NOT NULL DEFAULT 'or',
+			media_type   VARCHAR(32)  NOT NULL DEFAULT '',
+			created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			last_seen_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			INDEX idx_saved_search_user (user_id)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 		{"smart_playlists", `
 			CREATE TABLE IF NOT EXISTS smart_playlists (
 				id          VARCHAR(36)  PRIMARY KEY,

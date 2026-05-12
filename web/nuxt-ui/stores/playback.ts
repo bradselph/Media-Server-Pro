@@ -1,4 +1,5 @@
 import {defineStore} from 'pinia'
+import {isPrivateSession} from '~/stores/auth'
 
 export interface PlaybackMediaInfo {
     id: string
@@ -35,6 +36,11 @@ export const usePlaybackStore = defineStore('playback', () => {
 
     async function savePosition() {
         if (!currentMediaId.value || position.value <= 0) return
+        // Private session (B.2 retention plan): defense-in-depth — the
+        // backend already drops the write when X-MSP-Private is set, but
+        // skipping the request entirely avoids the round-trip and keeps
+        // network panel quiet so users can see their toggle is working.
+        if (isPrivateSession()) return
         try {
             await playbackApi.savePosition(currentMediaId.value, position.value, duration.value)
         } catch {

@@ -226,6 +226,14 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "media_id required")
 		return
 	}
+	// Cap the free-form Data map so a client can't push thousands of keys
+	// through the analytics pipeline. The dashboard panels never read more
+	// than a handful of well-known keys (duration, ip, etc.).
+	const maxSubmitEventDataKeys = 64
+	if len(req.Data) > maxSubmitEventDataKeys {
+		writeError(c, http.StatusBadRequest, "event data has too many fields")
+		return
+	}
 	if req.Duration > 0 {
 		if req.Data == nil {
 			req.Data = make(map[string]any)
@@ -248,6 +256,15 @@ func (h *Handler) SubmitEvent(c *gin.Context) {
 	} else {
 		hash := sha256.Sum256([]byte(c.ClientIP() + "|" + c.Request.UserAgent()))
 		sessionID = "anon-" + fmt.Sprintf("%x", hash[:8])
+	}
+
+	// Private session (B.2 retention plan): skip the analytics write and
+	// the completion record so this view never appears in the user's
+	// history or in admin per-user drill-downs. We still acknowledge the
+	// request so the client doesn't see an error or retry.
+	if isPrivateSession(c) {
+		writeSuccess(c, map[string]string{"status": "private"})
+		return
 	}
 
 	if h.analytics != nil {
@@ -483,9 +500,14 @@ func (h *Handler) AdminExportAll(c *gin.Context) {
 	}
 	if len(errors) > 0 {
 		w, err := zw.Create("_errors.txt")
-		if err == nil {
+		if err != nil {
+			h.log.Warn("export-all: create _errors.txt failed: %v", err)
+		} else {
 			for _, e := range errors {
-				_, _ = w.Write([]byte(e + "\n"))
+				if _, werr := w.Write([]byte(e + "\n")); werr != nil {
+					h.log.Warn("export-all: write _errors.txt failed: %v", werr)
+					break
+				}
 			}
 		}
 	}

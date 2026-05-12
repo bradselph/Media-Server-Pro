@@ -12,6 +12,14 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+// Bounds for collection inputs. Name maps to a VARCHAR(255) column; the
+// description goes into a TEXT column but is still capped to keep payloads
+// reasonable and prevent UI/format edge cases.
+const (
+	collectionMaxNameLength        = 255
+	collectionMaxDescriptionLength = 5000
+)
+
 // collectionWithItems is the API response for a collection including its ordered items.
 type collectionWithItems struct {
 	models.MediaCollection
@@ -88,6 +96,14 @@ func (h *Handler) CreateCollection(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
+	if len(body.Name) > collectionMaxNameLength {
+		writeError(c, http.StatusBadRequest, "name is too long")
+		return
+	}
+	if len(body.Description) > collectionMaxDescriptionLength {
+		writeError(c, http.StatusBadRequest, "description is too long")
+		return
+	}
 	col := models.MediaCollection{
 		ID:           uuid.New().String(),
 		Name:         body.Name,
@@ -134,9 +150,17 @@ func (h *Handler) UpdateCollection(c *gin.Context) {
 			writeError(c, http.StatusBadRequest, "name cannot be empty")
 			return
 		}
+		if len(*body.Name) > collectionMaxNameLength {
+			writeError(c, http.StatusBadRequest, "name is too long")
+			return
+		}
 		col.Name = *body.Name
 	}
 	if body.Description != nil {
+		if len(*body.Description) > collectionMaxDescriptionLength {
+			writeError(c, http.StatusBadRequest, "description is too long")
+			return
+		}
 		col.Description = *body.Description
 	}
 	if body.CoverMediaID != nil {

@@ -503,6 +503,7 @@ func applyPreferencesPatch(prefs *models.UserPreferences, m map[string]any) {
 	setBoolPref(m, "shuffle_enabled", &prefs.ShuffleEnabled)
 	setBoolPref(m, "show_buffer_bar", &prefs.ShowBufferBar)
 	setBoolPref(m, "download_prompt", &prefs.DownloadPrompt)
+	setBoolPref(m, "autoplay_similar", &prefs.AutoplaySimilar)
 }
 
 // GetWatchHistory returns the current user's watch history

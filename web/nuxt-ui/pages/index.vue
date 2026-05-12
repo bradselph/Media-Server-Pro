@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem, Playlist, MediaStats } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
-import { useApiEndpoints, useFavoritesApi, usePlaylistApi } from '~/composables/useApiEndpoints'
+import { useApiEndpoints, useFavoritesApi, usePlaylistApi, useSavedSearchesApi } from '~/composables/useApiEndpoints'
+import type { SavedSearch } from '~/composables/useApiEndpoints'
 import { resolveComponent } from 'vue'
 import { formatDuration, formatBytes, formatRelativeDate, formatResolution } from '~/utils/format'
 import { blurHashToDataUrl } from '~/utils/blurhash'
@@ -271,7 +272,91 @@ async function loadRecommendations() {
     if (rec.status === 'fulfilled') recommended.value = dedup(rec.value ?? [])
     if (recent.status === 'fulfilled') recentlyAdded.value = dedup(recent.value ?? [])
     if (newSince.status === 'fulfilled' && newSince.value?.total > 0) newSinceLastVisit.value = newSince.value
+    // Batch-fetch resume positions for the top continueWatching items so the
+    // hero can show "Resume X:XX / Y:YY". The Suggestion type doesn't carry
+    // playback position itself — it's derived from /api/playback/batch.
+    void loadResumePositions()
   } catch { /* non-critical */ }
+}
+
+// Resume-as-hero — playback positions for continueWatching items so the
+// hero can swap from "trending[0]" to the user's in-progress item with a
+// formatted "Resume X:XX / Y:YY" CTA.
+const resumePositions = ref<Record<string, number>>({})
+
+async function loadResumePositions() {
+  if (!authStore.isLoggedIn || continueWatching.value.length === 0) return
+  const ids = continueWatching.value.slice(0, 5).map(s => s.media_id).filter(Boolean)
+  if (ids.length === 0) return
+  try {
+    const r = await playbackApi.getBatchPositions(ids)
+    if (!indexMounted) return
+    resumePositions.value = r?.positions ?? {}
+  } catch { /* non-critical */ }
+}
+
+// Resume-as-hero selection. Pick the most-recent in-progress item that is
+// neither too early (< 30s — user probably just opened it) nor too late
+// (within 60s of the end — they're done). Falls back to null when nothing
+// qualifies, in which case the hero shows trending[0] as before.
+const resumeHero = computed(() => {
+  if (!authStore.isLoggedIn) return null
+  for (const s of continueWatching.value) {
+    const pos = resumePositions.value[s.media_id]
+    const dur = s.duration ?? 0
+    if (!pos || pos <= 30) continue
+    if (dur > 0 && pos >= dur - 60) continue
+    return { suggestion: s, position: pos, duration: dur }
+  }
+  return null
+})
+
+// ── Saved searches (retention plan B.5) ─────────────────────────────
+// Fetches the user's saved searches and, for each one, queries /api/media
+// scoped to the search's filters AND added-since last_seen_at. The home
+// page renders one row per saved search that returned at least one match.
+const savedSearches = ref<SavedSearch[]>([])
+const savedSearchMatches = ref<Record<string, MediaItem[]>>({})
+const savedSearchesApi = useSavedSearchesApi()
+
+async function loadSavedSearches() {
+  if (!authStore.isLoggedIn) return
+  try {
+    const list = await savedSearchesApi.list()
+    if (!indexMounted) return
+    savedSearches.value = list ?? []
+    // Fan out one /api/media query per saved search. Failures degrade
+    // gracefully — an empty matches map just means the row doesn't render.
+    const matches: Record<string, MediaItem[]> = {}
+    await Promise.all(savedSearches.value.map(async (s) => {
+      try {
+        const res = await mediaApi.list({
+          search: s.query || '',
+          tags: s.tags?.length ? s.tags : undefined,
+          tag_mode: s.tag_mode,
+          type: s.media_type || '',
+          sort_by: 'date_added',
+          sort_order: 'desc',
+          limit: 12,
+        })
+        const cutoff = new Date(s.last_seen_at).getTime()
+        const recent = (res.items ?? []).filter(i => {
+          if (!i.date_added) return false
+          return new Date(i.date_added).getTime() > cutoff
+        })
+        if (recent.length > 0) matches[s.id] = recent
+      } catch { /* per-search failure ignored */ }
+    }))
+    if (indexMounted) savedSearchMatches.value = matches
+  } catch { /* non-critical */ }
+}
+
+async function dismissSavedSearchRow(id: string) {
+  // Touch the row server-side so it stops appearing until new matches show up.
+  try { await savedSearchesApi.touch(id) } catch { /* non-critical */ }
+  const next = { ...savedSearchMatches.value }
+  delete next[id]
+  savedSearchMatches.value = next
 }
 
 // When the user logs in mid-session (logged-out → logged-in), reload
@@ -283,6 +368,7 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
   if (loggedIn) {
     general.value = []
     loadRecommendations()
+    loadSavedSearches()
     const pref = authStore.user?.preferences?.items_per_page
     if (pref && pref !== params.limit) {
       params.limit = pref
@@ -297,6 +383,8 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
     newSinceLastVisit.value = null
     onDeck.value = []
     userRatings.value = {}
+    savedSearches.value = []
+    savedSearchMatches.value = {}
     loadGeneralSuggestions()
   }
 }, { immediate: false })
@@ -335,20 +423,34 @@ async function surpriseMe() {
   } catch { /* non-critical */ }
 }
 
-// Tag filter — single active tag (clicking a card tag sets this; clear X removes it)
-const filterTag = ref('')
+// Tag filter — supports both single-click-on-card (sets one tag, OR mode)
+// AND the /browse tag-cloud flow which deep-links here via ?tags=a,b,c&tag_mode=and.
+// `filterTags` is the authoritative set; `filterTag` (computed) preserves the
+// pre-existing "first active tag" semantics that other call sites read.
+const initialTagsFromQuery = ((route.query.tags as string | undefined) ?? '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean)
+const filterTags = ref<Set<string>>(new Set(initialTagsFromQuery))
+const tagMode = ref<'and' | 'or'>(route.query.tag_mode === 'and' ? 'and' : 'or')
+const filterTag = computed(() => [...filterTags.value][0] ?? '')
 
 // Hide watched toggle — only active for logged-in users
 const hideWatched = ref(route.query.hide_watched === 'true')
 
 function setTagFilter(tag: string) {
-  filterTag.value = tag
+  // Single-tag flow from a media card. Replace the current set and reset to
+  // OR mode so accidental AND mode from the previous nav doesn't filter
+  // everything away on the next click.
+  filterTags.value = new Set([tag])
+  tagMode.value = 'or'
   params.page = 1
   load()
 }
 
 function clearTagFilter() {
-  filterTag.value = ''
+  filterTags.value = new Set()
+  tagMode.value = 'or'
   params.page = 1
   load()
 }
@@ -383,7 +485,7 @@ const hasActiveFilters = computed(() =>
   params.sort_order !== 'asc' ||
   params.min_rating > 0 ||
   !!params.search ||
-  !!filterTag.value ||
+  filterTags.value.size > 0 ||
   hideWatched.value,
 )
 
@@ -394,7 +496,8 @@ function clearAllFilters() {
   params.sort_order = 'asc'
   params.min_rating = 0
   params.search = ''
-  filterTag.value = ''
+  filterTags.value = new Set()
+  tagMode.value = 'or'
   hideWatched.value = false
   params.page = 1
 }
@@ -416,7 +519,7 @@ watch(() => route.query.search, (q) => {
 // Uses router.replace so the browser back button is not polluted.
 let urlSyncTimer: ReturnType<typeof setTimeout> | null = null
 watch(
-  [() => params.type, () => params.category, () => params.sort_by, () => params.sort_order, () => params.min_rating, () => params.search, hideWatched],
+  [() => params.type, () => params.category, () => params.sort_by, () => params.sort_order, () => params.min_rating, () => params.search, hideWatched, filterTags, tagMode],
   () => {
     if (urlSyncTimer) clearTimeout(urlSyncTimer)
     urlSyncTimer = setTimeout(() => {
@@ -428,10 +531,38 @@ watch(
       if (params.min_rating > 0) query.min_rating = String(params.min_rating)
       if (params.search) query.search = params.search
       if (hideWatched.value) query.hide_watched = 'true'
+      if (filterTags.value.size > 0) {
+        query.tags = [...filterTags.value].join(',')
+        if (tagMode.value === 'and') query.tag_mode = 'and'
+      }
       router.replace({ query })
     }, 300)
   },
+  { deep: true },
 )
+
+// React to deep-link changes from the /browse page: when the user clicks
+// Apply, the URL gains ?tags=...&tag_mode=... and the existing query is
+// replaced. We watch the query so changes are picked up without a full
+// reload.
+watch(() => route.query.tags, (raw) => {
+  const list = (typeof raw === 'string' ? raw : '').split(',').map(s => s.trim()).filter(Boolean)
+  const next = new Set(list)
+  // Cheap set equality (size + every member shared)
+  if (next.size !== filterTags.value.size || [...next].some(t => !filterTags.value.has(t))) {
+    filterTags.value = next
+    params.page = 1
+    load()
+  }
+})
+watch(() => route.query.tag_mode, (m) => {
+  const next: 'and' | 'or' = m === 'and' ? 'and' : 'or'
+  if (next !== tagMode.value) {
+    tagMode.value = next
+    params.page = 1
+    load()
+  }
+})
 
 async function load() {
   const seq = ++loadSeq
@@ -447,7 +578,9 @@ async function load() {
       ...paramsWithoutRating,
       type: params.type === 'all' ? '' : params.type,
       category: params.category === 'all' ? '' : params.category,
-      ...(filterTag.value ? { tags: [filterTag.value] } : {}),
+      ...(filterTags.value.size > 0
+        ? { tags: [...filterTags.value], ...(tagMode.value === 'and' ? { tag_mode: 'and' as const } : {}) }
+        : {}),
       ...(hideWatched.value && authStore.isLoggedIn ? { hide_watched: true } : {}),
       ...(params.min_rating > 0 && authStore.isLoggedIn ? { min_rating: params.min_rating } : {}),
     }
@@ -534,8 +667,14 @@ onMounted(() => {
   load()
   // Fetch recommendations for already-logged-in users (page refresh).
   // When the user logs in mid-session, the watch above handles this instead.
-  if (authStore.isLoggedIn) { loadRecommendations(); loadFavorites(); loadMyPlaylists() }
-  else loadGeneralSuggestions()
+  if (authStore.isLoggedIn) {
+    loadRecommendations()
+    loadFavorites()
+    loadMyPlaylists()
+    loadSavedSearches()
+  } else {
+    loadGeneralSuggestions()
+  }
 })
 
 // View mode — initialized from user preference; supports 'grid', 'list', and 'compact'
@@ -686,15 +825,18 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- Hero — compact banner per design handoff §6.2 -->
-  <template v-if="authStore.isLoggedIn ? trending.length > 0 : general.length > 0">
+  <!-- Hero — compact banner per design handoff §6.2.
+       Returning logged-in users with an in-progress item see THAT as the
+       hero (Resume-as-hero, retention plan B.4); everyone else sees the
+       top-trending / general suggestion. -->
+  <template v-if="resumeHero || (authStore.isLoggedIn ? trending.length > 0 : general.length > 0)">
     <div
       class="relative overflow-hidden min-h-[240px] flex items-end"
-      :style="{ background: getItemGradient((authStore.isLoggedIn ? trending[0] : general[0]).media_id) }"
+      :style="{ background: getItemGradient((resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).media_id) }"
     >
       <!-- Actual media thumbnail as background -->
       <img
-        :src="mediaApi.getThumbnailUrl((authStore.isLoggedIn ? trending[0] : general[0]).media_id)"
+        :src="mediaApi.getThumbnailUrl((resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).media_id)"
         class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
         aria-hidden="true"
         @error="($event.target as HTMLImageElement).style.display='none'"
@@ -706,33 +848,55 @@ onUnmounted(() => {
       <div class="relative z-10 max-w-[1400px] mx-auto px-5 pb-6 w-full">
         <div class="flex items-end gap-4 flex-wrap">
           <div class="flex-1 min-w-0 space-y-2.5">
-            <span class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">Featured</span>
+            <span class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">
+              {{ resumeHero ? 'Resume where you left off' : 'Featured' }}
+            </span>
             <h1
               class="font-extrabold text-white leading-tight line-clamp-2"
               style="font-size: clamp(28px, 4vw, 44px); text-wrap: pretty;"
             >
-              {{ getDisplayTitle(authStore.isLoggedIn ? trending[0] : general[0]) }}
+              {{ getDisplayTitle(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])) }}
             </h1>
+            <!-- Resume progress bar — only on the resume variant. -->
+            <div
+              v-if="resumeHero && resumeHero.duration > 0"
+              class="h-1 max-w-md rounded-full bg-white/15 overflow-hidden"
+              aria-hidden="true"
+            >
+              <div
+                class="h-full bg-[var(--accent)] rounded-full"
+                :style="{ width: `${Math.min(100, (resumeHero.position / resumeHero.duration) * 100)}%` }"
+              />
+            </div>
             <!-- Tag chips — pulled from the suggestion's reasons (max 3) so
                  the hero stays in sync with whichever categorisation the
                  server is using; if reasons aren't available we fall back
                  to the single category label. No emoji per plan §3.1. -->
             <div class="flex gap-1.5 flex-wrap">
-              <template v-if="(authStore.isLoggedIn ? trending[0] : general[0]).reasons?.length">
+              <template v-if="(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).reasons?.length">
                 <span
-                  v-for="r in (authStore.isLoggedIn ? trending[0] : general[0]).reasons!.slice(0, 3)"
+                  v-for="r in (resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).reasons!.slice(0, 3)"
                   :key="r"
                   class="inline-flex items-center gap-1 bg-white/10 border border-white/15 backdrop-blur-md rounded-full px-2 py-0.5 text-[10px] font-semibold text-white/85"
                 >{{ r }}</span>
               </template>
               <span
-                v-else-if="(authStore.isLoggedIn ? trending[0] : general[0]).category"
+                v-else-if="(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).category"
                 class="inline-flex items-center gap-1 bg-white/10 border border-white/15 backdrop-blur-md rounded-full px-2 py-0.5 text-[10px] font-semibold text-white/85"
-              >{{ (authStore.isLoggedIn ? trending[0] : general[0]).category }}</span>
+              >{{ (resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).category }}</span>
             </div>
           </div>
           <div class="flex gap-2 flex-wrap shrink-0">
             <NuxtLink
+              v-if="resumeHero"
+              :to="`/player?id=${encodeURIComponent(resumeHero.suggestion.media_id)}&t=${Math.floor(resumeHero.position)}`"
+              class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-5 py-2.5 text-[13px] font-bold no-underline hover:brightness-110 transition-all"
+            >
+              <UIcon name="i-lucide-play" class="size-4" />
+              Resume {{ formatDuration(Math.floor(resumeHero.position)) }}<span v-if="resumeHero.duration > 0"> / {{ formatDuration(resumeHero.duration) }}</span>
+            </NuxtLink>
+            <NuxtLink
+              v-else
               :to="`/player?id=${encodeURIComponent((authStore.isLoggedIn ? trending[0] : general[0]).media_id)}`"
               class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-5 py-2.5 text-[13px] font-bold no-underline hover:brightness-110 transition-all"
             >
@@ -831,6 +995,56 @@ onUnmounted(() => {
         to="/"
         @thumbnail-error="onSuggestionThumbnailError"
       />
+
+      <!-- Saved-search rows (retention plan B.5).
+           One row per saved search that has any items added since the user
+           last viewed the row. Dismissing the row touches the search so it
+           re-appears only when something new shows up. -->
+      <template v-for="s in savedSearches" :key="s.id">
+        <div v-if="savedSearchMatches[s.id]?.length" class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
+              <UIcon name="i-lucide-bookmark-check" class="size-4 text-[var(--accent)]" />
+              New for: {{ s.name }}
+              <span class="text-xs font-mono text-muted">({{ savedSearchMatches[s.id]?.length ?? 0 }})</span>
+            </h2>
+            <UButton
+              icon="i-lucide-check"
+              label="Mark seen"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              @click="dismissSavedSearchRow(s.id)"
+            />
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <NuxtLink
+              v-for="item in savedSearchMatches[s.id]"
+              :key="item.id"
+              :to="`/player?id=${encodeURIComponent(item.id)}`"
+              class="group block"
+            >
+              <div class="relative aspect-video rounded-lg overflow-hidden bg-muted media-card-lift scanline-thumb">
+                <img
+                  :src="mediaApi.getThumbnailUrl(item.id)"
+                  :alt="getDisplayTitle(item)"
+                  width="320"
+                  height="180"
+                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                  loading="lazy"
+                  @error="($event.target as HTMLImageElement).style.display='none'"
+                />
+                <div v-if="item.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
+                  {{ formatDuration(item.duration) }}
+                </div>
+              </div>
+              <p class="mt-1.5 text-xs font-medium truncate group-hover:text-primary transition-colors">
+                {{ getDisplayTitle(item) }}
+              </p>
+            </NuxtLink>
+          </div>
+        </div>
+      </template>
       <!-- New Since Last Visit -->
       <div v-if="newSinceLastVisit && newSinceLastVisit.items.length > 0" class="space-y-3">
         <div class="flex items-center justify-between">
@@ -1050,18 +1264,33 @@ onUnmounted(() => {
         aria-label="Pick a random item to watch"
         @click="surpriseMe"
       />
-      <!-- Active tag filter chip -->
-      <UButton
-        v-if="filterTag"
-        :label="filterTag"
-        icon="i-lucide-tag"
-        trailing-icon="i-lucide-x"
-        variant="soft"
-        color="primary"
-        size="sm"
-        aria-label="Clear tag filter"
-        @click="clearTagFilter"
-      />
+      <!-- Active tag filter chips. Single-tag flows (card click) show one
+           chip; the tag-cloud flow from /browse shows one chip per tag plus
+           an AND/OR pill so the user can see and clear the active filter. -->
+      <template v-if="filterTags.size > 0">
+        <span
+          v-if="filterTags.size > 1"
+          class="inline-flex items-center gap-1 rounded-full bg-[var(--accent-bg-weak)] text-[var(--accent-soft)] border border-[var(--accent-border)] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+          :title="`Tag match mode: ${tagMode}`"
+        >
+          {{ tagMode === 'and' ? 'AND' : 'OR' }}
+        </span>
+        <UButton
+          v-for="t in [...filterTags]"
+          :key="t"
+          :label="t"
+          icon="i-lucide-tag"
+          trailing-icon="i-lucide-x"
+          variant="soft"
+          color="primary"
+          size="sm"
+          :aria-label="`Remove tag filter ${t}`"
+          @click="() => {
+            const next = new Set(filterTags); next.delete(t); filterTags = next
+            params.page = 1; load()
+          }"
+        />
+      </template>
       <!-- Hide watched toggle (logged-in users only) -->
       <UButton
         v-if="authStore.isLoggedIn"

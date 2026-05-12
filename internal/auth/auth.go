@@ -68,6 +68,7 @@ type Module struct {
 	sessionRepo      repositories.SessionRepository
 	favoriteRepo     repositories.FavoriteRepository
 	tokenRepo        repositories.APITokenRepository
+	savedSearchRepo  repositories.SavedSearchRepository
 	users            map[string]*models.User    // username → user
 	usersByID        map[string]*models.User    // id → user; secondary index to avoid O(N) GetUserByID scans
 	sessions         map[string]*models.Session // Kept for backward compatibility and caching
@@ -131,6 +132,7 @@ func (m *Module) Start(ctx context.Context) error {
 	m.sessionRepo = mysql.NewSessionRepository(m.dbModule.GORM())
 	m.favoriteRepo = mysql.NewFavoritesRepository(m.dbModule.GORM())
 	m.tokenRepo = mysql.NewAPITokenRepository(m.dbModule.GORM())
+	m.savedSearchRepo = mysql.NewSavedSearchRepository(m.dbModule.GORM())
 
 	if err := m.loadUsersIntoMap(ctx); err != nil {
 		return fmt.Errorf("failed to load users: %w", err)
