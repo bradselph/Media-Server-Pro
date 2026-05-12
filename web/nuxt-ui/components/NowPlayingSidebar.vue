@@ -247,10 +247,36 @@ onUnmounted(() => {
 
 // ── Determine layout mode (avoid SSR mismatch) ──────────────────
 const isMobile = ref(false)
+// Tracks whether the desktop viewport is narrow enough that an open
+// sidebar would crowd <main> (handoff A.6 risk #1, "auto-collapse to
+// rail when viewport < 1100px"). When true and the user hasn't
+// explicitly re-expanded it for this width, force the rail.
+const isNarrowDesktop = ref(false)
+let userOverrodeNarrow = false
+
 function syncIsMobile() {
     if (typeof window === 'undefined') return
     isMobile.value = window.matchMedia('(max-width: 768px)').matches
+    const narrow = !isMobile.value && window.matchMedia('(max-width: 1099px)').matches
+    if (narrow !== isNarrowDesktop.value) {
+        isNarrowDesktop.value = narrow
+        // Auto-collapse on entering narrow range; restore on leaving.
+        // Skip when the user explicitly re-expanded — their choice wins
+        // until the next time they re-enter narrow range from wide.
+        if (narrow && open.value && !userOverrodeNarrow) {
+            sb.collapse()
+        } else if (!narrow) {
+            userOverrodeNarrow = false
+        }
+    }
 }
+// Track explicit expand events while narrow so we don't immediately
+// re-collapse on the next resize event. Wrapping sb.expand directly is
+// cleaner than a watch since collapse() can also fire from the user.
+watch(open, (v) => {
+    if (v && isNarrowDesktop.value) userOverrodeNarrow = true
+})
+
 onMounted(() => {
     syncIsMobile()
     window.addEventListener('resize', syncIsMobile)
