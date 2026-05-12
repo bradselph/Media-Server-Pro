@@ -68,6 +68,7 @@ var tableDefs = []struct {
 			filter_category       VARCHAR(100),
 			filter_media_type     VARCHAR(50),
 			custom_eq_presets     JSON,
+			autoplay_similar      BOOLEAN      NOT NULL DEFAULT TRUE,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"sessions", `
@@ -685,6 +686,7 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"user_preferences", "shuffle_enabled", "BOOLEAN NOT NULL DEFAULT FALSE"},
 		{"user_preferences", "show_buffer_bar", "BOOLEAN NOT NULL DEFAULT TRUE"},
 		{"user_preferences", "download_prompt", "BOOLEAN NOT NULL DEFAULT TRUE"},
+		{"user_preferences", "autoplay_similar", "BOOLEAN NOT NULL DEFAULT TRUE"},
 		{"playback_positions", "duration", "DOUBLE NOT NULL DEFAULT 0"},
 		{"playback_positions", "progress", "FLOAT NOT NULL DEFAULT 0"},
 		{"analytics_events", "data", "JSON NULL"},
