@@ -28,6 +28,7 @@ const router = useRouter()
 const playback = usePlaybackStore()
 const queue = useQueueStore()
 const playlistApi = usePlaylistApi()
+const authStore = useAuthStore()
 const toast = useToast()
 
 const sb = useSidebarState()
@@ -144,6 +145,28 @@ function unpinPlaylist() {
     toast.add({ title: 'Playlist unpinned', icon: 'i-lucide-pin-off' })
 }
 
+// Autoplay-similar mirror (B.3). The sidebar empty state exposes the
+// preference toggle so users can flip it without leaving home. Local
+// ref is hydrated from authStore and persisted through updatePreferences.
+const autoplaySimilar = ref(authStore.user?.preferences?.autoplay_similar ?? true)
+watch(
+    () => authStore.user?.preferences?.autoplay_similar,
+    (v) => { if (typeof v === 'boolean') autoplaySimilar.value = v },
+)
+
+function toggleAutoplaySimilar() {
+    autoplaySimilar.value = !autoplaySimilar.value
+    if (!authStore.isLoggedIn) return
+    const { updatePreferences } = useApiEndpoints()
+    updatePreferences({ autoplay_similar: autoplaySimilar.value }).catch(() => {})
+    if (authStore.user) {
+        authStore.user.preferences = {
+            ...authStore.user.preferences,
+            autoplay_similar: autoplaySimilar.value,
+        }
+    }
+}
+
 // ── Auto-pin the last playlist the user played from ────────────
 // pages/playlists.vue and pages/player.vue dispatch this when a user
 // starts playback from a playlist context.
@@ -170,13 +193,56 @@ function gradFor(id: string): string {
     return `linear-gradient(135deg, ${a}, ${b})`
 }
 
-// ── Mobile body-scroll lock when sheet is open ──────────────────
-watch(mobileSheetOpen, (v) => {
+// ── Mobile body-scroll lock + focus trap when sheet is open ─────
+const sheetRef = ref<HTMLElement | null>(null)
+let lastFocusedBeforeSheet: HTMLElement | null = null
+
+watch(mobileSheetOpen, async (v) => {
     if (typeof document === 'undefined') return
     document.body.style.overflow = v ? 'hidden' : ''
+    if (v) {
+        lastFocusedBeforeSheet = (document.activeElement as HTMLElement | null) ?? null
+        await nextTick()
+        // Move focus into the sheet so subsequent Tab cycles inside the
+        // trap. Targeting the first focusable element keeps screen-reader
+        // ordering predictable.
+        const firstFocusable = sheetRef.value?.querySelector<HTMLElement>(
+            'button, [href], input, [tabindex]:not([tabindex="-1"])',
+        )
+        firstFocusable?.focus()
+    } else {
+        // Restore focus to the caller (typically the dock button) so
+        // keyboard users land back where they started.
+        lastFocusedBeforeSheet?.focus()
+        lastFocusedBeforeSheet = null
+    }
 })
+
+// Constrain Tab key navigation to the sheet while it's open (A.3.9 focus
+// trap). Skips when no sheet element is mounted yet.
+function trapTab(e: KeyboardEvent) {
+    if (!mobileSheetOpen.value || e.key !== 'Tab' || !sheetRef.value) return
+    const focusables = sheetRef.value.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )
+    if (focusables.length === 0) return
+    const first = focusables[0]
+    const last = focusables[focusables.length - 1]
+    const active = document.activeElement as HTMLElement | null
+    if (e.shiftKey && active === first) {
+        e.preventDefault()
+        last.focus()
+    } else if (!e.shiftKey && active === last) {
+        e.preventDefault()
+        first.focus()
+    }
+}
+onMounted(() => document.addEventListener('keydown', trapTab))
 onUnmounted(() => {
-    if (typeof document !== 'undefined') document.body.style.overflow = ''
+    if (typeof document !== 'undefined') {
+        document.body.style.overflow = ''
+        document.removeEventListener('keydown', trapTab)
+    }
 })
 
 // ── Determine layout mode (avoid SSR mismatch) ──────────────────
@@ -264,11 +330,27 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
           </div>
         </div>
 
-        <!-- Empty playing state -->
+        <!-- Empty playing state with CTAs (B.3 + A.3.2). -->
         <div v-else class="empty">
           <div class="empty__icon"><UIcon name="i-lucide-music-2" class="size-5" /></div>
           <p class="empty__title">Nothing playing yet</p>
           <p class="empty__sub">Press play on any item — controls and queue will appear here.</p>
+          <div class="empty__cta">
+            <NuxtLink to="/" class="empty__btn empty__btn--primary">
+              <UIcon name="i-lucide-compass" class="size-3.5" /> Browse library
+            </NuxtLink>
+            <button
+              v-if="authStore.isLoggedIn"
+              type="button"
+              class="empty__btn empty__btn--ghost"
+              :aria-pressed="autoplaySimilar"
+              :title="autoplaySimilar ? 'Click to turn off' : 'Click to turn on'"
+              @click="toggleAutoplaySimilar"
+            >
+              <UIcon :name="autoplaySimilar ? 'i-lucide-toggle-right' : 'i-lucide-toggle-left'" class="size-3.5" />
+              Autoplay similar — {{ autoplaySimilar ? 'ON' : 'OFF' }}
+            </button>
+          </div>
         </div>
 
         <!-- Tabs -->
@@ -386,14 +468,33 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
           <img v-if="playback.mediaInfo.thumbnail_url" :src="playback.mediaInfo.thumbnail_url" :alt="playback.mediaInfo.name" class="rail__art-img" @error="($event.target as HTMLImageElement).style.display='none'" />
           <UIcon v-else :name="playback.mediaInfo.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-3.5" />
         </div>
+        <!-- EQ-style activity bars — only animate when isPlaying, frozen
+             otherwise. Respects reduced-motion via main.css's global rule. -->
+        <div
+          v-if="playback.mediaInfo"
+          class="rail__eq"
+          :class="{ 'rail__eq--on': playback.isPlaying }"
+          :aria-label="playback.isPlaying ? 'Playing' : 'Paused'"
+          aria-hidden="true"
+        >
+          <span class="rail__eq-bar" />
+          <span class="rail__eq-bar" />
+          <span class="rail__eq-bar" />
+        </div>
         <button class="rail__icon-btn" aria-label="Previous" @click="playNext"><UIcon name="i-lucide-skip-back" class="size-3.5" /></button>
         <button class="rail__icon-btn rail__icon-btn--play" aria-label="Open player" @click="openPlayer">
           <UIcon :name="playback.isPlaying ? 'i-lucide-pause' : 'i-lucide-play'" class="size-3.5" />
         </button>
         <button class="rail__icon-btn" aria-label="Next" @click="playNext"><UIcon name="i-lucide-skip-forward" class="size-3.5" /></button>
-        <div class="rail__count" :title="`${queue.items.length} in queue`">
-          <UIcon name="i-lucide-list" class="size-3" />
-          <span>{{ queue.items.length }}</span>
+        <div class="rail__counts">
+          <div class="rail__count" :title="`${queue.items.length} in queue`">
+            <UIcon name="i-lucide-list" class="size-3" />
+            <span>{{ queue.items.length }}</span>
+          </div>
+          <div v-if="pinnedPlaylist" class="rail__count" :title="`${pinnedPlaylist.items?.length ?? 0} in pinned playlist`">
+            <UIcon name="i-lucide-music-2" class="size-3" />
+            <span>{{ pinnedPlaylist.items?.length ?? 0 }}</span>
+          </div>
         </div>
       </div>
     </aside>
@@ -431,6 +532,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
         @click="mobileSheetOpen = false"
       >
         <div
+          ref="sheetRef"
           class="sheet"
           role="dialog"
           aria-modal="true"
@@ -480,6 +582,21 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
               <div class="empty__icon"><UIcon name="i-lucide-music-2" class="size-5" /></div>
               <p class="empty__title">Nothing playing yet</p>
               <p class="empty__sub">Press play on any item — controls and queue will appear here.</p>
+              <div class="empty__cta">
+                <NuxtLink to="/" class="empty__btn empty__btn--primary" @click="mobileSheetOpen = false">
+                  <UIcon name="i-lucide-compass" class="size-3.5" /> Browse library
+                </NuxtLink>
+                <button
+                  v-if="authStore.isLoggedIn"
+                  type="button"
+                  class="empty__btn empty__btn--ghost"
+                  :aria-pressed="autoplaySimilar"
+                  @click="toggleAutoplaySimilar"
+                >
+                  <UIcon :name="autoplaySimilar ? 'i-lucide-toggle-right' : 'i-lucide-toggle-left'" class="size-3.5" />
+                  Autoplay similar — {{ autoplaySimilar ? 'ON' : 'OFF' }}
+                </button>
+              </div>
             </div>
 
             <div class="sb__tabs" role="tablist">
@@ -773,6 +890,41 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 }
 .empty__link { color: var(--accent-soft); text-decoration: underline; }
 
+/* CTAs inside the "nothing playing" empty state — A.3.2 + B.3. The
+   Autoplay-similar button is a true toggle so users can flip the
+   preference without leaving the sidebar. */
+.empty__cta {
+    display: flex; flex-direction: column; gap: 6px;
+    margin-top: 14px;
+}
+.empty__btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px; font-weight: 600;
+    text-decoration: none;
+    cursor: pointer; border: 0;
+    font-family: inherit;
+    transition: background var(--motion-hover), color var(--motion-hover);
+}
+.empty__btn--primary {
+    background: var(--accent);
+    color: white;
+}
+.empty__btn--primary:hover { filter: brightness(1.1); }
+.empty__btn--ghost {
+    background: rgba(255,255,255,0.04);
+    color: var(--text-med);
+    border: 1px solid var(--hairline);
+}
+.empty__btn--ghost:hover { color: var(--text-strong); background: rgba(255,255,255,0.07); }
+.empty__btn--ghost[aria-pressed="true"] {
+    color: var(--accent-soft);
+    border-color: var(--accent-border);
+    background: var(--accent-bg-weak);
+}
+
 /* Playlist header */
 .pl-head { padding: 12px 12px 12px; margin: -10px -8px 6px; border-bottom: 1px solid var(--hairline); }
 .pl-head__row { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; }
@@ -801,12 +953,43 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
     color: rgba(255,255,255,0.85);
 }
 .rail__art-img { width: 100%; height: 100%; object-fit: cover; }
+
+/* EQ activity indicator on the rail. Three thin bars; animation only
+   runs when the parent has --on. Reduced-motion users see them frozen. */
+.rail__eq {
+    display: flex; align-items: flex-end; justify-content: center;
+    gap: 2px;
+    height: 14px; padding: 0 2px;
+}
+.rail__eq-bar {
+    width: 3px; height: 4px;
+    background: var(--text-faint);
+    border-radius: 1px;
+    transition: background var(--motion-hover);
+}
+.rail__eq--on .rail__eq-bar {
+    background: var(--accent);
+    animation: sb-eq 0.9s ease-in-out infinite;
+}
+.rail__eq--on .rail__eq-bar:nth-child(2) { animation-delay: 0.15s; }
+.rail__eq--on .rail__eq-bar:nth-child(3) { animation-delay: 0.3s; }
+@keyframes sb-eq {
+    0%, 100% { height: 4px; }
+    50% { height: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .rail__eq--on .rail__eq-bar { animation: none; height: 8px; }
+}
+
+.rail__counts {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    margin-top: auto;
+}
 .rail__count {
     display: flex; flex-direction: column; align-items: center; gap: 1px;
     color: var(--text-muted);
     font-family: ui-monospace, monospace;
     font-size: 10px; font-weight: 600;
-    margin-top: auto;
 }
 
 /* ── Mobile dock ─────────────────────────────────────────────────── */
