@@ -1620,9 +1620,20 @@ onUnmounted(() => {
           >{{ tag }}</button>
         </div>
       </component>
-      <p v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
-        No media found.
-      </p>
+      <div v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
+        <UIcon name="i-lucide-search-x" class="size-10 mx-auto mb-3 opacity-40" />
+        <p class="font-medium">No media match the current filters.</p>
+        <UButton
+          v-if="hasActiveFilters"
+          icon="i-lucide-x"
+          label="Clear filters"
+          variant="outline"
+          color="neutral"
+          size="sm"
+          class="mt-3"
+          @click="clearAllFilters"
+        />
+      </div>
     </div>
 
     <!-- Compact view -->
@@ -1646,9 +1657,20 @@ onUnmounted(() => {
         <span v-if="item.codec" class="text-[10px] text-muted/60 shrink-0 uppercase">{{ item.codec }}</span>
         <span class="text-xs text-muted shrink-0 ml-auto font-mono tabular-nums">{{ formatDuration(item.duration) || formatBytes(item.size) }}</span>
       </NuxtLink>
-      <p v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
-        No media found.
-      </p>
+      <div v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
+        <UIcon name="i-lucide-search-x" class="size-10 mx-auto mb-3 opacity-40" />
+        <p class="font-medium">No media match the current filters.</p>
+        <UButton
+          v-if="hasActiveFilters"
+          icon="i-lucide-x"
+          label="Clear filters"
+          variant="outline"
+          color="neutral"
+          size="sm"
+          class="mt-3"
+          @click="clearAllFilters"
+        />
+      </div>
     </div>
 
     <!-- List view -->
@@ -1718,7 +1740,20 @@ onUnmounted(() => {
           </span>
         </template>
       </UTable>
-      <p v-if="items.length === 0" class="text-center py-8 text-muted">No media found.</p>
+      <div v-if="items.length === 0" class="text-center py-8 text-muted">
+        <UIcon name="i-lucide-search-x" class="size-10 mx-auto mb-3 opacity-40" />
+        <p class="font-medium">No media match the current filters.</p>
+        <UButton
+          v-if="hasActiveFilters"
+          icon="i-lucide-x"
+          label="Clear filters"
+          variant="outline"
+          color="neutral"
+          size="sm"
+          class="mt-3"
+          @click="clearAllFilters"
+        />
+      </div>
     </UCard>
 
     <!-- Pagination -->
