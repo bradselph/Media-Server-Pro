@@ -21,24 +21,33 @@ const error = ref('')
 const localQuery = ref(query.value)
 const lastFetchedFor = ref<string | null>(null)
 
+// Request token discards stale results when the user types again before the
+// previous /api/media response lands — the equivalent of an abort without
+// plumbing AbortController through the api wrapper.
+let searchToken = 0
+
 async function runSearch(q: string) {
+  const token = ++searchToken
   if (!q) {
     items.value = []
     lastFetchedFor.value = ''
     error.value = ''
+    loading.value = false
     return
   }
   loading.value = true
   error.value = ''
   try {
     const res = await mediaApi.list({ search: q, limit: 60 })
+    if (token !== searchToken) return // stale — newer query already in flight
     items.value = res?.items ?? []
     lastFetchedFor.value = q
   } catch (e: unknown) {
+    if (token !== searchToken) return
     error.value = e instanceof Error ? e.message : 'Search failed'
     items.value = []
   } finally {
-    loading.value = false
+    if (token === searchToken) loading.value = false
   }
 }
 
@@ -47,7 +56,33 @@ watch(query, (q) => {
   if (q !== lastFetchedFor.value) runSearch(q)
 }, { immediate: true })
 
+// Debounce while-typing input — pushes to /search?q= 250ms after the user
+// stops typing, which trips the `query` watcher above and fires runSearch.
+const SEARCH_DEBOUNCE_MS = 250
+let inputDebounce: ReturnType<typeof setTimeout> | null = null
+
+watch(localQuery, (next, prev) => {
+  if (next === prev) return
+  if (inputDebounce) clearTimeout(inputDebounce)
+  inputDebounce = setTimeout(() => {
+    inputDebounce = null
+    const q = next.trim()
+    if (q === query.value) return
+    if (!q) {
+      router.replace({ path: '/search', query: {} })
+    }
+    else {
+      router.replace({ path: '/search', query: { q } })
+    }
+  }, SEARCH_DEBOUNCE_MS)
+})
+
+onBeforeUnmount(() => {
+  if (inputDebounce) clearTimeout(inputDebounce)
+})
+
 function submitInline() {
+  if (inputDebounce) { clearTimeout(inputDebounce); inputDebounce = null }
   const q = localQuery.value.trim()
   if (!q) return
   // Push to /search?q= even if we're already there so the URL stays in

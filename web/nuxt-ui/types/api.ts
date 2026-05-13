@@ -1607,3 +1607,20 @@ export interface DataDeletionRequest {
     reviewed_by?: string
     admin_notes?: string
 }
+
+// Media moderation reports submitted via design plan §5.3 Report modal.
+export type MediaReportStatus = 'open' | 'resolved' | 'dismissed'
+export type MediaReportReason = 'inappropriate' | 'broken' | 'spam' | 'copyright' | 'other'
+
+export interface MediaReport {
+    id: string
+    media_id: string
+    reporter_id: string
+    reason: MediaReportReason | string
+    notes: string
+    status: MediaReportStatus
+    created_at: string
+    resolved_at?: string
+    resolved_by?: string
+    ip_address?: string
+}

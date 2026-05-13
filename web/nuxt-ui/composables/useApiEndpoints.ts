@@ -26,6 +26,7 @@ import type {
     DailyStats,
     DatabaseStatus,
     DataDeletionRequest,
+    MediaReport,
     DiscoverySuggestion,
     DownloaderDetectResult,
     DownloaderHealth,
@@ -849,6 +850,17 @@ export function useAdminApi() {
                 action,
                 admin_notes: adminNotes ?? ''
             }),
+
+        // Media moderation reports — design plan §5.3
+        listMediaReports: (status?: string, limit = 50, offset = 0) => {
+            const qs = new URLSearchParams()
+            if (status) qs.set('status', status)
+            qs.set('limit', String(limit))
+            qs.set('offset', String(offset))
+            return api.get<{ reports: MediaReport[]; open_count: number }>(`${base}/media/reports?${qs}`)
+        },
+        updateMediaReportStatus: (id: string, status: 'open' | 'resolved' | 'dismissed') =>
+            api.patch<{ id: string; status: string }>(`${base}/media/reports/${encodeURIComponent(id)}`, { status }),
 
         // Claude admin assistant
         getClaudeConfig: () => api.get<ClaudePublicConfig>(`${base}/claude/config`),
