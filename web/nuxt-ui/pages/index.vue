@@ -1510,13 +1510,22 @@ onUnmounted(() => {
           </div>
           <!-- Playback progress bar (logged-in, partially watched, not gated) -->
           <div
-            v-if="authStore.isLoggedIn && playbackProgress[item.id] && !(item.is_mature && !canViewMature)"
+            v-if="authStore.isLoggedIn && playbackProgress[item.id] && !(item.is_mature && !canViewMature) && (playbackProgress[item.id] ?? 0) < 0.9"
             class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"
           >
             <div
               class="h-full bg-primary"
               :style="{ width: `${Math.min(100, Math.round((playbackProgress[item.id] ?? 0) * 100))}%` }"
             />
+          </div>
+          <!-- Watched checkmark — replaces progress bar once user crosses 90% (checklist §6) -->
+          <div
+            v-if="authStore.isLoggedIn && (playbackProgress[item.id] ?? 0) >= 0.9 && !(item.is_mature && !canViewMature)"
+            class="absolute bottom-1 left-1 flex items-center gap-1 bg-emerald-600/85 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm"
+            :title="`Watched (${Math.round((playbackProgress[item.id] ?? 0) * 100)}%)`"
+          >
+            <UIcon name="i-lucide-check" class="size-3" />
+            <span>Watched</span>
           </div>
           <!-- Duration badge (hidden when gated) -->
           <div

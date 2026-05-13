@@ -10,12 +10,14 @@ const route = useRoute()
 const router = useRouter()
 const mediaApi = useMediaApi()
 const playlistApi = usePlaylistApi()
+const playbackApi = usePlaybackApi()
 const savedSearchesApi = useSavedSearchesApi()
 const authStore = useAuthStore()
 const toast = useToast()
 
 const query = computed(() => (route.query.q as string | undefined)?.trim() ?? '')
 const items = ref<MediaItem[]>([])
+const playbackProgress = ref<Record<string, number>>({})
 const loading = ref(false)
 const error = ref('')
 const localQuery = ref(query.value)
@@ -43,6 +45,24 @@ async function runSearch(q: string) {
     items.value = res?.items ?? []
     lastFetchedFor.value = q
     pushRecent(q)
+    // Watched marker — best-effort batch fetch of playback positions for the
+    // visible items so we can render the "Watched" badge / progress bar.
+    if (authStore.isLoggedIn && items.value.length > 0) {
+      const ids = items.value.map(i => i.id)
+      try {
+        const r = await playbackApi.getBatchPositions(ids)
+        if (token !== searchToken) return
+        const positions = r?.positions ?? {}
+        const next: Record<string, number> = {}
+        for (const item of items.value) {
+          const pos = positions[item.id]
+          if (pos && item.duration > 0) next[item.id] = pos / item.duration
+        }
+        playbackProgress.value = next
+      } catch { /* non-critical */ }
+    } else {
+      playbackProgress.value = {}
+    }
   } catch (e: unknown) {
     if (token !== searchToken) return
     error.value = e instanceof Error ? e.message : 'Search failed'
@@ -379,6 +399,23 @@ async function saveCurrentSearch() {
               {{ formatDuration(item.duration) }}
             </div>
             <div v-if="item.is_mature" class="absolute top-1 right-1 bg-black/70 text-white text-[9px] font-bold px-1 rounded">18+</div>
+            <div
+              v-if="playbackProgress[item.id] && (playbackProgress[item.id] ?? 0) < 0.9"
+              class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"
+            >
+              <div
+                class="h-full bg-primary"
+                :style="{ width: `${Math.min(100, Math.round((playbackProgress[item.id] ?? 0) * 100))}%` }"
+              />
+            </div>
+            <div
+              v-if="(playbackProgress[item.id] ?? 0) >= 0.9"
+              class="absolute bottom-1 left-1 flex items-center gap-1 bg-emerald-600/85 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm"
+              :title="`Watched (${Math.round((playbackProgress[item.id] ?? 0) * 100)}%)`"
+            >
+              <UIcon name="i-lucide-check" class="size-3" />
+              <span>Watched</span>
+            </div>
           </div>
           <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
             {{ getDisplayTitle(item) }}
