@@ -42,6 +42,7 @@ async function runSearch(q: string) {
     if (token !== searchToken) return // stale — newer query already in flight
     items.value = res?.items ?? []
     lastFetchedFor.value = q
+    pushRecent(q)
   } catch (e: unknown) {
     if (token !== searchToken) return
     error.value = e instanceof Error ? e.message : 'Search failed'
@@ -50,6 +51,52 @@ async function runSearch(q: string) {
     if (token === searchToken) loading.value = false
   }
 }
+
+// ── Recent searches (checklist §7) ────────────────────────────────────
+const RECENT_KEY = 'msp-recent-searches'
+const RECENT_MAX = 8
+const recent = ref<string[]>([])
+
+function readRecent(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(RECENT_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string').slice(0, RECENT_MAX) : []
+  } catch { return [] }
+}
+
+function writeRecent(list: string[]) {
+  if (typeof window === 'undefined') return
+  try { window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX))) }
+  catch { /* quota or disabled storage */ }
+}
+
+function pushRecent(q: string) {
+  const trimmed = q.trim()
+  if (!trimmed) return
+  const next = [trimmed, ...recent.value.filter(r => r.toLowerCase() !== trimmed.toLowerCase())]
+  recent.value = next.slice(0, RECENT_MAX)
+  writeRecent(recent.value)
+}
+
+function removeRecent(q: string) {
+  recent.value = recent.value.filter(r => r !== q)
+  writeRecent(recent.value)
+}
+
+function clearRecent() {
+  recent.value = []
+  writeRecent([])
+}
+
+function applyRecent(q: string) {
+  localQuery.value = q
+  router.replace({ path: '/search', query: { q } })
+}
+
+onMounted(() => { recent.value = readRecent() })
 
 watch(query, (q) => {
   localQuery.value = q
@@ -245,9 +292,45 @@ async function saveCurrentSearch() {
     </div>
 
     <!-- States -->
-    <div v-if="!query" class="text-center py-16 text-muted">
-      <UIcon name="i-lucide-search" class="size-10 mb-3 mx-auto opacity-40" />
-      <p>Type a query above and press Enter to search the library.</p>
+    <div v-if="!query" class="space-y-6">
+      <div class="text-center py-10 text-muted">
+        <UIcon name="i-lucide-search" class="size-10 mb-3 mx-auto opacity-40" />
+        <p>Type a query above and press Enter to search the library.</p>
+      </div>
+      <div v-if="recent.length > 0" class="max-w-xl mx-auto">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-sm font-semibold text-default flex items-center gap-1.5">
+            <UIcon name="i-lucide-clock" class="size-4 text-muted" />
+            Recent searches
+          </h2>
+          <button
+            type="button"
+            class="text-xs text-muted hover:text-default transition-colors"
+            @click="clearRecent"
+          >
+            Clear all
+          </button>
+        </div>
+        <ul class="flex flex-wrap gap-2">
+          <li v-for="r in recent" :key="r" class="group flex items-center bg-elevated border border-default rounded-full overflow-hidden">
+            <button
+              type="button"
+              class="px-3 py-1 text-sm hover:text-primary transition-colors"
+              @click="applyRecent(r)"
+            >
+              {{ r }}
+            </button>
+            <button
+              type="button"
+              class="px-2 py-1 text-muted hover:text-error transition-colors opacity-0 group-hover:opacity-100"
+              :aria-label="`Remove ${r} from recent searches`"
+              @click="removeRecent(r)"
+            >
+              <UIcon name="i-lucide-x" class="size-3.5" />
+            </button>
+          </li>
+        </ul>
+      </div>
     </div>
 
     <MediaCardSkeleton v-else-if="loading" :count="10" />

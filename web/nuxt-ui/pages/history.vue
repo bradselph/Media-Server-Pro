@@ -193,7 +193,7 @@ watch(() => authStore.user, (user) => {
               v-if="!failedThumbs.has(item.media_id)"
               :media-id="item.media_id"
               :src="thumbUrl(item.media_id)"
-              :alt="item.media_name"
+              :alt="item.media_name ?? ''"
               img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               @error="failedThumbs.add(item.media_id)"
             />
