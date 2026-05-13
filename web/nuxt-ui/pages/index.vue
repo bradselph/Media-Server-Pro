@@ -1163,13 +1163,19 @@ onUnmounted(() => {
           v-show="opt.value === 'all' || params.type === opt.value || typeCounts[opt.value] === undefined || typeCounts[opt.value] > 0"
           :key="opt.value"
           :class="[
-            'hidden md:inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
+            'hidden md:inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
             params.type === opt.value
               ? 'bg-primary text-white border-primary'
               : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
           ]"
           @click="params.type = opt.value"
-        >{{ opt.label }}</button>
+        >
+          <span>{{ opt.label }}</span>
+          <span
+            v-if="opt.value !== 'all' && typeCounts[opt.value] !== undefined"
+            class="font-mono opacity-70 text-[10px]"
+          >{{ typeCounts[opt.value] }}</span>
+        </button>
         <!-- Preset chips — design handoff §6.3 chip strip of curation presets -->
         <span class="hidden md:inline-block h-[22px] w-px bg-[var(--hairline-strong)] mx-1" aria-hidden="true" />
         <button
