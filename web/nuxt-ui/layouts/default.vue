@@ -98,6 +98,26 @@ async function handleLogout() {
 
 const mobileMenuOpen = ref(false)
 const shortcutsModal = ref<{ open: boolean } | null>(null)
+const mobileMenuRoot = ref<HTMLElement | null>(null)
+
+// Hamburger menu (checklist §3): Escape closes, focus moves to the first link
+// on open so keyboard users land somewhere actionable. Tab navigation falls
+// out into the page after the last item — no focus trap, kept intentionally
+// minimal so we don't fight Nuxt UI's focus management on dropdowns/links.
+function handleMenuKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && mobileMenuOpen.value) {
+    e.preventDefault()
+    mobileMenuOpen.value = false
+  }
+}
+onMounted(() => document.addEventListener('keydown', handleMenuKeydown))
+onUnmounted(() => document.removeEventListener('keydown', handleMenuKeydown))
+
+watch(mobileMenuOpen, async (open) => {
+  if (!open) return
+  await nextTick()
+  mobileMenuRoot.value?.querySelector<HTMLElement>('a, button')?.focus()
+})
 
 // Main desktop nav — content discovery only. The handoff prototype lists
 // Home·Browse·Categories·Playlists·Favorites·History (IMPLEMENTATION_PLAN
@@ -434,7 +454,7 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
       </UContainer>
 
       <!-- Mobile nav dropdown -->
-      <div v-if="mobileMenuOpen" class="md:hidden border-t border-default bg-elevated">
+      <div v-if="mobileMenuOpen" ref="mobileMenuRoot" class="md:hidden border-t border-default bg-elevated">
         <UContainer class="py-2 flex flex-col gap-1">
           <NuxtLink
             v-for="link in mobileNavLinks"
