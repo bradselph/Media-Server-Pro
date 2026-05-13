@@ -226,7 +226,7 @@ let loadSeq = 0
 // URL deep-link: query params take precedence over saved preferences so that
 // shared / bookmarked URLs open with the exact filters the sender intended.
 const params = reactive({
-  page: 1,
+  page: typeof route.query.page === 'string' ? Math.max(1, Number.parseInt(route.query.page, 10) || 1) : 1,
   limit: authStore.user?.preferences?.items_per_page ?? 24,
   search: typeof route.query.search === 'string' ? route.query.search : '',
   type: typeof route.query.type === 'string' ? route.query.type : (authStore.user?.preferences?.filter_media_type || 'all'),
@@ -525,7 +525,7 @@ watch(() => route.query.search, (q) => {
 // Uses router.replace so the browser back button is not polluted.
 let urlSyncTimer: ReturnType<typeof setTimeout> | null = null
 watch(
-  [() => params.type, () => params.category, () => params.sort_by, () => params.sort_order, () => params.min_rating, () => params.search, hideWatched, filterTags, tagMode],
+  [() => params.type, () => params.category, () => params.sort_by, () => params.sort_order, () => params.min_rating, () => params.search, () => params.page, hideWatched, filterTags, tagMode],
   () => {
     if (urlSyncTimer) clearTimeout(urlSyncTimer)
     urlSyncTimer = setTimeout(() => {
@@ -536,6 +536,7 @@ watch(
       if (params.sort_order !== 'asc') query.sort_order = params.sort_order
       if (params.min_rating > 0) query.min_rating = String(params.min_rating)
       if (params.search) query.search = params.search
+      if (params.page > 1) query.page = String(params.page)
       if (hideWatched.value) query.hide_watched = 'true'
       if (filterTags.value.size > 0) {
         query.tags = [...filterTags.value].join(',')
