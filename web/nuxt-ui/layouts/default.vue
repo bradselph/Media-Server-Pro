@@ -178,14 +178,44 @@ const avatarMenuItems = computed(() => {
 })
 
 const navSearch = ref('')
+const navSearchFocused = ref(false)
+const { push: pushRecentSearch } = useRecentSearches()
 
 function handleNavSearch() {
   const q = navSearch.value.trim()
   if (!q) return
+  pushRecentSearch(q)
   router.push({ path: '/search', query: { q } })
   navSearch.value = ''
+  navSearchFocused.value = false
   mobileMenuOpen.value = false
 }
+
+function onNavSuggestionSelect(q: string) {
+  navSearch.value = ''
+  navSearchFocused.value = false
+  pushRecentSearch(q)
+  router.push({ path: '/search', query: { q } })
+}
+
+function onNavSuggestionNavigate(target: string) {
+  navSearch.value = ''
+  navSearchFocused.value = false
+  router.push(target)
+}
+
+// Delay the close so click events on the dropdown items actually fire before
+// the panel unmounts. blur → focus race: 150ms covers a normal mouse-click.
+let blurTimer: ReturnType<typeof setTimeout> | null = null
+function onNavSearchBlur() {
+  if (blurTimer) clearTimeout(blurTimer)
+  blurTimer = setTimeout(() => { navSearchFocused.value = false; blurTimer = null }, 150)
+}
+function onNavSearchFocus() {
+  if (blurTimer) { clearTimeout(blurTimer); blurTimer = null }
+  navSearchFocused.value = true
+}
+onUnmounted(() => { if (blurTimer) clearTimeout(blurTimer) })
 
 const navSearchFormRef = ref<HTMLFormElement | null>(null)
 function focusNavSearch() {
@@ -310,10 +340,12 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
 
         <!-- Nav search (desktop) — `/` focuses this input from anywhere via
              handleSlashShortcut. The placeholder copy and route shape match
-             IMPLEMENTATION_PLAN §2.1 / §4.3 (submits to /search?q=…). -->
+             IMPLEMENTATION_PLAN §2.1 / §4.3 (submits to /search?q=…).
+             NavSearchAutocomplete renders a dropdown with recent searches
+             and live media suggestions while the input is focused. -->
         <form
           ref="navSearchFormRef"
-          class="hidden md:flex items-center flex-1 max-w-xs"
+          class="hidden md:flex items-center flex-1 max-w-xs relative"
           @submit.prevent="handleNavSearch"
         >
           <UInput
@@ -324,6 +356,15 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
             class="w-full"
             type="search"
             aria-label="Search media. Press slash to focus from anywhere."
+            @focus="onNavSearchFocus"
+            @blur="onNavSearchBlur"
+          />
+          <NavSearchAutocomplete
+            :query="navSearch"
+            :open="navSearchFocused"
+            @select="onNavSuggestionSelect"
+            @navigate="onNavSuggestionNavigate"
+            @close="navSearchFocused = false"
           />
         </form>
 

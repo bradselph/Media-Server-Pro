@@ -3,6 +3,7 @@ import type { MediaItem, Playlist } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration, formatBytes } from '~/utils/format'
 import { useSavedSearchesApi } from '~/composables/useApiEndpoints'
+import { useRecentSearches } from '~/composables/useRecentSearches'
 
 definePageMeta({ layout: 'default', title: 'Search' })
 
@@ -73,50 +74,12 @@ async function runSearch(q: string) {
 }
 
 // ── Recent searches (checklist §7) ────────────────────────────────────
-const RECENT_KEY = 'msp-recent-searches'
-const RECENT_MAX = 8
-const recent = ref<string[]>([])
-
-function readRecent(): string[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const raw = window.localStorage.getItem(RECENT_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string').slice(0, RECENT_MAX) : []
-  } catch { return [] }
-}
-
-function writeRecent(list: string[]) {
-  if (typeof window === 'undefined') return
-  try { window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX))) }
-  catch { /* quota or disabled storage */ }
-}
-
-function pushRecent(q: string) {
-  const trimmed = q.trim()
-  if (!trimmed) return
-  const next = [trimmed, ...recent.value.filter(r => r.toLowerCase() !== trimmed.toLowerCase())]
-  recent.value = next.slice(0, RECENT_MAX)
-  writeRecent(recent.value)
-}
-
-function removeRecent(q: string) {
-  recent.value = recent.value.filter(r => r !== q)
-  writeRecent(recent.value)
-}
-
-function clearRecent() {
-  recent.value = []
-  writeRecent([])
-}
+const { recent, push: pushRecent, remove: removeRecent, clear: clearRecent } = useRecentSearches()
 
 function applyRecent(q: string) {
   localQuery.value = q
   router.replace({ path: '/search', query: { q } })
 }
-
-onMounted(() => { recent.value = readRecent() })
 
 watch(query, (q) => {
   localQuery.value = q
