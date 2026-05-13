@@ -244,14 +244,13 @@ async function saveCurrentSearch() {
           @click="selectionMode ? toggleSelect(item.id) : undefined"
         >
           <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
-            <img
+            <HoverPreviewImg
+              :media-id="item.id"
               :src="mediaApi.getThumbnailUrl(item.id)"
               :alt="getDisplayTitle(item)"
-              width="320"
-              height="180"
-              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-              loading="lazy"
-              @error="($event.target as HTMLImageElement).style.display='none'"
+              :width="320"
+              :height="180"
+              img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
             />
             <div v-if="selectionMode" class="absolute top-1.5 left-1.5 z-10">
               <div :class="['w-5 h-5 rounded border-2 flex items-center justify-center', selectedIds.has(item.id) ? 'bg-primary border-primary' : 'bg-black/40 border-white/70']">

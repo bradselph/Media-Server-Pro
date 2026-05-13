@@ -27,6 +27,39 @@ const filtered = computed(() => {
   return history.value
 })
 
+type HistoryGroup = { label: string, items: WatchHistoryItem[] }
+
+// Day buckets relative to local midnight. Items with no watched_at fall into
+// "Older" so they still render. Empty buckets are omitted.
+const grouped = computed<HistoryGroup[]>(() => {
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const yesterdayStart = todayStart - 86_400_000
+  const dayOfWeek = now.getDay()
+  const weekStart = todayStart - dayOfWeek * 86_400_000
+
+  const today: WatchHistoryItem[] = []
+  const yesterday: WatchHistoryItem[] = []
+  const earlierThisWeek: WatchHistoryItem[] = []
+  const older: WatchHistoryItem[] = []
+
+  for (const h of filtered.value) {
+    const ts = h.watched_at ? Date.parse(h.watched_at) : NaN
+    if (Number.isNaN(ts)) { older.push(h); continue }
+    if (ts >= todayStart) today.push(h)
+    else if (ts >= yesterdayStart) yesterday.push(h)
+    else if (ts >= weekStart) earlierThisWeek.push(h)
+    else older.push(h)
+  }
+
+  const out: HistoryGroup[] = []
+  if (today.length) out.push({ label: 'Today', items: today })
+  if (yesterday.length) out.push({ label: 'Yesterday', items: yesterday })
+  if (earlierThisWeek.length) out.push({ label: 'Earlier this week', items: earlierThisWeek })
+  if (older.length) out.push({ label: 'Older', items: older })
+  return out
+})
+
 async function load() {
   hasFetched = true
   loading.value = true
@@ -137,22 +170,31 @@ watch(() => authStore.user, (user) => {
       <UButton class="mt-4" label="Browse Media" to="/" variant="outline" />
     </div>
 
-    <!-- History grid -->
-    <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+    <!-- History grid, grouped by day -->
+    <div v-else class="space-y-8">
+      <section
+        v-for="group in grouped"
+        :key="group.label"
+      >
+        <h2 class="text-sm font-semibold text-[var(--text-strong)] mb-3 flex items-center gap-2">
+          {{ group.label }}
+          <span class="text-xs font-mono text-muted">({{ group.items.length }})</span>
+        </h2>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
       <div
-        v-for="item in filtered"
+        v-for="item in group.items"
         :key="item.media_id"
         class="group relative"
       >
         <NuxtLink :to="resumeUrl(item)" class="block">
           <!-- Thumbnail -->
           <div class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
-            <img
+            <HoverPreviewImg
               v-if="!failedThumbs.has(item.media_id)"
+              :media-id="item.media_id"
               :src="thumbUrl(item.media_id)"
               :alt="item.media_name"
-              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-              loading="lazy"
+              img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               @error="failedThumbs.add(item.media_id)"
             />
             <div v-else-if="mediaMap[item.media_id]?.type === 'audio'" class="w-full h-full flex items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
@@ -210,6 +252,8 @@ watch(() => authStore.user, (user) => {
           <UIcon name="i-lucide-x" class="size-3.5 text-white" />
         </button>
       </div>
+        </div>
+      </section>
     </div>
 
     <!-- Clear all confirmation -->

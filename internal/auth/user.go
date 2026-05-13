@@ -99,6 +99,7 @@ func defaultUserPreferences() models.UserPreferences {
 		ShowBufferBar:        true,
 		DownloadPrompt:       true,
 		AutoplaySimilar:      true,
+		AccentHue:            220,
 	}
 }
 

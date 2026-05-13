@@ -69,6 +69,7 @@ var tableDefs = []struct {
 			filter_media_type     VARCHAR(50),
 			custom_eq_presets     JSON,
 			autoplay_similar      BOOLEAN      NOT NULL DEFAULT TRUE,
+			accent_hue            INT          NOT NULL DEFAULT 220,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"sessions", `
@@ -522,6 +523,23 @@ var tableDefs = []struct {
 			last_seen_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
 			INDEX idx_saved_search_user (user_id)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	{"media_reports", `
+		CREATE TABLE IF NOT EXISTS media_reports (
+			id           VARCHAR(64)  PRIMARY KEY,
+			media_id     VARCHAR(255) NOT NULL,
+			reporter_id  VARCHAR(255) NOT NULL DEFAULT '',
+			reason       VARCHAR(64)  NOT NULL DEFAULT 'other',
+			notes        TEXT,
+			status       VARCHAR(32)  NOT NULL DEFAULT 'open',
+			created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+			resolved_at  TIMESTAMP    NULL,
+			resolved_by  VARCHAR(255) NOT NULL DEFAULT '',
+			ip_address   VARCHAR(45)  NOT NULL DEFAULT '',
+			INDEX idx_media_reports_media    (media_id),
+			INDEX idx_media_reports_status   (status),
+			INDEX idx_media_reports_reporter (reporter_id),
+			INDEX idx_media_reports_created  (created_at)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 		{"smart_playlists", `
 			CREATE TABLE IF NOT EXISTS smart_playlists (
 				id          VARCHAR(36)  PRIMARY KEY,
@@ -687,6 +705,7 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"user_preferences", "show_buffer_bar", "BOOLEAN NOT NULL DEFAULT TRUE"},
 		{"user_preferences", "download_prompt", "BOOLEAN NOT NULL DEFAULT TRUE"},
 		{"user_preferences", "autoplay_similar", "BOOLEAN NOT NULL DEFAULT TRUE"},
+		{"user_preferences", "accent_hue", "INT NOT NULL DEFAULT 220"},
 		{"playback_positions", "duration", "DOUBLE NOT NULL DEFAULT 0"},
 		{"playback_positions", "progress", "FLOAT NOT NULL DEFAULT 0"},
 		{"analytics_events", "data", "JSON NULL"},

@@ -71,6 +71,19 @@ onMounted(() => {
   if (saved) document.documentElement.style.setProperty('--accent-hue', saved)
 })
 
+// Once the user is hydrated, adopt the server-stored accent hue if it
+// differs from what's in localStorage (e.g. a fresh device). Also mirror
+// the server value into localStorage so the next reload paints with no
+// flash.
+watch(() => authStore.user?.preferences?.accent_hue, (hue) => {
+  if (hue === undefined || hue === null) return
+  if (typeof window === 'undefined') return
+  const stored = Number(localStorage.getItem('msp-accent-hue'))
+  if (Number.isFinite(stored) && stored === hue) return
+  document.documentElement.style.setProperty('--accent-hue', String(hue))
+  localStorage.setItem('msp-accent-hue', String(hue))
+}, { immediate: true })
+
 useHead({
   title: computed(() => {
     const pageTitle = route.meta.title as string | undefined

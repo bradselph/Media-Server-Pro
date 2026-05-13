@@ -75,14 +75,14 @@ function getGradientStyle(id: string): string {
               class="absolute inset-0"
               :style="{ background: getGradientStyle(s.media_id) }"
             />
-            <img
+            <HoverPreviewImg
               v-if="!failedIds?.has(s.media_id)"
+              :media-id="s.media_id"
               :src="mediaApi.getThumbnailUrl(s.media_id)"
               :alt="getDisplayTitle(s)"
-              width="320"
-              height="180"
-              class="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-              loading="lazy"
+              :width="320"
+              :height="180"
+              img-class="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               @error="emit('thumbnail-error', s.media_id)"
             />
           </template>

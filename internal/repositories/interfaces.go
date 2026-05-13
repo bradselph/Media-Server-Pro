@@ -662,3 +662,27 @@ type APITokenRecord struct {
 	ExpiresAt  *time.Time // nil means no expiry
 	CreatedAt  time.Time
 }
+
+// MediaReportRepository persists user-submitted moderation reports on
+// individual media items.
+type MediaReportRepository interface {
+	Create(ctx context.Context, rec *MediaReportRecord) error
+	List(ctx context.Context, status string, limit, offset int) ([]*MediaReportRecord, error)
+	UpdateStatus(ctx context.Context, id, status, resolvedBy string) error
+	CountByStatus(ctx context.Context, status string) (int64, error)
+}
+
+// MediaReportRecord captures one report. Status values: "open",
+// "resolved", "dismissed". ReporterID is empty for guests.
+type MediaReportRecord struct {
+	ID          string
+	MediaID     string
+	ReporterID  string
+	Reason      string
+	Notes       string
+	Status      string
+	CreatedAt   time.Time
+	ResolvedAt  *time.Time
+	ResolvedBy  string
+	IPAddress   string
+}

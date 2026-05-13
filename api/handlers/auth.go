@@ -504,6 +504,7 @@ func applyPreferencesPatch(prefs *models.UserPreferences, m map[string]any) {
 	setBoolPref(m, "show_buffer_bar", &prefs.ShowBufferBar)
 	setBoolPref(m, "download_prompt", &prefs.DownloadPrompt)
 	setBoolPref(m, "autoplay_similar", &prefs.AutoplaySimilar)
+	setClampedIntPref(m, "accent_hue", &prefs.AccentHue, 0, 360)
 }
 
 // GetWatchHistory returns the current user's watch history

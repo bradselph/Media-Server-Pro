@@ -155,6 +155,10 @@ type UserPreferences struct {
 	// for logged-in users (set in defaultUserPreferences) so the session
 	// keeps rolling without explicit opt-in.
 	AutoplaySimilar bool `json:"autoplay_similar" db:"autoplay_similar" gorm:"not null;default:true"`
+	// AccentHue (design plan §6.5): user-chosen UI accent in degrees on the
+	// OKLCH wheel. Persisted server-side so the choice follows the user
+	// across devices; the frontend mirrors to localStorage for first-paint.
+	AccentHue int `json:"accent_hue" db:"accent_hue" gorm:"not null;default:220"`
 }
 
 // TableName specifies the table name for GORM

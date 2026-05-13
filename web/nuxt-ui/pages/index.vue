@@ -1025,14 +1025,13 @@ onUnmounted(() => {
               class="group block"
             >
               <div class="relative aspect-video rounded-lg overflow-hidden bg-muted media-card-lift scanline-thumb">
-                <img
+                <HoverPreviewImg
+                  :media-id="item.id"
                   :src="mediaApi.getThumbnailUrl(item.id)"
                   :alt="getDisplayTitle(item)"
-                  width="320"
-                  height="180"
-                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                  loading="lazy"
-                  @error="($event.target as HTMLImageElement).style.display='none'"
+                  :width="320"
+                  :height="180"
+                  img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 />
                 <div v-if="item.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
                   {{ formatDuration(item.duration) }}
@@ -1068,14 +1067,14 @@ onUnmounted(() => {
             class="group shrink-0 w-40"
           >
             <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
-              <img
+              <HoverPreviewImg
                 v-if="r.thumbnail_url"
+                :media-id="r.id"
                 :src="r.thumbnail_url"
                 :alt="getDisplayTitle(r)"
-                width="320"
-                height="180"
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                loading="lazy"
+                :width="320"
+                :height="180"
+                img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
@@ -1112,14 +1111,14 @@ onUnmounted(() => {
             class="group shrink-0 w-40"
           >
             <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
-              <img
+              <HoverPreviewImg
                 v-if="r.thumbnail_url"
+                :media-id="r.id"
                 :src="r.thumbnail_url"
                 :alt="getDisplayTitle(r)"
-                width="320"
-                height="180"
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                loading="lazy"
+                :width="320"
+                :height="180"
+                img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
                 <UIcon name="i-lucide-film" class="size-6 text-muted" />
@@ -1421,13 +1420,7 @@ onUnmounted(() => {
     />
 
     <!-- Loading -->
-    <div v-if="loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4">
-      <div
-        v-for="n in 12"
-        :key="n"
-        class="aspect-video rounded-lg bg-muted animate-pulse"
-      />
-    </div>
+    <MediaCardSkeleton v-if="loading" :count="12" />
 
     <!-- Grid view -->
     <div

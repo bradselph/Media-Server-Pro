@@ -183,6 +183,8 @@ type Handler struct {
 	shutdownFunc        func()
 	deletionRequests    repositories.DataDeletionRequestRepository
 	deletionRequestsMu  sync.Mutex // guards lazy init of deletionRequests
+	mediaReports        repositories.MediaReportRepository
+	mediaReportsMu      sync.Mutex // guards lazy init of mediaReports
 	viewCooldown        sync.Map      // key: "userID|mediaID" → value: time.Time of last counted view
 	viewCooldownStop    chan struct{}  // closed to stop the background sweeper goroutine
 	regTokens           sync.Map      // key: token string → value: time.Time issued; single-use, 15-min TTL

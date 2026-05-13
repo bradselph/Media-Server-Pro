@@ -270,6 +270,11 @@ export function useMediaApi() {
             const sourcePart = source ? `&source=${encodeURIComponent(source)}` : ''
             return `/remote/stream?url=${encodeURIComponent(url)}${sourcePart}`
         },
+        submitReport: (id: string, body: { reason: string; notes?: string }) =>
+            api.post<{ id: string; status: string; created_at: string }>(
+                `/api/media/${encodeURIComponent(id)}/report`,
+                body,
+            ),
     }
 }
 

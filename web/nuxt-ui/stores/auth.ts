@@ -41,6 +41,7 @@ function defaultPreferences(): UserPreferences {
         show_buffer_bar: true,
         download_prompt: true,
         autoplay_similar: true,
+        accent_hue: 220,
         // FND-0046: Include custom_eq_presets field (even if undefined) for type consistency
         // between default and server-normalized preferences.
         custom_eq_presets: undefined,
