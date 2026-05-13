@@ -291,8 +291,28 @@ async function loadRecommendations() {
 const resumePositions = ref<Record<string, number>>({})
 
 async function loadResumePositions() {
-  if (!authStore.isLoggedIn || continueWatching.value.length === 0) return
-  const ids = continueWatching.value.slice(0, 5).map(s => s.media_id).filter(Boolean)
+  if (!authStore.isLoggedIn) return
+  // Fetch positions for every suggestion row in a single batch so the
+  // recommendation cards can also surface progress / Watched markers.
+  // Deduplicate IDs across rows and cap at the per-request budget the
+  // backend accepts.
+  const seen = new Set<string>()
+  const ids: string[] = []
+  // Suggestion uses media_id; RecentItem uses id — normalise per row.
+  type Row = { media_id?: string; id?: string }
+  function pushId(s: Row) {
+    const id = s.media_id ?? s.id ?? ''
+    if (!id || seen.has(id)) return
+    seen.add(id)
+    ids.push(id)
+  }
+  for (const row of [continueWatching.value, trending.value, recommended.value]) {
+    for (const s of row) { pushId(s as Row); if (ids.length >= 120) break }
+    if (ids.length >= 120) break
+  }
+  if (ids.length < 120) {
+    for (const s of recentlyAdded.value) { pushId(s as Row); if (ids.length >= 120) break }
+  }
   if (ids.length === 0) return
   try {
     const r = await playbackApi.getBatchPositions(ids)
@@ -300,6 +320,26 @@ async function loadResumePositions() {
     resumePositions.value = r?.positions ?? {}
   } catch { /* non-critical */ }
 }
+
+// Derived map of mediaId → progress fraction [0..1] for every suggestion
+// row that has a known position and duration. Used by RecommendationRow
+// to render the same progress bar / Watched pill pair as the home grid.
+const suggestionProgress = computed<Record<string, number>>(() => {
+  const out: Record<string, number> = {}
+  type Row = { media_id?: string; id?: string; duration?: number }
+  const rows: Row[] = [
+    ...continueWatching.value,
+    ...trending.value,
+    ...recommended.value,
+  ]
+  for (const s of rows) {
+    const id = s.media_id ?? s.id ?? ''
+    const pos = id ? resumePositions.value[id] : undefined
+    const dur = s.duration ?? 0
+    if (id && pos && dur > 0) out[id] = pos / dur
+  }
+  return out
+})
 
 // Resume-as-hero selection. Pick the most-recent in-progress item that is
 // neither too early (< 30s — user probably just opened it) nor too late
@@ -931,6 +971,7 @@ onUnmounted(() => {
         :items="continueWatching"
         :failed-ids="failedSuggestions"
         :loading="recsLoading"
+        :progress="suggestionProgress"
         @thumbnail-error="onSuggestionThumbnailError"
       />
 
@@ -990,6 +1031,7 @@ onUnmounted(() => {
         :items="trending"
         :failed-ids="failedSuggestions"
         :loading="recsLoading"
+        :progress="suggestionProgress"
         to="/categories"
         @thumbnail-error="onSuggestionThumbnailError"
       />
@@ -1002,6 +1044,7 @@ onUnmounted(() => {
         :items="recommended"
         :failed-ids="failedSuggestions"
         :loading="recsLoading"
+        :progress="suggestionProgress"
         to="/"
         @thumbnail-error="onSuggestionThumbnailError"
       />

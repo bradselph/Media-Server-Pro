@@ -13,6 +13,11 @@ const props = defineProps<{
   // cards instead of being hidden — gives the home page a stable layout
   // during the initial /api/suggestions/* fan-out.
   loading?: boolean
+  // Optional map of mediaId → progress in [0..1]. When provided, cards
+  // surface the same progress bar / Watched pill pair as the main grid.
+  // Passing a partial map is fine; missing IDs just don't render the
+  // indicator.
+  progress?: Record<string, number>
 }>()
 
 const emit = defineEmits<{
@@ -108,6 +113,24 @@ function getGradientStyle(id: string): string {
           <!-- Duration badge -->
           <div v-if="s.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
             {{ formatDuration(s.duration) }}
+          </div>
+          <!-- Progress / Watched indicator (parity with home grid) -->
+          <div
+            v-if="progress?.[s.media_id] && (progress?.[s.media_id] ?? 0) < 0.9"
+            class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"
+          >
+            <div
+              class="h-full bg-primary"
+              :style="{ width: `${Math.min(100, Math.round((progress?.[s.media_id] ?? 0) * 100))}%` }"
+            />
+          </div>
+          <div
+            v-if="(progress?.[s.media_id] ?? 0) >= 0.9"
+            class="absolute bottom-1 left-1 flex items-center gap-1 bg-emerald-600/85 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm"
+            :title="`Watched (${Math.round((progress?.[s.media_id] ?? 0) * 100)}%)`"
+          >
+            <UIcon name="i-lucide-check" class="size-3" />
+            <span>Watched</span>
           </div>
         </div>
         <p class="text-xs font-semibold truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(s)">{{ getDisplayTitle(s) }}</p>
