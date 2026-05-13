@@ -4,6 +4,7 @@ import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration, formatBytes } from '~/utils/format'
 import { useSavedSearchesApi } from '~/composables/useApiEndpoints'
 import { useRecentSearches } from '~/composables/useRecentSearches'
+import { highlightMatch } from '~/utils/highlight'
 
 definePageMeta({ layout: 'default', title: 'Search' })
 
@@ -380,11 +381,14 @@ async function saveCurrentSearch() {
               <span>Watched</span>
             </div>
           </div>
-          <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
-            {{ getDisplayTitle(item) }}
-          </p>
+          <p
+            class="text-xs font-medium truncate group-hover:text-primary transition-colors"
+            :title="getDisplayTitle(item)"
+            v-html="highlightMatch(getDisplayTitle(item), query)"
+          />
           <p class="text-[10px] text-muted truncate">
-            {{ item.category || item.type }}<span v-if="item.size"> · {{ formatBytes(item.size) }}</span>
+            <span v-html="highlightMatch(item.category || item.type, query)" />
+            <span v-if="item.size"> · {{ formatBytes(item.size) }}</span>
           </p>
         </component>
       </div>
