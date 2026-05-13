@@ -18,6 +18,7 @@ const items = ref<CategoryBrowseItem[]>([])
 const totalItems = ref(0)
 const selectedCategory = ref<string>((route.query.category as string) || '')
 const loading = ref(false)
+const statsLoading = ref(true)
 const error = ref('')
 const ITEMS_PER_PAGE = 60
 const categoryPage = ref(1)
@@ -34,10 +35,13 @@ function gradientFor(cat: string) {
 }
 
 async function loadStats() {
+  statsLoading.value = true
   try {
     stats.value = await browseApi.getStats()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load categories', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    statsLoading.value = false
   }
 }
 
@@ -124,10 +128,23 @@ watch(() => authStore.user, (user) => {
       <h1 class="text-xl font-semibold">Browse by Category</h1>
     </div>
 
+    <!-- Tile skeleton while the initial /categories/stats request is in flight -->
+    <div
+      v-if="statsLoading && !stats"
+      class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8"
+      aria-hidden="true"
+    >
+      <div
+        v-for="n in 8"
+        :key="n"
+        class="h-[120px] rounded-xl bg-elevated/70 animate-pulse"
+      />
+    </div>
+
     <!-- Category tiles — gradient swatch + faded icon, item count, type label.
          The 220×120 ratio comes from the prototype; we let CSS grid scale
          tiles to fill the row on smaller viewports. -->
-    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8">
+    <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8">
       <button
         v-for="[cat, count] in availableCategories"
         :key="cat"

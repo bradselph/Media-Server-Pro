@@ -61,7 +61,16 @@ export function normalizePreferences(input: unknown): UserPreferences {
         show_buffer_bar: asBoolean(src.show_buffer_bar, true),
         download_prompt: asBoolean(src.download_prompt, true),
         autoplay_similar: asBoolean(src.autoplay_similar, true),
+        accent_hue: clampHue(asNumber(src.accent_hue, 220)),
     }
+}
+
+function clampHue(n: number): number {
+    if (!Number.isFinite(n)) return 220
+    const r = Math.round(n)
+    if (r < 0) return 0
+    if (r > 360) return 360
+    return r
 }
 
 // Only send user-settable preference fields to prevent sending internal flags
@@ -72,7 +81,7 @@ const PREF_PATCH_KEYS: (keyof UserPreferences)[] = [
     'filter_category', 'filter_media_type', 'custom_eq_presets',
     'show_continue_watching', 'show_recommended', 'show_trending',
     'skip_interval', 'shuffle_enabled', 'show_buffer_bar', 'download_prompt',
-    'autoplay_similar',
+    'autoplay_similar', 'accent_hue',
 ]
 
 export function toPreferencesPatch(input: Partial<UserPreferences>): Record<string, unknown> {

@@ -50,6 +50,9 @@ export interface UserPreferences {
     // Retention plan B.3 — when true (default), the player will auto-load
     // a similar item when the current item ends and the queue is empty.
     autoplay_similar: boolean
+    // Design plan §6.5 — user-chosen accent hue (degrees, 0-360) persisted
+    // server-side so the choice follows the user across devices.
+    accent_hue: number
 }
 
 export interface User {

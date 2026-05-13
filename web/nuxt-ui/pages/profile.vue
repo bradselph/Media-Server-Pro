@@ -17,11 +17,26 @@ const ACCENT_PRESETS = [
 ]
 const accentHue = ref(220)
 
+// Debounce server commits so dragging the slider doesn't fire a request
+// per pixel. Local DOM + localStorage updates are still instant.
+let accentHueCommitTimer: ReturnType<typeof setTimeout> | null = null
+const ACCENT_HUE_COMMIT_DEBOUNCE_MS = 350
+
 function applyAccentHue(hue: number) {
-  if (import.meta.client) {
-    document.documentElement.style.setProperty('--accent-hue', String(hue))
-    localStorage.setItem(ACCENT_HUE_KEY, String(hue))
-  }
+  if (!import.meta.client) return
+  const clamped = Math.max(0, Math.min(360, Math.round(hue)))
+  document.documentElement.style.setProperty('--accent-hue', String(clamped))
+  localStorage.setItem(ACCENT_HUE_KEY, String(clamped))
+  // Keep the prefs ref in sync so "Save Preferences" persists the latest hue.
+  if (prefs.value) prefs.value.accent_hue = clamped
+  // Debounced commit to API so the choice follows the user across devices.
+  if (accentHueCommitTimer) clearTimeout(accentHueCommitTimer)
+  accentHueCommitTimer = setTimeout(() => {
+    accentHueCommitTimer = null
+    updatePreferences({ accent_hue: clamped }).then((saved) => {
+      if (authStore.user) authStore.user.preferences = { ...saved }
+    }).catch(() => { /* non-fatal: localStorage still has the value */ })
+  }, ACCENT_HUE_COMMIT_DEBOUNCE_MS)
 }
 
 onMounted(() => {
@@ -149,6 +164,8 @@ async function loadPrefs() {
     if (!profileMounted) return
     if (!p.default_quality) p.default_quality = 'auto'
     prefs.value = p
+    // Seed the slider from server-stored accent hue if present.
+    if (typeof p.accent_hue === 'number') accentHue.value = p.accent_hue
   } catch (e: unknown) {
     if (!profileMounted) return
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load preferences', color: 'error', icon: 'i-lucide-alert-circle' })

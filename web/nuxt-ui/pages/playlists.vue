@@ -597,8 +597,19 @@ onMounted(() => {
 
       <!-- Playlist grid -->
       <template v-else>
-        <div v-if="loading" class="flex justify-center py-12">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
+        <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 gap-4" aria-hidden="true">
+          <div
+            v-for="n in 6"
+            :key="n"
+            class="rounded-xl border border-default p-4 space-y-3"
+          >
+            <div class="flex items-center gap-2">
+              <div class="size-6 rounded bg-elevated/70 animate-pulse" />
+              <div class="h-4 w-1/2 rounded bg-elevated/70 animate-pulse" />
+            </div>
+            <div class="h-3 w-3/4 rounded bg-elevated/50 animate-pulse" />
+            <div class="h-3 w-1/3 rounded bg-elevated/50 animate-pulse" />
+          </div>
         </div>
         <div v-else-if="playlists.length === 0" class="text-center py-12 text-muted">
           <UIcon name="i-lucide-list-music" class="size-12 mx-auto mb-3 opacity-30" />

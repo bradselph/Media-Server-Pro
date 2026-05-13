@@ -516,6 +516,11 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.DELETE("/preferences/saved_searches/:id", requireAuth(), h.DeleteSavedSearch)
 	api.POST("/preferences/saved_searches/:id/seen", requireAuth(), h.TouchSavedSearch)
 
+	// Media moderation report submission (design plan §5.3). Authenticated
+	// users attach their userID; guests are recorded by IP only. The admin
+	// moderation list lives under /api/admin/media/reports.
+	api.POST("/media/:id/report", requireAuth(), h.SubmitMediaReport)
+
 	// User password change (protected)
 	api.POST("/auth/change-password", requireAuth(), h.ChangePassword)
 
@@ -752,6 +757,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.POST("/media/:id/thumbnail", h.UploadCustomThumbnail)
 	adminGrp.POST("/thumbnails/cleanup", h.CleanupThumbnails)
 	adminGrp.GET("/thumbnails/stats", h.GetThumbnailStats)
+
+	// Moderation: media reports submitted by users (design plan §5.3).
+	adminGrp.GET("/media/reports", h.ListMediaReports)
+	adminGrp.PATCH("/media/reports/:id", h.UpdateMediaReportStatus)
 
 	// Auto-tag rules
 	adminGrp.GET("/auto-tag-rules", h.ListAutoTagRules)

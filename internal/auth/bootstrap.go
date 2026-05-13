@@ -116,6 +116,7 @@ func (m *Module) ensureAdminUserRecord() error {
 			ShowBufferBar:        true,
 			DownloadPrompt:       true,
 			AutoplaySimilar:      true,
+			AccentHue:            220,
 		},
 		WatchHistory: make([]models.WatchHistoryItem, 0),
 	}

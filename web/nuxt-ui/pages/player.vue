@@ -269,12 +269,13 @@ const REPORT_REASONS = [
 ] as const
 
 async function submitReport() {
-  // Stub: report submission endpoint isn't wired yet. We surface a toast
-  // and close the modal so the UX is complete; once the backend ships a
-  // /api/media/:id/report endpoint we'll POST here.
+  if (!mediaId.value || reportSubmitting.value) return
   reportSubmitting.value = true
-  setTimeout(() => {
-    reportSubmitting.value = false
+  try {
+    await mediaApi.submitReport(mediaId.value, {
+      reason: reportReason.value,
+      notes: reportNotes.value.trim(),
+    })
     reportModalOpen.value = false
     reportReason.value = 'inappropriate'
     reportNotes.value = ''
@@ -284,7 +285,18 @@ async function submitReport() {
       color: 'success',
       icon: 'i-lucide-check',
     })
-  }, 250)
+  }
+  catch (e: unknown) {
+    toast.add({
+      title: 'Could not submit report',
+      description: e instanceof Error ? e.message : 'Please try again later.',
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    })
+  }
+  finally {
+    reportSubmitting.value = false
+  }
 }
 
 // Graphic Equalizer (Web Audio API)

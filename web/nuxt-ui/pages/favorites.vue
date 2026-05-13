@@ -92,12 +92,12 @@ watch(() => authStore.user, (user) => {
       >
         <NuxtLink :to="`/player?id=${encodeURIComponent(fav.media_id)}`" class="block">
           <div class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
-            <img
+            <HoverPreviewImg
               v-if="mediaMap[fav.media_id] && !failedThumbnails.has(fav.media_id)"
+              :media-id="fav.media_id"
               :src="getThumbnailUrl(mediaMap[fav.media_id])!"
               :alt="getDisplayTitle(mediaMap[fav.media_id])"
-              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-              loading="lazy"
+              img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               @error="failedThumbnails.add(fav.media_id)"
             />
             <div v-else-if="mediaMap[fav.media_id]?.type === 'audio'" class="w-full h-full flex items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
