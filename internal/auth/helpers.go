@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -72,4 +73,56 @@ func (m *Module) GetActiveSessions(username string) []*models.Session {
 		}
 	}
 	return sessions
+}
+
+// GetActiveSessionsByUserID returns all active sessions belonging to the given
+// user, looking in both the regular and admin in-memory caches so admin users
+// can also enumerate their devices. Returns copies.
+func (m *Module) GetActiveSessionsByUserID(userID string) []*models.Session {
+	m.sessionsMu.RLock()
+	defer m.sessionsMu.RUnlock()
+
+	sessions := make([]*models.Session, 0)
+	for _, session := range m.sessions {
+		if session.UserID == userID && !session.IsExpired() {
+			tmp := *session
+			sessions = append(sessions, &tmp)
+		}
+	}
+	for _, admin := range m.adminSessions {
+		if admin.UserID == userID && !admin.IsExpired() {
+			tmp := admin.Session
+			sessions = append(sessions, &tmp)
+		}
+	}
+	return sessions
+}
+
+// RevokeUserSession deletes the named session if it belongs to userID. Returns
+// ErrSessionNotFound when the session does not exist or does not belong to the
+// caller — handlers must NOT distinguish between the two so a user cannot probe
+// other users' session IDs.
+func (m *Module) RevokeUserSession(ctx context.Context, userID, sessionID string) error {
+	m.sessionsMu.RLock()
+	var owner string
+	if s, ok := m.sessions[sessionID]; ok {
+		owner = s.UserID
+	} else if a, ok := m.adminSessions[sessionID]; ok {
+		owner = a.UserID
+	}
+	m.sessionsMu.RUnlock()
+	if owner == "" || owner != userID {
+		return ErrSessionNotFound
+	}
+	if err := m.Logout(ctx, sessionID); err != nil {
+		if err == ErrSessionNotFound {
+			// Already gone from cache; try admin path for completeness.
+			if adminErr := m.LogoutAdmin(ctx, sessionID); adminErr != nil {
+				return adminErr
+			}
+			return nil
+		}
+		return err
+	}
+	return nil
 }

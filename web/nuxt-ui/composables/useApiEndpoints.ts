@@ -1127,6 +1127,25 @@ export function useAPITokensApi() {
     }
 }
 
+// ── My sessions (checklist §9) ────────────────────────────────────────────────
+
+export interface MySession {
+    id: string
+    ip_address: string
+    user_agent: string
+    created_at: number
+    last_activity: number
+    expires_at: number
+    is_current: boolean
+}
+
+export function useMySessionsApi() {
+    return {
+        list: () => api.get<MySession[]>('/api/auth/sessions'),
+        revoke: (id: string) => api.delete<void>(`/api/auth/sessions/${encodeURIComponent(id)}`),
+    }
+}
+
 // ── Chapters ──────────────────────────────────────────────────────────────────
 
 export function useChaptersApi() {

@@ -3,8 +3,8 @@ import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, 
 import { THEMES, type ThemeValue } from '~/stores/theme'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatRelativeDate, formatDuration } from '~/utils/format'
-import { useAPITokensApi, useRatingsApi, useSuggestionsApi, useSavedSearchesApi } from '~/composables/useApiEndpoints'
-import type { SavedSearch } from '~/composables/useApiEndpoints'
+import { useAPITokensApi, useRatingsApi, useSuggestionsApi, useSavedSearchesApi, useMySessionsApi } from '~/composables/useApiEndpoints'
+import type { SavedSearch, MySession } from '~/composables/useApiEndpoints'
 
 const ACCENT_HUE_KEY = 'msp-accent-hue'
 const ACCENT_PRESETS = [
@@ -92,6 +92,7 @@ const { getUsage, getPermissions } = useStorageApi()
 const tokensApi = useAPITokensApi()
 const ratingsApi = useRatingsApi()
 const suggestionsApi = useSuggestionsApi()
+const sessionsApi = useMySessionsApi()
 const toast = useToast()
 
 const storageUsage = ref<StorageUsage | null>(null)
@@ -477,10 +478,55 @@ async function revokeToken(id: string) {
   }
 }
 
+// ── Active sessions (checklist §9) ───────────────────────────────────────
+const sessions = ref<MySession[]>([])
+const sessionsLoading = ref(false)
+const sessionRevoking = ref<string | null>(null)
+
+async function loadSessions() {
+  sessionsLoading.value = true
+  try {
+    const result = await sessionsApi.list()
+    if (profileMounted) sessions.value = result ?? []
+  } catch { /* non-critical */ }
+  finally { if (profileMounted) sessionsLoading.value = false }
+}
+
+async function revokeSession(id: string) {
+  sessionRevoking.value = id
+  try {
+    await sessionsApi.revoke(id)
+    sessions.value = sessions.value.filter(s => s.id !== id)
+    toast.add({ title: 'Session signed out', color: 'success', icon: 'i-lucide-check' })
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed to revoke session', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    sessionRevoking.value = null
+  }
+}
+
+// Best-effort User-Agent → device label so the row shows
+// "Chrome on Windows" instead of the raw UA string.
+function describeUserAgent(ua: string): string {
+  if (!ua) return 'Unknown device'
+  const browser = /Edg\//.test(ua) ? 'Edge'
+    : /Firefox\//.test(ua) ? 'Firefox'
+    : /Chrome\//.test(ua) ? 'Chrome'
+    : /Safari\//.test(ua) ? 'Safari'
+    : 'Browser'
+  const os = /Windows/.test(ua) ? 'Windows'
+    : /Android/.test(ua) ? 'Android'
+    : /iPhone|iPad|iOS/.test(ua) ? 'iOS'
+    : /Mac OS X|Macintosh/.test(ua) ? 'macOS'
+    : /Linux/.test(ua) ? 'Linux'
+    : 'Unknown'
+  return `${browser} on ${os}`
+}
+
 let hasFetched = false
 function loadAll() {
   hasFetched = true
-  loadPrefs(); loadHistory(); loadStorageUsage(); loadTokens(); loadMyRatings(); loadSavedSearches()
+  loadPrefs(); loadHistory(); loadStorageUsage(); loadTokens(); loadMyRatings(); loadSavedSearches(); loadSessions()
 }
 onMounted(() => { if (!authStore.isLoading && authStore.user) loadAll() })
 watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
@@ -902,6 +948,48 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
           <UButton color="error" label="Clear All" @click="doClearHistory" />
         </template>
       </UModal>
+
+      <!-- Active Sessions (checklist §9) -->
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2 font-semibold">
+            <UIcon name="i-lucide-laptop" class="size-4" />
+            Active Sessions
+          </div>
+        </template>
+        <p class="text-sm text-muted mb-3">Devices currently signed into your account. Sign out of any device that you don't recognize.</p>
+        <div v-if="sessionsLoading" class="flex justify-center py-4">
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        </div>
+        <div v-else-if="sessions.length === 0" class="text-sm text-muted py-2">No active sessions.</div>
+        <div v-else class="divide-y divide-default">
+          <div v-for="s in sessions" :key="s.id" class="flex items-center justify-between py-3 gap-3">
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium flex items-center gap-2">
+                {{ describeUserAgent(s.user_agent) }}
+                <UBadge v-if="s.is_current" label="This device" color="success" variant="subtle" size="xs" />
+              </p>
+              <p class="text-xs text-muted">
+                <span v-if="s.ip_address">IP {{ s.ip_address }} · </span>
+                Last active {{ formatRelativeDate(new Date(s.last_activity * 1000).toISOString()) }}
+                · Started {{ new Date(s.created_at * 1000).toLocaleString() }}
+              </p>
+            </div>
+            <UButton
+              v-if="!s.is_current"
+              :loading="sessionRevoking === s.id"
+              icon="i-lucide-log-out"
+              size="xs"
+              variant="ghost"
+              color="error"
+              :aria-label="`Sign out ${describeUserAgent(s.user_agent)}`"
+              label="Sign out"
+              @click="revokeSession(s.id)"
+            />
+            <span v-else class="text-xs text-muted italic">Use Logout to end this session</span>
+          </div>
+        </div>
+      </UCard>
 
       <!-- API Tokens -->
       <UCard v-if="authStore.isAdmin">
