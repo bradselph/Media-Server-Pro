@@ -243,8 +243,13 @@ async function loadGeneralSuggestions() {
   } catch { /* non-critical */ }
 }
 
+// Recommendation rows render skeletons during the initial fan-out so the
+// home layout stays stable instead of popping rows in one by one.
+const recsLoading = ref(false)
+
 async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
+  recsLoading.value = true
   try {
     const [cw, tr, rec, recent, newSince, deck] = await Promise.allSettled([
       suggestionsApi.getContinueWatching(20),
@@ -277,6 +282,7 @@ async function loadRecommendations() {
     // playback position itself — it's derived from /api/playback/batch.
     void loadResumePositions()
   } catch { /* non-critical */ }
+  finally { if (indexMounted) recsLoading.value = false }
 }
 
 // Resume-as-hero — playback positions for continueWatching items so the
@@ -923,6 +929,7 @@ onUnmounted(() => {
         icon="i-lucide-play-circle"
         :items="continueWatching"
         :failed-ids="failedSuggestions"
+        :loading="recsLoading"
         @thumbnail-error="onSuggestionThumbnailError"
       />
 
@@ -981,6 +988,7 @@ onUnmounted(() => {
         icon="i-lucide-flame"
         :items="trending"
         :failed-ids="failedSuggestions"
+        :loading="recsLoading"
         to="/categories"
         @thumbnail-error="onSuggestionThumbnailError"
       />
@@ -992,6 +1000,7 @@ onUnmounted(() => {
         icon="i-lucide-thumbs-up"
         :items="recommended"
         :failed-ids="failedSuggestions"
+        :loading="recsLoading"
         to="/"
         @thumbnail-error="onSuggestionThumbnailError"
       />

@@ -3,12 +3,16 @@ import type { Suggestion } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration } from '~/utils/format'
 
-defineProps<{
+const props = defineProps<{
   title: string
   icon: string
   items: Suggestion[]
   failedIds?: Set<string>
   to?: string
+  // When true (and items is empty), the row renders skeleton placeholder
+  // cards instead of being hidden — gives the home page a stable layout
+  // during the initial /api/suggestions/* fan-out.
+  loading?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -38,7 +42,22 @@ function getGradientStyle(id: string): string {
 </script>
 
 <template>
-  <div v-if="items.length > 0" class="space-y-3">
+  <div v-if="loading && items.length === 0" class="space-y-3" aria-busy="true">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
+        <UIcon :name="icon" class="size-4 text-[var(--accent)]" />
+        {{ title }}
+      </h2>
+    </div>
+    <div class="flex gap-3 overflow-hidden pb-3" aria-hidden="true">
+      <div v-for="n in 6" :key="n" class="shrink-0 w-52 space-y-2">
+        <div class="aspect-video rounded-lg bg-elevated/60 animate-pulse" />
+        <div class="h-3 w-3/4 rounded bg-elevated/60 animate-pulse" />
+        <div class="h-2.5 w-1/3 rounded bg-elevated/40 animate-pulse" />
+      </div>
+    </div>
+  </div>
+  <div v-else-if="items.length > 0" class="space-y-3">
     <div class="flex items-center justify-between">
       <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
         <UIcon :name="icon" class="size-4 text-[var(--accent)]" />
