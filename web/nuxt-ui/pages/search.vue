@@ -3,6 +3,8 @@ import type { MediaItem, Playlist } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration, formatBytes } from '~/utils/format'
 import { useSavedSearchesApi } from '~/composables/useApiEndpoints'
+import { useRecentSearches } from '~/composables/useRecentSearches'
+import { highlightMatch } from '~/utils/highlight'
 
 definePageMeta({ layout: 'default', title: 'Search' })
 
@@ -10,36 +12,74 @@ const route = useRoute()
 const router = useRouter()
 const mediaApi = useMediaApi()
 const playlistApi = usePlaylistApi()
+const playbackApi = usePlaybackApi()
 const savedSearchesApi = useSavedSearchesApi()
 const authStore = useAuthStore()
 const toast = useToast()
 
 const query = computed(() => (route.query.q as string | undefined)?.trim() ?? '')
 const items = ref<MediaItem[]>([])
+const playbackProgress = ref<Record<string, number>>({})
 const loading = ref(false)
 const error = ref('')
 const localQuery = ref(query.value)
 const lastFetchedFor = ref<string | null>(null)
 
+// Request token discards stale results when the user types again before the
+// previous /api/media response lands — the equivalent of an abort without
+// plumbing AbortController through the api wrapper.
+let searchToken = 0
+
 async function runSearch(q: string) {
+  const token = ++searchToken
   if (!q) {
     items.value = []
     lastFetchedFor.value = ''
     error.value = ''
+    loading.value = false
     return
   }
   loading.value = true
   error.value = ''
   try {
     const res = await mediaApi.list({ search: q, limit: 60 })
+    if (token !== searchToken) return // stale — newer query already in flight
     items.value = res?.items ?? []
     lastFetchedFor.value = q
+    pushRecent(q)
+    // Watched marker — best-effort batch fetch of playback positions for the
+    // visible items so we can render the "Watched" badge / progress bar.
+    if (authStore.isLoggedIn && items.value.length > 0) {
+      const ids = items.value.map(i => i.id)
+      try {
+        const r = await playbackApi.getBatchPositions(ids)
+        if (token !== searchToken) return
+        const positions = r?.positions ?? {}
+        const next: Record<string, number> = {}
+        for (const item of items.value) {
+          const pos = positions[item.id]
+          if (pos && item.duration > 0) next[item.id] = pos / item.duration
+        }
+        playbackProgress.value = next
+      } catch { /* non-critical */ }
+    } else {
+      playbackProgress.value = {}
+    }
   } catch (e: unknown) {
+    if (token !== searchToken) return
     error.value = e instanceof Error ? e.message : 'Search failed'
     items.value = []
   } finally {
-    loading.value = false
+    if (token === searchToken) loading.value = false
   }
+}
+
+// ── Recent searches (checklist §7) ────────────────────────────────────
+const { recent, push: pushRecent, remove: removeRecent, clear: clearRecent } = useRecentSearches()
+
+function applyRecent(q: string) {
+  localQuery.value = q
+  router.replace({ path: '/search', query: { q } })
 }
 
 watch(query, (q) => {
@@ -47,7 +87,33 @@ watch(query, (q) => {
   if (q !== lastFetchedFor.value) runSearch(q)
 }, { immediate: true })
 
+// Debounce while-typing input — pushes to /search?q= 250ms after the user
+// stops typing, which trips the `query` watcher above and fires runSearch.
+const SEARCH_DEBOUNCE_MS = 250
+let inputDebounce: ReturnType<typeof setTimeout> | null = null
+
+watch(localQuery, (next, prev) => {
+  if (next === prev) return
+  if (inputDebounce) clearTimeout(inputDebounce)
+  inputDebounce = setTimeout(() => {
+    inputDebounce = null
+    const q = next.trim()
+    if (q === query.value) return
+    if (!q) {
+      router.replace({ path: '/search', query: {} })
+    }
+    else {
+      router.replace({ path: '/search', query: { q } })
+    }
+  }, SEARCH_DEBOUNCE_MS)
+})
+
+onBeforeUnmount(() => {
+  if (inputDebounce) clearTimeout(inputDebounce)
+})
+
 function submitInline() {
+  if (inputDebounce) { clearTimeout(inputDebounce); inputDebounce = null }
   const q = localQuery.value.trim()
   if (!q) return
   // Push to /search?q= even if we're already there so the URL stays in
@@ -210,9 +276,45 @@ async function saveCurrentSearch() {
     </div>
 
     <!-- States -->
-    <div v-if="!query" class="text-center py-16 text-muted">
-      <UIcon name="i-lucide-search" class="size-10 mb-3 mx-auto opacity-40" />
-      <p>Type a query above and press Enter to search the library.</p>
+    <div v-if="!query" class="space-y-6">
+      <div class="text-center py-10 text-muted">
+        <UIcon name="i-lucide-search" class="size-10 mb-3 mx-auto opacity-40" />
+        <p>Type a query above and press Enter to search the library.</p>
+      </div>
+      <div v-if="recent.length > 0" class="max-w-xl mx-auto">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-sm font-semibold text-default flex items-center gap-1.5">
+            <UIcon name="i-lucide-clock" class="size-4 text-muted" />
+            Recent searches
+          </h2>
+          <button
+            type="button"
+            class="text-xs text-muted hover:text-default transition-colors"
+            @click="clearRecent"
+          >
+            Clear all
+          </button>
+        </div>
+        <ul class="flex flex-wrap gap-2">
+          <li v-for="r in recent" :key="r" class="group flex items-center bg-elevated border border-default rounded-full overflow-hidden">
+            <button
+              type="button"
+              class="px-3 py-1 text-sm hover:text-primary transition-colors"
+              @click="applyRecent(r)"
+            >
+              {{ r }}
+            </button>
+            <button
+              type="button"
+              class="px-2 py-1 text-muted hover:text-error transition-colors opacity-0 group-hover:opacity-100"
+              :aria-label="`Remove ${r} from recent searches`"
+              @click="removeRecent(r)"
+            >
+              <UIcon name="i-lucide-x" class="size-3.5" />
+            </button>
+          </li>
+        </ul>
+      </div>
     </div>
 
     <MediaCardSkeleton v-else-if="loading" :count="10" />
@@ -261,12 +363,32 @@ async function saveCurrentSearch() {
               {{ formatDuration(item.duration) }}
             </div>
             <div v-if="item.is_mature" class="absolute top-1 right-1 bg-black/70 text-white text-[9px] font-bold px-1 rounded">18+</div>
+            <div
+              v-if="playbackProgress[item.id] && (playbackProgress[item.id] ?? 0) < 0.9"
+              class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"
+            >
+              <div
+                class="h-full bg-primary"
+                :style="{ width: `${Math.min(100, Math.round((playbackProgress[item.id] ?? 0) * 100))}%` }"
+              />
+            </div>
+            <div
+              v-if="(playbackProgress[item.id] ?? 0) >= 0.9"
+              class="absolute bottom-1 left-1 flex items-center gap-1 bg-emerald-600/85 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm"
+              :title="`Watched (${Math.round((playbackProgress[item.id] ?? 0) * 100)}%)`"
+            >
+              <UIcon name="i-lucide-check" class="size-3" />
+              <span>Watched</span>
+            </div>
           </div>
-          <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
-            {{ getDisplayTitle(item) }}
-          </p>
+          <p
+            class="text-xs font-medium truncate group-hover:text-primary transition-colors"
+            :title="getDisplayTitle(item)"
+            v-html="highlightMatch(getDisplayTitle(item), query)"
+          />
           <p class="text-[10px] text-muted truncate">
-            {{ item.category || item.type }}<span v-if="item.size"> · {{ formatBytes(item.size) }}</span>
+            <span v-html="highlightMatch(item.category || item.type, query)" />
+            <span v-if="item.size"> · {{ formatBytes(item.size) }}</span>
           </p>
         </component>
       </div>

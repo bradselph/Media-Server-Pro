@@ -763,5 +763,9 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
         </div>
       </UCard>
     </UModal>
+
+    <!-- Moderation reports (design plan §5.3) — surfaces user-submitted
+         reports against media items so admins can resolve or dismiss them. -->
+    <AdminMediaReportsPanel class="mt-6" />
   </div>
 </template>

@@ -8,11 +8,13 @@ definePageMeta({ layout: 'default', title: 'Favorites', middleware: 'auth' })
 
 const favoritesApi = useFavoritesApi()
 const mediaApi = useMediaApi()
+const playbackApi = usePlaybackApi()
 const authStore = useAuthStore()
 const toast = useToast()
 
 const favorites = ref<FavoriteItem[]>([])
 const mediaMap = ref<Record<string, MediaItem>>({})
+const playbackProgress = ref<Record<string, number>>({})
 const loading = ref(true)
 const removing = ref<Set<string>>(new Set())
 const failedThumbnails = reactive(new Set<string>())
@@ -28,6 +30,19 @@ async function load() {
     if (ids.length > 0) {
       const res = await mediaApi.getBatch(ids)
       mediaMap.value = res?.items ?? {}
+      // Watched marker — fetch playback positions for the same set so we can
+      // show a "Watched" badge on items the user has finished. Best-effort.
+      try {
+        const r = await playbackApi.getBatchPositions(ids)
+        const positions = r?.positions ?? {}
+        const next: Record<string, number> = {}
+        for (const id of ids) {
+          const item = mediaMap.value[id]
+          const pos = positions[id]
+          if (item && pos && item.duration > 0) next[id] = pos / item.duration
+        }
+        playbackProgress.value = next
+      } catch { /* non-critical */ }
     }
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed to load favorites', color: 'error', icon: 'i-lucide-alert-circle' })
@@ -112,6 +127,25 @@ watch(() => authStore.user, (user) => {
               class="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1 rounded font-mono"
             >
               {{ formatDuration(mediaMap[fav.media_id]!.duration) }}
+            </div>
+            <!-- Progress bar (in-progress items) -->
+            <div
+              v-if="playbackProgress[fav.media_id] && (playbackProgress[fav.media_id] ?? 0) < 0.9"
+              class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"
+            >
+              <div
+                class="h-full bg-primary"
+                :style="{ width: `${Math.min(100, Math.round((playbackProgress[fav.media_id] ?? 0) * 100))}%` }"
+              />
+            </div>
+            <!-- Watched marker (≥90%, checklist §6) -->
+            <div
+              v-if="(playbackProgress[fav.media_id] ?? 0) >= 0.9"
+              class="absolute bottom-1 left-1 flex items-center gap-1 bg-emerald-600/85 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm"
+              :title="`Watched (${Math.round((playbackProgress[fav.media_id] ?? 0) * 100)}%)`"
+            >
+              <UIcon name="i-lucide-check" class="size-3" />
+              <span>Watched</span>
             </div>
           </div>
           <p class="text-sm font-semibold truncate" :title="mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_id">

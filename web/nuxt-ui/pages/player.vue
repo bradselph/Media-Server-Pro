@@ -155,6 +155,24 @@ function toggleAutoNext() {
   }
 }
 
+// Buffer stall spinner (checklist §6) — flips on when the browser fires
+// `waiting`/`stalled` (video element ran out of buffered data) and back off
+// when `playing` resumes. Distinct from hlsLoading, which only covers HLS
+// manifest/segment fetches before playback starts. Defensive timeout
+// guards against browsers that fire `waiting` and never recover (e.g. seek
+// past end-of-stream): clears the indicator after 8s no matter what.
+const videoStalled = ref(false)
+let stallTimer: ReturnType<typeof setTimeout> | null = null
+function onVideoWaiting() {
+  videoStalled.value = true
+  if (stallTimer) clearTimeout(stallTimer)
+  stallTimer = setTimeout(() => { videoStalled.value = false; stallTimer = null }, 8000)
+}
+function onVideoPlaying() {
+  if (stallTimer) { clearTimeout(stallTimer); stallTimer = null }
+  videoStalled.value = false
+}
+
 // Buffer health bar — fraction of media buffered ahead
 const bufferedFraction = computed(() => {
   const video = videoRef.value
@@ -1063,6 +1081,7 @@ onUnmounted(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   document.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('beforeunload', onBeforeUnload)
+  if (stallTimer) { clearTimeout(stallTimer); stallTimer = null }
 })
 
 function cycleSpeed() {
@@ -1246,6 +1265,10 @@ watch(mediaId, (id, oldId) => {
             @timeupdate="onTimeUpdate"
             @play="onPlayPause(); trackPlay()"
             @pause="onPlayPause(); trackPause()"
+            @waiting="onVideoWaiting"
+            @stalled="onVideoWaiting"
+            @playing="onVideoPlaying"
+            @canplay="onVideoPlaying"
             @ended="onMediaEnded()"
             @error="onVideoError"
             @leavepictureinpicture="onPiPChange"
@@ -1313,6 +1336,20 @@ watch(mediaId, (id, oldId) => {
           <!-- HLS loading overlay -->
           <div v-if="hlsLoading" class="absolute inset-0 flex items-center justify-center bg-black/60">
             <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
+          </div>
+
+          <!-- Buffer-stall spinner — appears mid-playback when the video
+               element runs out of buffered data (e.g. network stutter).
+               Distinct from hlsLoading so it doesn't darken the video; just
+               a centered spinner with no backdrop. -->
+          <div
+            v-if="videoStalled && !hlsLoading"
+            class="absolute inset-0 flex items-center justify-center pointer-events-none"
+            aria-live="polite"
+          >
+            <div class="bg-black/55 rounded-full p-3">
+              <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-white" />
+            </div>
           </div>
 
           <!-- Media info overlay (press I) -->

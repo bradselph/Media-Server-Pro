@@ -26,6 +26,7 @@ import type {
     DailyStats,
     DatabaseStatus,
     DataDeletionRequest,
+    MediaReport,
     DiscoverySuggestion,
     DownloaderDetectResult,
     DownloaderHealth,
@@ -850,6 +851,17 @@ export function useAdminApi() {
                 admin_notes: adminNotes ?? ''
             }),
 
+        // Media moderation reports — design plan §5.3
+        listMediaReports: (status?: string, limit = 50, offset = 0) => {
+            const qs = new URLSearchParams()
+            if (status) qs.set('status', status)
+            qs.set('limit', String(limit))
+            qs.set('offset', String(offset))
+            return api.get<{ reports: MediaReport[]; open_count: number }>(`${base}/media/reports?${qs}`)
+        },
+        updateMediaReportStatus: (id: string, status: 'open' | 'resolved' | 'dismissed') =>
+            api.patch<{ id: string; status: string }>(`${base}/media/reports/${encodeURIComponent(id)}`, { status }),
+
         // Claude admin assistant
         getClaudeConfig: () => api.get<ClaudePublicConfig>(`${base}/claude/config`),
         updateClaudeConfig: (data: Partial<ClaudeConfigUpdate>) =>
@@ -1112,6 +1124,25 @@ export function useAPITokensApi() {
         list: () => api.get<APIToken[]>('/api/auth/tokens'),
         create: (name: string) => api.post<APITokenCreated>('/api/auth/tokens', {name}),
         delete: (id: string) => api.delete<void>(`/api/auth/tokens/${encodeURIComponent(id)}`),
+    }
+}
+
+// ── My sessions (checklist §9) ────────────────────────────────────────────────
+
+export interface MySession {
+    id: string
+    ip_address: string
+    user_agent: string
+    created_at: number
+    last_activity: number
+    expires_at: number
+    is_current: boolean
+}
+
+export function useMySessionsApi() {
+    return {
+        list: () => api.get<MySession[]>('/api/auth/sessions'),
+        revoke: (id: string) => api.delete<void>(`/api/auth/sessions/${encodeURIComponent(id)}`),
     }
 }
 

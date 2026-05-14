@@ -226,7 +226,7 @@ let loadSeq = 0
 // URL deep-link: query params take precedence over saved preferences so that
 // shared / bookmarked URLs open with the exact filters the sender intended.
 const params = reactive({
-  page: 1,
+  page: typeof route.query.page === 'string' ? Math.max(1, Number.parseInt(route.query.page, 10) || 1) : 1,
   limit: authStore.user?.preferences?.items_per_page ?? 24,
   search: typeof route.query.search === 'string' ? route.query.search : '',
   type: typeof route.query.type === 'string' ? route.query.type : (authStore.user?.preferences?.filter_media_type || 'all'),
@@ -243,8 +243,13 @@ async function loadGeneralSuggestions() {
   } catch { /* non-critical */ }
 }
 
+// Recommendation rows render skeletons during the initial fan-out so the
+// home layout stays stable instead of popping rows in one by one.
+const recsLoading = ref(false)
+
 async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
+  recsLoading.value = true
   try {
     const [cw, tr, rec, recent, newSince, deck] = await Promise.allSettled([
       suggestionsApi.getContinueWatching(20),
@@ -277,6 +282,7 @@ async function loadRecommendations() {
     // playback position itself — it's derived from /api/playback/batch.
     void loadResumePositions()
   } catch { /* non-critical */ }
+  finally { if (indexMounted) recsLoading.value = false }
 }
 
 // Resume-as-hero — playback positions for continueWatching items so the
@@ -285,8 +291,28 @@ async function loadRecommendations() {
 const resumePositions = ref<Record<string, number>>({})
 
 async function loadResumePositions() {
-  if (!authStore.isLoggedIn || continueWatching.value.length === 0) return
-  const ids = continueWatching.value.slice(0, 5).map(s => s.media_id).filter(Boolean)
+  if (!authStore.isLoggedIn) return
+  // Fetch positions for every suggestion row in a single batch so the
+  // recommendation cards can also surface progress / Watched markers.
+  // Deduplicate IDs across rows and cap at the per-request budget the
+  // backend accepts.
+  const seen = new Set<string>()
+  const ids: string[] = []
+  // Suggestion uses media_id; RecentItem uses id — normalise per row.
+  type Row = { media_id?: string; id?: string }
+  function pushId(s: Row) {
+    const id = s.media_id ?? s.id ?? ''
+    if (!id || seen.has(id)) return
+    seen.add(id)
+    ids.push(id)
+  }
+  for (const row of [continueWatching.value, trending.value, recommended.value]) {
+    for (const s of row) { pushId(s as Row); if (ids.length >= 120) break }
+    if (ids.length >= 120) break
+  }
+  if (ids.length < 120) {
+    for (const s of recentlyAdded.value) { pushId(s as Row); if (ids.length >= 120) break }
+  }
   if (ids.length === 0) return
   try {
     const r = await playbackApi.getBatchPositions(ids)
@@ -294,6 +320,26 @@ async function loadResumePositions() {
     resumePositions.value = r?.positions ?? {}
   } catch { /* non-critical */ }
 }
+
+// Derived map of mediaId → progress fraction [0..1] for every suggestion
+// row that has a known position and duration. Used by RecommendationRow
+// to render the same progress bar / Watched pill pair as the home grid.
+const suggestionProgress = computed<Record<string, number>>(() => {
+  const out: Record<string, number> = {}
+  type Row = { media_id?: string; id?: string; duration?: number }
+  const rows: Row[] = [
+    ...continueWatching.value,
+    ...trending.value,
+    ...recommended.value,
+  ]
+  for (const s of rows) {
+    const id = s.media_id ?? s.id ?? ''
+    const pos = id ? resumePositions.value[id] : undefined
+    const dur = s.duration ?? 0
+    if (id && pos && dur > 0) out[id] = pos / dur
+  }
+  return out
+})
 
 // Resume-as-hero selection. Pick the most-recent in-progress item that is
 // neither too early (< 30s — user probably just opened it) nor too late
@@ -519,7 +565,7 @@ watch(() => route.query.search, (q) => {
 // Uses router.replace so the browser back button is not polluted.
 let urlSyncTimer: ReturnType<typeof setTimeout> | null = null
 watch(
-  [() => params.type, () => params.category, () => params.sort_by, () => params.sort_order, () => params.min_rating, () => params.search, hideWatched, filterTags, tagMode],
+  [() => params.type, () => params.category, () => params.sort_by, () => params.sort_order, () => params.min_rating, () => params.search, () => params.page, hideWatched, filterTags, tagMode],
   () => {
     if (urlSyncTimer) clearTimeout(urlSyncTimer)
     urlSyncTimer = setTimeout(() => {
@@ -530,6 +576,7 @@ watch(
       if (params.sort_order !== 'asc') query.sort_order = params.sort_order
       if (params.min_rating > 0) query.min_rating = String(params.min_rating)
       if (params.search) query.search = params.search
+      if (params.page > 1) query.page = String(params.page)
       if (hideWatched.value) query.hide_watched = 'true'
       if (filterTags.value.size > 0) {
         query.tags = [...filterTags.value].join(',')
@@ -923,6 +970,8 @@ onUnmounted(() => {
         icon="i-lucide-play-circle"
         :items="continueWatching"
         :failed-ids="failedSuggestions"
+        :loading="recsLoading"
+        :progress="suggestionProgress"
         @thumbnail-error="onSuggestionThumbnailError"
       />
 
@@ -981,6 +1030,8 @@ onUnmounted(() => {
         icon="i-lucide-flame"
         :items="trending"
         :failed-ids="failedSuggestions"
+        :loading="recsLoading"
+        :progress="suggestionProgress"
         to="/categories"
         @thumbnail-error="onSuggestionThumbnailError"
       />
@@ -992,6 +1043,8 @@ onUnmounted(() => {
         icon="i-lucide-thumbs-up"
         :items="recommended"
         :failed-ids="failedSuggestions"
+        :loading="recsLoading"
+        :progress="suggestionProgress"
         to="/"
         @thumbnail-error="onSuggestionThumbnailError"
       />
@@ -1163,13 +1216,19 @@ onUnmounted(() => {
           v-show="opt.value === 'all' || params.type === opt.value || typeCounts[opt.value] === undefined || typeCounts[opt.value] > 0"
           :key="opt.value"
           :class="[
-            'hidden md:inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
+            'hidden md:inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
             params.type === opt.value
               ? 'bg-primary text-white border-primary'
               : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
           ]"
           @click="params.type = opt.value"
-        >{{ opt.label }}</button>
+        >
+          <span>{{ opt.label }}</span>
+          <span
+            v-if="opt.value !== 'all' && typeCounts[opt.value] !== undefined"
+            class="font-mono opacity-70 text-[10px]"
+          >{{ typeCounts[opt.value] }}</span>
+        </button>
         <!-- Preset chips — design handoff §6.3 chip strip of curation presets -->
         <span class="hidden md:inline-block h-[22px] w-px bg-[var(--hairline-strong)] mx-1" aria-hidden="true" />
         <button
@@ -1510,13 +1569,22 @@ onUnmounted(() => {
           </div>
           <!-- Playback progress bar (logged-in, partially watched, not gated) -->
           <div
-            v-if="authStore.isLoggedIn && playbackProgress[item.id] && !(item.is_mature && !canViewMature)"
+            v-if="authStore.isLoggedIn && playbackProgress[item.id] && !(item.is_mature && !canViewMature) && (playbackProgress[item.id] ?? 0) < 0.9"
             class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"
           >
             <div
               class="h-full bg-primary"
               :style="{ width: `${Math.min(100, Math.round((playbackProgress[item.id] ?? 0) * 100))}%` }"
             />
+          </div>
+          <!-- Watched checkmark — replaces progress bar once user crosses 90% (checklist §6) -->
+          <div
+            v-if="authStore.isLoggedIn && (playbackProgress[item.id] ?? 0) >= 0.9 && !(item.is_mature && !canViewMature)"
+            class="absolute bottom-1 left-1 flex items-center gap-1 bg-emerald-600/85 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm"
+            :title="`Watched (${Math.round((playbackProgress[item.id] ?? 0) * 100)}%)`"
+          >
+            <UIcon name="i-lucide-check" class="size-3" />
+            <span>Watched</span>
           </div>
           <!-- Duration badge (hidden when gated) -->
           <div
@@ -1611,9 +1679,20 @@ onUnmounted(() => {
           >{{ tag }}</button>
         </div>
       </component>
-      <p v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
-        No media found.
-      </p>
+      <div v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
+        <UIcon name="i-lucide-search-x" class="size-10 mx-auto mb-3 opacity-40" />
+        <p class="font-medium">No media match the current filters.</p>
+        <UButton
+          v-if="hasActiveFilters"
+          icon="i-lucide-x"
+          label="Clear filters"
+          variant="outline"
+          color="neutral"
+          size="sm"
+          class="mt-3"
+          @click="clearAllFilters"
+        />
+      </div>
     </div>
 
     <!-- Compact view -->
@@ -1637,9 +1716,20 @@ onUnmounted(() => {
         <span v-if="item.codec" class="text-[10px] text-muted/60 shrink-0 uppercase">{{ item.codec }}</span>
         <span class="text-xs text-muted shrink-0 ml-auto font-mono tabular-nums">{{ formatDuration(item.duration) || formatBytes(item.size) }}</span>
       </NuxtLink>
-      <p v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
-        No media found.
-      </p>
+      <div v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
+        <UIcon name="i-lucide-search-x" class="size-10 mx-auto mb-3 opacity-40" />
+        <p class="font-medium">No media match the current filters.</p>
+        <UButton
+          v-if="hasActiveFilters"
+          icon="i-lucide-x"
+          label="Clear filters"
+          variant="outline"
+          color="neutral"
+          size="sm"
+          class="mt-3"
+          @click="clearAllFilters"
+        />
+      </div>
     </div>
 
     <!-- List view -->
@@ -1709,7 +1799,20 @@ onUnmounted(() => {
           </span>
         </template>
       </UTable>
-      <p v-if="items.length === 0" class="text-center py-8 text-muted">No media found.</p>
+      <div v-if="items.length === 0" class="text-center py-8 text-muted">
+        <UIcon name="i-lucide-search-x" class="size-10 mx-auto mb-3 opacity-40" />
+        <p class="font-medium">No media match the current filters.</p>
+        <UButton
+          v-if="hasActiveFilters"
+          icon="i-lucide-x"
+          label="Clear filters"
+          variant="outline"
+          color="neutral"
+          size="sm"
+          class="mt-3"
+          @click="clearAllFilters"
+        />
+      </div>
     </UCard>
 
     <!-- Pagination -->

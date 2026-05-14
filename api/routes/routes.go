@@ -535,6 +535,12 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.POST("/auth/tokens", adminAuth(authModule), h.CreateAPIToken)
 	api.DELETE("/auth/tokens/:id", adminAuth(authModule), h.DeleteAPIToken)
 
+	// User-facing session list + revoke (checklist §9). The list returns
+	// truncated session IDs that only the caller can resolve back to full
+	// IDs via RevokeMySession; full IDs never leave the server.
+	api.GET("/auth/sessions", requireAuth(), h.ListMySessions)
+	api.DELETE("/auth/sessions/:id", requireAuth(), h.RevokeMySession)
+
 	// Favorites (Watch Later)
 	api.GET("/favorites", requireAuth(), h.GetFavorites)
 	api.POST("/favorites", requireAuth(), h.AddFavorite)
