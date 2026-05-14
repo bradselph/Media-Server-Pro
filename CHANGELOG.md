@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.15.0] - 2026-05-14 (minor)
+
+- feat(home): progress + Watched marker on RecommendationRow cards (§6)
+- feat(home): persist page param to URL (§5)
+- feat(home): row skeletons during initial recommendations fan-out (§4)
+- feat(player): mid-playback buffer stall spinner (§6)
+- feat(home): show type counts on filter chips (§5)
+- feat(search): highlight matched terms in result titles (§7)
+- a11y(nav): mobile menu Escape + focus first link (§3)
+- feat(home): no-results empty state with Clear-filters CTA (§5)
+- feat(nav): autocomplete dropdown with recent + media suggestions (§3)
+- feat(media): watched-marker badge at ≥90% progress (§6)
+- feat(auth): user-facing /auth/sessions list + revoke (§9)
+- feat(handoff): recent searches in /search empty state (§7)
+- feat(handoff): admin reports panel, search debounce, scroll restore
+- feat(handoff): close remaining April-27 design plan gaps
+- fix(preferences): add missing autoplay_similar column migration
+- feat(sidebar): close A.6 risk mitigations (narrow viewport + queue persistence)
+- feat(sidebar): close handoff gaps (CTAs, EQ bars, focus trap, savePosition guard)
+- fix(browse): bind aria-pressed reactively so typecheck passes
+- feat(retention): saved searches with home-page row (B.5)
+- feat(playback): autoplay-similar preference (B.3)
+- feat(browse): tag-cloud browse page with AND/OR mode (B.1)
+- feat(privacy): add Private Session toggle (B.2)
+- feat(sidebar): replace MiniPlayer with right-docked Now Playing sidebar
+- fix(analytics): cap SubmitEvent data map field count
+- fix(downloader): cap detect/download request URL length
+- fix(collections): cap collection name and description lengths
+- fix(chapters): bound chapter timestamps and label length
+- fix(auth): purge claude_conversations rows when a user is deleted
+- fix(analytics): log zip write errors when emitting export _errors.txt
+- fix(admin): purge media_collection_items rows when media is deleted
+
+
 ## [1.14.0] - 2026-05-10 (minor)
 
 - fix(receiver): add panic recovery to per-message catalog push goroutine
