@@ -9,6 +9,18 @@ export default defineNuxtConfig({
     // that Go embeds via //go:embed static/*
     ssr: false,
 
+    // Build-time knobs forwarded by deploy.sh (KNOB_SCOPE=build in
+    // deploy-knobs.sh). Each `NUXT_PUBLIC_*` env var lands on
+    // useRuntimeConfig().public.<camelCased name>. Empty defaults =
+    // analytics off / no override unless the operator sets the knob.
+    runtimeConfig: {
+        public: {
+            gaId: '',
+            buildId: '',
+            apiBase: '',
+        },
+    },
+
     css: ['~/assets/css/main.css'],
 
     colorMode: {

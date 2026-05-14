@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { setConsent } from '~/composables/useConsent'
+
 const cookieConsentApi = useCookieConsentApi()
 
 const visible = ref(false)
@@ -9,6 +11,10 @@ async function checkStatus() {
     const status = await cookieConsentApi.getStatus()
     if (status.required && !status.given) {
       visible.value = true
+    } else if (status.given) {
+      // Mirror server-side decision into local storage so the analytics
+      // composable can gate gtag.js synchronously without a network call.
+      setConsent({analytics: status.analytics_accepted, advertising: false})
     }
   } catch { /* non-critical */ }
 }
@@ -18,6 +24,10 @@ async function accept(analytics: boolean) {
   accepting.value = true
   try {
     await cookieConsentApi.accept(analytics)
+    // Mirror server response into local storage and fire the consent-
+    // changed event — useAnalytics is listening for it and will load
+    // gtag.js when analytics flips to true.
+    setConsent({analytics, advertising: false})
     visible.value = false
   } catch { /* keep banner visible on failure */ } finally {
     accepting.value = false

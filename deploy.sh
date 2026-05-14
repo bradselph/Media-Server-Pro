@@ -11,6 +11,24 @@
 #   ./deploy.sh --fix-env               # patch .env on VPS (incl. optional: receiver, Hugging Face)
 #   ./deploy.sh --rollback              # restore server.bak on VPS
 #   ./deploy.sh --dry-run               # preview commands without executing
+#   ./deploy.sh --configure             # interactive: prompt for ★ NEW knobs
+#                                       # and exit. Equivalent to running
+#                                       # ./deploy-configure.sh directly.
+#   ./deploy.sh --review                # interactive: re-walk every knob,
+#                                       # even ones already set, then exit.
+#
+# Knob system:
+#   .deploy.env is the single source of truth for deploy-time + runtime
+#   config. Knobs are registered in deploy-knobs.sh — each one is scoped:
+#     vps       — used locally by this script (VPS_HOST, SERVICE, …)
+#     toolchain — version pins (MSP_GO_VERSION, MSP_NODE_MAJOR)
+#     runtime   — upserted into $DEPLOY_DIR/.env on every deploy
+#     build     — exported into the on-VPS `npm run build` shell so
+#                 NUXT_PUBLIC_* knobs (e.g. NUXT_PUBLIC_GA_ID) are
+#                 baked into the Nuxt bundle.
+#   On the first run after a knob is added to deploy-knobs.sh, the
+#   interactive prompter walks the operator through ★ NEW entries
+#   before deploying. Tip: ./deploy.sh --configure to walk on demand.
 #
 # Federated peers (multi-server libraries) are configured at runtime through
 # the admin UI or POST /api/admin/peer/connect — no separate slave binary or
@@ -43,6 +61,19 @@ die()     { echo -e "${RED}[deploy] ERROR:${RESET} $*" >&2; exit 1; }
 # ── Load config files ────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -f "$SCRIPT_DIR/.deploy.env" ]] && source "$SCRIPT_DIR/.deploy.env"
+
+# ── Knob registry ────────────────────────────────────────────────────────────
+# Populates KNOB_ORDER, KNOB_DESCRIPTION, KNOB_DEFAULT, KNOB_SCOPE, KNOB_SECTION,
+# KNOB_SENSITIVE and the derived FORWARDED_RUNTIME / FORWARDED_BUILD arrays
+# this script walks when generating the on-VPS env file and the npm build
+# env prefix. Failure to source is fatal — the knob system is required.
+if [[ -f "$SCRIPT_DIR/deploy-knobs.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "$SCRIPT_DIR/deploy-knobs.sh"
+else
+  echo "[deploy] ERROR: deploy-knobs.sh not found alongside deploy.sh" >&2
+  exit 1
+fi
 
 # ── Helper: Extract Go version from go.mod ──────────────────────────────────
 get_go_version() {
@@ -95,6 +126,8 @@ FIX_ENV=false
 ROLLBACK=false
 SETUP=false
 SETUP_RECEIVER=false
+CONFIGURE_ONLY=false
+REVIEW_ONLY=false
 
 # Default branch: read from .env UPDATER_BRANCH, fall back to "main"
 # Can be overridden by --branch or --dev flags (parsed after this block).
@@ -114,6 +147,8 @@ while [[ $# -gt 0 ]]; do
     --setup-receiver)  SETUP_RECEIVER=true   ; shift ;;
     --branch)          BRANCH="$2"           ; shift 2 ;;
     --dev)             BRANCH="development"  ; shift ;;
+    --configure)       CONFIGURE_ONLY=true   ; shift ;;
+    --review)          REVIEW_ONLY=true      ; shift ;;
     --help|-h)
       sed -n '/^# Usage/,/^[^#]/p' "$0" | head -n -1
       exit 0
@@ -122,9 +157,58 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# ── Knob walk (interactive: prompts only for ★ NEW knobs) ────────────────────
+# Runs before validation so an operator who just pulled a release with a new
+# knob gets prompted for it before deploy.sh complains about missing values.
+# Non-TTY (CI, piped) falls back to --quiet (apply defaults, no prompts) inside
+# deploy-configure.sh itself.
+run_configure() {
+  local mode="${1:-walk}"
+  local args=()
+  [[ "$mode" == "review" ]] && args+=(--review)
+  if [[ -x "$SCRIPT_DIR/deploy-configure.sh" ]]; then
+    "$SCRIPT_DIR/deploy-configure.sh" "${args[@]}"
+  else
+    bash "$SCRIPT_DIR/deploy-configure.sh" "${args[@]}"
+  fi
+  # Re-source so values written by the prompter become visible to the rest
+  # of this script (VPS_HOST may have been set just now).
+  [[ -f "$SCRIPT_DIR/.deploy.env" ]] && source "$SCRIPT_DIR/.deploy.env"
+}
+
+if $REVIEW_ONLY; then
+  run_configure review
+  exit 0
+fi
+if $CONFIGURE_ONLY; then
+  run_configure walk
+  exit 0
+fi
+
+# Implicit walk on every deploy: silent when there's nothing new, otherwise
+# prompts only for the newly-added knobs since the last run.
+run_configure walk
+
+# Re-apply post-source overrides for the knobs deploy.sh itself reads — the
+# operator may have just set VPS_HOST / GITHUB_TOKEN / DEPLOY_DIR through
+# the prompter.
+VPS_HOST="${VPS_HOST:-}"
+VPS_USER="${VPS_USER:-root}"
+VPS_PORT="${VPS_PORT:-22}"
+KEY_FILE="${KEY_FILE:-$HOME/.ssh/id_ed25519}"
+DEPLOY_DIR="${DEPLOY_DIR:-/opt/media-server}"
+SERVICE="${SERVICE:-media-server}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+REPO_URL="${REPO_URL:-github.com/bradselph/Media-Server-Pro.git}"
+MASTER_URL="${MASTER_URL:-}"
+
+# Toolchain knobs: operator-provided value wins over auto-detect.
+GO_VERSION="${MSP_GO_VERSION:-$GO_VERSION}"
+NODE_MAJOR="${MSP_NODE_MAJOR:-$NODE_MAJOR}"
+
 # ── Validation ───────────────────────────────────────────────────────────────
-[[ -z "$VPS_HOST" ]]     && die "VPS_HOST is not set. Export it or add to .deploy.env"
-[[ -z "$GITHUB_TOKEN" ]] && die "GITHUB_TOKEN is not set. Export it or add to .deploy.env"
+[[ -z "$VPS_HOST" ]]     && die "VPS_HOST is not set. Run ./deploy.sh --configure or edit .deploy.env"
+[[ -z "$GITHUB_TOKEN" ]] && die "GITHUB_TOKEN is not set. Run ./deploy.sh --configure or edit .deploy.env"
 
 # ── Interactive branch selection (no flag given) ──────────────────────────────
 # If BRANCH wasn't set by a --branch/--dev flag, prompt the user to choose.
@@ -624,6 +708,85 @@ run_or_dry remote "
   echo \"[deploy] HEAD is now: \$(git log --oneline -1)\"
 "
 
+# ── Forward configured knobs to the VPS ──────────────────────────────────────
+# Walks FORWARDED_RUNTIME and FORWARDED_BUILD (derived in deploy-knobs.sh
+# from KNOB_SCOPE) and ships non-empty values to the VPS as two payload
+# files in /tmp:
+#   /tmp/msp-runtime.env  — KEY=value lines merged into $DEPLOY_DIR/.env
+#                           by deploy-knobs-merge.py (atomic rename).
+#   /tmp/msp-build.env    — single-quoted `KEY='value'` lines sourced by
+#                           the npm build shell so NUXT_PUBLIC_* knobs
+#                           land in the bundle.
+# Empty knobs are skipped on purpose — they would clobber a value the
+# operator hand-set on the VPS. Values containing newlines are rejected
+# (.env files don't survive multi-line values cleanly).
+
+# Single-quote a string for use in a sourced bash file. Embedded single
+# quotes become `'\''`, which closes-escapes-reopens the literal.
+shell_quote() {
+  local v="${1//\'/\'\\\'\'}"
+  printf "'%s'" "$v"
+}
+
+RUNTIME_PAYLOAD=""
+BUILD_PAYLOAD=""
+RUNTIME_COUNT=0
+BUILD_COUNT=0
+
+if ! $DRY_RUN; then
+  RUNTIME_PAYLOAD="$(mktemp)"
+  BUILD_PAYLOAD="$(mktemp)"
+
+  for _k in "${FORWARDED_RUNTIME[@]}"; do
+    _v="${!_k:-}"
+    [[ -z "$_v" ]] && continue
+    if [[ "$_v" == *$'\n'* ]]; then
+      warn "Skipping $_k — value contains newlines (not supported in .env)"
+      continue
+    fi
+    printf '%s=%s\n' "$_k" "$_v" >> "$RUNTIME_PAYLOAD"
+    RUNTIME_COUNT=$((RUNTIME_COUNT + 1))
+  done
+
+  for _k in "${FORWARDED_BUILD[@]}"; do
+    _v="${!_k:-}"
+    [[ -z "$_v" ]] && continue
+    if [[ "$_v" == *$'\n'* ]]; then
+      warn "Skipping $_k — value contains newlines (not supported in build env)"
+      continue
+    fi
+    printf 'export %s=%s\n' "$_k" "$(shell_quote "$_v")" >> "$BUILD_PAYLOAD"
+    BUILD_COUNT=$((BUILD_COUNT + 1))
+  done
+  unset _k _v
+
+  if [[ $RUNTIME_COUNT -gt 0 ]]; then
+    info "Forwarding $RUNTIME_COUNT runtime knob(s) → $DEPLOY_DIR/.env"
+    scp "${SCP_OPTS[@]}" "$RUNTIME_PAYLOAD" "$REMOTE_USER@$REMOTE_HOST:/tmp/msp-runtime.env" >/dev/null
+    remote "
+      set -euo pipefail
+      ENV='$DEPLOY_DIR/.env'
+      [ -f \"\$ENV\" ] || sudo touch \"\$ENV\"
+      sudo python3 '$DEPLOY_DIR/deploy-knobs-merge.py' /tmp/msp-runtime.env \"\$ENV\"
+      sudo chmod 600 \"\$ENV\"
+      sudo rm -f /tmp/msp-runtime.env
+    "
+  else
+    info "No runtime knobs to forward (everything in .deploy.env is empty)."
+  fi
+
+  if [[ $BUILD_COUNT -gt 0 ]]; then
+    info "Forwarding $BUILD_COUNT build knob(s) → npm build env"
+    scp "${SCP_OPTS[@]}" "$BUILD_PAYLOAD" "$REMOTE_USER@$REMOTE_HOST:/tmp/msp-build.env" >/dev/null
+  else
+    # Make sure no stale build env from a previous deploy is left behind —
+    # the build block sources /tmp/msp-build.env unconditionally.
+    remote "rm -f /tmp/msp-build.env" 2>/dev/null || true
+  fi
+
+  rm -f "$RUNTIME_PAYLOAD" "$BUILD_PAYLOAD"
+fi
+
 # ── Ensure dependencies are installed on VPS ─────────────────────────────────
 info "Checking dependencies on VPS..."
 
@@ -732,8 +895,20 @@ run_or_dry remote "
     npm install
   fi
 
+  # Load FORWARDED_BUILD knobs (NUXT_PUBLIC_*) from /tmp/msp-build.env if the
+  # forwarding step shipped one. set -a auto-exports every assignment so
+  # Nuxt's runtimeConfig.public reads them from process.env at build time.
+  if [ -f /tmp/msp-build.env ]; then
+    echo '[deploy] Sourcing build knobs from /tmp/msp-build.env'
+    set -a
+    # shellcheck disable=SC1091
+    . /tmp/msp-build.env
+    set +a
+  fi
+
   # Nuxt generates to ../static/react/ (configured in nuxt.config.ts nitro.output.publicDir)
   npm run build
+  rm -f /tmp/msp-build.env
   cd ../..
   echo '[deploy] Nuxt UI build complete'
 
