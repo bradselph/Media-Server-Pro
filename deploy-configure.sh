@@ -132,6 +132,33 @@ mask_value() {
   printf '********'
 }
 
+# append_comment_hint FILE KEY VALUE — append a commented hint line so
+# is_new_knob() considers KEY "seen" but read_env_value() returns empty
+# (commented lines are never read as live assignments). Used when the
+# operator pressed Enter on a never-seen knob — we don't forward
+# anything, the VPS .env keeps its current value, and the ★ NEW tag
+# clears on the next walk. Idempotent: if a commented hint already
+# exists it isn't duplicated; live (uncommented) assignments are left
+# untouched.
+append_comment_hint() {
+  local file="$1" key="$2" val="$3"
+  if [[ ! -f "$file" ]]; then
+    : > "$file"
+  fi
+  # If any KEY= line already exists (live or commented) we're done.
+  if grep -qE "(^|[[:space:]#])${key}=" "$file" 2>/dev/null; then
+    return
+  fi
+  if [[ -s "$file" ]] && [[ "$(tail -c 1 "$file" | wc -l)" -eq 0 ]]; then
+    printf '\n' >> "$file"
+  fi
+  if [[ -n "$val" ]]; then
+    printf '# %s=%s\n' "$key" "$val" >> "$file"
+  else
+    printf '# %s=\n' "$key" >> "$file"
+  fi
+}
+
 # upsert_env_var FILE KEY VALUE — replace or append. Only matches
 # uncommented assignments; commented-out hint lines (# KEY=…) are
 # preserved as documentation.
@@ -218,7 +245,7 @@ prompt_knob() {
   if [[ -n "$current" ]]; then
     hint="Enter = keep, '-' = clear, or new value"
   else
-    hint="Enter = leave unset (default), or new value"
+    hint="Enter = skip (VPS .env stays as-is), or new value to override"
   fi
   echo -en "  ${CYAN}>${RESET} ${DIM}(${hint})${RESET} "
   local reply=""
@@ -233,21 +260,23 @@ prompt_knob() {
   reply="${reply//$'\r'/}"
 
   if [[ -z "$reply" ]]; then
-    # Pressing Enter on a never-seen knob with a default writes the
-    # default explicitly so the ★ NEW tag clears next time. Without
-    # this, the knob stays "new" forever and nags every deploy.
-    if is_new_knob "$ENV_FILE" "$key" && [[ -n "${KNOB_DEFAULT[$key]:-}" ]]; then
-      upsert_env_var "$ENV_FILE" "$key" "${KNOB_DEFAULT[$key]}"
-      echo -e "    ${DIM}accepted default${RESET}"
-      KNOB_PROMPT_RESULT="accepted-default"
-      return
-    fi
-    # Same idea for never-seen knobs with NO default — write an empty
-    # line so the registry knows we've seen it.
+    # SAFE-BY-DEFAULT: pressing Enter on a never-seen knob marks it as
+    # seen WITHOUT writing the default — so the forward step skips it
+    # and whatever is already on the VPS .env stays put. Without this
+    # rule the knob system would silently clobber hand-edited VPS
+    # values with hard-coded registry defaults on the first walk
+    # (which is exactly what happened on the first MSP-4 rollout).
+    # The line is written as a commented hint so is_new_knob clears
+    # next time but read_env_value returns empty.
     if is_new_knob "$ENV_FILE" "$key"; then
-      upsert_env_var "$ENV_FILE" "$key" ""
-      echo -e "    ${DIM}left empty${RESET}"
-      KNOB_PROMPT_RESULT="kept"
+      local hint_val="${KNOB_DEFAULT[$key]:-}"
+      append_comment_hint "$ENV_FILE" "$key" "$hint_val"
+      if [[ -n "$hint_val" ]]; then
+        echo -e "    ${DIM}skipped (VPS keeps current value; registry default was ${hint_val})${RESET}"
+      else
+        echo -e "    ${DIM}skipped (VPS keeps current value)${RESET}"
+      fi
+      KNOB_PROMPT_RESULT="skipped"
       return
     fi
     echo -e "    ${DIM}kept${RESET}"
@@ -256,7 +285,7 @@ prompt_knob() {
   fi
   if [[ "$reply" == "-" ]]; then
     upsert_env_var "$ENV_FILE" "$key" ""
-    echo -e "    ${YELLOW}cleared${RESET}"
+    echo -e "    ${YELLOW}cleared (VPS keeps current value — empty values are not forwarded)${RESET}"
     KNOB_PROMPT_RESULT="cleared"
     return
   fi
@@ -304,19 +333,17 @@ mode_only() {
 
 mode_quiet() {
   bootstrap_env_file
-  local applied=0
+  local marked=0
   for key in "${KNOB_ORDER[@]}"; do
-    local current
-    current="$(read_env_value "$ENV_FILE" "$key")"
-    if [[ -z "$current" ]] && [[ -n "${KNOB_DEFAULT[$key]:-}" ]]; then
-      upsert_env_var "$ENV_FILE" "$key" "${KNOB_DEFAULT[$key]}"
-      applied=$((applied + 1))
+    if is_new_knob "$ENV_FILE" "$key"; then
+      append_comment_hint "$ENV_FILE" "$key" "${KNOB_DEFAULT[$key]:-}"
+      marked=$((marked + 1))
     fi
   done
-  if [[ $applied -gt 0 ]]; then
-    success "Applied $applied default(s) to $ENV_FILE"
+  if [[ $marked -gt 0 ]]; then
+    success "Marked $marked new knob(s) as seen (commented hints) in $ENV_FILE. None are forwarded — VPS .env keeps its current values."
   else
-    info "No defaults to apply — every knob already set."
+    info "No new knobs since last walk."
   fi
 }
 
@@ -389,12 +416,14 @@ mode_walk_inner() {
     echo -e "${YELLOW}--review: prompting for every knob, even ones already set.${RESET}"
   fi
   echo ""
-  echo -e "${DIM}Press Enter to keep the current value, type a new value to update,"
-  echo -e "or '-' to clear. Ctrl-C aborts without saving.${RESET}"
+  echo -e "${DIM}SAFE-BY-DEFAULT: Enter on a never-seen knob marks it 'seen' but does"
+  echo -e "NOT push the registry default to the VPS — your VPS .env keeps its"
+  echo -e "current value. Type a value to override. '-' clears (also not pushed)."
+  echo -e "Ctrl-C aborts without saving.${RESET}"
 
   # Group by section so the walk feels structured.
   local current_section=""
-  local kept=0 set=0 cleared=0 accepted=0
+  local kept=0 set=0 cleared=0 skipped=0
   local key
   for key in "${keys[@]}"; do
     local section="${KNOB_SECTION[$key]:-Other}"
@@ -405,15 +434,18 @@ mode_walk_inner() {
     fi
     prompt_knob "$key"
     case "$KNOB_PROMPT_RESULT" in
-      kept)              kept=$((kept + 1)) ;;
-      set)               set=$((set + 1)) ;;
-      cleared)           cleared=$((cleared + 1)) ;;
-      accepted-default)  accepted=$((accepted + 1)) ;;
+      kept)     kept=$((kept + 1)) ;;
+      set)      set=$((set + 1)) ;;
+      cleared)  cleared=$((cleared + 1)) ;;
+      skipped)  skipped=$((skipped + 1)) ;;
     esac
   done
 
   echo ""
-  success "Done. kept=$kept set=$set cleared=$cleared accepted-default=$accepted → $ENV_FILE"
+  success "Done. kept=$kept set=$set cleared=$cleared skipped=$skipped → $ENV_FILE"
+  if [[ $set -eq 0 ]] && [[ $cleared -eq 0 ]]; then
+    info "Nothing was forwarded — every prompt was Enter/skip. VPS .env untouched."
+  fi
 }
 
 mode_walk()   { mode_walk_inner walk; }

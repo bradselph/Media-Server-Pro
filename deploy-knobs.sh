@@ -53,7 +53,7 @@ KNOB_ORDER=(
   MASTER_URL
   # ── Server runtime ───────────────────────────────────────────────
   SERVER_PORT
-  SERVER_BIND
+  SERVER_HOST
   LOG_LEVEL
   # ── Admin login ──────────────────────────────────────────────────
   ADMIN_ENABLED
@@ -65,7 +65,6 @@ KNOB_ORDER=(
   AUTH_ALLOW_GUESTS
   AUTH_ALLOW_REGISTRATION
   AUTH_SESSION_TIMEOUT_HOURS
-  AUTH_SECURE_COOKIES
   # ── HTTP security headers ────────────────────────────────────────
   CSP_ENABLED
   HSTS_ENABLED
@@ -183,14 +182,14 @@ KNOB_SECTION[MASTER_URL]="Federated peer"
 
 # ── Server runtime ───────────────────────────────────────────────────
 KNOB_DESCRIPTION[SERVER_PORT]="HTTP port the Go server binds on the VPS. Reverse proxy (Caddy/nginx) usually fronts this."
-KNOB_DEFAULT[SERVER_PORT]="8080"
+KNOB_DEFAULT[SERVER_PORT]="3000"
 KNOB_SCOPE[SERVER_PORT]="runtime"
 KNOB_SECTION[SERVER_PORT]="Server"
 
-KNOB_DESCRIPTION[SERVER_BIND]="Interface to bind. 127.0.0.1 behind a reverse proxy; 0.0.0.0 for direct access."
-KNOB_DEFAULT[SERVER_BIND]="127.0.0.1"
-KNOB_SCOPE[SERVER_BIND]="runtime"
-KNOB_SECTION[SERVER_BIND]="Server"
+KNOB_DESCRIPTION[SERVER_HOST]="Interface to bind. 127.0.0.1 behind a reverse proxy; 0.0.0.0 for direct access."
+KNOB_DEFAULT[SERVER_HOST]="127.0.0.1"
+KNOB_SCOPE[SERVER_HOST]="runtime"
+KNOB_SECTION[SERVER_HOST]="Server"
 
 KNOB_DESCRIPTION[LOG_LEVEL]="Log verbosity (debug | info | warn | error). Bump to debug while triaging."
 KNOB_DEFAULT[LOG_LEVEL]="info"
@@ -241,11 +240,6 @@ KNOB_DEFAULT[AUTH_SESSION_TIMEOUT_HOURS]="168"
 KNOB_SCOPE[AUTH_SESSION_TIMEOUT_HOURS]="runtime"
 KNOB_SECTION[AUTH_SESSION_TIMEOUT_HOURS]="Auth"
 
-KNOB_DESCRIPTION[AUTH_SECURE_COOKIES]="Set Secure flag on session cookies (true | false). NEVER false in prod once HTTPS is live."
-KNOB_DEFAULT[AUTH_SECURE_COOKIES]="true"
-KNOB_SCOPE[AUTH_SECURE_COOKIES]="runtime"
-KNOB_SECTION[AUTH_SECURE_COOKIES]="Auth"
-
 # ── HTTP security headers ────────────────────────────────────────────
 KNOB_DESCRIPTION[CSP_ENABLED]="Emit Content-Security-Policy headers (true | false)."
 KNOB_DEFAULT[CSP_ENABLED]="true"
@@ -269,12 +263,12 @@ KNOB_SECTION[CORS_ORIGINS]="HTTP security"
 
 # ── Rate limit ───────────────────────────────────────────────────────
 KNOB_DESCRIPTION[RATE_LIMIT_ENABLED]="Per-IP request rate limiter (true | false)."
-KNOB_DEFAULT[RATE_LIMIT_ENABLED]="true"
+KNOB_DEFAULT[RATE_LIMIT_ENABLED]="false"
 KNOB_SCOPE[RATE_LIMIT_ENABLED]="runtime"
 KNOB_SECTION[RATE_LIMIT_ENABLED]="Rate limits"
 
 KNOB_DESCRIPTION[RATE_LIMIT_REQUESTS]="Max requests per RATE_LIMIT_WINDOW_SECONDS per IP."
-KNOB_DEFAULT[RATE_LIMIT_REQUESTS]="100"
+KNOB_DEFAULT[RATE_LIMIT_REQUESTS]="1000"
 KNOB_SCOPE[RATE_LIMIT_REQUESTS]="runtime"
 KNOB_SECTION[RATE_LIMIT_REQUESTS]="Rate limits"
 
@@ -305,24 +299,24 @@ KNOB_DEFAULT[UPLOADS_ENABLED]="true"
 KNOB_SCOPE[UPLOADS_ENABLED]="runtime"
 KNOB_SECTION[UPLOADS_ENABLED]="Streaming / uploads"
 
-KNOB_DESCRIPTION[UPLOADS_MAX_FILE_SIZE]="Per-file upload cap in bytes. 10737418240 = 10 GiB."
-KNOB_DEFAULT[UPLOADS_MAX_FILE_SIZE]="10737418240"
+KNOB_DESCRIPTION[UPLOADS_MAX_FILE_SIZE]="Per-file upload cap in bytes. 5368709120 = 5 GiB."
+KNOB_DEFAULT[UPLOADS_MAX_FILE_SIZE]="5368709120"
 KNOB_SCOPE[UPLOADS_MAX_FILE_SIZE]="runtime"
 KNOB_SECTION[UPLOADS_MAX_FILE_SIZE]="Streaming / uploads"
 
 # ── Feature flags ────────────────────────────────────────────────────
 KNOB_DESCRIPTION[FEATURE_REMOTE_MEDIA]="Enable remote-media proxy (true | false). Set true on a follower node that pulls from a master."
-KNOB_DEFAULT[FEATURE_REMOTE_MEDIA]="false"
+KNOB_DEFAULT[FEATURE_REMOTE_MEDIA]="true"
 KNOB_SCOPE[FEATURE_REMOTE_MEDIA]="runtime"
 KNOB_SECTION[FEATURE_REMOTE_MEDIA]="Federation"
 
 KNOB_DESCRIPTION[FEATURE_RECEIVER]="Enable receiver endpoints (true | false). Set true on a master that accepts pushes from peers."
-KNOB_DEFAULT[FEATURE_RECEIVER]="false"
+KNOB_DEFAULT[FEATURE_RECEIVER]="true"
 KNOB_SCOPE[FEATURE_RECEIVER]="runtime"
 KNOB_SECTION[FEATURE_RECEIVER]="Federation"
 
 KNOB_DESCRIPTION[RECEIVER_ENABLED]="Mirror of FEATURE_RECEIVER for older config readers. Keep these in sync."
-KNOB_DEFAULT[RECEIVER_ENABLED]="false"
+KNOB_DEFAULT[RECEIVER_ENABLED]="true"
 KNOB_SCOPE[RECEIVER_ENABLED]="runtime"
 KNOB_SECTION[RECEIVER_ENABLED]="Federation"
 
@@ -386,8 +380,8 @@ KNOB_DEFAULT[CLAUDE_MODEL]="claude-sonnet-4-6"
 KNOB_SCOPE[CLAUDE_MODEL]="runtime"
 KNOB_SECTION[CLAUDE_MODEL]="Claude assistant"
 
-KNOB_DESCRIPTION[CLAUDE_MODE]="advisory | interactive | autonomous. Start with advisory in prod."
-KNOB_DEFAULT[CLAUDE_MODE]="advisory"
+KNOB_DESCRIPTION[CLAUDE_MODE]="advisory | interactive | autonomous."
+KNOB_DEFAULT[CLAUDE_MODE]="autonomous"
 KNOB_SCOPE[CLAUDE_MODE]="runtime"
 KNOB_SECTION[CLAUDE_MODE]="Claude assistant"
 
@@ -403,12 +397,12 @@ KNOB_SCOPE[DATABASE_PORT]="runtime"
 KNOB_SECTION[DATABASE_PORT]="Database"
 
 KNOB_DESCRIPTION[DATABASE_NAME]="Database name."
-KNOB_DEFAULT[DATABASE_NAME]="mediaserver"
+KNOB_DEFAULT[DATABASE_NAME]=""
 KNOB_SCOPE[DATABASE_NAME]="runtime"
 KNOB_SECTION[DATABASE_NAME]="Database"
 
 KNOB_DESCRIPTION[DATABASE_USERNAME]="DB application user."
-KNOB_DEFAULT[DATABASE_USERNAME]="mediaserver"
+KNOB_DEFAULT[DATABASE_USERNAME]=""
 KNOB_SCOPE[DATABASE_USERNAME]="runtime"
 KNOB_SECTION[DATABASE_USERNAME]="Database"
 

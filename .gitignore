@@ -5,9 +5,8 @@
 config.json
 .env
 .env.generated
-.env.docker
+.env.recovery
 .deploy.env
-docker-compose.override.yml
 dev-tools/
 
 /web/static/react/
