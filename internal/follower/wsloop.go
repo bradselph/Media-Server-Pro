@@ -63,9 +63,17 @@ type thumbRequest struct {
 	PreferWebP bool   `json:"prefer_webp,omitempty"`
 }
 
+// sameErrInfoEvery controls how often a repeating identical error is re-surfaced
+// at INFO level after the first WARN. At the default 2-minute reconnect_max, 30
+// repeats is roughly one hourly heartbeat so a stale/dead master pairing still
+// shows up in operator logs without flooding the journal.
+const sameErrInfoEvery = 30
+
 // run is the top-level reconnect loop. It dials the master, runs one session,
 // and on disconnect waits with exponential backoff before reconnecting. Exits
-// only when ctx is canceled.
+// only when ctx is canceled. Identical repeating errors are demoted to debug
+// after the first occurrence to keep the journal readable when a paired master
+// has been retired or temporarily moved.
 func (m *Module) run(ctx context.Context) {
 	cfg := m.config.Get().Follower
 	baseDelay := cfg.ReconnectBase
@@ -78,6 +86,9 @@ func (m *Module) run(ctx context.Context) {
 	}
 	delay := baseDelay
 
+	var lastErrMsg string
+	var sameErrCount int
+
 	for {
 		if ctx.Err() != nil {
 			return
@@ -88,8 +99,23 @@ func (m *Module) run(ctx context.Context) {
 			return
 		}
 		if err != nil {
-			m.log.Warn("Follower session ended: %v", err)
-			m.recordError(err.Error())
+			msg := err.Error()
+			if msg == lastErrMsg {
+				sameErrCount++
+				if sameErrCount%sameErrInfoEvery == 0 {
+					m.log.Info("Follower still failing after %d consecutive attempts: %v", sameErrCount, err)
+				} else {
+					m.log.Debug("Follower session ended (repeat #%d): %v", sameErrCount, err)
+				}
+			} else {
+				sameErrCount = 1
+				lastErrMsg = msg
+				m.log.Warn("Follower session ended: %v", err)
+			}
+			m.recordError(msg)
+		} else {
+			lastErrMsg = ""
+			sameErrCount = 0
 		}
 		m.recordConnected(false)
 
@@ -123,13 +149,26 @@ func (m *Module) connectAndRun(ctx context.Context) error {
 	headers := http.Header{}
 	headers.Set("X-API-Key", cfg.APIKey)
 
-	m.log.Info("Connecting to master at %s", wsURL)
+	if m.lastConnectAttemptOK() {
+		m.log.Info("Connecting to master at %s", wsURL)
+	} else {
+		m.log.Debug("Connecting to master at %s", wsURL)
+	}
 	conn, resp, err := dialer.DialContext(ctx, wsURL, headers)
 	if err != nil {
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
+		// HTTP status on a failed websocket upgrade is the operator's biggest
+		// clue: 200/HTML means the master URL points at a static frontend
+		// (e.g. retired peer behind nginx), 401/403 means the API key is
+		// stale, 404 means the master is on a path without the receiver
+		// route mounted. Surface it instead of just "bad handshake".
+		status := ""
+		if resp != nil {
+			status = fmt.Sprintf(" (HTTP %d)", resp.StatusCode)
+			if resp.Body != nil {
+				_ = resp.Body.Close()
+			}
 		}
-		return fmt.Errorf("websocket dial: %w", err)
+		return fmt.Errorf("websocket dial%s: %w", status, err)
 	}
 	defer func() { _ = conn.Close() }()
 	m.log.Info("Connected to master %s as slave %s", cfg.MasterURL, m.resolveSlaveID(cfg))
