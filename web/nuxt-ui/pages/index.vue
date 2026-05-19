@@ -1191,56 +1191,21 @@ onUnmounted(() => {
           </div>
         </div>
       </template>
-      <!-- New Since Last Visit -->
-      <div v-if="newSinceLastVisit && newSinceLastVisit.items.length > 0" class="space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
-            <UIcon name="i-lucide-bell" class="size-4 text-[var(--accent)]" />
-            New Since Your Last Visit
-          </h2>
-          <div class="flex items-center gap-2">
-            <NuxtLink to="/?sort_by=date_added&sort_order=desc" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
-            <div class="flex gap-1">
-              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
-              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
-            </div>
-          </div>
-        </div>
-        <div ref="newSinceScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-          <NuxtLink
-            v-for="r in newSinceLastVisit.items"
-            :key="r.id"
-            :to="`/player?id=${encodeURIComponent(r.id)}`"
-            class="group shrink-0 w-40"
-          >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
-              <HoverPreviewImg
-                v-if="r.thumbnail_url"
-                :media-id="r.id"
-                :src="r.thumbnail_url"
-                :alt="getDisplayTitle(r)"
-                :width="320"
-                :height="180"
-                img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-              />
-              <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-film" class="size-6 text-muted" />
-              </div>
-              <div v-if="r.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
-                {{ formatDuration(r.duration) }}
-              </div>
-            </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(r)">{{ getDisplayTitle(r) }}</p>
-            <p class="text-xs text-muted truncate">{{ r.category || r.type }}</p>
-          </NuxtLink>
-        </div>
-      </div>
-      <!-- Recently Added -->
-      <div v-if="recentlyAdded.length > 0" class="space-y-3">
+      <!-- Recently added since your last visit (replaces the old standalone
+           "Recently Added" + "New Since Your Last Visit" pair, which showed
+           overlapping items for returning users). Backend uses the user's
+           previous-login timestamp as cutoff, so once they log in again any
+           items that were "new last visit" naturally fall off this row.
+           Falls back to recentlyAdded for first-time logins (no prior visit
+           on record). -->
+      <div
+        v-if="(newSinceLastVisit && newSinceLastVisit.items.length > 0) || (!newSinceLastVisit && recentlyAdded.length > 0)"
+        class="space-y-3"
+      >
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
             <UIcon name="i-lucide-sparkle" class="size-4 text-[var(--accent)]" />
-            Recently Added
+            {{ newSinceLastVisit && newSinceLastVisit.items.length > 0 ? 'Recently added since your last visit' : 'Recently added' }}
           </h2>
           <div class="flex items-center gap-2">
             <NuxtLink to="/?sort_by=date_added&sort_order=desc" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
@@ -1252,7 +1217,7 @@ onUnmounted(() => {
         </div>
         <div ref="recentScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           <NuxtLink
-            v-for="r in recentlyAdded"
+            v-for="r in (newSinceLastVisit && newSinceLastVisit.items.length > 0 ? newSinceLastVisit.items : recentlyAdded)"
             :key="r.id"
             :to="`/player?id=${encodeURIComponent(r.id)}`"
             class="group shrink-0 w-40"
@@ -1416,6 +1381,9 @@ onUnmounted(() => {
         size="sm"
         @click="params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc'"
       />
+      <!-- Action cluster — visually separated so the filter selects above
+           read as filters, not as a wall of mixed controls. -->
+      <span class="hidden md:inline-block h-[22px] w-px bg-[var(--hairline-strong)] mx-1" aria-hidden="true" />
       <UButton
         icon="i-lucide-play-circle"
         label="Play All"

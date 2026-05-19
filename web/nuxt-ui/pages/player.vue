@@ -1765,7 +1765,7 @@ watch(mediaId, (id, oldId) => {
                   </div>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <p class="text-xs font-medium truncate" :title="qi.name">{{ qi.name }}</p>
+                  <p class="text-xs font-medium truncate" :title="getDisplayTitle(qi)">{{ getDisplayTitle(qi) }}</p>
                   <p v-if="qi.duration" class="text-[10px] text-muted font-mono">{{ formatDuration(qi.duration) }}</p>
                 </div>
                 <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">

@@ -679,7 +679,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
                 {{ item.rating.toFixed(1) }}
               </div>
             </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.name">{{ item.name }}</p>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">{{ getDisplayTitle(item) }}</p>
             <p class="text-xs text-muted truncate">{{ item.category || item.media_type }}</p>
           </NuxtLink>
         </div>
