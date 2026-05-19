@@ -373,11 +373,17 @@ type configMapSection func(cfg *config.Config, qualityNames []string) map[string
 
 func buildConfigServerMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"port":         cfg.Server.Port,
-		"host":         cfg.Server.Host,
-		"enable_https": cfg.Server.EnableHTTPS,
-		"cert_file":    cfg.Server.CertFile,
-		"key_file":     cfg.Server.KeyFile,
+		"port":                cfg.Server.Port,
+		"host":                cfg.Server.Host,
+		"enable_https":        cfg.Server.EnableHTTPS,
+		"cert_file":           cfg.Server.CertFile,
+		"key_file":            cfg.Server.KeyFile,
+		"read_header_timeout": cfg.Server.ReadHeaderTimeout,
+		"read_timeout":        cfg.Server.ReadTimeout,
+		"write_timeout":       cfg.Server.WriteTimeout,
+		"idle_timeout":        cfg.Server.IdleTimeout,
+		"max_header_bytes":    cfg.Server.MaxHeaderBytes,
+		"shutdown_timeout":    cfg.Server.ShutdownTimeout,
 	}
 }
 
@@ -408,15 +414,22 @@ func buildConfigSecurityMap(cfg *config.Config, _ []string) map[string]any {
 		"rate_limit_requests": cfg.Security.RateLimitRequests,
 		"rate_limit_window":   cfg.Security.RateLimitWindow,
 		"burst_limit":         cfg.Security.BurstLimit,
+		"burst_window":        cfg.Security.BurstWindow,
 		"auth_rate_limit":     cfg.Security.AuthRateLimit,
 		"auth_burst_limit":    cfg.Security.AuthBurstLimit,
 		"violations_for_ban":  cfg.Security.ViolationsForBan,
+		"ban_duration":        cfg.Security.BanDuration,
 		"enable_ip_whitelist": cfg.Security.EnableIPWhitelist,
 		"enable_ip_blacklist": cfg.Security.EnableIPBlacklist,
+		"ip_whitelist":        cfg.Security.IPWhitelist,
+		"ip_blacklist":        cfg.Security.IPBlacklist,
+		"trusted_proxy_cidrs": cfg.Security.TrustedProxyCIDRs,
 		"csp_enabled":         cfg.Security.CSPEnabled,
+		"csp_policy":          cfg.Security.CSPPolicy,
 		"hsts_enabled":        cfg.Security.HSTSEnabled,
 		"hsts_max_age":        cfg.Security.HSTSMaxAge,
 		"cors_enabled":        cfg.Security.CORSEnabled,
+		"cors_origins":        cfg.Security.CORSOrigins,
 		"max_file_size_mb":    cfg.Security.MaxFileSizeMB,
 	}
 }
@@ -434,16 +447,21 @@ func buildConfigHLSMap(cfg *config.Config, _ []string) map[string]any {
 		})
 	}
 	return map[string]any{
-		"enabled":                    cfg.HLS.Enabled,
-		"auto_generate":              cfg.HLS.AutoGenerate,
-		"concurrent_limit":           cfg.HLS.ConcurrentLimit,
-		"segment_duration":           cfg.HLS.SegmentDuration,
-		"cleanup_enabled":            cfg.HLS.CleanupEnabled,
-		"retention_minutes":          cfg.HLS.RetentionMinutes,
-		"lazy_transcode":             cfg.HLS.LazyTranscode,
-		"cdn_base_url":               cfg.HLS.CDNBaseURL,
+		"enabled":                     cfg.HLS.Enabled,
+		"auto_generate":               cfg.HLS.AutoGenerate,
+		"concurrent_limit":            cfg.HLS.ConcurrentLimit,
+		"segment_duration":            cfg.HLS.SegmentDuration,
+		"playlist_length":             cfg.HLS.PlaylistLength,
+		"cleanup_enabled":             cfg.HLS.CleanupEnabled,
+		"cleanup_interval":            cfg.HLS.CleanupInterval,
+		"retention_minutes":           cfg.HLS.RetentionMinutes,
+		"lazy_transcode":              cfg.HLS.LazyTranscode,
+		"cdn_base_url":                cfg.HLS.CDNBaseURL,
 		"pre_generate_interval_hours": cfg.HLS.PreGenerateIntervalHours,
-		"quality_profiles":           profiles,
+		"quality_profiles":            profiles,
+		"max_consecutive_failures":    cfg.HLS.MaxConsecutiveFailures,
+		"probe_timeout":               cfg.HLS.ProbeTimeout,
+		"stale_lock_threshold":        cfg.HLS.StaleLockThreshold,
 	}
 }
 
@@ -455,23 +473,31 @@ func buildConfigAdminMap(cfg *config.Config, _ []string) map[string]any {
 
 func buildConfigThumbnailsMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"auto_generate":      cfg.Thumbnails.AutoGenerate,
-		"width":              cfg.Thumbnails.Width,
-		"height":             cfg.Thumbnails.Height,
-		"quality":            cfg.Thumbnails.Quality,
-		"video_interval":     cfg.Thumbnails.VideoInterval,
-		"preview_count":      cfg.Thumbnails.PreviewCount,
-		"generate_on_access": cfg.Thumbnails.GenerateOnAccess,
-		"worker_count":       cfg.Thumbnails.WorkerCount,
+		"enabled":                   cfg.Thumbnails.Enabled,
+		"auto_generate":             cfg.Thumbnails.AutoGenerate,
+		"width":                     cfg.Thumbnails.Width,
+		"height":                    cfg.Thumbnails.Height,
+		"quality":                   cfg.Thumbnails.Quality,
+		"video_interval":            cfg.Thumbnails.VideoInterval,
+		"preview_count":             cfg.Thumbnails.PreviewCount,
+		"generate_on_access":        cfg.Thumbnails.GenerateOnAccess,
+		"queue_size":                cfg.Thumbnails.QueueSize,
+		"worker_count":              cfg.Thumbnails.WorkerCount,
+		"inflight_eviction_timeout": cfg.Thumbnails.InFlightEvictionTimeout,
+		"inflight_scan_interval":    cfg.Thumbnails.InFlightScanInterval,
 	}
 }
 
 func buildConfigAnalyticsMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"enabled":        cfg.Analytics.Enabled,
-		"track_playback": cfg.Analytics.TrackPlayback,
-		"track_views":    cfg.Analytics.TrackViews,
-		"retention_days": cfg.Analytics.RetentionDays,
+		"enabled":                cfg.Analytics.Enabled,
+		"track_playback":         cfg.Analytics.TrackPlayback,
+		"track_views":            cfg.Analytics.TrackViews,
+		"retention_days":         cfg.Analytics.RetentionDays,
+		"session_timeout":        cfg.Analytics.SessionTimeout,
+		"cleanup_interval":       cfg.Analytics.CleanupInterval,
+		"view_cooldown":          cfg.Analytics.ViewCooldown,
+		"max_reconstruct_events": cfg.Analytics.MaxReconstructEvents,
 	}
 }
 
@@ -481,6 +507,8 @@ func buildConfigMatureScannerMap(cfg *config.Config, _ []string) map[string]any 
 		"auto_flag":                   cfg.MatureScanner.AutoFlag,
 		"high_confidence_threshold":   cfg.MatureScanner.HighConfidenceThreshold,
 		"medium_confidence_threshold": cfg.MatureScanner.MediumConfidenceThreshold,
+		"high_confidence_keywords":    cfg.MatureScanner.HighConfidenceKeywords,
+		"medium_confidence_keywords":  cfg.MatureScanner.MediumConfidenceKeywords,
 		"require_review":              cfg.MatureScanner.RequireReview,
 	}
 }
@@ -520,7 +548,12 @@ func buildConfigStreamingMap(cfg *config.Config, _ []string) map[string]any {
 		"mobile_optimization": cfg.Streaming.MobileOptimization,
 		"unauth_stream_limit": cfg.Streaming.UnauthStreamLimit,
 		"keep_alive_enabled":  cfg.Streaming.KeepAliveEnabled,
+		"keep_alive_timeout":  cfg.Streaming.KeepAliveTimeout,
 		"adaptive":            cfg.Streaming.Adaptive,
+		"default_chunk_size":  cfg.Streaming.DefaultChunkSize,
+		"max_chunk_size":      cfg.Streaming.MaxChunkSize,
+		"buffer_size":         cfg.Streaming.BufferSize,
+		"mobile_chunk_size":   cfg.Streaming.MobileChunkSize,
 	}
 }
 
@@ -534,27 +567,43 @@ func buildConfigDownloadMap(cfg *config.Config, _ []string) map[string]any {
 
 func buildConfigLoggingMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"level":         cfg.Logging.Level,
-		"file_enabled":  cfg.Logging.FileEnabled,
-		"file_rotation": cfg.Logging.FileRotation,
-		"max_backups":   cfg.Logging.MaxBackups,
+		"level":          cfg.Logging.Level,
+		"format":         cfg.Logging.Format,
+		"file_enabled":   cfg.Logging.FileEnabled,
+		"file_rotation":  cfg.Logging.FileRotation,
+		"max_file_size":  cfg.Logging.MaxFileSize,
+		"max_backups":    cfg.Logging.MaxBackups,
+		"color_enabled":  cfg.Logging.ColorEnabled,
 	}
 }
 
 func buildConfigAgeGateMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
 		"enabled":        cfg.AgeGate.Enabled,
+		"bypass_ips":     cfg.AgeGate.BypassIPs,
+		"ip_verify_ttl":  cfg.AgeGate.IPVerifyTTL,
 		"cookie_name":    cfg.AgeGate.CookieName,
 		"cookie_max_age": cfg.AgeGate.CookieMaxAge,
 	}
 }
 
+// CookieConsent (GDPR/CCPA banner) is admin-visible so operators can toggle
+// the banner and adjust the consent cookie lifetime without restarting.
+func buildConfigCookieConsentMap(cfg *config.Config, _ []string) map[string]any {
+	return map[string]any{
+		"enabled":        cfg.CookieConsent.Enabled,
+		"cookie_name":    cfg.CookieConsent.CookieName,
+		"cookie_max_age": cfg.CookieConsent.CookieMaxAge,
+	}
+}
+
 func buildConfigUploadsMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"max_file_size":   cfg.Uploads.MaxFileSize,
-		"allowed_types":   cfg.Uploads.AllowedExtensions,
-		"scan_for_mature": cfg.Uploads.ScanForMature,
-		"require_auth":    cfg.Uploads.RequireAuth,
+		"enabled":            cfg.Uploads.Enabled,
+		"max_file_size":      cfg.Uploads.MaxFileSize,
+		"allowed_extensions": cfg.Uploads.AllowedExtensions,
+		"scan_for_mature":    cfg.Uploads.ScanForMature,
+		"require_auth":       cfg.Uploads.RequireAuth,
 	}
 }
 
@@ -563,15 +612,19 @@ func buildConfigUIMap(cfg *config.Config, _ []string) map[string]any {
 		"items_per_page":        cfg.UI.ItemsPerPage,
 		"mobile_items_per_page": cfg.UI.MobileItemsPerPage,
 		"mobile_grid_columns":   cfg.UI.MobileGridColumns,
+		"feed_max_items":        cfg.UI.FeedMaxItems,
+		"feed_default_items":    cfg.UI.FeedDefaultItems,
 	}
 }
 
 func buildConfigDownloaderMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"enabled":       cfg.Downloader.Enabled,
-		"url":           cfg.Downloader.URL,
-		"downloads_dir": cfg.Downloader.DownloadsDir,
-		"import_dir":    cfg.Downloader.ImportDir,
+		"enabled":         cfg.Downloader.Enabled,
+		"url":             cfg.Downloader.URL,
+		"downloads_dir":   cfg.Downloader.DownloadsDir,
+		"import_dir":      cfg.Downloader.ImportDir,
+		"health_interval": cfg.Downloader.HealthInterval,
+		"request_timeout": cfg.Downloader.RequestTimeout,
 	}
 }
 
@@ -597,15 +650,26 @@ func buildConfigBackupMap(cfg *config.Config, _ []string) map[string]any {
 
 func buildConfigUpdaterMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"update_method": cfg.Updater.UpdateMethod,
-		"branch":        cfg.Updater.Branch,
+		"update_method":       cfg.Updater.UpdateMethod,
+		"branch":              cfg.Updater.Branch,
+		"app_dir":             cfg.Updater.AppDir,
+		"github_username":     cfg.Updater.GitHubUsername,
+		// Secrets surface as "*_set" flags so the admin UI can show whether they
+		// are populated without exposing the value itself.
+		"github_token_set":    cfg.Updater.GitHubToken != "",
+		"deploy_key_path_set": cfg.Updater.DeployKeyPath != "",
 	}
 }
 
 func buildConfigRemoteMediaMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"enabled":       cfg.RemoteMedia.Enabled,
-		"cache_enabled": cfg.RemoteMedia.CacheEnabled,
+		"enabled":                  cfg.RemoteMedia.Enabled,
+		"cache_enabled":            cfg.RemoteMedia.CacheEnabled,
+		"sync_interval":            cfg.RemoteMedia.SyncInterval,
+		"cache_size":               cfg.RemoteMedia.CacheSize,
+		"cache_ttl":                cfg.RemoteMedia.CacheTTL,
+		"http_timeout":             cfg.RemoteMedia.HTTPTimeout,
+		"max_concurrent_downloads": cfg.RemoteMedia.MaxConcurrentDownloads,
 	}
 }
 
@@ -614,13 +678,15 @@ func buildConfigCrawlerMap(cfg *config.Config, _ []string) map[string]any {
 		"enabled":         cfg.Crawler.Enabled,
 		"browser_enabled": cfg.Crawler.BrowserEnabled,
 		"max_pages":       cfg.Crawler.MaxPages,
+		"crawl_timeout":   cfg.Crawler.CrawlTimeout,
 	}
 }
 
 func buildConfigExtractorMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"enabled":   cfg.Extractor.Enabled,
-		"max_items": cfg.Extractor.MaxItems,
+		"enabled":       cfg.Extractor.Enabled,
+		"max_items":     cfg.Extractor.MaxItems,
+		"proxy_timeout": cfg.Extractor.ProxyTimeout,
 	}
 }
 
@@ -633,10 +699,12 @@ func buildConfigClaudeMap(cfg *config.Config, _ []string) map[string]any {
 		"model":                      c.Model,
 		"mode":                       c.Mode,
 		"max_tokens":                 c.MaxTokens,
+		"system_prompt":              c.SystemPrompt,
 		"require_confirm_for_writes": c.RequireConfirmForWrites,
 		"max_tool_calls_per_turn":    c.MaxToolCallsPerTurn,
 		"rate_limit_per_minute":      c.RateLimitPerMinute,
 		"kill_switch":                c.KillSwitch,
+		"request_timeout":            c.RequestTimeout,
 		"history_retention_days":     c.HistoryRetentionDays,
 	}
 }
@@ -662,6 +730,7 @@ func (m *Module) GetConfigMap() map[string]any {
 		{"download", buildConfigDownloadMap},
 		{"logging", buildConfigLoggingMap},
 		{"age_gate", buildConfigAgeGateMap},
+		{"cookie_consent", buildConfigCookieConsentMap},
 		{"uploads", buildConfigUploadsMap},
 		{"ui", buildConfigUIMap},
 		{"downloader", buildConfigDownloaderMap},
