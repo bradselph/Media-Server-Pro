@@ -1,6 +1,6 @@
 # Media Server Pro
 
-A self-hosted media streaming server. Go backend, Nuxt frontend, MariaDB datastore. Ships as a single binary for native installs and as a published OCI image for Docker. Designed to run on a VPS in front of Caddy or nginx and stream a personal video/audio library to any device.
+A self-hosted media streaming server. Go backend, Nuxt frontend, MariaDB datastore. Ships as a single binary. Designed to run on a VPS in front of Caddy or nginx and stream a personal video/audio library to any device.
 
 Two Media Server Pro instances can federate: enter a peer's URL + receiver API key in the admin UI and the two libraries appear as one to users, with the master proxying byte streams from the slave on demand.
 
@@ -26,7 +26,7 @@ Two Media Server Pro instances can federate: enter a peer's URL + receiver API k
 - Full admin UI: users, media library, scanner, classifier, HLS jobs, thumbnails, validator, suggestions, playlists, sources, security, audit log, backups, updates, system config, analytics, and the optional Claude assistant module.
 - Live config reload — most security and feature settings flip without a server restart.
 - Hot-reloadable rate limits, CORS origins, security headers, trusted-proxy CIDRs.
-- Built-in backup/restore with pre-upgrade DB snapshots taken by `update.sh`.
+- Built-in backup/restore with pre-upgrade DB snapshots taken on deploy.
 
 **Distributed deployment (federated peers)**
 - A full Media Server Pro instance can act as a slave to another by entering the peer's URL + receiver API key in the admin UI; catalog flows over WebSocket and byte streams via outbound HTTP push.
@@ -53,35 +53,9 @@ What you will **not** find here: subtitles. They are explicitly out of scope and
 
 ## Quick start
 
-### Docker (recommended for fresh VPS)
+### Native install (interactive)
 
-The fastest path on a clean Debian/Ubuntu VPS:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/bradselph/Media-Server-Pro/main/vps-bootstrap.sh -o vps-bootstrap.sh
-chmod +x vps-bootstrap.sh
-./vps-bootstrap.sh
-```
-
-The bootstrap installs Docker, prompts for credentials and integration keys, writes a fully-populated `.env.docker`, optionally configures Caddy with auto-HTTPS for your domain, and brings the stack up. Pre-built images are pulled from `ghcr.io/bradselph/media-server-pro:main`; if the pull fails, it falls back to a local build.
-
-If you already have Docker:
-
-```bash
-git clone https://github.com/bradselph/Media-Server-Pro
-cd Media-Server-Pro
-cp .env.docker.example .env.docker
-# edit .env.docker — at minimum set DB_ROOT_PASSWORD, DATABASE_PASSWORD,
-# ADMIN_PASSWORD, and CORS_ORIGINS
-docker compose --env-file .env.docker pull
-docker compose --env-file .env.docker up -d
-```
-
-The server listens on `${SERVER_PORT}` (default 8080). The first admin login uses `ADMIN_USERNAME` / `ADMIN_PASSWORD` from `.env.docker`. If you leave the password blank, a random one is generated and written to `data/admin-initial-password.txt` (mode 0600).
-
-### Native install
-
-For a bare-metal install (no Docker), use `setup.sh`:
+For a bare-metal install:
 
 ```bash
 git clone https://github.com/bradselph/Media-Server-Pro
@@ -90,17 +64,31 @@ cd Media-Server-Pro
 ./install.sh      # builds the binary and installs the systemd unit
 ```
 
-`deploy.sh` automates the same flow from a developer workstation against a remote VPS over SSH (`./deploy.sh --setup` for first-time bring-up, plain `./deploy.sh` for subsequent updates).
+The server listens on `${SERVER_PORT}` (default 3000). The first admin login uses `ADMIN_USERNAME` / `ADMIN_PASSWORD` from `.env`. If you leave the password blank, a random one is generated and written to `data/admin-initial-password.txt` (mode 0600).
+
+### Remote VPS deploy
+
+`deploy.sh` automates the same flow from a developer workstation against a remote VPS over SSH:
+
+```bash
+./deploy.sh --setup        # first-time bring-up (installs Go + Node + systemd unit)
+./deploy.sh                # subsequent updates (pull, build, restart)
+./deploy.sh --dev          # deploy from the development branch
+./deploy.sh --configure    # walk newly-added config knobs
+./deploy.sh --review       # re-walk every config knob
+./deploy.sh --rollback     # restore the previous server binary
+```
+
+The deploy stack reads `.deploy.env` (local, gitignored) for VPS coordinates and forwards configured knobs into `$DEPLOY_DIR/.env` on the VPS. See `deploy-knobs.sh` for the full knob registry.
 
 ### Updating
 
 ```bash
-./update.sh                    # native install: pull, build, restart, with rollback
-./update.sh --rollback         # restore previous binary if the new one regresses
-docker compose pull && docker compose up -d   # Docker: rolling pull
+./deploy.sh                # pulls, rebuilds, restarts on the VPS; auto-rollback if the new binary fails the health probe
+./deploy.sh --rollback     # explicit roll back to the previous binary (server.bak)
 ```
 
-`update.sh` snapshots the database to `./backups/` before every upgrade and keeps the previous Docker image tagged so rollbacks are immediate.
+`deploy.sh` keeps the previous binary as `server.bak` next to the new one, and rolls back automatically if the new binary fails to bind or respond to `/health` within 90 seconds.
 
 ---
 
@@ -113,7 +101,7 @@ Two full Media Server Pro instances can pair so each one's media appears on both
 
 The receiving server's helper hits `POST /api/admin/peer/connect`, which calls back to the source's `/api/receiver/pair` and configures the source's follower to push its catalog to the receiver. From then on, slave items appear seamlessly in the unified `/api/media` listing, with thumbnails proxied on demand and byte streams pushed over WebSocket-controlled HTTP.
 
-Either side can also pre-seed pairing through env (`FOLLOWER_MASTER_URL`, `FOLLOWER_API_KEY`, `RECEIVER_API_KEYS`) — see `.env.docker.example`. The source makes only outbound connections; no inbound port needs opening on it.
+Either side can also pre-seed pairing through env (`FOLLOWER_MASTER_URL`, `FOLLOWER_API_KEY`, `RECEIVER_API_KEYS`). The source makes only outbound connections; no inbound port needs opening on it.
 
 ---
 
@@ -125,7 +113,7 @@ Configuration comes from three layers, in order of precedence:
 2. **`config.json`** — written on first start, hot-reloaded on most field changes.
 3. **Built-in defaults** — see `internal/config/defaults.go`.
 
-For Docker, env vars are set via `.env.docker` (forwarded to the container by `env_file:`). For native installs, `.env` in the project root is loaded at startup. **Always single-quote secrets in either file** — unquoted values containing `#`, `$`, embedded whitespace, or special chars are silently mangled by the env-file parser, which is the most common cause of "admin login fails" reports. `vps-bootstrap.sh` and `setup.sh` quote automatically; manual edits should follow suit.
+For VPS deploys the `.env` file in the deploy directory is loaded at startup. **Always single-quote secrets** — unquoted values containing `#`, `$`, embedded whitespace, or special chars are silently mangled by the env-file parser, which is the most common cause of "admin login fails" reports. `setup.sh` quotes automatically; manual edits should follow suit.
 
 ### Required env at minimum
 
@@ -133,7 +121,7 @@ For Docker, env vars are set via `.env.docker` (forwarded to the container by `e
 |---|---|
 | `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` | MariaDB connection |
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` (or `ADMIN_PASSWORD_HASH`) | First admin login |
-| `SERVER_PORT`, `SERVER_BIND` | Bind address — set to `127.0.0.1` behind Caddy/nginx |
+| `SERVER_PORT`, `SERVER_HOST` | Bind address — set to `127.0.0.1` behind Caddy/nginx |
 
 ### Useful flags / env
 
@@ -141,14 +129,14 @@ For Docker, env vars are set via `.env.docker` (forwarded to the container by `e
 |---|---|---|
 | `AUTH_ALLOW_REGISTRATION` | `false` | Public self-registration |
 | `AUTH_ALLOW_GUESTS` | `false` | Anonymous browsing without login |
-| `AUTH_SECURE_COOKIES` | `false` | Set `true` once HTTPS is live |
 | `RECEIVER_ENABLED` / `RECEIVER_API_KEYS` | off | Accept federated peers (slave catalog ingest) |
 | `FOLLOWER_MASTER_URL` / `FOLLOWER_API_KEY` | off | This server pushes its catalog to a peer |
 | `FEATURE_HUGGINGFACE` / `HUGGINGFACE_API_KEY` | off | Visual mature-content classifier |
 | `FEATURE_CLAUDE` / `ANTHROPIC_API_KEY` / `CLAUDE_MODE` | off | Admin-only Claude assistant |
 | `STORAGE_BACKEND` (`local`/`s3`) + `S3_ENDPOINT` / `S3_BUCKET` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | `local` | Object-storage backend |
 | `HSTS_ENABLED`, `CSP_ENABLED` | mixed | HTTP security headers |
-| `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS` | on, 100/60s | Per-IP rate limit |
+| `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS` | off, 1000/60s | Per-IP rate limit |
+| `NUXT_PUBLIC_GA_ID` | empty | Google Analytics 4 measurement id (baked into the bundle by `deploy.sh`) |
 
 The full matrix lives in `internal/config/env_overrides_*.go` (one file per concern: auth, server, storage, hls, security, receiver, follower, etc.).
 
@@ -211,12 +199,11 @@ web/
 api_spec/openapi.yaml  # Authoritative API contract
 patches/               # Vendored dependency patches (ffmpeg-go without aws-sdk-go-v1)
 systemd/               # Service unit templates
-docker-compose.yml     # Compose stack (server + MariaDB, optional MinIO profile)
-Dockerfile             # Server image (Go + Nuxt build, single image)
 deploy.sh              # SSH-based deploy/update for the server
+deploy-knobs.sh        # Knob registry sourced by deploy.sh + deploy-configure.sh
+deploy-configure.sh    # Interactive prompter for newly-added knobs
+deploy-knobs-merge.py  # Atomic merge of forwarded knobs into the VPS .env
 setup.sh / install.sh  # Interactive native setup
-update.sh              # Native upgrade with DB snapshot + rollback
-vps-bootstrap.sh       # End-to-end fresh-VPS bootstrap (Docker mode)
 ```
 
 ---
@@ -228,7 +215,7 @@ vps-bootstrap.sh       # End-to-end fresh-VPS bootstrap (Docker mode)
 go build ./...
 go test ./...
 
-# Frontend (Node 22, pnpm/npm)
+# Frontend (Node 22, npm)
 cd web/nuxt-ui
 npm install
 npm run dev          # standalone dev server (proxy to Go on :8080)
@@ -237,8 +224,6 @@ npm run build        # writes static SPA into web/static
 ```
 
 The Go binary embeds `web/static`, so a full release is `cd web/nuxt-ui && npm run build && cd ../.. && go build ./cmd/server`.
-
-For master/slave development on a single machine, the dedicated `--profile receiver` target in `docker-compose.yml` runs both sides in one stack.
 
 ---
 
@@ -250,4 +235,4 @@ Proprietary. See repository for full terms.
 
 ## Project status
 
-Active development. See `MEMORY.md` index files (when present) and the commit log for recent direction. Issues and pull requests welcome at <https://github.com/bradselph/Media-Server-Pro>.
+Active development. See the commit log for recent direction. Issues and pull requests welcome at <https://github.com/bradselph/Media-Server-Pro>.

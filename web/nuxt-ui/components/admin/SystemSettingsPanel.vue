@@ -841,7 +841,7 @@ onMounted(loadConfig)
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
             <UFormField label="Update Method">
-              <USelect :model-value="get('updater', 'update_method') || 'source'" :items="[{label:'Source (git pull)',value:'source'},{label:'Binary',value:'binary'},{label:'Docker',value:'docker'}]" @update:model-value="set('updater', 'update_method', $event)" />
+              <USelect :model-value="get('updater', 'update_method') || 'source'" :items="[{label:'Source (git pull)',value:'source'},{label:'Binary',value:'binary'}]" @update:model-value="set('updater', 'update_method', $event)" />
             </UFormField>
             <UFormField label="Branch">
               <UInput :model-value="get('updater', 'branch')" @update:model-value="set('updater', 'branch', $event)" placeholder="main" />

@@ -270,6 +270,19 @@ func (m *Module) recordConnected(connected bool) {
 	m.statusMu.Unlock()
 }
 
+// lastConnectAttemptOK reports whether the most recent connect attempt
+// succeeded. Used by wsloop to choose INFO vs DEBUG for the per-attempt
+// "Connecting to master..." line so a stale pairing doesn't spam the journal
+// every reconnect_max interval forever.
+func (m *Module) lastConnectAttemptOK() bool {
+	m.statusMu.RLock()
+	defer m.statusMu.RUnlock()
+	if m.lastConnectedAt.IsZero() {
+		return true // first attempt — always log
+	}
+	return !m.lastErrorAt.After(m.lastConnectedAt)
+}
+
 func (m *Module) recordCatalogPush(size int) {
 	m.statusMu.Lock()
 	m.lastCatalogPush = time.Now()

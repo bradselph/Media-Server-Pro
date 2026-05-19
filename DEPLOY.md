@@ -1,100 +1,101 @@
 # Deployment Guide
 
-Media Server Pro ships as a single OCI image. Production deployments use
-Docker Compose; the published image is also suitable for Kubernetes / Nomad
-/ Swarm. Federation between two instances (each one's media appearing on the
-other) is configured at runtime through the admin UI — no separate slave
-binary or extra deploy step is required.
+Media Server Pro is a single Go binary that embeds the Nuxt SPA. The
+production path is a systemd unit on a VPS fronted by Caddy or nginx, with
+deploys driven from a developer workstation through `deploy.sh`. Federation
+between two instances (each one's media appearing on the other) is configured
+at runtime through the admin UI — no separate slave binary or extra deploy
+step is required.
 
-## Image
+## First-time bring-up
 
-Published to the GitHub Container Registry on every release tag
-(`v[0-9]+.[0-9]+.[0-9]+`) and on manual workflow dispatch:
-
-- `ghcr.io/<owner>/media-server-pro` — server (HTTP API + Nuxt UI)
-
-Built for `linux/amd64` and `linux/arm64`.
-
-## Quick start (Docker Compose)
+On a fresh Debian/Ubuntu VPS, from your workstation:
 
 ```bash
-cp .env.docker.example .env.docker     # then edit secrets and paths
-docker compose --env-file .env.docker up -d --build
+git clone https://github.com/bradselph/Media-Server-Pro
+cd Media-Server-Pro
+
+./deploy.sh --configure    # walk the knob registry — fill in VPS_HOST,
+                           # GITHUB_TOKEN, DB credentials, admin creds
+./deploy.sh --setup        # SSH into the VPS, install Go + Node + ffmpeg,
+                           # clone the repo into $DEPLOY_DIR, install the
+                           # systemd unit, open the UFW port
+./deploy.sh                # pull, build, restart
 ```
 
-`.env.docker` is git-ignored. The example template lists every variable the
-stack needs, including the required ones (DB passwords, MinIO image tag).
+`deploy.sh --setup` is idempotent — re-running it just re-checks the parts
+that need installing. The deploy script is the only supported provisioning
+path; it handles SSH key install, dependency pinning from `go.mod` /
+`package.json`, and rolls back to the previous binary if the new one fails
+the `/health` probe.
 
-The stack defines these services:
+## The knob system
 
-| Service  | Profile  | Notes                                                          |
-| -------- | -------- | -------------------------------------------------------------- |
-| `db`     | always   | MariaDB 11 with healthcheck and persistent `db-data` volume    |
-| `server` | always   | Server, depends on `db: service_healthy`                       |
-| `minio`  | `minio`  | Optional S3-compatible storage; pin `MINIO_IMAGE_TAG`          |
+Deploy-time and runtime configuration lives in `.deploy.env` (local,
+gitignored). Knobs are registered in `deploy-knobs.sh` with description,
+default, scope, and section. `deploy-configure.sh` walks newly-added knobs
+on every deploy and forwards them to the VPS:
 
-Enable MinIO with the profile flag:
+| Scope       | Where it lives                | When it's read                       |
+| ----------- | ----------------------------- | ------------------------------------ |
+| `vps`       | Local `.deploy.env`           | Consumed by `deploy.sh` itself (SSH, paths) |
+| `toolchain` | Local `.deploy.env`           | Version pins (`MSP_GO_VERSION`, `MSP_NODE_MAJOR`) |
+| `runtime`   | Forwarded to `$DEPLOY_DIR/.env` on the VPS | Read by the Go server on every start |
+| `build`     | Exported into the npm build shell | Baked into the Nuxt bundle (`NUXT_PUBLIC_*`) |
+
+**Safe-by-default**: pressing Enter on a never-seen knob marks it "seen" as
+a commented hint and does **not** push the registry default to the VPS — the
+VPS `.env` keeps whatever it had. Only values the operator explicitly types
+are forwarded.
+
+Commands:
 
 ```bash
-docker compose --env-file .env.docker --profile minio up -d
+./deploy.sh --configure                    # walk ★ NEW knobs only
+./deploy.sh --review                       # re-walk every knob
+./deploy-configure.sh --only NUXT_PUBLIC_GA_ID   # update one knob
+./deploy-configure.sh --list               # inventory with current values
+./deploy-configure.sh --set KEY=VAL        # set a knob non-interactively
 ```
 
 ## Configuration
 
-All runtime config is supplied via environment variables. The full override
-matrix lives in `internal/config/env_overrides_*.go`. Common variables:
+All runtime config is supplied via environment variables read from
+`$DEPLOY_DIR/.env`. The full override matrix lives in
+`internal/config/env_overrides_*.go`. Common variables:
 
-- `SERVER_PORT`, `SERVER_BIND` — listening socket
+- `SERVER_PORT`, `SERVER_HOST` — listening socket
 - `DATABASE_NAME`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` — app DB credentials
-- `DB_ROOT_PASSWORD` — MariaDB root (only used by the `db` service)
 - `LOG_LEVEL` — `debug` / `info` / `warn` / `error`
-- `APP_UID`, `APP_GID` — match host owner of bind-mounted media directories
+- `AUTH_ALLOW_REGISTRATION`, `AUTH_ALLOW_GUESTS` — public exposure
+- `RECEIVER_ENABLED`, `RECEIVER_API_KEYS` — accept federated peers
+- `FEATURE_HUGGINGFACE`, `HUGGINGFACE_API_KEY` — visual classifier
+- `FEATURE_CLAUDE`, `ANTHROPIC_API_KEY`, `CLAUDE_MODE` — admin assistant
 
-## Volumes
+Build-time (baked into the Nuxt bundle by `deploy.sh`):
 
-Named volumes are scoped per data type so each can be backed up / restored
-independently:
+- `NUXT_PUBLIC_GA_ID` — Google Analytics 4 measurement id
+- `NUXT_PUBLIC_BUILD_ID` — free-form bundle tag
+- `NUXT_PUBLIC_API_BASE` — override API base URL (empty = same-origin)
 
-- `db-data` — MariaDB
-- `videos`, `music`, `uploads`, `thumbnails`, `playlists`, `analytics`,
-  `hls-cache`, `data`, `logs`, `temp` — server state
-
-Switch any of them to bind mounts by copying
-`docker-compose.override.yml.example` to `docker-compose.override.yml`
-(git-ignored) and editing the bind paths there. Compose auto-merges that
-file when present.
-
-## Healthchecks
-
-- `db` — `mariadb-admin ping`, 30 s interval
-- `server` — `GET /health`, 30 s interval, 20 s start period
-- `minio` — `GET /minio/health/live`, 30 s interval
-
-The compose file uses `service_healthy` for dependency ordering, so `server`
-will not start until the database is accepting connections.
+**Always single-quote secrets** in `.env` — unquoted values containing `#`,
+`$`, embedded whitespace, or special chars are silently mangled by the
+env-file parser, which is the most common cause of "admin login fails"
+reports.
 
 ## Reverse proxy / TLS
 
-The image listens on plain HTTP on `${SERVER_PORT}`. Production deployments
-should terminate TLS at a reverse proxy (Caddy, nginx, Traefik, Cloudflare).
-Set `SERVER_BIND=127.0.0.1` and bind the proxy to the public interface.
-
-## CI publish workflow
-
-`.github/workflows/docker-publish.yml` builds and pushes the image on:
-
-- semver tags (`v1.2.3` → `:1.2.3`, `:1.2`, `:1`)
-- manual `workflow_dispatch` (publishes a `branch-sha` tag for hotfixes)
-
-Multi-arch builds run via QEMU on the self-hosted amd64 runner. Layer cache
-is keyed by branch ref so sequential pushes reuse the npm and Go module
-download layers.
+The Go binary listens on plain HTTP on `${SERVER_PORT}`. Production
+deployments should terminate TLS at a reverse proxy (Caddy, nginx, Traefik,
+Cloudflare). Set `SERVER_HOST=127.0.0.1` and bind the proxy to the public
+interface.
 
 ## Upgrading
 
 ```bash
-docker compose --env-file .env.docker pull
-docker compose --env-file .env.docker up -d
+./deploy.sh                # pull, build, restart, auto-rollback on health failure
+./deploy.sh --dev          # deploy from the development branch
+./deploy.sh --rollback     # restore the previous binary (server.bak)
 ```
 
 Database schema migrations run on server startup. Take a `mariadbdump`
@@ -102,10 +103,9 @@ snapshot before upgrading across major versions.
 
 ## Security checklist
 
-- [ ] All secrets (`DB_ROOT_PASSWORD`, `DATABASE_PASSWORD`, `RECEIVER_API_KEYS`,
-      `MINIO_ROOT_PASSWORD`) replaced with strong unique values.
-- [ ] `MINIO_IMAGE_TAG` pinned to a specific RELEASE — `latest` is rejected
-      by compose at `up` time.
-- [ ] `SERVER_BIND=127.0.0.1` when running behind a reverse proxy.
-- [ ] Bind-mount UIDs match `APP_UID`/`APP_GID` so the container can write.
-- [ ] `.env.docker` not committed (it is in `.dockerignore` and `.gitignore`).
+- [ ] All secrets (`DATABASE_PASSWORD`, `ADMIN_PASSWORD`, `RECEIVER_API_KEYS`,
+      `HUGGINGFACE_API_KEY`, `ANTHROPIC_API_KEY`) are strong unique values.
+- [ ] `SERVER_HOST=127.0.0.1` when running behind a reverse proxy.
+- [ ] `AUTH_ALLOW_REGISTRATION=false` unless you intend an open community.
+- [ ] `.env` on the VPS is mode `600`, owned by the `mediaserver` system user.
+- [ ] `.deploy.env` is not committed (it is in `.gitignore`).
