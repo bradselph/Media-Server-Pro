@@ -47,6 +47,18 @@ async function verifyAge() {
   finally { ageGateVerifying.value = false }
 }
 
+// Land initial focus on the consent checkbox rather than the destructive "Leave"
+// button — accidental Enter on the wrong default would kick a verified-age
+// adult off the site.
+watch(ageGateOpen, async (open) => {
+  if (!open || typeof window === 'undefined') return
+  await nextTick()
+  requestAnimationFrame(() => {
+    const cb = document.querySelector('[role="dialog"] input[type="checkbox"]') as HTMLInputElement | null
+    cb?.focus()
+  })
+})
+
 // AgeGate "Leave" action per handoff §6.9. Users who aren't 18+ or don't
 // want to confirm need an explicit escape route rather than being forced
 // to close the browser tab. Prefer history.back() if there's a prior page
@@ -584,11 +596,14 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
             :disabled="ageGateVerifying"
             @click="leaveAgeGate"
           />
+          <!-- Button label kept short to avoid wrap on narrow viewports; the
+               binding legal language lives on the checkbox above. -->
           <UButton
             :loading="ageGateVerifying"
             :disabled="!ageGateTermsAccepted"
             icon="i-lucide-check"
-            label="I confirm I am 18 or older"
+            label="Enter site"
+            size="lg"
             color="primary"
             @click="verifyAge"
           />
