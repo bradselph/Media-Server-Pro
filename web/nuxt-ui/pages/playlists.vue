@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { MediaItem, Playlist, SmartPlaylist, SmartPlaylistRules, SmartCondition } from '~/types/api'
+import { getDisplayTitle } from '~/utils/mediaTitle'
 
 definePageMeta({ layout: 'default', title: 'Playlists' })
 
@@ -1005,7 +1006,7 @@ onMounted(() => {
                   />
                 </div>
                 <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium truncate">{{ item.name }}</p>
+                  <p class="text-sm font-medium truncate" :title="getDisplayTitle(item)">{{ getDisplayTitle(item) }}</p>
                   <div class="flex items-center gap-2 text-xs text-muted mt-0.5">
                     <span>{{ item.type }}</span>
                     <span v-if="item.duration">· {{ Math.round(item.duration) }}s</span>

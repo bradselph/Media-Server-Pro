@@ -6,11 +6,11 @@ const toast = useToast()
 // Adding a new section here (and in Go) keeps both sides in sync.
 type ConfigSection =
   | 'admin' | 'age_gate' | 'analytics' | 'auth' | 'backup'
-  | 'crawler' | 'database' | 'directories' | 'download' | 'downloader'
-  | 'extractor' | 'features' | 'hls' | 'huggingface' | 'logging'
-  | 'mature_scanner' | 'receiver' | 'remote_media' | 'security'
-  | 'server' | 'storage' | 'streaming' | 'thumbnails' | 'ui'
-  | 'updater' | 'uploads'
+  | 'claude' | 'cookie_consent' | 'crawler' | 'database' | 'directories'
+  | 'download' | 'downloader' | 'extractor' | 'features' | 'hls'
+  | 'huggingface' | 'logging' | 'mature_scanner' | 'receiver'
+  | 'remote_media' | 'security' | 'server' | 'storage' | 'streaming'
+  | 'thumbnails' | 'ui' | 'updater' | 'uploads'
 
 // ── State ─────────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -276,8 +276,11 @@ onMounted(loadConfig)
                 <UInput :model-value="get('server', 'key_file')" @update:model-value="set('server', 'key_file', $event)" placeholder="/path/to/key.pem" />
               </UFormField>
             </template>
+            <UFormField label="Max Header Bytes">
+              <UInput type="number" :model-value="get('server', 'max_header_bytes')" @update:model-value="set('server', 'max_header_bytes', Number($event))" />
+            </UFormField>
           </div>
-          <p class="text-xs text-neutral-500 mt-3">Server address/port changes require a restart.</p>
+          <p class="text-xs text-neutral-500 mt-3">Server address/port and HTTP timeouts (read/write/idle/shutdown) require a restart and live in raw JSON.</p>
         </UCard>
 
         <!-- ── Storage Backend ──────────────────────────────────────── -->
@@ -377,6 +380,53 @@ onMounted(loadConfig)
               <UInput type="number" :model-value="get('security', 'max_file_size_mb')" @update:model-value="set('security', 'max_file_size_mb', Number($event))" />
             </UFormField>
           </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 max-w-4xl">
+            <UFormField label="IP Whitelist (one per line, CIDR ok)">
+              <UTextarea
+                :model-value="(get('security', 'ip_whitelist') || []).join('\n')"
+                @update:model-value="set('security', 'ip_whitelist', String($event).split('\n').map(s => s.trim()).filter(Boolean))"
+                placeholder="203.0.113.0/24"
+                :rows="3"
+                :disabled="!get('security', 'enable_ip_whitelist')"
+              />
+            </UFormField>
+            <UFormField label="IP Blacklist (one per line, CIDR ok)">
+              <UTextarea
+                :model-value="(get('security', 'ip_blacklist') || []).join('\n')"
+                @update:model-value="set('security', 'ip_blacklist', String($event).split('\n').map(s => s.trim()).filter(Boolean))"
+                placeholder="198.51.100.5"
+                :rows="3"
+                :disabled="!get('security', 'enable_ip_blacklist')"
+              />
+            </UFormField>
+            <UFormField label="Trusted Proxy CIDRs (X-Forwarded-For source)">
+              <UTextarea
+                :model-value="(get('security', 'trusted_proxy_cidrs') || []).join('\n')"
+                @update:model-value="set('security', 'trusted_proxy_cidrs', String($event).split('\n').map(s => s.trim()).filter(Boolean))"
+                placeholder="10.0.0.0/8&#10;172.16.0.0/12"
+                :rows="3"
+              />
+            </UFormField>
+            <UFormField label="CORS Allowed Origins (one per line)">
+              <UTextarea
+                :model-value="(get('security', 'cors_origins') || []).join('\n')"
+                @update:model-value="set('security', 'cors_origins', String($event).split('\n').map(s => s.trim()).filter(Boolean))"
+                placeholder="https://app.example.com"
+                :rows="3"
+                :disabled="!get('security', 'cors_enabled')"
+              />
+            </UFormField>
+            <UFormField label="CSP Policy" class="lg:col-span-2">
+              <UTextarea
+                :model-value="get('security', 'csp_policy')"
+                @update:model-value="set('security', 'csp_policy', $event)"
+                placeholder="default-src 'self'; img-src 'self' data: https:; …"
+                :rows="3"
+                :disabled="!get('security', 'csp_enabled')"
+              />
+            </UFormField>
+          </div>
+          <p class="text-xs text-neutral-500 mt-3">CSP, HSTS, CORS, IP toggles and rate limits all hot-reload — no restart needed. Rate-limit windows, burst window and ban duration live in raw JSON / config.json.</p>
         </UCard>
 
         <!-- ── Streaming ──────────────────────────────────────────── -->
@@ -407,6 +457,18 @@ onMounted(loadConfig)
               <span class="text-sm">Adaptive Bitrate (HLS)</span>
               <USwitch :model-value="get('streaming', 'adaptive')" @update:model-value="set('streaming', 'adaptive', $event)" />
             </div>
+            <UFormField label="Default Chunk Size (bytes)">
+              <UInput type="number" :model-value="get('streaming', 'default_chunk_size')" @update:model-value="set('streaming', 'default_chunk_size', Number($event))" />
+            </UFormField>
+            <UFormField label="Max Chunk Size (bytes)">
+              <UInput type="number" :model-value="get('streaming', 'max_chunk_size')" @update:model-value="set('streaming', 'max_chunk_size', Number($event))" />
+            </UFormField>
+            <UFormField label="Mobile Chunk Size (bytes)">
+              <UInput type="number" :model-value="get('streaming', 'mobile_chunk_size')" @update:model-value="set('streaming', 'mobile_chunk_size', Number($event))" />
+            </UFormField>
+            <UFormField label="Buffer Size (bytes)">
+              <UInput type="number" :model-value="get('streaming', 'buffer_size')" @update:model-value="set('streaming', 'buffer_size', Number($event))" />
+            </UFormField>
           </div>
         </UCard>
 
@@ -443,6 +505,10 @@ onMounted(loadConfig)
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
             <div class="flex items-center justify-between">
+              <span class="text-sm">Enabled</span>
+              <USwitch :model-value="get('uploads', 'enabled')" @update:model-value="set('uploads', 'enabled', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
               <span class="text-sm">Require Auth</span>
               <USwitch :model-value="get('uploads', 'require_auth')" @update:model-value="set('uploads', 'require_auth', $event)" />
             </div>
@@ -452,6 +518,14 @@ onMounted(loadConfig)
             </div>
             <UFormField label="Max File Size (bytes)">
               <UInput type="number" :model-value="get('uploads', 'max_file_size')" @update:model-value="set('uploads', 'max_file_size', Number($event))" />
+            </UFormField>
+            <UFormField label="Allowed Extensions (one per line)" class="sm:col-span-2 lg:col-span-2">
+              <UTextarea
+                :model-value="(get('uploads', 'allowed_extensions') || []).join('\n')"
+                @update:model-value="set('uploads', 'allowed_extensions', String($event).split('\n').map(s => s.trim()).filter(Boolean))"
+                :rows="3"
+                placeholder=".mp4&#10;.mkv&#10;.mp3"
+              />
             </UFormField>
           </div>
         </UCard>
@@ -490,6 +564,9 @@ onMounted(loadConfig)
             </UFormField>
             <UFormField label="Worker Count">
               <UInput type="number" :model-value="get('thumbnails', 'worker_count')" @update:model-value="set('thumbnails', 'worker_count', Number($event))" />
+            </UFormField>
+            <UFormField label="Queue Size">
+              <UInput type="number" :model-value="get('thumbnails', 'queue_size')" @update:model-value="set('thumbnails', 'queue_size', Number($event))" />
             </UFormField>
           </div>
         </UCard>
@@ -533,6 +610,12 @@ onMounted(loadConfig)
             </UFormField>
             <UFormField label="Pre-Generate Interval (hours)">
               <UInput type="number" :model-value="get('hls', 'pre_generate_interval_hours')" @update:model-value="set('hls', 'pre_generate_interval_hours', Number($event))" />
+            </UFormField>
+            <UFormField label="Playlist Length (segments)">
+              <UInput type="number" :model-value="get('hls', 'playlist_length')" @update:model-value="set('hls', 'playlist_length', Number($event))" />
+            </UFormField>
+            <UFormField label="Max Consecutive Failures">
+              <UInput type="number" :model-value="get('hls', 'max_consecutive_failures')" @update:model-value="set('hls', 'max_consecutive_failures', Number($event))" />
             </UFormField>
           </div>
           <!-- Quality profiles -->
@@ -588,7 +671,11 @@ onMounted(loadConfig)
             <UFormField label="Retention (days)">
               <UInput type="number" :model-value="get('analytics', 'retention_days')" @update:model-value="set('analytics', 'retention_days', Number($event))" />
             </UFormField>
+            <UFormField label="Max Reconstruct Events (startup)">
+              <UInput type="number" :model-value="get('analytics', 'max_reconstruct_events')" @update:model-value="set('analytics', 'max_reconstruct_events', Number($event))" />
+            </UFormField>
           </div>
+          <p class="text-xs text-neutral-500 mt-3">Session timeout, view cooldown and cleanup interval are stored as durations (ns) — edit via raw JSON if needed.</p>
         </UCard>
 
         <!-- ── Mature Content Scanner ──────────────────────────────── -->
@@ -617,6 +704,24 @@ onMounted(loadConfig)
             </UFormField>
             <UFormField label="Medium Confidence Threshold">
               <UInput type="number" step="0.01" :model-value="get('mature_scanner', 'medium_confidence_threshold')" @update:model-value="set('mature_scanner', 'medium_confidence_threshold', Number($event))" />
+            </UFormField>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 max-w-4xl">
+            <UFormField label="High Confidence Keywords (one per line)">
+              <UTextarea
+                :model-value="(get('mature_scanner', 'high_confidence_keywords') || []).join('\n')"
+                @update:model-value="set('mature_scanner', 'high_confidence_keywords', String($event).split('\n').map(s => s.trim()).filter(Boolean))"
+                :rows="6"
+                placeholder="One keyword per line"
+              />
+            </UFormField>
+            <UFormField label="Medium Confidence Keywords (one per line)">
+              <UTextarea
+                :model-value="(get('mature_scanner', 'medium_confidence_keywords') || []).join('\n')"
+                @update:model-value="set('mature_scanner', 'medium_confidence_keywords', String($event).split('\n').map(s => s.trim()).filter(Boolean))"
+                :rows="6"
+                placeholder="One keyword per line"
+              />
             </UFormField>
           </div>
         </UCard>
@@ -680,7 +785,39 @@ onMounted(loadConfig)
             <UFormField label="Cookie Max Age (s)">
               <UInput type="number" :model-value="get('age_gate', 'cookie_max_age')" @update:model-value="set('age_gate', 'cookie_max_age', Number($event))" />
             </UFormField>
+            <UFormField label="Bypass IPs (one per line)" class="sm:col-span-2 lg:col-span-3">
+              <UTextarea
+                :model-value="(get('age_gate', 'bypass_ips') || []).join('\n')"
+                @update:model-value="set('age_gate', 'bypass_ips', String($event).split('\n').map(s => s.trim()).filter(Boolean))"
+                placeholder="203.0.113.5&#10;198.51.100.0/24"
+                :rows="3"
+              />
+            </UFormField>
           </div>
+          <p class="text-xs text-neutral-500 mt-3">IPs listed here bypass the age verification check. CIDR ranges supported. Verification TTL is set in config.json or .env.</p>
+        </UCard>
+
+        <!-- ── Cookie Consent (GDPR/CCPA banner) ──────────────────── -->
+        <UCard>
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-cookie" class="text-primary" />
+              <span class="font-semibold text-sm">Cookie Consent</span>
+            </div>
+          </template>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Banner Enabled</span>
+              <USwitch :model-value="get('cookie_consent', 'enabled')" @update:model-value="set('cookie_consent', 'enabled', $event)" />
+            </div>
+            <UFormField label="Cookie Name">
+              <UInput :model-value="get('cookie_consent', 'cookie_name')" @update:model-value="set('cookie_consent', 'cookie_name', $event)" placeholder="cookie_consent" />
+            </UFormField>
+            <UFormField label="Cookie Max Age (s)">
+              <UInput type="number" :model-value="get('cookie_consent', 'cookie_max_age')" @update:model-value="set('cookie_consent', 'cookie_max_age', Number($event))" />
+            </UFormField>
+          </div>
+          <p class="text-xs text-neutral-500 mt-3">Controls the visitor consent banner for analytics cookies. Disable only when running purely server-side without analytics tracking.</p>
         </UCard>
 
         <!-- ── Remote Media ───────────────────────────────────────── -->
@@ -693,10 +830,21 @@ onMounted(loadConfig)
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
             <div class="flex items-center justify-between">
+              <span class="text-sm">Enabled</span>
+              <USwitch :model-value="get('remote_media', 'enabled')" @update:model-value="set('remote_media', 'enabled', $event)" />
+            </div>
+            <div class="flex items-center justify-between">
               <span class="text-sm">Cache Enabled</span>
               <USwitch :model-value="get('remote_media', 'cache_enabled')" @update:model-value="set('remote_media', 'cache_enabled', $event)" />
             </div>
+            <UFormField label="Cache Size (bytes)">
+              <UInput type="number" :model-value="get('remote_media', 'cache_size')" @update:model-value="set('remote_media', 'cache_size', Number($event))" />
+            </UFormField>
+            <UFormField label="Max Concurrent Downloads">
+              <UInput type="number" :model-value="get('remote_media', 'max_concurrent_downloads')" @update:model-value="set('remote_media', 'max_concurrent_downloads', Number($event))" />
+            </UFormField>
           </div>
+          <p class="text-xs text-neutral-500 mt-3">Sync interval, cache TTL and HTTP timeout are durations (ns) — edit via raw JSON if needed.</p>
         </UCard>
 
         <!-- ── Crawler ────────────────────────────────────────────── -->
@@ -708,6 +856,10 @@ onMounted(loadConfig)
             </div>
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Enabled</span>
+              <USwitch :model-value="get('crawler', 'enabled')" @update:model-value="set('crawler', 'enabled', $event)" />
+            </div>
             <div class="flex items-center justify-between">
               <span class="text-sm">Browser Enabled</span>
               <USwitch :model-value="get('crawler', 'browser_enabled')" @update:model-value="set('crawler', 'browser_enabled', $event)" />
@@ -727,6 +879,10 @@ onMounted(loadConfig)
             </div>
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Enabled</span>
+              <USwitch :model-value="get('extractor', 'enabled')" @update:model-value="set('extractor', 'enabled', $event)" />
+            </div>
             <UFormField label="Max Items">
               <UInput type="number" :model-value="get('extractor', 'max_items')" @update:model-value="set('extractor', 'max_items', Number($event))" />
             </UFormField>
@@ -765,6 +921,12 @@ onMounted(loadConfig)
             </UFormField>
             <UFormField label="Mobile Grid Columns">
               <UInput type="number" :model-value="get('ui', 'mobile_grid_columns')" @update:model-value="set('ui', 'mobile_grid_columns', Number($event))" />
+            </UFormField>
+            <UFormField label="Feed Default Items (RSS/Atom)">
+              <UInput type="number" :model-value="get('ui', 'feed_default_items')" @update:model-value="set('ui', 'feed_default_items', Number($event))" />
+            </UFormField>
+            <UFormField label="Feed Max Items (hard cap)">
+              <UInput type="number" :model-value="get('ui', 'feed_max_items')" @update:model-value="set('ui', 'feed_max_items', Number($event))" />
             </UFormField>
           </div>
         </UCard>
@@ -807,6 +969,20 @@ onMounted(loadConfig)
             <UFormField label="Max Backups">
               <UInput type="number" :model-value="get('logging', 'max_backups')" @update:model-value="set('logging', 'max_backups', Number($event))" />
             </UFormField>
+            <UFormField label="Format">
+              <USelect
+                :model-value="get('logging', 'format') || 'text'"
+                :items="[{label:'Text',value:'text'},{label:'JSON',value:'json'}]"
+                @update:model-value="set('logging', 'format', $event)"
+              />
+            </UFormField>
+            <UFormField label="Max File Size (bytes)">
+              <UInput type="number" :model-value="get('logging', 'max_file_size')" @update:model-value="set('logging', 'max_file_size', Number($event))" />
+            </UFormField>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Color Enabled</span>
+              <USwitch :model-value="get('logging', 'color_enabled')" @update:model-value="set('logging', 'color_enabled', $event)" />
+            </div>
           </div>
         </UCard>
 
@@ -828,7 +1004,12 @@ onMounted(loadConfig)
             <UFormField label="Import Directory">
               <UInput :model-value="get('downloader', 'import_dir')" @update:model-value="set('downloader', 'import_dir', $event)" placeholder="/path/to/import" />
             </UFormField>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Enabled</span>
+              <USwitch :model-value="get('downloader', 'enabled')" @update:model-value="set('downloader', 'enabled', $event)" />
+            </div>
           </div>
+          <p class="text-xs text-neutral-500 mt-3">Health-check interval and request timeout are durations (ns) — edit via raw JSON if needed.</p>
         </UCard>
 
         <!-- ── Updater ─────────────────────────────────────────────── -->
@@ -846,7 +1027,26 @@ onMounted(loadConfig)
             <UFormField label="Branch">
               <UInput :model-value="get('updater', 'branch')" @update:model-value="set('updater', 'branch', $event)" placeholder="main" />
             </UFormField>
+            <UFormField label="Application Directory">
+              <UInput :model-value="get('updater', 'app_dir')" @update:model-value="set('updater', 'app_dir', $event)" placeholder="/opt/media-server-pro" />
+            </UFormField>
+            <UFormField label="GitHub Username">
+              <UInput :model-value="get('updater', 'github_username')" @update:model-value="set('updater', 'github_username', $event)" />
+            </UFormField>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">GitHub Token</span>
+              <UBadge :color="get('updater', 'github_token_set') ? 'success' : 'neutral'" variant="subtle" size="sm">
+                {{ get('updater', 'github_token_set') ? 'Configured' : 'Not set' }}
+              </UBadge>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Deploy Key</span>
+              <UBadge :color="get('updater', 'deploy_key_path_set') ? 'success' : 'neutral'" variant="subtle" size="sm">
+                {{ get('updater', 'deploy_key_path_set') ? 'Configured' : 'Not set' }}
+              </UBadge>
+            </div>
           </div>
+          <p class="text-xs text-neutral-500 mt-3">GitHub tokens and deploy-key paths can be set via .env (GITHUB_TOKEN / DEPLOY_KEY_PATH) for security. Their presence is shown here as a status badge.</p>
         </UCard>
 
         <!-- ── Directories (read-only) ────────────────────────────── -->

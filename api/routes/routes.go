@@ -412,6 +412,14 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Used by systemd healthcheck scripts, uptime monitors, and nginx upstream health checks.
 	r.GET("/health", h.GetHealth)
 
+	// Crawler-facing SEO endpoints — public, cached, no auth. Registered
+	// directly on the engine so they take precedence over the SPA NoRoute
+	// fallback in web/server.go. Sitemap lists indexable URLs (home, browse,
+	// categories, every public media item); robots.txt blocks the API/admin/
+	// streaming surface and points at the sitemap.
+	r.GET("/sitemap.xml", h.GetSitemap)
+	r.GET("/robots.txt", h.GetRobotsTxt)
+
 	// /metrics is for Prometheus scraping — admin-protected, no frontend caller by design
 	r.GET("/metrics", adminAuth(authModule), h.GetMetrics)
 

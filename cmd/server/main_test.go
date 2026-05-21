@@ -1,38 +1,41 @@
 package main
 
 import (
+	"os"
+	"regexp"
 	"testing"
 )
 
-// TestVersionFlagCallsShutdown verifies that logger.Shutdown() is called
-// before os.Exit(0) when the --version flag is used.
-// This is a regression test for FND-0010.
-//
-// The fix ensures that the --version exit path calls logger.Shutdown()
-// before os.Exit(0), matching the behavior of fatalExit().
-//
-// Expected code (lines 69-72 of main.go):
-//   if showVer {
-//       showVersion()
-//       logger.Shutdown()  <-- MUST BE HERE
-//       os.Exit(0)
-//   }
-//
-// This test documents the requirement. A full integration test would
-// require modifying main() to support test entry points.
-func TestVersionFlagCallsShutdown(t *testing.T) {
-	// Placeholder test documenting the expected behavior
-	// The actual verification is done via code review:
-	// logger.Shutdown() is present in the --version exit path
-	t.Log("FND-0010: logger.Shutdown() called before os.Exit(0) in --version path")
+// TestVersionFlagShutdownOrder is a regression test for FND-0010. The
+// --version exit branch in main() must call logger.Shutdown() before
+// os.Exit(0), matching the order in fatalExit. main() invokes os.Exit
+// directly, so we cannot exercise the branch from a unit test — instead
+// we statically verify the source still contains the correct ordering.
+func TestVersionFlagShutdownOrder(t *testing.T) {
+	src, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatalf("read main.go: %v", err)
+	}
+
+	// Match the version branch (any indentation/whitespace), require
+	// logger.Shutdown() ahead of os.Exit(0), and reject any other
+	// statement sneaking in between them.
+	pattern := regexp.MustCompile(`(?s)if\s+showVer\s*\{\s*showVersion\(\)\s*logger\.Shutdown\(\)\s*os\.Exit\(0\)\s*\}`)
+	if !pattern.Match(src) {
+		t.Fatal("FND-0010 regression: main.go --version branch must be `showVersion(); logger.Shutdown(); os.Exit(0)` in that order with nothing between")
+	}
 }
 
-// TestFatalExitConsistency verifies that both error and version exits
-// use the same logger shutdown pattern.
-//
-// Both the fatalExit() function (lines 60-64) and the --version path
-// (lines 69-72) now call logger.Shutdown() before exiting.
-func TestFatalExitConsistency(t *testing.T) {
-	// Placeholder test documenting the consistency requirement
-	t.Log("FND-0010: Both exit paths (error and version) call logger.Shutdown()")
+// TestFatalExitShutdownOrder verifies that fatalExit also flushes the
+// logger before exiting (the consistency requirement from FND-0010).
+func TestFatalExitShutdownOrder(t *testing.T) {
+	src, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatalf("read main.go: %v", err)
+	}
+
+	pattern := regexp.MustCompile(`(?s)func\s+fatalExit\([^)]*\)\s*\{\s*log\.Error\([^)]*\)\s*logger\.Shutdown\(\)\s*os\.Exit\(1\)\s*\}`)
+	if !pattern.Match(src) {
+		t.Fatal("FND-0010 regression: fatalExit must call logger.Shutdown() between log.Error() and os.Exit(1)")
+	}
 }

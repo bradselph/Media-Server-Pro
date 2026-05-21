@@ -719,6 +719,21 @@ onMounted(() => {
     loadFavorites()
     loadMyPlaylists()
     loadSavedSearches()
+    // Welcome toast — fires once after signup. signup.vue stamps the pending
+    // flag; we clear it here so a refresh doesn't re-show the greeting.
+    if (typeof window !== 'undefined') {
+      try {
+        if (localStorage.getItem('msp-welcomed') === 'pending') {
+          toast.add({
+            title: 'Welcome to Media Server Pro',
+            description: 'Explore Categories or hit Surprise Me to get started.',
+            color: 'success',
+            icon: 'i-lucide-sparkles',
+          })
+          localStorage.setItem('msp-welcomed', 'done')
+        }
+      } catch { /* private mode */ }
+    }
   } else {
     loadGeneralSuggestions()
   }
@@ -958,6 +973,69 @@ onUnmounted(() => {
       </div>
     </div>
   </template>
+  <!-- Hero skeleton — placeholder during the initial recommendations
+       fan-out so the page reserves vertical space instead of jumping when
+       the hero data arrives. Logged-out users see the fallback below
+       directly (their `general` fetch isn't gated by recsLoading). -->
+  <template v-else-if="recsLoading">
+    <div class="relative overflow-hidden min-h-[240px] flex items-end animate-pulse" style="background: linear-gradient(135deg, var(--accent-bg-weak) 0%, var(--surface-page) 100%);">
+      <div class="relative z-10 max-w-[1400px] mx-auto px-5 pb-6 w-full">
+        <div class="space-y-3">
+          <div class="h-3 w-20 rounded-full bg-white/15" />
+          <div class="h-8 w-2/3 max-w-md rounded bg-white/15" />
+          <div class="h-3 w-1/3 max-w-xs rounded bg-white/10" />
+          <div class="flex gap-2 pt-1">
+            <div class="h-9 w-28 rounded-[7px] bg-white/15" />
+            <div class="h-9 w-24 rounded-[7px] bg-white/10" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+  <!-- Hero fallback — first-time visitors with no resume, no trending, and
+       no general suggestions still need a hero shape so the page doesn't
+       open with a blank gap above the recommendation rows. Surprise Me
+       falls through to the library grid when suggestions are empty. -->
+  <template v-else>
+    <div
+      class="relative overflow-hidden min-h-[240px] flex items-end"
+      style="background: linear-gradient(135deg, var(--accent-bg-weak) 0%, var(--surface-page) 100%);"
+    >
+      <div class="absolute inset-0 pointer-events-none scanline-thumb" />
+      <div class="absolute bottom-0 inset-x-0 h-[70%] pointer-events-none bg-gradient-to-t from-[var(--surface-page)] to-transparent" />
+      <div class="relative z-10 max-w-[1400px] mx-auto px-5 pb-6 w-full">
+        <div class="flex items-end gap-4 flex-wrap">
+          <div class="flex-1 min-w-0 space-y-2.5">
+            <span class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">
+              Welcome
+            </span>
+            <h1
+              class="font-extrabold text-white leading-tight"
+              style="font-size: clamp(28px, 4vw, 44px); text-wrap: pretty;"
+            >
+              Nothing playing yet
+            </h1>
+            <p class="text-sm text-white/75 max-w-md">
+              Start with a random pick or jump into the categories.
+            </p>
+          </div>
+          <div class="flex gap-2 flex-wrap shrink-0">
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-5 py-2.5 text-[13px] font-bold hover:brightness-110 transition-all"
+              @click="surpriseMe"
+            >
+              <UIcon name="i-lucide-shuffle" class="size-4" />Surprise me
+            </button>
+            <NuxtLink
+              to="/categories"
+              class="inline-flex items-center bg-white/10 border border-white/20 backdrop-blur-md text-white rounded-[7px] px-4 py-2.5 text-[13px] font-medium no-underline hover:bg-white/15 transition-all"
+            >Browse categories</NuxtLink>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
 
   <UContainer class="py-6 space-y-6">
     <h1 class="sr-only">Media Library</h1>
@@ -975,11 +1053,14 @@ onUnmounted(() => {
         @thumbnail-error="onSuggestionThumbnailError"
       />
 
-      <!-- On Deck (next episode per TV show / Anime series) -->
+      <!-- On Deck — next entry in a series. The backend keys items by series
+           (show_name + season/episode) so a viewer who finished S01E03 sees
+           S01E04 as the natural next pickup. Naming kept neutral; the
+           feature applies to any episodic content. -->
       <div v-if="onDeck.length > 0" class="space-y-3">
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
-            <UIcon name="i-lucide-tv-2" class="size-4 text-[var(--accent)]" />
+            <UIcon name="i-lucide-list-video" class="size-4 text-[var(--accent)]" />
             On Deck
           </h2>
           <div class="flex items-center gap-2">
@@ -1008,7 +1089,7 @@ onUnmounted(() => {
                 loading="lazy"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-tv-2" class="size-6 text-muted" />
+                <UIcon name="i-lucide-list-video" class="size-6 text-muted" />
               </div>
               <div v-if="ep.season > 0 || ep.episode > 0" class="absolute bottom-1 left-1 text-[10px] font-bold text-white bg-black/60 rounded px-1">
                 {{ ep.season > 0 ? `S${String(ep.season).padStart(2,'0')}` : '' }}{{ ep.episode > 0 ? `E${String(ep.episode).padStart(2,'0')}` : '' }}
@@ -1048,6 +1129,19 @@ onUnmounted(() => {
         to="/"
         @thumbnail-error="onSuggestionThumbnailError"
       />
+
+      <!-- Saved-search empty hint — only for likely new users (no saved
+           searches AND no Continue Watching history). Once the user has any
+           activity the hint disappears so it stays out of regulars' way. -->
+      <NuxtLink
+        v-if="!recsLoading && savedSearches.length === 0 && continueWatching.length === 0"
+        to="/browse"
+        class="flex items-center gap-3 rounded-lg border border-dashed border-[var(--hairline)] bg-[var(--surface-card)] px-4 py-3 text-sm text-muted hover:border-[var(--accent)] hover:text-default transition-colors no-underline"
+      >
+        <UIcon name="i-lucide-bookmark-plus" class="size-5 text-[var(--accent-soft)] shrink-0" />
+        <span class="flex-1">Save a search in Browse and new matches will surface right here.</span>
+        <UIcon name="i-lucide-arrow-right" class="size-4 shrink-0" />
+      </NuxtLink>
 
       <!-- Saved-search rows (retention plan B.5).
            One row per saved search that has any items added since the user
@@ -1097,56 +1191,21 @@ onUnmounted(() => {
           </div>
         </div>
       </template>
-      <!-- New Since Last Visit -->
-      <div v-if="newSinceLastVisit && newSinceLastVisit.items.length > 0" class="space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
-            <UIcon name="i-lucide-bell" class="size-4 text-[var(--accent)]" />
-            New Since Your Last Visit
-          </h2>
-          <div class="flex items-center gap-2">
-            <NuxtLink to="/?sort_by=date_added&sort_order=desc" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
-            <div class="flex gap-1">
-              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
-              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.newSinceScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
-            </div>
-          </div>
-        </div>
-        <div ref="newSinceScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-          <NuxtLink
-            v-for="r in newSinceLastVisit.items"
-            :key="r.id"
-            :to="`/player?id=${encodeURIComponent(r.id)}`"
-            class="group shrink-0 w-40"
-          >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
-              <HoverPreviewImg
-                v-if="r.thumbnail_url"
-                :media-id="r.id"
-                :src="r.thumbnail_url"
-                :alt="getDisplayTitle(r)"
-                :width="320"
-                :height="180"
-                img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-              />
-              <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-film" class="size-6 text-muted" />
-              </div>
-              <div v-if="r.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
-                {{ formatDuration(r.duration) }}
-              </div>
-            </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(r)">{{ getDisplayTitle(r) }}</p>
-            <p class="text-xs text-muted truncate">{{ r.category || r.type }}</p>
-          </NuxtLink>
-        </div>
-      </div>
-      <!-- Recently Added -->
-      <div v-if="recentlyAdded.length > 0" class="space-y-3">
+      <!-- Recently added since your last visit (replaces the old standalone
+           "Recently Added" + "New Since Your Last Visit" pair, which showed
+           overlapping items for returning users). Backend uses the user's
+           previous-login timestamp as cutoff, so once they log in again any
+           items that were "new last visit" naturally fall off this row.
+           Falls back to recentlyAdded for first-time logins (no prior visit
+           on record). -->
+      <div
+        v-if="(newSinceLastVisit && newSinceLastVisit.items.length > 0) || (!newSinceLastVisit && recentlyAdded.length > 0)"
+        class="space-y-3"
+      >
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
             <UIcon name="i-lucide-sparkle" class="size-4 text-[var(--accent)]" />
-            Recently Added
+            {{ newSinceLastVisit && newSinceLastVisit.items.length > 0 ? 'Recently added since your last visit' : 'Recently added' }}
           </h2>
           <div class="flex items-center gap-2">
             <NuxtLink to="/?sort_by=date_added&sort_order=desc" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
@@ -1158,7 +1217,7 @@ onUnmounted(() => {
         </div>
         <div ref="recentScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           <NuxtLink
-            v-for="r in recentlyAdded"
+            v-for="r in (newSinceLastVisit && newSinceLastVisit.items.length > 0 ? newSinceLastVisit.items : recentlyAdded)"
             :key="r.id"
             :to="`/player?id=${encodeURIComponent(r.id)}`"
             class="group shrink-0 w-40"
@@ -1197,6 +1256,25 @@ onUnmounted(() => {
         to="/categories"
         @thumbnail-error="onSuggestionThumbnailError"
       />
+      <!-- Top categories chip strip — guest-only discovery nudge. Sorted by
+           item count, capped at 8 so it stays on one row on most viewports. -->
+      <div v-if="categories.length > 0" class="space-y-2">
+        <h2 class="text-sm font-bold text-[var(--text-strong)] flex items-center gap-2">
+          <UIcon name="i-lucide-tag" class="size-4 text-[var(--accent)]" />
+          Top categories
+        </h2>
+        <div class="flex flex-wrap gap-1.5">
+          <NuxtLink
+            v-for="c in [...categories].sort((a, b) => b.count - a.count).slice(0, 8)"
+            :key="c.name"
+            :to="`/browse?category=${encodeURIComponent(c.name)}`"
+            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--hairline)] bg-[var(--surface-card)] hover:border-[var(--accent)] hover:text-default text-xs text-muted no-underline transition-colors"
+          >
+            {{ c.display_name || c.name }}
+            <span class="text-[10px] font-mono opacity-70">{{ c.count.toLocaleString() }}</span>
+          </NuxtLink>
+        </div>
+      </div>
     </template>
 
     <!-- Library stats (public) -->
@@ -1303,6 +1381,9 @@ onUnmounted(() => {
         size="sm"
         @click="params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc'"
       />
+      <!-- Action cluster — visually separated so the filter selects above
+           read as filters, not as a wall of mixed controls. -->
+      <span class="hidden md:inline-block h-[22px] w-px bg-[var(--hairline-strong)] mx-1" aria-hidden="true" />
       <UButton
         icon="i-lucide-play-circle"
         label="Play All"
@@ -1680,8 +1761,8 @@ onUnmounted(() => {
         </div>
       </component>
       <div v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
-        <UIcon name="i-lucide-search-x" class="size-10 mx-auto mb-3 opacity-40" />
-        <p class="font-medium">No media match the current filters.</p>
+        <UIcon :name="hasActiveFilters ? 'i-lucide-search-x' : 'i-lucide-library'" class="size-10 mx-auto mb-3 opacity-40" />
+        <p class="font-medium">{{ hasActiveFilters ? 'No media match the current filters.' : 'Your library is empty here. Try browsing categories to get started.' }}</p>
         <UButton
           v-if="hasActiveFilters"
           icon="i-lucide-x"
@@ -1691,6 +1772,16 @@ onUnmounted(() => {
           size="sm"
           class="mt-3"
           @click="clearAllFilters"
+        />
+        <UButton
+          v-else
+          to="/categories"
+          icon="i-lucide-arrow-right"
+          label="Browse categories"
+          variant="outline"
+          color="neutral"
+          size="sm"
+          class="mt-3"
         />
       </div>
     </div>
@@ -1717,8 +1808,8 @@ onUnmounted(() => {
         <span class="text-xs text-muted shrink-0 ml-auto font-mono tabular-nums">{{ formatDuration(item.duration) || formatBytes(item.size) }}</span>
       </NuxtLink>
       <div v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
-        <UIcon name="i-lucide-search-x" class="size-10 mx-auto mb-3 opacity-40" />
-        <p class="font-medium">No media match the current filters.</p>
+        <UIcon :name="hasActiveFilters ? 'i-lucide-search-x' : 'i-lucide-library'" class="size-10 mx-auto mb-3 opacity-40" />
+        <p class="font-medium">{{ hasActiveFilters ? 'No media match the current filters.' : 'Your library is empty here. Try browsing categories to get started.' }}</p>
         <UButton
           v-if="hasActiveFilters"
           icon="i-lucide-x"
@@ -1728,6 +1819,16 @@ onUnmounted(() => {
           size="sm"
           class="mt-3"
           @click="clearAllFilters"
+        />
+        <UButton
+          v-else
+          to="/categories"
+          icon="i-lucide-arrow-right"
+          label="Browse categories"
+          variant="outline"
+          color="neutral"
+          size="sm"
+          class="mt-3"
         />
       </div>
     </div>
@@ -1800,8 +1901,8 @@ onUnmounted(() => {
         </template>
       </UTable>
       <div v-if="items.length === 0" class="text-center py-8 text-muted">
-        <UIcon name="i-lucide-search-x" class="size-10 mx-auto mb-3 opacity-40" />
-        <p class="font-medium">No media match the current filters.</p>
+        <UIcon :name="hasActiveFilters ? 'i-lucide-search-x' : 'i-lucide-library'" class="size-10 mx-auto mb-3 opacity-40" />
+        <p class="font-medium">{{ hasActiveFilters ? 'No media match the current filters.' : 'Your library is empty here. Try browsing categories to get started.' }}</p>
         <UButton
           v-if="hasActiveFilters"
           icon="i-lucide-x"
@@ -1811,6 +1912,16 @@ onUnmounted(() => {
           size="sm"
           class="mt-3"
           @click="clearAllFilters"
+        />
+        <UButton
+          v-else
+          to="/categories"
+          icon="i-lucide-arrow-right"
+          label="Browse categories"
+          variant="outline"
+          color="neutral"
+          size="sm"
+          class="mt-3"
         />
       </div>
     </UCard>

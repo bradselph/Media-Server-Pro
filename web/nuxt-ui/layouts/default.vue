@@ -47,6 +47,18 @@ async function verifyAge() {
   finally { ageGateVerifying.value = false }
 }
 
+// Land initial focus on the consent checkbox rather than the destructive "Leave"
+// button — accidental Enter on the wrong default would kick a verified-age
+// adult off the site.
+watch(ageGateOpen, async (open) => {
+  if (!open || typeof window === 'undefined') return
+  await nextTick()
+  requestAnimationFrame(() => {
+    const cb = document.querySelector('[role="dialog"] input[type="checkbox"]') as HTMLInputElement | null
+    cb?.focus()
+  })
+})
+
 // AgeGate "Leave" action per handoff §6.9. Users who aren't 18+ or don't
 // want to confirm need an explicit escape route rather than being forced
 // to close the browser tab. Prefer history.back() if there's a prior page
@@ -510,10 +522,14 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
       <UContainer>
         <div class="flex flex-col items-center gap-1">
           <p v-if="serverVersion" class="text-xs text-muted">{{ brand.name }} v{{ serverVersion }}</p>
-          <div class="flex items-center gap-3 text-xs text-muted">
+          <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted">
             <NuxtLink to="/privacy" class="hover:text-default underline">Privacy Policy</NuxtLink>
             <span aria-hidden="true">·</span>
             <NuxtLink to="/terms" class="hover:text-default underline">Terms of Service</NuxtLink>
+            <span aria-hidden="true">·</span>
+            <NuxtLink to="/2257" class="hover:text-default underline">2257 Statement</NuxtLink>
+            <span aria-hidden="true">·</span>
+            <NuxtLink to="/dmca" class="hover:text-default underline">DMCA</NuxtLink>
           </div>
         </div>
       </UContainer>
@@ -584,11 +600,14 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
             :disabled="ageGateVerifying"
             @click="leaveAgeGate"
           />
+          <!-- Button label kept short to avoid wrap on narrow viewports; the
+               binding legal language lives on the checkbox above. -->
           <UButton
             :loading="ageGateVerifying"
             :disabled="!ageGateTermsAccepted"
             icon="i-lucide-check"
-            label="I confirm I am 18 or older"
+            label="Enter site"
+            size="lg"
             color="primary"
             @click="verifyAge"
           />

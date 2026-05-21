@@ -20,6 +20,7 @@
  */
 import type { Playlist } from '~/types/api'
 import { formatDuration } from '~/utils/format'
+import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useQueueStore } from '~/stores/queue'
 import { useSidebarState } from '~/composables/useSidebarState'
 
@@ -328,7 +329,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
             <img
               v-if="playback.mediaInfo.thumbnail_url"
               :src="playback.mediaInfo.thumbnail_url"
-              :alt="playback.mediaInfo.name"
+              :alt="getDisplayTitle(playback.mediaInfo)"
               class="np__art-img"
               @error="($event.target as HTMLImageElement).style.display='none'"
             />
@@ -339,7 +340,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
             />
             <span class="np__live"><span class="np__live-dot" />Now playing</span>
           </div>
-          <p class="np__title" :title="playback.mediaInfo.name">{{ playback.mediaInfo.name }}</p>
+          <p class="np__title" :title="getDisplayTitle(playback.mediaInfo)">{{ getDisplayTitle(playback.mediaInfo) }}</p>
           <div class="np__scrub">
             <div class="np__bar"><div class="np__bar-fill" :style="{ width: `${progressPct}%` }" /></div>
             <div class="np__time">
@@ -416,11 +417,11 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
               <li v-for="(item, i) in queue.items" :key="item.id" class="row">
                 <span class="row__index">{{ String(i + 1).padStart(2, '0') }}</span>
                 <div class="thumb" :style="{ background: gradFor(item.id) }">
-                  <img v-if="item.thumbnail_url" :src="item.thumbnail_url" :alt="item.name" class="thumb__img" @error="($event.target as HTMLImageElement).style.display='none'" />
+                  <img v-if="item.thumbnail_url" :src="item.thumbnail_url" :alt="getDisplayTitle(item)" class="thumb__img" @error="($event.target as HTMLImageElement).style.display='none'" />
                   <UIcon v-else :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="thumb__glyph size-3.5" />
                 </div>
                 <div class="row__meta">
-                  <p class="row__title" :title="item.name">{{ item.name }}</p>
+                  <p class="row__title" :title="getDisplayTitle(item)">{{ getDisplayTitle(item) }}</p>
                   <p class="row__sub"><span class="row__dur">{{ formatDuration(item.duration) }}</span></p>
                 </div>
                 <div class="row__actions">
@@ -462,7 +463,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
                   <UIcon name="i-lucide-film" class="thumb__glyph size-3.5" />
                 </div>
                 <div class="row__meta">
-                  <p class="row__title">{{ item.title || 'Untitled' }}</p>
+                  <p class="row__title">{{ getDisplayTitle(item) }}</p>
                 </div>
                 <div class="row__actions">
                   <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="row-btn" aria-label="Play">
@@ -491,7 +492,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
           <UIcon name="i-lucide-panel-left" class="size-4" />
         </button>
         <div v-if="playback.mediaInfo" class="rail__art" :style="{ background: gradFor(playback.currentMediaId || 'x') }">
-          <img v-if="playback.mediaInfo.thumbnail_url" :src="playback.mediaInfo.thumbnail_url" :alt="playback.mediaInfo.name" class="rail__art-img" @error="($event.target as HTMLImageElement).style.display='none'" />
+          <img v-if="playback.mediaInfo.thumbnail_url" :src="playback.mediaInfo.thumbnail_url" :alt="getDisplayTitle(playback.mediaInfo)" class="rail__art-img" @error="($event.target as HTMLImageElement).style.display='none'" />
           <UIcon v-else :name="playback.mediaInfo.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-3.5" />
         </div>
         <!-- EQ-style activity bars — only animate when isPlaying, frozen
@@ -529,16 +530,16 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
     <div v-if="visible && isMobile" class="dock-root">
       <button
         class="dock"
-        :aria-label="playback.mediaInfo ? `Now playing: ${playback.mediaInfo.name}` : 'Open sidebar'"
+        :aria-label="playback.mediaInfo ? `Now playing: ${getDisplayTitle(playback.mediaInfo)}` : 'Open sidebar'"
         @click="mobileSheetOpen = true"
       >
         <div v-if="playback.mediaInfo" class="dock__art" :style="{ background: gradFor(playback.currentMediaId || 'x') }">
-          <img v-if="playback.mediaInfo.thumbnail_url" :src="playback.mediaInfo.thumbnail_url" :alt="playback.mediaInfo.name" class="dock__art-img" @error="($event.target as HTMLImageElement).style.display='none'" />
+          <img v-if="playback.mediaInfo.thumbnail_url" :src="playback.mediaInfo.thumbnail_url" :alt="getDisplayTitle(playback.mediaInfo)" class="dock__art-img" @error="($event.target as HTMLImageElement).style.display='none'" />
           <UIcon v-else :name="playback.mediaInfo.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-4" />
         </div>
         <div v-else class="dock__art dock__art--empty"><UIcon name="i-lucide-music-2" class="size-4" /></div>
         <div class="dock__meta">
-          <p v-if="playback.mediaInfo" class="dock__title">{{ playback.mediaInfo.name }}</p>
+          <p v-if="playback.mediaInfo" class="dock__title">{{ getDisplayTitle(playback.mediaInfo) }}</p>
           <p v-else class="dock__title">Now Playing</p>
           <p class="dock__sub">
             <UIcon name="i-lucide-list" class="size-3" />
@@ -584,11 +585,11 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
           <div class="sheet__body scroll-thin">
             <div v-if="playback.mediaInfo" class="np">
               <div class="np__art" :style="{ background: playback.mediaInfo.thumbnail_url ? '#000' : gradFor(playback.currentMediaId || 'x') }">
-                <img v-if="playback.mediaInfo.thumbnail_url" :src="playback.mediaInfo.thumbnail_url" :alt="playback.mediaInfo.name" class="np__art-img" />
+                <img v-if="playback.mediaInfo.thumbnail_url" :src="playback.mediaInfo.thumbnail_url" :alt="getDisplayTitle(playback.mediaInfo)" class="np__art-img" />
                 <UIcon v-else :name="playback.mediaInfo.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="np__art-glyph size-7" />
                 <span class="np__live"><span class="np__live-dot" />Now playing</span>
               </div>
-              <p class="np__title" :title="playback.mediaInfo.name">{{ playback.mediaInfo.name }}</p>
+              <p class="np__title" :title="getDisplayTitle(playback.mediaInfo)">{{ getDisplayTitle(playback.mediaInfo) }}</p>
               <div class="np__scrub">
                 <div class="np__bar"><div class="np__bar-fill" :style="{ width: `${progressPct}%` }" /></div>
                 <div class="np__time">
@@ -648,11 +649,11 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
                   <li v-for="(item, i) in queue.items" :key="item.id" class="row">
                     <span class="row__index">{{ String(i + 1).padStart(2, '0') }}</span>
                     <div class="thumb" :style="{ background: gradFor(item.id) }">
-                      <img v-if="item.thumbnail_url" :src="item.thumbnail_url" :alt="item.name" class="thumb__img" @error="($event.target as HTMLImageElement).style.display='none'" />
+                      <img v-if="item.thumbnail_url" :src="item.thumbnail_url" :alt="getDisplayTitle(item)" class="thumb__img" @error="($event.target as HTMLImageElement).style.display='none'" />
                       <UIcon v-else :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="thumb__glyph size-3.5" />
                     </div>
                     <div class="row__meta">
-                      <p class="row__title">{{ item.name }}</p>
+                      <p class="row__title">{{ getDisplayTitle(item) }}</p>
                       <p class="row__sub"><span class="row__dur">{{ formatDuration(item.duration) }}</span></p>
                     </div>
                     <div class="row__actions row__actions--mobile">
@@ -682,7 +683,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
                   <li v-for="(item, i) in pinnedPlaylist.items ?? []" :key="(item.id ?? item.media_id) + '-' + i" class="row">
                     <span class="row__index">{{ String(i + 1).padStart(2, '0') }}</span>
                     <div class="thumb" :style="{ background: gradFor(item.media_id) }"><UIcon name="i-lucide-film" class="thumb__glyph size-3.5" /></div>
-                    <div class="row__meta"><p class="row__title">{{ item.title || 'Untitled' }}</p></div>
+                    <div class="row__meta"><p class="row__title">{{ getDisplayTitle(item) }}</p></div>
                     <div class="row__actions row__actions--mobile">
                       <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="row-btn" aria-label="Play" @click="mobileSheetOpen = false">
                         <UIcon name="i-lucide-play" class="size-3.5" />

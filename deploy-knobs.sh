@@ -111,6 +111,16 @@ KNOB_ORDER=(
   NUXT_PUBLIC_GA_ID
   NUXT_PUBLIC_BUILD_ID
   NUXT_PUBLIC_API_BASE
+  # ── Brand / public-site identity (baked into Nuxt bundle) ────────
+  NUXT_PUBLIC_BRAND_NAME
+  NUXT_PUBLIC_BRAND_TAGLINE
+  NUXT_PUBLIC_BRAND_GRADIENT
+  # ── Adult-site legal compliance (baked into Nuxt bundle) ─────────
+  NUXT_PUBLIC_COMPLIANCE_EMAIL
+  NUXT_PUBLIC_COMPLIANCE_ADDRESS
+  NUXT_PUBLIC_DMCA_AGENT_NAME
+  NUXT_PUBLIC_DMCA_EMAIL
+  NUXT_PUBLIC_DMCA_ADDRESS
 )
 
 declare -A KNOB_DESCRIPTION
@@ -432,6 +442,61 @@ KNOB_DESCRIPTION[NUXT_PUBLIC_API_BASE]="Override API base URL baked into the bun
 KNOB_DEFAULT[NUXT_PUBLIC_API_BASE]=""
 KNOB_SCOPE[NUXT_PUBLIC_API_BASE]="build"
 KNOB_SECTION[NUXT_PUBLIC_API_BASE]="Frontend (baked into bundle)"
+
+# ── Brand / public-site identity ─────────────────────────────────────
+# Resolved by composables/useBrandConfig.ts. Resolution order:
+#   1. window.APP_CONFIG (runtime override, not currently injected)
+#   2. useRuntimeConfig().public (these knobs, baked at build time)
+#   3. app.config.ts defaults
+#   4. Hard-coded fallbacks ('Media Server Pro' etc.)
+# Empty = falls through to the next layer.
+
+KNOB_DESCRIPTION[NUXT_PUBLIC_BRAND_NAME]="Public site name shown in nav, page titles, and legal copy. Empty = 'Media Server Pro'."
+KNOB_DEFAULT[NUXT_PUBLIC_BRAND_NAME]=""
+KNOB_SCOPE[NUXT_PUBLIC_BRAND_NAME]="build"
+KNOB_SECTION[NUXT_PUBLIC_BRAND_NAME]="Brand"
+
+KNOB_DESCRIPTION[NUXT_PUBLIC_BRAND_TAGLINE]="Tagline under the brand name (10px uppercase). Empty = 'Your Library'."
+KNOB_DEFAULT[NUXT_PUBLIC_BRAND_TAGLINE]=""
+KNOB_SCOPE[NUXT_PUBLIC_BRAND_TAGLINE]="build"
+KNOB_SECTION[NUXT_PUBLIC_BRAND_TAGLINE]="Brand"
+
+KNOB_DESCRIPTION[NUXT_PUBLIC_BRAND_GRADIENT]="CSS linear-gradient for the logo tile (e.g. 'linear-gradient(135deg,#6366f1,#3b82f6)'). Empty = OKLCH gradient derived from --accent-hue."
+KNOB_DEFAULT[NUXT_PUBLIC_BRAND_GRADIENT]=""
+KNOB_SCOPE[NUXT_PUBLIC_BRAND_GRADIENT]="build"
+KNOB_SECTION[NUXT_PUBLIC_BRAND_GRADIENT]="Brand"
+
+# ── Adult-site legal compliance ──────────────────────────────────────
+# Rendered on /2257 (18 U.S.C. § 2257 record-keeping statement) and
+# /dmca (DMCA notice & takedown policy). Shipping these EMPTY in
+# production is legally meaningless — operators MUST set them before
+# the site goes public. DMCA agent must also be registered with the
+# U.S. Copyright Office (copyright.gov/dmca-directory, $6 one-time).
+
+KNOB_DESCRIPTION[NUXT_PUBLIC_COMPLIANCE_EMAIL]="Email for the 2257 records-custodian on /2257. Required for public adult sites with US users."
+KNOB_DEFAULT[NUXT_PUBLIC_COMPLIANCE_EMAIL]=""
+KNOB_SCOPE[NUXT_PUBLIC_COMPLIANCE_EMAIL]="build"
+KNOB_SECTION[NUXT_PUBLIC_COMPLIANCE_EMAIL]="Legal compliance"
+
+KNOB_DESCRIPTION[NUXT_PUBLIC_COMPLIANCE_ADDRESS]="Postal address of the 2257 records-custodian (single line; line breaks won't render). Required for public adult sites."
+KNOB_DEFAULT[NUXT_PUBLIC_COMPLIANCE_ADDRESS]=""
+KNOB_SCOPE[NUXT_PUBLIC_COMPLIANCE_ADDRESS]="build"
+KNOB_SECTION[NUXT_PUBLIC_COMPLIANCE_ADDRESS]="Legal compliance"
+
+KNOB_DESCRIPTION[NUXT_PUBLIC_DMCA_AGENT_NAME]="Name (or 'DMCA Designated Agent') shown on /dmca. Must match the U.S. Copyright Office filing."
+KNOB_DEFAULT[NUXT_PUBLIC_DMCA_AGENT_NAME]=""
+KNOB_SCOPE[NUXT_PUBLIC_DMCA_AGENT_NAME]="build"
+KNOB_SECTION[NUXT_PUBLIC_DMCA_AGENT_NAME]="Legal compliance"
+
+KNOB_DESCRIPTION[NUXT_PUBLIC_DMCA_EMAIL]="Email for the DMCA designated agent on /dmca. Must match the U.S. Copyright Office filing."
+KNOB_DEFAULT[NUXT_PUBLIC_DMCA_EMAIL]=""
+KNOB_SCOPE[NUXT_PUBLIC_DMCA_EMAIL]="build"
+KNOB_SECTION[NUXT_PUBLIC_DMCA_EMAIL]="Legal compliance"
+
+KNOB_DESCRIPTION[NUXT_PUBLIC_DMCA_ADDRESS]="Postal address of the DMCA designated agent. Must match the U.S. Copyright Office filing."
+KNOB_DEFAULT[NUXT_PUBLIC_DMCA_ADDRESS]=""
+KNOB_SCOPE[NUXT_PUBLIC_DMCA_ADDRESS]="build"
+KNOB_SECTION[NUXT_PUBLIC_DMCA_ADDRESS]="Legal compliance"
 
 # ── Derived arrays for deploy.sh's payload builders ──────────────────
 # FORWARDED_RUNTIME and FORWARDED_BUILD are the two arrays deploy.sh

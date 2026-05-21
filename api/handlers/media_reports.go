@@ -52,8 +52,7 @@ func (h *Handler) requireMediaReportRepo(c *gin.Context) bool {
 
 // SubmitMediaReport accepts a moderation report on a single media item.
 // Authenticated callers get their user ID attached; guests are recorded
-// by IP only. Per design plan §5.3 the SPA stubs this endpoint until
-// shipped.
+// by IP only.
 //
 // POST /api/media/:id/report
 // Body: { reason: "inappropriate"|"broken"|"spam"|"copyright"|"other", notes: string }

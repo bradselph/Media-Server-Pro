@@ -53,6 +53,11 @@ async function handleSignup() {
     // Fetch the full session instead of using the raw register response,
     // which may have null permissions/preferences on a freshly-created account.
     await authStore.fetchSession()
+    // One-shot flag so the home page can greet the brand-new user with a
+    // welcome toast pointing at Categories / Surprise Me.
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem('msp-welcomed', 'pending') } catch { /* private mode */ }
+    }
     router.replace('/')
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Registration failed'
@@ -86,7 +91,8 @@ async function handleSignup() {
         <div v-if="registrationClosed" class="text-center py-6 space-y-4">
           <UIcon name="i-lucide-user-x" class="size-10 text-muted mx-auto" />
           <p class="text-muted">Registration is currently closed.</p>
-          <UButton to="/login" label="Sign In" variant="outline" />
+          <p class="text-xs text-muted">If you already have an account you can still sign in.</p>
+          <UButton to="/login" label="Sign in" icon="i-lucide-log-in" variant="outline" />
         </div>
         <form v-else class="space-y-4" @submit.prevent="handleSignup">
           <UAlert v-if="error" :title="error" color="error" variant="soft" icon="i-lucide-x-circle" />
@@ -101,6 +107,7 @@ async function handleSignup() {
           <div>
             <label class="block text-[11px] font-bold text-muted uppercase tracking-wide mb-1.5">Password <span class="text-red-400">*</span></label>
             <UInput v-model="form.password" name="new-password" type="password" placeholder="••••••••" autocomplete="new-password" class="w-full" required minlength="8" />
+            <p class="text-[10px] text-muted mt-1">Minimum 8 characters.</p>
           </div>
           <div>
             <label class="block text-[11px] font-bold text-muted uppercase tracking-wide mb-1.5">Confirm Password <span class="text-red-400">*</span></label>
