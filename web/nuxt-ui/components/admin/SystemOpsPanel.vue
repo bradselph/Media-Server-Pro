@@ -51,6 +51,57 @@ async function stopTask(id: string) {
   }
 }
 
+// Schedule editor state — keyed by task ID. Opening the editor for a task
+// seeds the input from the task's current schedule string (e.g. "1h0m0s")
+// converted to seconds, so admins can tweak from the live value.
+const scheduleEditing = ref<Record<string, number>>({})
+const scheduleSaving = ref(new Set<string>())
+
+/** Parse a Go time.Duration string like "1h30m0s" / "5m0s" / "24h0m0s" into
+ *  seconds. Falls back to 0 on parse failure so the editor shows a blank. */
+function parseScheduleSecs(schedule: string): number {
+  let total = 0
+  const re = /(\d+(?:\.\d+)?)\s*(h|m|s|ms|µs|ns)/g
+  let match: RegExpExecArray | null
+  while ((match = re.exec(schedule)) !== null) {
+    const n = parseFloat(match[1])
+    switch (match[2]) {
+      case 'h': total += n * 3600; break
+      case 'm': total += n * 60; break
+      case 's': total += n; break
+      // sub-second units rounded away — task scheduler enforces a 60s floor anyway
+    }
+  }
+  return Math.round(total)
+}
+
+function openScheduleEditor(task: ScheduledTask) {
+  scheduleEditing.value[task.id] = parseScheduleSecs(task.schedule)
+}
+
+function cancelScheduleEditor(taskId: string) {
+  delete scheduleEditing.value[taskId]
+}
+
+async function saveSchedule(taskId: string) {
+  const secs = Number(scheduleEditing.value[taskId])
+  if (!Number.isFinite(secs) || secs < 60) {
+    toast.add({ title: 'Schedule must be at least 60 seconds', color: 'error', icon: 'i-lucide-x' })
+    return
+  }
+  scheduleSaving.value.add(taskId)
+  try {
+    await adminApi.updateTaskSchedule(taskId, secs)
+    toast.add({ title: 'Schedule updated', color: 'success', icon: 'i-lucide-check' })
+    delete scheduleEditing.value[taskId]
+    await loadTasks()
+  } catch (e: unknown) {
+    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    scheduleSaving.value.delete(taskId)
+  }
+}
+
 // ── Logs ───────────────────────────────────────────────────────────────────────
 const logs = ref<LogEntry[]>([])
 const logsLoading = ref(false)
@@ -122,6 +173,33 @@ onUnmounted(() => {
                 Schedule: {{ task.schedule }} · Next: {{ task.next_run ? new Date(task.next_run).toLocaleString() : '—' }}
               </p>
               <p v-if="task.last_error" class="text-xs text-error mt-0.5">{{ task.last_error }}</p>
+              <div v-if="scheduleEditing[task.id] !== undefined" class="flex items-center gap-2 mt-2">
+                <UInput
+                  v-model.number="scheduleEditing[task.id]"
+                  type="number"
+                  :min="60"
+                  step="60"
+                  class="w-32"
+                  aria-label="Schedule in seconds"
+                />
+                <span class="text-xs text-muted">seconds (≥ 60)</span>
+                <UButton
+                  icon="i-lucide-check"
+                  size="xs"
+                  color="primary"
+                  :loading="scheduleSaving.has(task.id)"
+                  label="Save"
+                  @click="saveSchedule(task.id)"
+                />
+                <UButton
+                  icon="i-lucide-x"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  label="Cancel"
+                  @click="cancelScheduleEditor(task.id)"
+                />
+              </div>
             </div>
             <div class="flex gap-1 shrink-0">
               <UButton
@@ -143,6 +221,16 @@ onUnmounted(() => {
                 title="Stop"
                 aria-label="Stop task"
                 @click="stopTask(task.id)"
+              />
+              <UButton
+                icon="i-lucide-clock"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                title="Change schedule"
+                aria-label="Change schedule"
+                :disabled="scheduleEditing[task.id] !== undefined"
+                @click="openScheduleEditor(task)"
               />
               <UButton
                 :icon="task.enabled ? 'i-lucide-pause' : 'i-lucide-play-circle'"

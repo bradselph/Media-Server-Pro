@@ -107,7 +107,8 @@ func main() {
 
 	// ── Register background tasks ──────────────────────────────────────────
 	registerTasks(mods.tasks, mods.media, mods.scanner, mods.thumbnails,
-		mods.auth, mods.backup, mods.suggestions, mods.duplicates, mods.admin, mods.hls, cfg, log)
+		mods.auth, mods.backup, mods.suggestions, mods.duplicates, mods.admin, mods.hls,
+		mods.categorizer, mods.remote, cfg, log)
 
 	// ── Wire up routes ─────────────────────────────────────────────────────
 	setupRoutes(srv, cfg, mods, ageGate, cookieConsent)
@@ -671,13 +672,31 @@ func registerTasks(
 	duplicatesModule *duplicates.Module,
 	adminModule *admin.Module,
 	hlsModule *hls.Module,
+	categorizerModule *categorizer.Module,
+	remoteModule *remote.Module,
 	cfg *config.Manager,
 	log *logger.Logger,
 ) {
+	// registerWithOverride wraps scheduler.RegisterTask so that Tasks.Overrides
+	// from config can adjust the schedule / enabled state at boot. This is what
+	// makes admin schedule edits survive a restart.
+	registerWithOverride := func(reg tasks.TaskRegistration) {
+		if over, ok := cfg.Get().Tasks.Overrides[reg.ID]; ok {
+			if over.ScheduleSecs != nil && *over.ScheduleSecs > 0 {
+				reg.Schedule = time.Duration(*over.ScheduleSecs) * time.Second
+			}
+		}
+		scheduler.RegisterTask(reg)
+		if over, ok := cfg.Get().Tasks.Overrides[reg.ID]; ok {
+			if over.Enabled != nil && !*over.Enabled {
+				_ = scheduler.DisableTask(reg.ID)
+			}
+		}
+	}
 	// Media library scan — discovers new/removed files every hour.
 	// Gated on Features.EnableAutoDiscovery so the flag is honoured at tick
 	// time (not just at startup); when it's off the task tick is a no-op.
-	scheduler.RegisterTask(tasks.TaskRegistration{
+	registerWithOverride(tasks.TaskRegistration{
 		ID:          "media-scan",
 		Name:        "Media Library Scan",
 		Description: "Scans configured directories for new and removed media files",
@@ -714,7 +733,7 @@ func registerTasks(
 	})
 
 	// Metadata cleanup — re-scans to prune orphaned entries every 24h
-	scheduler.RegisterTask(tasks.TaskRegistration{
+	registerWithOverride(tasks.TaskRegistration{
 		ID:          "metadata-cleanup",
 		Name:        "Metadata Cleanup",
 		Description: "Removes metadata entries for media files that no longer exist on disk",
@@ -725,7 +744,7 @@ func registerTasks(
 	})
 
 	// Thumbnail generation — generates missing thumbnails every 30m
-	scheduler.RegisterTask(tasks.TaskRegistration{
+	registerWithOverride(tasks.TaskRegistration{
 		ID:          "thumbnail-generation",
 		Name:        "Thumbnail Generation",
 		Description: "Generates missing thumbnails for media files",
@@ -762,7 +781,7 @@ func registerTasks(
 	})
 
 	// Thumbnail cleanup — removes orphans, excess previews, and corrupt files every 6h
-	scheduler.RegisterTask(tasks.TaskRegistration{
+	registerWithOverride(tasks.TaskRegistration{
 		ID:          "thumbnail-cleanup",
 		Name:        "Thumbnail Cleanup",
 		Description: "Removes orphaned, excess, and corrupt thumbnail files",
@@ -782,7 +801,7 @@ func registerTasks(
 	})
 
 	// Session cleanup — removes expired sessions every hour
-	scheduler.RegisterTask(tasks.TaskRegistration{
+	registerWithOverride(tasks.TaskRegistration{
 		ID:          "session-cleanup",
 		Name:        "Session Cleanup",
 		Description: "Removes expired user sessions from the database",
@@ -793,7 +812,7 @@ func registerTasks(
 	})
 
 	// Backup cleanup — removes old backups beyond configured retention every 24h
-	scheduler.RegisterTask(tasks.TaskRegistration{
+	registerWithOverride(tasks.TaskRegistration{
 		ID:          "backup-cleanup",
 		Name:        "Backup Cleanup",
 		Description: "Removes old backups beyond the configured retention count",
@@ -816,7 +835,7 @@ func registerTasks(
 
 	// Mature content scan — scans all media directories for mature content every 12h
 	// and applies auto-flagged results to the media library so ListMedia can filter them.
-	scheduler.RegisterTask(tasks.TaskRegistration{
+	registerWithOverride(tasks.TaskRegistration{
 		ID:          "mature-content-scan",
 		Name:        "Mature Content Scan",
 		Description: "Scans media directories for mature content using configured detection models",
@@ -859,7 +878,7 @@ func registerTasks(
 
 	// HF classification — runs visual classification on mature content that has no tags yet (e.g. every 12h)
 	if scannerModule.HasHuggingFace() {
-		scheduler.RegisterTask(tasks.TaskRegistration{
+		registerWithOverride(tasks.TaskRegistration{
 			ID:          "hf-classification",
 			Name:        "Hugging Face Classification",
 			Description: "Runs visual classification on mature content that has not been tagged yet",
@@ -896,7 +915,7 @@ func registerTasks(
 	}
 
 	// Duplicate scan — checks local media library for fingerprint collisions every 24h
-	scheduler.RegisterTask(tasks.TaskRegistration{
+	registerWithOverride(tasks.TaskRegistration{
 		ID:          "duplicate-scan",
 		Name:        "Duplicate Media Scan",
 		Description: "Scans local media library for files sharing the same content fingerprint",
@@ -907,7 +926,7 @@ func registerTasks(
 	})
 
 	// Audit log cleanup — removes entries older than retention (e.g. 90 days) every 24h
-	scheduler.RegisterTask(tasks.TaskRegistration{
+	registerWithOverride(tasks.TaskRegistration{
 		ID:          "audit-log-cleanup",
 		Name:        "Audit Log Cleanup",
 		Description: "Removes audit log entries older than the retention period",
@@ -925,7 +944,7 @@ func registerTasks(
 	})
 
 	// Health check — periodic diagnostics (dir existence; no disk space metrics)
-	scheduler.RegisterTask(tasks.TaskRegistration{
+	registerWithOverride(tasks.TaskRegistration{
 		ID:          "health-check",
 		Name:        "Health Check",
 		Description: "Performs system diagnostics and monitors disk space",
@@ -961,7 +980,7 @@ func registerTasks(
 	if pregenInterval < 15*time.Minute {
 		pregenInterval = 15 * time.Minute
 	}
-	scheduler.RegisterTask(tasks.TaskRegistration{
+	registerWithOverride(tasks.TaskRegistration{
 		ID:          "hls-pregenerate",
 		Name:        "HLS Pre-generation",
 		Description: "Pre-generates HLS streaming content for video files that don't have it yet",
@@ -1018,8 +1037,99 @@ func registerTasks(
 		},
 	})
 
-	// Re-apply the interval when it is changed via the admin config panel so that
-	// a server restart is not required to pick up a new pre-generation schedule.
+	// HLS inactive-jobs cleanup — purges jobs whose last access is older than
+	// HLS.RetentionMinutes. Honors HLS.CleanupEnabled at every tick so flipping
+	// the config toggle is enough to stop eviction without disabling the task
+	// itself. The schedule defaults to HLS.CleanupInterval (1h) and is bumped
+	// to a 15-minute floor so admins can't accidentally configure a tight loop.
+	hlsCleanupInterval := cfg.Get().HLS.CleanupInterval
+	if hlsCleanupInterval < 15*time.Minute {
+		hlsCleanupInterval = 15 * time.Minute
+	}
+	registerWithOverride(tasks.TaskRegistration{
+		ID:          "hls-inactive-cleanup",
+		Name:        "HLS Inactive Job Cleanup",
+		Description: "Evicts HLS cache entries whose last access exceeds the configured retention. Off by default — must be enabled by an admin.",
+		Schedule:    hlsCleanupInterval,
+		Func: func(_ context.Context) error {
+			c := cfg.Get().HLS
+			if !c.CleanupEnabled {
+				return nil
+			}
+			if c.RetentionMinutes < 1 {
+				return nil
+			}
+			threshold := time.Duration(c.RetentionMinutes) * time.Minute
+			removed := hlsModule.CleanInactiveJobs(threshold)
+			if removed > 0 {
+				log.Info("HLS inactive cleanup removed %d job(s) older than %v", removed, threshold)
+			}
+			return nil
+		},
+	})
+
+	// HLS stale-lock cleanup — sweeps abandoned per-job .lock files left
+	// behind by crashed transcodes. Safe to run on every server: nothing user-
+	// facing depends on the lock files persisting once their owner is gone.
+	registerWithOverride(tasks.TaskRegistration{
+		ID:          "hls-stale-locks-cleanup",
+		Name:        "HLS Stale Lock Cleanup",
+		Description: "Removes abandoned per-job HLS lock files (e.g. after a crashed transcode)",
+		Schedule:    1 * time.Hour,
+		Func: func(_ context.Context) error {
+			removed := hlsModule.CleanStaleLocks()
+			if removed > 0 {
+				log.Info("HLS cleanup removed %d stale lock(s)", removed)
+			}
+			return nil
+		},
+	})
+
+	// Categorizer stale cleanup — drops categorization rows whose media file no
+	// longer exists. The full media scan eventually removes media_metadata
+	// rows; this task tidies the categorizer side on its own cadence so
+	// admin queries don't return ghost categories.
+	if categorizerModule != nil {
+		registerWithOverride(tasks.TaskRegistration{
+			ID:          "categorizer-stale-cleanup",
+			Name:        "Categorizer Stale Cleanup",
+			Description: "Removes categorization entries pointing at files that no longer exist on disk",
+			Schedule:    24 * time.Hour,
+			Func: func(_ context.Context) error {
+				removed := categorizerModule.CleanStale()
+				if removed > 0 {
+					log.Info("Categorizer cleanup removed %d stale entr(ies)", removed)
+				}
+				return nil
+			},
+		})
+	}
+
+	// Remote-media cache cleanup — TTL/LRU pass over the on-disk remote cache.
+	// The remote module already calls CleanCache after every fetch (so a hot
+	// path keeps things tidy); this catches the cold case where no fetches
+	// happen for a while but TTL is still advancing.
+	if remoteModule != nil {
+		registerWithOverride(tasks.TaskRegistration{
+			ID:          "remote-cache-cleanup",
+			Name:        "Remote Media Cache Cleanup",
+			Description: "Evicts expired or oversized entries from the remote media cache",
+			Schedule:    6 * time.Hour,
+			Func: func(_ context.Context) error {
+				if !cfg.Get().RemoteMedia.Enabled {
+					return nil
+				}
+				removed := remoteModule.CleanCache()
+				if removed > 0 {
+					log.Info("Remote cache cleanup evicted %d entr(ies)", removed)
+				}
+				return nil
+			},
+		})
+	}
+
+	// Re-apply intervals when they are changed via the admin config panel so
+	// that a server restart is not required to pick up a new schedule.
 	cfg.OnChange(func(newCfg *config.Config) {
 		newInterval := time.Duration(newCfg.HLS.PreGenerateIntervalHours) * time.Hour
 		if newInterval < 15*time.Minute {
@@ -1027,6 +1137,13 @@ func registerTasks(
 		}
 		if err := scheduler.UpdateSchedule("hls-pregenerate", newInterval); err != nil {
 			log.Warn("Failed to update HLS pre-generation schedule: %v", err)
+		}
+		newCleanup := newCfg.HLS.CleanupInterval
+		if newCleanup < 15*time.Minute {
+			newCleanup = 15 * time.Minute
+		}
+		if err := scheduler.UpdateSchedule("hls-inactive-cleanup", newCleanup); err != nil {
+			log.Warn("Failed to update HLS cleanup schedule: %v", err)
 		}
 	})
 }

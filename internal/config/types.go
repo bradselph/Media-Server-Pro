@@ -33,6 +33,24 @@ type Config struct {
 	Downloader    DownloaderConfig    `json:"downloader"`
 	Storage       StorageConfig       `json:"storage"`
 	Claude        ClaudeConfig        `json:"claude"`
+	Tasks         TasksConfig         `json:"tasks"`
+}
+
+// TasksConfig holds per-task admin overrides for the background scheduler.
+//
+// Each entry in Overrides is keyed by the task ID registered in
+// cmd/server/main.go (e.g. "media-scan", "hls-inactive-cleanup"). Both
+// fields are pointers so a "leave default" intent (nil) is distinguishable
+// from "explicitly set false" (non-nil pointer to false).
+type TasksConfig struct {
+	Overrides map[string]TaskOverride `json:"overrides,omitempty"`
+}
+
+// TaskOverride is the admin-controlled state for a single scheduled task.
+// nil pointers mean "use the value the task was registered with".
+type TaskOverride struct {
+	Enabled        *bool `json:"enabled,omitempty"`
+	ScheduleSecs   *int  `json:"schedule_secs,omitempty"`
 }
 
 // ClaudeConfig holds settings for the Claude Code–powered admin assistant.

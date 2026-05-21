@@ -4990,6 +4990,50 @@ paths:
         '200':
           description: Task stopped
 
+  /api/admin/tasks/{id}/schedule:
+    post:
+      tags: [ admin-tasks ]
+      summary: Update task schedule
+      description: >
+        Sets a new schedule for a registered background task and persists the
+        override under config.tasks.overrides so it survives a restart.
+        schedule_secs must be at least 60.
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ schedule_secs ]
+              properties:
+                schedule_secs:
+                  type: integer
+                  minimum: 60
+      responses:
+        '200':
+          description: Schedule updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  schedule_secs:
+                    type: integer
+        '400':
+          description: Invalid schedule_secs
+        '404':
+          description: Task not found
+
   /api/admin/media:
     get:
       tags: [ admin-media ]

@@ -737,6 +737,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.POST("/tasks/:id/enable", h.AdminEnableTask)
 	adminGrp.POST("/tasks/:id/disable", h.AdminDisableTask)
 	adminGrp.POST("/tasks/:id/stop", h.AdminStopTask)
+	adminGrp.POST("/tasks/:id/schedule", h.AdminUpdateTaskSchedule)
 
 	// Admin playlist management — /bulk and /stats must be before :id wildcard
 	adminGrp.GET(pathPlaylists, h.AdminListPlaylists)
