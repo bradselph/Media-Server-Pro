@@ -17,6 +17,16 @@ export interface BrandConfig {
     tagline: string
     /** CSS linear-gradient value (e.g. 'linear-gradient(135deg,#6366f1,#3b82f6)'). Empty = use accent-hue fallback. */
     gradient: string
+    /** 18 U.S.C. § 2257 records-custodian email. Surfaced on /2257. */
+    complianceEmail: string
+    /** 2257 records-custodian postal address. Surfaced on /2257. */
+    complianceAddress: string
+    /** DMCA designated agent's name (or "DMCA Designated Agent"). Surfaced on /dmca. */
+    dmcaAgentName: string
+    /** DMCA agent contact email. Surfaced on /dmca. */
+    dmcaEmail: string
+    /** DMCA agent postal address (must match Copyright Office filing). */
+    dmcaAddress: string
 }
 
 interface WindowAppConfig {
@@ -24,6 +34,11 @@ interface WindowAppConfig {
         brandName: string
         brandTagline: string
         brandGradient: string
+        complianceEmail: string
+        complianceAddress: string
+        dmcaAgentName: string
+        dmcaEmail: string
+        dmcaAddress: string
     }>
 }
 
@@ -31,6 +46,11 @@ const FALLBACKS: BrandConfig = {
     name: 'Media Server Pro',
     tagline: 'Your Library',
     gradient: '',
+    complianceEmail: '',
+    complianceAddress: '',
+    dmcaAgentName: '',
+    dmcaEmail: '',
+    dmcaAddress: '',
 }
 
 export function useBrandConfig(): ComputedRef<BrandConfig> {
@@ -49,6 +69,11 @@ export function useBrandConfig(): ComputedRef<BrandConfig> {
             name: cfg.brandName,
             tagline: cfg.brandTagline,
             gradient: cfg.brandGradient,
+            complianceEmail: cfg.complianceEmail,
+            complianceAddress: cfg.complianceAddress,
+            dmcaAgentName: cfg.dmcaAgentName,
+            dmcaEmail: cfg.dmcaEmail,
+            dmcaAddress: cfg.dmcaAddress,
         }
     })
 
@@ -56,5 +81,10 @@ export function useBrandConfig(): ComputedRef<BrandConfig> {
         name: runtime.value.name || buildDefaults.name || FALLBACKS.name,
         tagline: runtime.value.tagline || buildDefaults.tagline || FALLBACKS.tagline,
         gradient: runtime.value.gradient || buildDefaults.gradient || FALLBACKS.gradient,
+        complianceEmail: runtime.value.complianceEmail || buildDefaults.complianceEmail || FALLBACKS.complianceEmail,
+        complianceAddress: runtime.value.complianceAddress || buildDefaults.complianceAddress || FALLBACKS.complianceAddress,
+        dmcaAgentName: runtime.value.dmcaAgentName || buildDefaults.dmcaAgentName || FALLBACKS.dmcaAgentName,
+        dmcaEmail: runtime.value.dmcaEmail || buildDefaults.dmcaEmail || FALLBACKS.dmcaEmail,
+        dmcaAddress: runtime.value.dmcaAddress || buildDefaults.dmcaAddress || FALLBACKS.dmcaAddress,
     }))
 }

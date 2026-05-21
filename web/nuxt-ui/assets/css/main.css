@@ -83,6 +83,19 @@ body {
     }
 }
 
+/* Reka UI popper-based components (UDropdownMenu, UPopover, USelect,
+   UTooltip, UContextMenu, etc.) wrap their portaled content in a div
+   tagged with data-reka-popper-content-wrapper. The wrapper inherits
+   z-index from its content slot's computed style — Nuxt UI v3's default
+   themes don't set one, so the wrapper paints at z-index: auto and gets
+   covered by the right-docked NowPlayingSidebar (z-30) and other fixed
+   chrome. Pin every popper wrapper above the sidebar/header so menus
+   stay clickable. !important is required because Reka writes z-index
+   inline from the computed style. */
+[data-reka-popper-content-wrapper] {
+    z-index: 50 !important;
+}
+
 /* Respect user's motion preferences */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

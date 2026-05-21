@@ -522,10 +522,14 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
       <UContainer>
         <div class="flex flex-col items-center gap-1">
           <p v-if="serverVersion" class="text-xs text-muted">{{ brand.name }} v{{ serverVersion }}</p>
-          <div class="flex items-center gap-3 text-xs text-muted">
+          <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted">
             <NuxtLink to="/privacy" class="hover:text-default underline">Privacy Policy</NuxtLink>
             <span aria-hidden="true">·</span>
             <NuxtLink to="/terms" class="hover:text-default underline">Terms of Service</NuxtLink>
+            <span aria-hidden="true">·</span>
+            <NuxtLink to="/2257" class="hover:text-default underline">2257 Statement</NuxtLink>
+            <span aria-hidden="true">·</span>
+            <NuxtLink to="/dmca" class="hover:text-default underline">DMCA</NuxtLink>
           </div>
         </div>
       </UContainer>

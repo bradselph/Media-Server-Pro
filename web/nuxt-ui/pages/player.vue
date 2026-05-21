@@ -78,6 +78,92 @@ useHead(computed(() => ({
   title: media.value ? getDisplayTitle(media.value) : 'Player',
 })))
 
+// SEO: Open Graph + Twitter Card meta so links shared to Twitter/X, Reddit,
+// Discord, etc. auto-render with a rich preview (thumbnail + title +
+// description) instead of a bare URL. Highest-leverage organic-growth
+// change there is — every shared link becomes a marketing impression.
+function absUrl(path: string): string {
+  if (typeof globalThis === 'undefined' || !globalThis.location) return path
+  if (!path) return path
+  if (/^https?:\/\//i.test(path)) return path
+  return globalThis.location.origin + (path.startsWith('/') ? path : '/' + path)
+}
+const playerCanonicalUrl = computed(() => {
+  if (typeof globalThis === 'undefined' || !globalThis.location) return ''
+  return globalThis.location.origin + globalThis.location.pathname + (mediaId.value ? `?id=${encodeURIComponent(mediaId.value)}` : '')
+})
+const playerDescription = computed(() => {
+  const item = media.value
+  if (!item) return ''
+  const parts: string[] = []
+  if (item.category) parts.push(item.category)
+  if (item.tags && item.tags.length > 0) parts.push(item.tags.slice(0, 6).join(', '))
+  if (item.duration > 0) {
+    const mins = Math.floor(item.duration / 60)
+    parts.push(`${mins} min`)
+  }
+  return parts.join(' • ')
+})
+// useSeoMeta takes per-key getters for reactivity (passing a ComputedRef
+// directly is rejected by the type signature). Each getter resolves when
+// the head dependency runs.
+const ogTitle = computed(() => media.value ? getDisplayTitle(media.value) : '')
+const ogThumb = computed(() => media.value?.thumbnail_url ? absUrl(media.value.thumbnail_url) : '')
+const ogType = computed(() => media.value?.type === 'audio' ? 'music.song' : 'video.other')
+useSeoMeta({
+  description: () => playerDescription.value,
+  ogTitle: () => ogTitle.value,
+  ogDescription: () => playerDescription.value,
+  ogType: () => ogType.value,
+  ogUrl: () => playerCanonicalUrl.value,
+  ogImage: () => ogThumb.value || undefined,
+  twitterCard: () => ogThumb.value ? 'summary_large_image' : 'summary',
+  twitterTitle: () => ogTitle.value,
+  twitterDescription: () => playerDescription.value,
+  twitterImage: () => ogThumb.value || undefined,
+})
+
+// JSON-LD VideoObject — Google/Bing surface this as a video-rich search
+// result on tail-keyword queries. ISO-8601 duration ("PT12M34S") is the
+// schema.org requirement; uploadDate must be ISO-8601 too. Inline JSON in
+// a <script type="application/ld+json"> tag in <head> via useHead.
+function toISODuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return 'PT0S'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  let out = 'PT'
+  if (h > 0) out += `${h}H`
+  if (m > 0) out += `${m}M`
+  if (s > 0 || (h === 0 && m === 0)) out += `${s}S`
+  return out
+}
+useHead(computed(() => {
+  const item = media.value
+  if (!item) return {}
+  const ld: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': item.type === 'audio' ? 'AudioObject' : 'VideoObject',
+    name: getDisplayTitle(item),
+    description: playerDescription.value || getDisplayTitle(item),
+    uploadDate: item.date_added,
+    duration: toISODuration(item.duration),
+    contentUrl: playerCanonicalUrl.value,
+  }
+  const thumb = absUrl(item.thumbnail_url ?? '')
+  if (thumb) ld.thumbnailUrl = thumb
+  return {
+    script: [{
+      type: 'application/ld+json',
+      children: JSON.stringify(ld),
+      // Tagging the script with a hid so a route change replaces it instead
+      // of stacking multiple LD blobs into <head>.
+      hid: 'media-jsonld',
+    }],
+    link: [{ rel: 'canonical', href: playerCanonicalUrl.value }],
+  }
+}))
+
 // Player refs
 const videoRef = ref<HTMLVideoElement | null>(null)
 const isPlaying = ref(false)

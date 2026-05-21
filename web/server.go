@@ -33,6 +33,11 @@ func pathExcludedFromSPA(path string) bool {
 			return true
 		}
 	}
+	// Exact-match crawler endpoints — these are served by the Go router
+	// (api/handlers/seo.go) and must not be swallowed by the SPA index.
+	if path == "/sitemap.xml" || path == "/robots.txt" {
+		return true
+	}
 	return false
 }
 
@@ -57,7 +62,7 @@ func registerEmbeddedStatic(r *gin.Engine) bool {
 
 // spaRoutes are pre-registered so Gin matches them directly; other SPA paths are still
 // served via NoRoute. Keep in sync with web/nuxt-ui/pages/ when adding top-level routes.
-var spaRoutes = []string{"/", "/login", "/signup", "/admin-login", "/profile", "/player", "/admin"}
+var spaRoutes = []string{"/", "/login", "/signup", "/admin-login", "/profile", "/player", "/admin", "/2257", "/dmca"}
 
 // RegisterStaticRoutes sets up static file serving and template routes.
 // This function is safe to call even if embedded files are missing.
