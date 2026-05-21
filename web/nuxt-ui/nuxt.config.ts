@@ -18,6 +18,19 @@ export default defineNuxtConfig({
             gaId: '',
             buildId: '',
             apiBase: '',
+            // Brand identity — surfaced via useBrandConfig. Empty falls
+            // through to app.config.ts defaults, then hard-coded fallbacks.
+            brandName: '',
+            brandTagline: '',
+            brandGradient: '',
+            // Adult-site legal compliance. Surfaced on /2257 and /dmca.
+            // Shipping empty in production is legally meaningless — see
+            // deploy-knobs.sh "Legal compliance" section.
+            complianceEmail: '',
+            complianceAddress: '',
+            dmcaAgentName: '',
+            dmcaEmail: '',
+            dmcaAddress: '',
         },
     },
 
