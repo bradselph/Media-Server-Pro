@@ -88,3 +88,8 @@ docs/audit-screenshots/lighthouse-mobile/report.json
 # Claude Design handoff artifacts — local design source-of-truth, not source.
 /.handoff/
 /Media\ Server\ Pro-handoff.zip
+
+# Local workspace scratch — manifest helpers, env file backups
+/build_manifest.js
+*.env.backup.txt
+*.env.backup

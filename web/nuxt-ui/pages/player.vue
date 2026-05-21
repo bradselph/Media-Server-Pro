@@ -2053,9 +2053,8 @@ watch(mediaId, (id, oldId) => {
     </template>
   </UModal>
 
-  <!-- Report modal — scaffolding only (plan §5.3). Submission is stubbed
-       until the backend ships /api/media/:id/report; the toast confirms
-       the user's action so the UX is complete. -->
+  <!-- Report modal. submitReport() POSTs to /api/media/:id/report and
+       surfaces a toast on success or failure. -->
   <UModal v-model:open="reportModalOpen" title="Report this item" description="Tell us what's wrong so a moderator can review.">
     <template #body>
       <div class="space-y-4 py-2">
