@@ -356,9 +356,8 @@ async function toggleWatchlist() {
 
 watch(mediaId, () => { refreshWatchlist() }, { immediate: true })
 
-// Report — modal scaffolding only. Reason categories ship in a follow-up
-// (plan §5.3 "defer the modal contents to a follow-up; just stub the
-// button + modal scaffolding").
+// Report — moderation report modal state. submitReport() POSTs the
+// chosen reason + free-form notes to /api/media/:id/report.
 const reportModalOpen = ref(false)
 const reportReason = ref<'inappropriate' | 'broken' | 'spam' | 'copyright' | 'other'>('inappropriate')
 const reportNotes = ref('')

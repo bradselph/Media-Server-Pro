@@ -448,3 +448,14 @@ func selectMode(cfgMode, override string) string {
 	}
 	return m
 }
+
+// applyWriteGate downgrades a non-advisory mode to advisory when the
+// RequireConfirmForWrites toggle is on. The returned `gated` bool reports
+// whether the mode was actually changed (true) or left as-is (false), so
+// callers can surface the override to the UI.
+func applyWriteGate(mode string, requireConfirm bool) (effective string, gated bool) {
+	if requireConfirm && mode != ModeAdvisory {
+		return ModeAdvisory, true
+	}
+	return mode, false
+}

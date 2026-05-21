@@ -72,8 +72,10 @@ type ClaudeConfig struct {
 	// --append-system-prompt.
 	SystemPrompt string `json:"system_prompt"`
 
-	// RequireConfirmForWrites reserved for future use — gates writes regardless
-	// of mode once the interactive approval bridge is implemented.
+	// RequireConfirmForWrites, when true, forces every chat turn into
+	// advisory (read-only) mode regardless of the per-turn or default mode
+	// — Edit/Write/Bash are refused by the CLI, Read/Grep/Glob still work.
+	// Applied in claude.Module.ChatTurn before the mode reaches the CLI.
 	RequireConfirmForWrites bool `json:"require_confirm_for_writes"`
 
 	// MaxToolCallsPerTurn caps how many tools Claude can invoke before the

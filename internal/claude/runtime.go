@@ -117,7 +117,21 @@ func (m *Module) ChatTurn(ctx context.Context, userID, username, ip string, req 
 		emit(Event{Type: "info", ConversationID: conv.ID})
 	}
 
-	mode := selectMode(cfg.Mode, req.ModeOverride)
+	// Write gate: when RequireConfirmForWrites is on, applyWriteGate forces
+	// the mode to advisory. Advisory maps to Claude Code's `--permission-mode
+	// plan` (read-only) — Read/Grep/Glob/WebFetch remain available but
+	// Edit/Write/Bash are refused by the CLI itself. This is the coarse
+	// "gate writes regardless of mode" behavior the config flag promises;
+	// per-tool interactive approval would need a stdin bridge that the
+	// non-interactive `claude -p` driver does not expose.
+	mode, gated := applyWriteGate(selectMode(cfg.Mode, req.ModeOverride), cfg.RequireConfirmForWrites)
+	if gated {
+		emit(Event{
+			Type:           "info",
+			ConversationID: conv.ID,
+			Text:           "Write gate is on — running this turn in advisory (read-only) mode.",
+		})
+	}
 	emit(Event{Type: "info", ConversationID: conv.ID, Mode: mode})
 
 	// Persist the user turn up-front so the transcript reflects intent even
