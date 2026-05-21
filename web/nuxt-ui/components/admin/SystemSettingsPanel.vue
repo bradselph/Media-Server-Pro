@@ -601,8 +601,11 @@ onMounted(loadConfig)
             <UFormField label="Retention (minutes)">
               <UInput type="number" :model-value="get('hls', 'retention_minutes')" @update:model-value="set('hls', 'retention_minutes', Number($event))" />
             </UFormField>
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Cleanup Enabled</span>
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <span class="text-sm">Cleanup Enabled</span>
+                <p class="text-xs text-muted mt-0.5">When on, the <code>hls-inactive-cleanup</code> task evicts cached jobs idle longer than the retention above. Off by default — leaves the cache untouched.</p>
+              </div>
               <USwitch :model-value="get('hls', 'cleanup_enabled')" @update:model-value="set('hls', 'cleanup_enabled', $event)" />
             </div>
             <UFormField label="CDN Base URL">

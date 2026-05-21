@@ -85,6 +85,7 @@ func (m *Manager) Load() error {
 	m.resolveAbsolutePaths()
 	m.syncFeatureToggles()
 	m.migrateHLSQualityEnabled()
+	m.migrateHLSCleanupEnabled()
 	m.normalizeHLSScalars()
 	if err := m.validate(); err != nil {
 		return err
@@ -182,6 +183,29 @@ func (m *Manager) migrateHLSQualityEnabled() {
 	}
 	m.config.HLS.QualityProfilesMigrated = true
 	m.log.Info("Migrated %d HLS quality profiles to include enabled flag", len(profiles))
+}
+
+// migrateHLSCleanupEnabled is a one-shot upgrade migration. Before the
+// hls-inactive-cleanup scheduled task existed, HLS.CleanupEnabled was
+// shipped as true-by-default but read by nothing, so existing installs
+// have it persisted as true even though no admin explicitly chose
+// auto-eviction. The product rule (memory: "HLS cache must NEVER be
+// automatically deleted") requires that we force every legacy config to
+// the safer "off" state on first load; admins who genuinely want cleanup
+// can flip it back on now that the toggle actually controls behavior.
+//
+// The migration runs at most once per config file: CleanupMigrated is set
+// after the first pass so any later admin choice (true or false) is
+// preserved on subsequent restarts.
+func (m *Manager) migrateHLSCleanupEnabled() {
+	if m.config.HLS.CleanupMigrated {
+		return
+	}
+	if m.config.HLS.CleanupEnabled {
+		m.log.Info("Migrating legacy HLS cleanup default: forcing CleanupEnabled=false (admin can re-enable in System Settings)")
+		m.config.HLS.CleanupEnabled = false
+	}
+	m.config.HLS.CleanupMigrated = true
 }
 
 // normalizeHLSScalars repairs HLS numeric fields that were persisted as zero

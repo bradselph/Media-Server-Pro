@@ -355,6 +355,14 @@ type HLSConfig struct {
 	// Migration flag: set to true once migrateHLSQualityEnabled has run so
 	// the migration is not repeated when a user deliberately disables all profiles.
 	QualityProfilesMigrated bool `json:"quality_profiles_migrated"`
+
+	// CleanupMigrated guards the one-shot CleanupEnabled=false migration that
+	// runs the first time a legacy config is loaded. Older builds defaulted
+	// CleanupEnabled to true but never read it; once the hls-inactive-cleanup
+	// task started reading the flag we had to forcibly opt every existing
+	// install out, because the memory rule says HLS cache must never be
+	// auto-deleted without explicit admin action.
+	CleanupMigrated bool `json:"cleanup_migrated"`
 }
 
 // HLSQuality defines an HLS quality profile

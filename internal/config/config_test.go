@@ -426,6 +426,43 @@ func TestTasksConfig_HLSCleanupOffByDefault(t *testing.T) {
 	}
 }
 
+func TestMigrateHLSCleanupEnabled_LegacyConfigForcedOff(t *testing.T) {
+	// Simulate a legacy config: CleanupEnabled=true (old default), no
+	// migration flag. Migration must flip it to false and mark migrated.
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	raw := `{"hls":{"cleanup_enabled":true}}`
+	if err := os.WriteFile(cfgPath, []byte(raw), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	m := NewManager(cfgPath)
+	if err := m.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if m.Get().HLS.CleanupEnabled {
+		t.Error("legacy CleanupEnabled=true should have been forced off")
+	}
+	if !m.Get().HLS.CleanupMigrated {
+		t.Error("CleanupMigrated flag should be set after migration")
+	}
+}
+
+func TestMigrateHLSCleanupEnabled_RespectsExplicitOptIn(t *testing.T) {
+	// If the migration has already run and the admin then explicitly turned
+	// CleanupEnabled back on, a subsequent reload must NOT flip it back off.
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	raw := `{"hls":{"cleanup_enabled":true,"cleanup_migrated":true}}`
+	if err := os.WriteFile(cfgPath, []byte(raw), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	m := NewManager(cfgPath)
+	if err := m.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !m.Get().HLS.CleanupEnabled {
+		t.Error("post-migration explicit CleanupEnabled=true must be preserved")
+	}
+}
+
 func TestTaskOverride_RoundTripJSON(t *testing.T) {
 	// Pointer-typed fields must round-trip through JSON so the absent-vs-false
 	// distinction survives a save/load cycle.
