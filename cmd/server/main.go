@@ -108,7 +108,7 @@ func main() {
 	// ── Register background tasks ──────────────────────────────────────────
 	registerTasks(mods.tasks, mods.media, mods.scanner, mods.thumbnails,
 		mods.auth, mods.backup, mods.suggestions, mods.duplicates, mods.admin, mods.hls,
-		mods.categorizer, mods.remote, cfg, log)
+		mods.categorizer, mods.remote, mods.streaming, mods.analytics, cfg, log)
 
 	// ── Wire up routes ─────────────────────────────────────────────────────
 	setupRoutes(srv, cfg, mods, ageGate, cookieConsent)
@@ -659,7 +659,9 @@ func mustRegister(srv *server.Server, module server.Module) {
 }
 
 // registerTasks registers all periodic background tasks with the scheduler.
-const auditLogRetentionDays = 90
+// auditLogRetentionDaysFallback is used only when AdminConfig.AuditLogRetentionDays
+// is unset (zero) by a legacy config — the default is mirrored from defaults.go.
+const auditLogRetentionDaysFallback = 90
 
 func registerTasks(
 	scheduler *tasks.Module,
@@ -674,6 +676,8 @@ func registerTasks(
 	hlsModule *hls.Module,
 	categorizerModule *categorizer.Module,
 	remoteModule *remote.Module,
+	streamingModule *streaming.Module,
+	analyticsModule *analytics.Module,
 	cfg *config.Manager,
 	log *logger.Logger,
 ) {
@@ -925,17 +929,28 @@ func registerTasks(
 		},
 	})
 
-	// Audit log cleanup — removes entries older than retention (e.g. 90 days) every 24h
+	// Audit log cleanup — removes entries older than AdminConfig.AuditLogRetentionDays.
+	// Default 90 days; admin can tune via the AdminConfig field. A retention of <= 0
+	// disables eviction entirely (the task ticks but is a no-op).
 	registerWithOverride(tasks.TaskRegistration{
 		ID:          "audit-log-cleanup",
 		Name:        "Audit Log Cleanup",
-		Description: "Removes audit log entries older than the retention period",
+		Description: "Removes audit log entries older than admin.audit_log_retention_days (0 = keep forever)",
 		Schedule:    24 * time.Hour,
 		Func: func(ctx context.Context) error {
 			if adminModule == nil {
 				return nil
 			}
-			if err := adminModule.CleanupAuditLogOlderThan(ctx, auditLogRetentionDays); err != nil {
+			retention := cfg.Get().Admin.AuditLogRetentionDays
+			if retention == 0 {
+				// Legacy configs predating the field present zero — fall back to
+				// the historical hard-coded default rather than disabling.
+				retention = auditLogRetentionDaysFallback
+			}
+			if retention < 0 {
+				return nil
+			}
+			if err := adminModule.CleanupAuditLogOlderThan(ctx, retention); err != nil {
 				log.Warn("Audit log cleanup failed: %v", err)
 				return err
 			}
@@ -1068,6 +1083,46 @@ func registerTasks(
 		},
 	})
 
+	// Streaming session cleanup — evicts in-memory stream sessions whose
+	// LastUpdate exceeds the staleSessionTimeout (panicked handlers,
+	// abandoned ranges, mobile backgrounding). Used to be a separate
+	// ticker inside the streaming module; lives on the scheduler now so
+	// admins can re-tune it via the System Ops panel.
+	if streamingModule != nil {
+		registerWithOverride(tasks.TaskRegistration{
+			ID:          "streaming-session-cleanup",
+			Name:        "Streaming Session Cleanup",
+			Description: "Evicts in-memory stream sessions that have not updated within the stale-session timeout",
+			Schedule:    5 * time.Minute,
+			Func: func(_ context.Context) error {
+				_ = streamingModule.EvictStaleSessions()
+				return nil
+			},
+		})
+	}
+
+	// Analytics cleanup — trims events, daily-stats rows, and in-memory
+	// caches older than Analytics.RetentionDays. Hot-path flushing of
+	// dirty rows still happens on the analytics module's own 30s flush
+	// ticker (which is below the scheduler's 60s floor); only the
+	// retention pass lives here.
+	if analyticsModule != nil {
+		analyticsInterval := cfg.Get().Analytics.CleanupInterval
+		if analyticsInterval < time.Minute {
+			analyticsInterval = 12 * time.Hour
+		}
+		registerWithOverride(tasks.TaskRegistration{
+			ID:          "analytics-cleanup",
+			Name:        "Analytics Cleanup",
+			Description: "Drops analytics events and daily-stats rows older than analytics.retention_days",
+			Schedule:    analyticsInterval,
+			Func: func(_ context.Context) error {
+				analyticsModule.RunCleanup()
+				return nil
+			},
+		})
+	}
+
 	// HLS stale-lock cleanup — sweeps abandoned per-job .lock files left
 	// behind by crashed transcodes. Safe to run on every server: nothing user-
 	// facing depends on the lock files persisting once their owner is gone.
@@ -1144,6 +1199,12 @@ func registerTasks(
 		}
 		if err := scheduler.UpdateSchedule("hls-inactive-cleanup", newCleanup); err != nil {
 			log.Warn("Failed to update HLS cleanup schedule: %v", err)
+		}
+		newAnalytics := newCfg.Analytics.CleanupInterval
+		if newAnalytics >= time.Minute {
+			if err := scheduler.UpdateSchedule("analytics-cleanup", newAnalytics); err != nil {
+				log.Debug("analytics-cleanup not registered yet or unavailable: %v", err)
+			}
 		}
 	})
 }

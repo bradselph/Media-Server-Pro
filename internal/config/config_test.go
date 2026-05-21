@@ -446,6 +446,13 @@ func TestMigrateHLSCleanupEnabled_LegacyConfigForcedOff(t *testing.T) {
 	}
 }
 
+func TestDefaultAdminConfig_AuditLogRetention(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Admin.AuditLogRetentionDays != 90 {
+		t.Errorf("default audit_log_retention_days = %d, want 90", cfg.Admin.AuditLogRetentionDays)
+	}
+}
+
 func TestMigrateHLSCleanupEnabled_RespectsExplicitOptIn(t *testing.T) {
 	// If the migration has already run and the admin then explicitly turned
 	// CleanupEnabled back on, a subsequent reload must NOT flip it back off.

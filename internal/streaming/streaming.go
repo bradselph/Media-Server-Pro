@@ -59,8 +59,6 @@ type Module struct {
 	stats          StreamStats
 	statsMu        sync.RWMutex
 	bufferPool     *sync.Pool
-	cleanupTicker  *time.Ticker
-	cleanupDone    chan struct{}
 	// onSessionStart and onSessionEnd are optional analytics hooks set by the
 	// caller (main.go) to bridge streaming events into the analytics module
 	// without creating a streaming → analytics import dependency. Both are
@@ -133,10 +131,10 @@ func (m *Module) Start(_ context.Context) error {
 	m.healthMsg = "Running"
 	m.healthMu.Unlock()
 
-	// Periodic cleanup of stale sessions (e.g. from panicked handlers or abandoned streams).
-	m.cleanupDone = make(chan struct{})
-	m.cleanupTicker = time.NewTicker(5 * time.Minute)
-	go m.sessionCleanupLoop()
+	// Stale-session eviction runs as a registered task under the central
+	// scheduler (see cmd/server/main.go → "streaming-session-cleanup").
+	// The module no longer owns its own ticker, so admins can re-schedule
+	// or disable eviction from the System Ops panel.
 
 	m.log.Info("Streaming module started")
 	return nil
@@ -146,10 +144,6 @@ func (m *Module) Start(_ context.Context) error {
 // they are left to finish or close on their own; we log the count for visibility.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping streaming module...")
-	if m.cleanupTicker != nil {
-		m.cleanupTicker.Stop()
-		close(m.cleanupDone)
-	}
 	m.healthMu.Lock()
 	m.healthy = false
 	m.healthMsg = "Stopped"
@@ -163,21 +157,11 @@ func (m *Module) Stop(_ context.Context) error {
 	return nil
 }
 
-// sessionCleanupLoop periodically evicts stale sessions whose LastUpdate exceeds
-// staleSessionTimeout. This prevents memory leaks from abandoned or panicked streams.
-func (m *Module) sessionCleanupLoop() {
-	for {
-		select {
-		case <-m.cleanupTicker.C:
-			m.evictStaleSessions()
-		case <-m.cleanupDone:
-			return
-		}
-	}
-}
-
-// evictStaleSessions removes sessions that have not been updated within staleSessionTimeout.
-func (m *Module) evictStaleSessions() {
+// EvictStaleSessions removes sessions that have not been updated within
+// staleSessionTimeout. The scheduler drives this on a registered cadence
+// (see cmd/server/main.go → "streaming-session-cleanup"); call it directly
+// only from tests or shutdown paths.
+func (m *Module) EvictStaleSessions() int {
 	now := time.Now()
 	m.sessionMu.Lock()
 	evicted := 0
@@ -191,6 +175,7 @@ func (m *Module) evictStaleSessions() {
 	if evicted > 0 {
 		m.log.Info("Evicted %d stale stream session(s)", evicted)
 	}
+	return evicted
 }
 
 // Health returns the module health status

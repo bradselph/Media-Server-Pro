@@ -467,7 +467,8 @@ func buildConfigHLSMap(cfg *config.Config, _ []string) map[string]any {
 
 func buildConfigAdminMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"max_query_rows": cfg.Admin.MaxQueryRows,
+		"max_query_rows":           cfg.Admin.MaxQueryRows,
+		"audit_log_retention_days": cfg.Admin.AuditLogRetentionDays,
 	}
 }
 

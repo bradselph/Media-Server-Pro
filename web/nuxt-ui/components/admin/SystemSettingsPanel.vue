@@ -601,6 +601,14 @@ onMounted(loadConfig)
             <UFormField label="Retention (minutes)">
               <UInput type="number" :model-value="get('hls', 'retention_minutes')" @update:model-value="set('hls', 'retention_minutes', Number($event))" />
             </UFormField>
+            <UFormField label="Cleanup Interval (seconds)" help="How often the hls-inactive-cleanup task runs. Minimum 60s.">
+              <UInput
+                type="number"
+                min="60"
+                :model-value="Math.round(Number(get('hls', 'cleanup_interval') ?? 0) / 1_000_000_000)"
+                @update:model-value="set('hls', 'cleanup_interval', Number($event) * 1_000_000_000)"
+              />
+            </UFormField>
             <div class="flex items-start justify-between gap-3">
               <div>
                 <span class="text-sm">Cleanup Enabled</span>
@@ -945,6 +953,9 @@ onMounted(loadConfig)
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
             <UFormField label="Max Query Rows">
               <UInput type="number" :model-value="get('admin', 'max_query_rows')" @update:model-value="set('admin', 'max_query_rows', Number($event))" />
+            </UFormField>
+            <UFormField label="Audit Log Retention (days)" help="0 disables retention (keep forever). Negative also disables. Default 90.">
+              <UInput type="number" :model-value="get('admin', 'audit_log_retention_days')" @update:model-value="set('admin', 'audit_log_retention_days', Number($event))" />
             </UFormField>
           </div>
         </UCard>

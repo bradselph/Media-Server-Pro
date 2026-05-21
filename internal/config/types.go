@@ -307,6 +307,11 @@ type AdminConfig struct {
 	SessionTimeout time.Duration `json:"session_timeout"`
 	QueryTimeout   time.Duration `json:"query_timeout"`
 	MaxQueryRows   int           `json:"max_query_rows"`
+
+	// AuditLogRetentionDays controls how long admin audit log entries are
+	// kept before the audit-log-cleanup scheduled task evicts them. <= 0
+	// disables retention entirely (audit log grows unbounded). Default: 90.
+	AuditLogRetentionDays int `json:"audit_log_retention_days"`
 }
 
 // AuthConfig holds user authentication settings

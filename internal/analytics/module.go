@@ -38,7 +38,6 @@ type Module struct {
 	healthy              bool
 	healthMsg            string
 	healthMu             sync.RWMutex
-	cleanupTicker        *time.Ticker
 	flushTicker          *time.Ticker
 	done                 chan struct{}
 	stopOnce             sync.Once
@@ -114,7 +113,9 @@ func (m *Module) Start(_ context.Context) error {
 	if err := os.MkdirAll(cfg.Directories.Analytics, 0o755); err != nil { //nolint:gosec // G301: analytics dir needs world-read for serving
 		return fmt.Errorf("failed to create analytics directory: %w", err)
 	}
-	m.cleanupTicker = time.NewTicker(cfg.Analytics.CleanupInterval)
+	// Periodic cleanup is now driven by the central scheduler (see
+	// cmd/server/main.go → "analytics-cleanup"). Only the flush ticker stays
+	// internal because its 30s cadence is below the scheduler's 60s floor.
 	// 30-second flush cadence balances durability against DB write pressure.
 	// On graceful shutdown we drain the dirty set in Stop(); ungraceful crashes
 	// lose at most ~30s of aggregate data (the raw events themselves are still
@@ -137,9 +138,6 @@ func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping analytics module...")
 
 	m.stopOnce.Do(func() {
-		if m.cleanupTicker != nil {
-			m.cleanupTicker.Stop()
-		}
 		if m.flushTicker != nil {
 			m.flushTicker.Stop()
 		}
@@ -177,13 +175,14 @@ func (m *Module) Health() models.HealthStatus {
 	}
 }
 
-// backgroundLoop handles periodic cleanup and daily-stats flushing.
+// backgroundLoop drives the 30-second flush of dirty daily-stats rows. The
+// per-RetentionDays cleanup pass runs separately under the central
+// scheduler (RunCleanup) so admins can re-schedule or disable it from the
+// System Ops panel.
 func (m *Module) backgroundLoop() {
 	defer m.bgWg.Done()
 	for {
 		select {
-		case <-m.cleanupTicker.C:
-			m.cleanup()
 		case <-m.flushTicker.C:
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			m.flushDirtyDailyStats(ctx)

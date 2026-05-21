@@ -170,11 +170,12 @@ func defaultSecurityConfig() SecurityConfig {
 
 func defaultAdminConfig() AdminConfig {
 	return AdminConfig{
-		Enabled:        true,
-		Username:       "admin",
-		SessionTimeout: 24 * time.Hour,
-		QueryTimeout:   30 * time.Second,
-		MaxQueryRows:   1000,
+		Enabled:               true,
+		Username:              "admin",
+		SessionTimeout:        24 * time.Hour,
+		QueryTimeout:          30 * time.Second,
+		MaxQueryRows:          1000,
+		AuditLogRetentionDays: 90,
 	}
 }
 

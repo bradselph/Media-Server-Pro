@@ -10,6 +10,14 @@ import (
 // Entries with oldest LastViewed are evicted when over cap.
 const maxMediaStatsEntries = 100000
 
+// RunCleanup removes events, daily-stats rows, and in-memory snapshots
+// older than Analytics.RetentionDays, and trims caps that protect against
+// unbounded growth. Scheduled via the central task scheduler — see
+// cmd/server/main.go → "analytics-cleanup".
+func (m *Module) RunCleanup() {
+	m.cleanup()
+}
+
 // cleanup removes old data.
 func (m *Module) cleanup() {
 	cfg := m.config.Get()

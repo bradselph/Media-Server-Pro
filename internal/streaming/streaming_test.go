@@ -8,9 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"media-server-pro/internal/config"
 	"media-server-pro/pkg/helpers"
+	"media-server-pro/pkg/models"
 )
 
 const (
@@ -61,6 +63,48 @@ func TestModule_StartStop(t *testing.T) {
 // ---------------------------------------------------------------------------
 // helpers.SafeContentDispositionFilename (canonical implementation in pkg/helpers)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// EvictStaleSessions — verifies the exported eviction function deletes
+// sessions older than staleSessionTimeout and leaves fresh ones alone.
+// Regression for the scheduler-driven cleanup: the in-module ticker is gone,
+// so the eviction logic must keep working when called directly.
+// ---------------------------------------------------------------------------
+
+func TestEvictStaleSessions_RemovesAgedAndKeepsFresh(t *testing.T) {
+	m := newTestModule(t)
+	now := time.Now()
+	m.sessionMu.Lock()
+	m.activeSessions["fresh"] = &models.StreamSession{
+		ID:         "fresh",
+		LastUpdate: now.Add(-1 * time.Minute),
+	}
+	m.activeSessions["stale"] = &models.StreamSession{
+		ID:         "stale",
+		LastUpdate: now.Add(-(staleSessionTimeout + time.Minute)),
+	}
+	m.sessionMu.Unlock()
+
+	if got := m.EvictStaleSessions(); got != 1 {
+		t.Fatalf("EvictStaleSessions() = %d, want 1", got)
+	}
+
+	m.sessionMu.RLock()
+	defer m.sessionMu.RUnlock()
+	if _, ok := m.activeSessions["fresh"]; !ok {
+		t.Error("fresh session was incorrectly evicted")
+	}
+	if _, ok := m.activeSessions["stale"]; ok {
+		t.Error("stale session was not evicted")
+	}
+}
+
+func TestEvictStaleSessions_NoOpWhenEmpty(t *testing.T) {
+	m := newTestModule(t)
+	if got := m.EvictStaleSessions(); got != 0 {
+		t.Errorf("empty module EvictStaleSessions() = %d, want 0", got)
+	}
+}
 
 func TestSafeContentDispositionFilename(t *testing.T) {
 	tests := []struct {

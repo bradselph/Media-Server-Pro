@@ -361,13 +361,16 @@ func TestUserPreferences_MarshalJSON_NoAliases(t *testing.T) {
 		t.Fatalf(testMarshalFmt, err)
 	}
 	raw := string(data)
-	if strings.Contains(raw, "autoplay") {
+	// Match the exact JSON key, not the substring — fields like
+	// "autoplay_similar" legitimately contain "autoplay" but are not the
+	// deprecated AutoPlay alias.
+	if strings.Contains(raw, `"autoplay":`) {
 		t.Error("MarshalJSON should not emit alias 'autoplay'")
 	}
-	if strings.Contains(raw, "equalizer_bands") {
+	if strings.Contains(raw, `"equalizer_bands":`) {
 		t.Error("MarshalJSON should not emit alias 'equalizer_bands'")
 	}
-	if !strings.Contains(raw, "auto_play") {
+	if !strings.Contains(raw, `"auto_play":`) {
 		t.Error("MarshalJSON should emit canonical 'auto_play'")
 	}
 }
