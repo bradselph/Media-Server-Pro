@@ -29,6 +29,18 @@ func (m *Module) resolveMediaInputPath(mediaPath string) string {
 	return url
 }
 
+// probeTimeout returns the configured ffmpeg probe deadline, falling back to
+// 30 s when the config is unset or non-positive. Reuses the HLS.ProbeTimeout
+// knob because the same ffmpeg/ffprobe binary is doing the same kind of work
+// from both modules -- having two separate budgets just creates two places to
+// forget to tune for slow disks / large 4K sources.
+func (m *Module) probeTimeout() time.Duration {
+	if d := m.config.Get().HLS.ProbeTimeout; d > 0 {
+		return d
+	}
+	return 30 * time.Second
+}
+
 // getMediaDuration uses ffmpeg-go Probe to get duration
 func (m *Module) getMediaDuration(path string) (float64, error) {
 	if strings.TrimSpace(path) == "" {
@@ -39,7 +51,7 @@ func (m *Module) getMediaDuration(path string) (float64, error) {
 	// so this works under systemd (which strips PATH to a minimal set).
 	var probeJSON string
 	var err error
-	const probeTimeout = 15 * time.Second
+	probeTimeout := m.probeTimeout()
 	if m.ffprobePath != "" {
 		probeJSON, err = ffmpeg.ProbeWithTimeout(path, probeTimeout, ffmpeg.KwArgs{"cmd": m.ffprobePath})
 	} else {
@@ -59,7 +71,11 @@ func (m *Module) getMediaDuration(path string) (float64, error) {
 
 	m.log.Debug("ffmpeg-go probe failed, trying raw ffprobe: %v", err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Same configured budget as the ffmpeg-go probe above -- this fallback path
+	// runs ffprobe directly when the library probe fails, but it's still the
+	// same ffmpeg binary doing the same kind of work, so the timeout should
+	// agree. The hard-coded 10 s was tight for 4K + slow disks.
+	ctx, cancel := context.WithTimeout(context.Background(), m.probeTimeout())
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, m.ffprobePath, //nolint:gosec // G204: ffprobePath validated at startup

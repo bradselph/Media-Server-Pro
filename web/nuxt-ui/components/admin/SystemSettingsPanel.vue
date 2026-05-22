@@ -317,6 +317,25 @@ onMounted(loadConfig)
               </div>
             </template>
           </div>
+          <!-- Per-role key prefixes: lets a single bucket host multiple roles
+               (or multiple deployments) without colliding. Each input is
+               optional; empty falls through to "<role>/" in pkg/storage. -->
+          <div v-if="get('storage', 'backend') === 's3'" class="mt-4">
+            <p class="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Per-Role Key Prefixes <span class="font-normal normal-case opacity-70">(optional)</span></p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl">
+              <UFormField v-for="role in ['videos', 'music', 'thumbnails', 'uploads', 'hls_cache']" :key="role" :label="role">
+                <UInput
+                  :model-value="get('storage', 's3')?.prefixes?.[role] || ''"
+                  :placeholder="`${role}/`"
+                  @update:model-value="set('storage', 's3', { ...get('storage', 's3'), prefixes: { ...(get('storage', 's3')?.prefixes || {}), [role]: $event } })"
+                />
+              </UFormField>
+            </div>
+            <p class="text-xs text-neutral-500 mt-2">
+              Defaults to <code>&lt;role&gt;/</code>. Useful when sharing a bucket across
+              environments (e.g. set <code>prod/videos/</code> and <code>staging/videos/</code>).
+            </p>
+          </div>
           <p v-if="get('storage', 'backend') === 's3'" class="text-xs text-neutral-500 mt-3">
             S3-compatible storage works with Backblaze B2, AWS S3, MinIO, Cloudflare R2, and Wasabi. Changing storage backend requires a server restart.
           </p>
