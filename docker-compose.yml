@@ -1,0 +1,182 @@
+# Media Server Pro — self-contained Docker stack.
+#
+# Brings up MariaDB + the server in two containers wired together. This is
+# the docker equivalent of what deploy.sh sets up on a VPS: same binary,
+# same env-var contract, same first-run flow (database is created on demand
+# if the DB user has CREATE privilege).
+#
+# Quick start:
+#   1. cp .env.docker.example .env.docker
+#   2. Edit .env.docker -- set DB_ROOT_PASSWORD, DATABASE_PASSWORD,
+#      ADMIN_PASSWORD, and any other knob you care about.
+#   3. docker compose --env-file .env.docker up -d
+#   4. Open http://localhost:3000 -- browse as guest, or log in with
+#      ADMIN_USERNAME / ADMIN_PASSWORD from .env.docker.
+#
+# Where data lives:
+#   - Database: in the `db-data` named volume (use `docker volume inspect`
+#     to find the host path; back up with `docker run --rm -v db-data:/d`).
+#   - Media + thumbnails + logs: in the `app-data` named volume by default,
+#     OR bind-mount your own dirs via the commented `volumes:` lines below.
+#
+# Coexistence with deploy.sh:
+#   - This file is the alternative path for users who'd rather run Docker.
+#     deploy.sh continues to work unchanged on a native VPS install -- the
+#     two paths do not share any state and don't fight over .env (deploy.sh
+#     reads .deploy.env locally + writes .env on the VPS; this stack reads
+#     .env.docker locally and never touches .env).
+#   - The Go binary is byte-identical to the one deploy.sh produces (same
+#     Go version, same -trimpath/-ldflags). Issues observed here will
+#     reproduce on a native VPS install.
+
+name: media-server-pro
+
+# Per-container log cap (10 MiB × 5 files = ~50 MiB max per service) so a
+# noisy error loop can't fill the host disk. Override per-service for more.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  # ───────────────────────────────────────────────────────────────────────
+  # MariaDB — the application's primary datastore.
+  # MariaDB version pinned to 11 (LTS) so a host pulling :latest doesn't
+  # produce a surprise upgrade between deploys.
+  # ───────────────────────────────────────────────────────────────────────
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      # `:?` forces compose to fail loudly if these aren't set, rather than
+      # silently bringing up a DB with an empty root password.
+      MARIADB_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env.docker}"
+      MARIADB_DATABASE:      "${DATABASE_NAME:-mediaserver}"
+      MARIADB_USER:          "${DATABASE_USERNAME:-mediaserver}"
+      MARIADB_PASSWORD:      "${DATABASE_PASSWORD:?set DATABASE_PASSWORD in .env.docker}"
+      MARIADB_AUTO_UPGRADE:  "1"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=512M
+      - --max-allowed-packet=128M
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [internal]
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Media Server Pro — Go backend + embedded Nuxt SPA.
+  # By default this pulls the published image from GHCR. The `build:` block
+  # is a local fallback so `docker compose build` from a checkout still
+  # works; compose prefers the local image when it exists with this tag.
+  # ───────────────────────────────────────────────────────────────────────
+  server:
+    image: ghcr.io/bradselph/media-server-pro:${IMAGE_TAG:-main}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GO_VERSION:   "${GO_VERSION:-1.26}"
+        NODE_VERSION: "${NODE_VERSION:-22}"
+        APP_UID:      "${APP_UID:-1000}"
+        APP_GID:      "${APP_GID:-1000}"
+        # Build-scope NUXT_PUBLIC_* knobs are baked into the bundle at
+        # build time and cannot be changed at runtime. To override, set
+        # them in .env.docker and rebuild.
+        NUXT_PUBLIC_GA_ID:             "${NUXT_PUBLIC_GA_ID:-}"
+        NUXT_PUBLIC_BUILD_ID:          "${NUXT_PUBLIC_BUILD_ID:-}"
+        NUXT_PUBLIC_API_BASE:          "${NUXT_PUBLIC_API_BASE:-}"
+        NUXT_PUBLIC_BRAND_NAME:        "${NUXT_PUBLIC_BRAND_NAME:-}"
+        NUXT_PUBLIC_BRAND_TAGLINE:     "${NUXT_PUBLIC_BRAND_TAGLINE:-}"
+        NUXT_PUBLIC_BRAND_GRADIENT:    "${NUXT_PUBLIC_BRAND_GRADIENT:-}"
+        NUXT_PUBLIC_COMPLIANCE_EMAIL: "${NUXT_PUBLIC_COMPLIANCE_EMAIL:-}"
+        NUXT_PUBLIC_COMPLIANCE_ADDRESS: "${NUXT_PUBLIC_COMPLIANCE_ADDRESS:-}"
+        NUXT_PUBLIC_DMCA_AGENT_NAME: "${NUXT_PUBLIC_DMCA_AGENT_NAME:-}"
+        NUXT_PUBLIC_DMCA_EMAIL: "${NUXT_PUBLIC_DMCA_EMAIL:-}"
+        NUXT_PUBLIC_DMCA_ADDRESS: "${NUXT_PUBLIC_DMCA_ADDRESS:-}"
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      db:
+        condition: service_healthy
+    # Forward every variable from .env.docker into the container. The
+    # explicit `environment:` block below adds container-specific values
+    # that should never be operator-overridable (e.g. forcing the bind
+    # interface to 0.0.0.0 INSIDE the container, regardless of what the
+    # host bind is exposed as).
+    env_file:
+      - .env.docker
+    environment:
+      # ── Server ────────────────────────────────────────────────────────
+      # Bind to all interfaces inside the container; the host port mapping
+      # below decides what's actually reachable from the host network.
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PORT: "${SERVER_PORT:-3000}"
+
+      # ── Database (point at the `db` service, not 127.0.0.1) ───────────
+      # These OVERRIDE whatever DATABASE_HOST / DATABASE_PORT the operator
+      # set in .env.docker -- inside the compose network the DB is at the
+      # service name, full stop.
+      DATABASE_ENABLED:  "true"
+      DATABASE_HOST:     "db"
+      DATABASE_PORT:     "3306"
+      DATABASE_NAME:     "${DATABASE_NAME:-mediaserver}"
+      DATABASE_USERNAME: "${DATABASE_USERNAME:-mediaserver}"
+      DATABASE_PASSWORD: "${DATABASE_PASSWORD}"
+
+      # ── Storage paths (must match VOLUME /data in the Dockerfile) ─────
+      VIDEOS_DIR:     "/data/videos"
+      MUSIC_DIR:      "/data/music"
+      THUMBNAILS_DIR: "/data/thumbnails"
+      PLAYLISTS_DIR:  "/data/playlists"
+      UPLOADS_DIR:    "/data/uploads"
+      ANALYTICS_DIR:  "/data/analytics"
+      HLS_CACHE_DIR:  "/data/hls_cache"
+      DATA_DIR:       "/data/app"
+      LOGS_DIR:       "/data/logs"
+      TEMP_DIR:       "/data/temp"
+    ports:
+      - "${SERVER_HOST_BIND:-127.0.0.1}:${SERVER_PORT:-3000}:${SERVER_PORT:-3000}"
+    volumes:
+      - app-data:/data
+      # ── To bring your own media / thumbnails dirs from the host, swap
+      #    the `app-data` mount above for individual binds like:
+      # - ./videos:/data/videos
+      # - ./music:/data/music
+      # - ./thumbnails:/data/thumbnails
+      # - ./logs:/data/logs
+    healthcheck:
+      test:
+        - "CMD"
+        - "curl"
+        - "--fail"
+        - "--silent"
+        - "--show-error"
+        - "http://127.0.0.1:${SERVER_PORT:-3000}/health"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    networks: [internal]
+
+# ─────────────────────────────────────────────────────────────────────────
+# Persistent state. Named volumes survive `compose down`; remove with
+# `compose down -v` (destroys data!).
+# ─────────────────────────────────────────────────────────────────────────
+volumes:
+  db-data:
+    driver: local
+  app-data:
+    driver: local
+
+networks:
+  internal:
+    driver: bridge

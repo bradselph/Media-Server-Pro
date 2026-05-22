@@ -90,6 +90,21 @@ The deploy stack reads `.deploy.env` (local, gitignored) for VPS coordinates and
 
 `deploy.sh` keeps the previous binary as `server.bak` next to the new one, and rolls back automatically if the new binary fails to bind or respond to `/health` within 90 seconds.
 
+### Docker
+
+`deploy.sh` is the supported production path. Docker is an alternative for operators who prefer a container image — same binary, same env-var contract, just packaged.
+
+```bash
+cp .env.docker.example .env.docker
+# Edit .env.docker — set DB_ROOT_PASSWORD, DATABASE_PASSWORD, ADMIN_PASSWORD
+docker compose --env-file .env.docker up -d
+# Open http://localhost:3000
+```
+
+The stack ships with MariaDB + the server in two containers. The published image lives at `ghcr.io/bradselph/media-server-pro` (tags: `:main`, `:development`, `:1.x.y`, `:latest`, `:sha-<short>`). Image publishes are manual-only — kick off the "Docker Publish" workflow from the Actions tab when you want a fresh image.
+
+If you'd rather just run the binary container against your own database, skip compose and use `docker run` with `--env-file` (see the comment header in `Dockerfile` for the exact invocation).
+
 ---
 
 ## Federated peers
@@ -200,39 +215,4 @@ api_spec/openapi.yaml  # Authoritative API contract
 patches/               # Vendored dependency patches (ffmpeg-go without aws-sdk-go-v1)
 systemd/               # Service unit templates
 deploy.sh              # SSH-based deploy/update for the server
-deploy-knobs.sh        # Knob registry sourced by deploy.sh + deploy-configure.sh
-deploy-configure.sh    # Interactive prompter for newly-added knobs
-deploy-knobs-merge.py  # Atomic merge of forwarded knobs into the VPS .env
-setup.sh / install.sh  # Interactive native setup
-```
-
----
-
-## Development
-
-```bash
-# Backend (Go 1.26.2)
-go build ./...
-go test ./...
-
-# Frontend (Node 22, npm)
-cd web/nuxt-ui
-npm install
-npm run dev          # standalone dev server (proxy to Go on :8080)
-npm run check        # codegen + typecheck + generate
-npm run build        # writes static SPA into web/static
-```
-
-The Go binary embeds `web/static`, so a full release is `cd web/nuxt-ui && npm run build && cd ../.. && go build ./cmd/server`.
-
----
-
-## License
-
-Proprietary. See repository for full terms.
-
----
-
-## Project status
-
-Active development. See the commit log for recent direction. Issues and pull requests welcome at <https://github.com/bradselph/Media-Server-Pro>.
+deploy-knobs.sh        # Knob registry sourced by deploy.sh +

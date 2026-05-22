@@ -1,0 +1,75 @@
+# Keep the Docker build context small and reproducible. The Dockerfile
+# explicitly COPYs the dirs it needs, but anything that isn't excluded
+# here still gets shipped to the daemon, slowing builds and bloating
+# layer cache invalidations.
+
+# ── VCS + IDE ────────────────────────────────────────────────────────
+.git
+.github
+.gitignore
+.gitattributes
+.idea
+.vscode
+.cursor
+.claude
+.handoff
+.remember
+
+# ── Build outputs (re-generated inside the image) ────────────────────
+web/nuxt-ui/.nuxt
+web/nuxt-ui/.output
+web/nuxt-ui/node_modules
+web/static/react/_nuxt
+web/static/react/index.html
+web/static/react/200.html
+web/static/react/404.html
+web/static/react/sitemap.xml
+**/dist
+**/build
+/server
+/server.bak
+**/*.exe
+
+# ── Local / dev state ────────────────────────────────────────────────
+.env
+.env.*
+!.env.docker.example
+.deploy.env
+*.local
+*.log
+*.tmp
+*.swp
+*.swo
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+
+# ── Deploy infrastructure (host-side, not relevant inside container) ─
+deploy.sh
+deploy-knobs.sh
+deploy-knobs-merge.py
+deploy-configure.sh
+setup.sh
+install.sh
+github-runner
+systemd
+DEPLOY.md
+CONTRIBUTING.md
+CHANGELOG.md
+
+# ── Media + databases that should never end up in a layer ────────────
+videos
+music
+thumbnails
+uploads
+hls_cache
+analytics
+logs
+data
+playlists
+backups
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.tar.gz
