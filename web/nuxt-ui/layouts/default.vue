@@ -555,8 +555,15 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
       @click="() => { if (shortcutsModal) shortcutsModal.open = true }"
     >?</button>
 
-    <!-- Global keyboard shortcuts reference (press ? anywhere) -->
-    <KeyboardShortcutsModal ref="shortcutsModal" />
+    <!-- Global keyboard shortcuts reference (press ? anywhere).
+         Gated by the same route check as the floating "?" button above so
+         that on /player -- which has its own in-page shortcuts overlay
+         and its own '?' handler in player.vue -- pressing ? doesn't open
+         two stacked modals at once. v-if (not v-show) so Vue actually
+         unmounts the component and its document-level keydown listener
+         detaches; otherwise both handlers fire and toggle their separate
+         visibility refs together. -->
+    <KeyboardShortcutsModal v-if="route.path !== '/player'" ref="shortcutsModal" />
 
     <!-- Cookie consent banner -->
     <CookieConsentBanner />
