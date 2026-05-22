@@ -593,6 +593,16 @@ if $FIX_ENV; then
     if ! grep -q '^DOWNLOADER_IMPORT_DIR=' \"\$ENV\" 2>/dev/null; then
       echo 'DOWNLOADER_IMPORT_DIR=' >> \"\$ENV\"
     fi
+    if ! grep -q '^DOWNLOADER_INTERNAL_TOKEN=.\+' \"\$ENV\" 2>/dev/null; then
+      DL_TOKEN=\$(openssl rand -hex 32 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' || date +%s | sha256sum | head -c 64)
+      if grep -q '^DOWNLOADER_INTERNAL_TOKEN=' \"\$ENV\" 2>/dev/null; then
+        sed -i \"s|^DOWNLOADER_INTERNAL_TOKEN=.*|DOWNLOADER_INTERNAL_TOKEN=\$DL_TOKEN|\" \"\$ENV\"
+      else
+        echo \"DOWNLOADER_INTERNAL_TOKEN=\$DL_TOKEN\" >> \"\$ENV\"
+      fi
+      echo \"  [IMPORTANT] Set this same value on the downloader as MSP_INTERNAL_TOKEN:\"
+      echo \"    DOWNLOADER_INTERNAL_TOKEN=\$DL_TOKEN\"
+    fi
 
     # Hugging Face visual classification (mature content tagging)
     echo '  [Hugging Face classification]'

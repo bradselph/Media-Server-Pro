@@ -86,7 +86,7 @@ func TestFND0495_CancelDownload_EscapesDownloadID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient("http://localhost:8080", 30*time.Second)
+			client := NewClient("http://localhost:8080", 30*time.Second, "")
 
 			// Verify that the expected path escaping would occur.
 			// We can't directly inspect the internal URL without mocking,
@@ -251,7 +251,7 @@ func TestFND0497_NewClient_EnforcesMinimumTimeout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient("http://localhost:8080", tt.inputTimeout)
+			client := NewClient("http://localhost:8080", tt.inputTimeout, "")
 
 			// Verify the client's httpClient has the expected timeout
 			if tt.shouldBeDefault {
@@ -311,7 +311,7 @@ func TestFND0498_NewClient_StripTrailingSlash(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient(tt.inputURL, 30*time.Second)
+			client := NewClient(tt.inputURL, 30*time.Second, "")
 			if client.baseURL != tt.expected {
 				t.Errorf("baseURL = %q, want %q", client.baseURL, tt.expected)
 			}
@@ -324,7 +324,7 @@ func TestFND0498_NormalizedURL_PreventsDoubleSlash(t *testing.T) {
 	// With trailing slash stripped from baseURL, path like "/api/health" will not result in
 	// baseURL + "/api/health" = "http://host//" but rather "http://host" + "/api/health" = "http://host/api/health"
 
-	client := NewClient("http://localhost:8080/", 30*time.Second)
+	client := NewClient("http://localhost:8080/", 30*time.Second, "")
 
 	// The client's baseURL should be normalized to not have trailing slash
 	if client.baseURL != "http://localhost:8080" {

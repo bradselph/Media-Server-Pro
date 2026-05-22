@@ -136,6 +136,12 @@ type S3StorageConfig struct {
 }
 
 // DownloaderConfig holds settings for the external media downloader integration.
+//
+// InternalToken is a shared secret between MSP and the downloader. When set,
+// MSP attaches it as `X-MSP-Internal-Token` on every authenticated proxy call
+// so the downloader can trust the request without a session-cookie round-trip.
+// This is what lets bearer-token admins (who have no cookie session) still
+// hit the server-storage code paths.
 type DownloaderConfig struct {
 	Enabled        bool          `json:"enabled"`
 	URL            string        `json:"url"`
@@ -143,6 +149,7 @@ type DownloaderConfig struct {
 	ImportDir      string        `json:"import_dir"`
 	HealthInterval time.Duration `json:"health_interval"`
 	RequestTimeout time.Duration `json:"request_timeout"`
+	InternalToken  string        `json:"internal_token,omitempty"`
 }
 
 // UIConfig holds frontend display defaults

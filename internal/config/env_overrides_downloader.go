@@ -21,4 +21,7 @@ func (m *Manager) applyDownloaderEnvOverrides() {
 	if val, ok := envGetDuration(time.Second, "DOWNLOADER_REQUEST_TIMEOUT_SECONDS"); ok && val > 0 {
 		m.config.Downloader.RequestTimeout = val
 	}
+	if val := envGetStr("DOWNLOADER_INTERNAL_TOKEN"); val != "" {
+		m.config.Downloader.InternalToken = val
+	}
 }

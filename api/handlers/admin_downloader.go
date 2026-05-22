@@ -150,13 +150,13 @@ func (h *Handler) AdminDownloaderDownload(c *gin.Context) {
 		return
 	}
 
-	// Extract admin's MSP session ID to forward to the downloader.
-	// When authenticated via bearer token, there is no session_id cookie;
-	// in that case, we pass an empty string and the downloader cannot verify
-	// server-side storage admin identity, so the download must use client storage.
+	// Forward the admin's session ID when available so the downloader can
+	// optionally roundtrip-verify it. The shared internal token (attached by
+	// the client for every request) is the primary trust mechanism — admins
+	// authenticated via bearer token have no session cookie but the token
+	// still vouches for them, so server-side storage works either way.
 	var sessionID string
-	session := getSession(c)
-	if session != nil {
+	if session := getSession(c); session != nil {
 		sessionID = session.ID
 	}
 
@@ -294,6 +294,7 @@ func (h *Handler) AdminDownloaderSettings(c *gin.Context) {
 		"theme":                  resp.Theme,
 		"browserRelayConfigured": resp.BrowserRelayConfigured,
 		"downloadsDir":           h.config.Get().Downloader.DownloadsDir,
+		"proxyPoolSize":          resp.ProxyPoolSize,
 	})
 }
 
