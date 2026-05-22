@@ -1162,13 +1162,13 @@ onMounted(loadConfig)
         </template>
         <div class="space-y-3 max-w-sm">
           <UFormField label="Current Password">
-            <UInput v-model="pwCurrent" type="password" placeholder="••••••••" />
+            <PasswordInput v-model="pwCurrent" autocomplete="current-password" />
           </UFormField>
           <UFormField label="New Password">
-            <UInput v-model="pwNew" type="password" placeholder="••••••••" />
+            <PasswordInput v-model="pwNew" autocomplete="new-password" :minlength="8" />
           </UFormField>
           <UFormField label="Confirm New Password">
-            <UInput v-model="pwConfirm" type="password" placeholder="••••••••" />
+            <PasswordInput v-model="pwConfirm" autocomplete="new-password" />
           </UFormField>
           <UButton :loading="pwLoading" label="Change Password" @click="changeAdminPassword" />
         </div>

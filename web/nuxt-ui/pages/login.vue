@@ -10,12 +10,30 @@ const route = useRoute()
 
 const form = reactive({ username: '', password: '' })
 const loading = ref(false)
+// Server-side error from the auth API (invalid credentials, account locked,
+// etc.). Surfaced as a banner above the form because it doesn't map to a
+// single field.
 const error = ref('')
+// Per-field client-side validation. Empty until the user blurs a field or
+// submits, so we don't flash red borders before they've had a chance to type.
+const fieldErrors = reactive({ username: '', password: '' })
+const touched = reactive({ username: false, password: false })
 const allowRegistration = ref(true) // optimistic default until settings load
 const allowGuests = computed(() => authStore.allowGuests)
 
+function validateField(field: 'username' | 'password', soft = false) {
+  if (field === 'username') {
+    fieldErrors.username = form.username.trim() ? '' : (soft ? '' : 'Username is required')
+  } else {
+    fieldErrors.password = form.password ? '' : (soft ? '' : 'Password is required')
+  }
+}
+
+watch(() => form.username, () => { if (touched.username) validateField('username', true) })
+watch(() => form.password, () => { if (touched.password) validateField('password', true) })
+
 // Redirect if already logged in.
-// Only allow same-origin app routes — reject external URLs, protocol-relative
+// Only allow same-origin app routes -- reject external URLs, protocol-relative
 // paths, and API/raw-resource paths to prevent open redirect abuse.
 function loginRedirectDest() {
   const r = route.query.redirect
@@ -41,12 +59,18 @@ onMounted(async () => {
     const settings = await settingsApi.get() as ServerSettings
     allowRegistration.value = settings.auth?.allow_registration ?? true
   } catch {
-    // Non-critical — keep default (true) so the link stays visible if the call fails
+    // Non-critical -- keep default (true) so the link stays visible if the call fails
   }
 })
 
 async function handleLogin() {
   error.value = ''
+  // Mark everything touched so empty-field errors actually show on submit.
+  touched.username = touched.password = true
+  validateField('username')
+  validateField('password')
+  if (fieldErrors.username || fieldErrors.password) return
+
   loading.value = true
   try {
     await authStore.login(form.username, form.password)
@@ -92,19 +116,21 @@ async function handleLogin() {
               class="w-full"
               required
               autofocus
+              :aria-invalid="!!fieldErrors.username"
+              @blur="touched.username = true; validateField('username')"
             />
+            <p v-if="fieldErrors.username" class="text-[11px] text-red-400 mt-1" role="alert">{{ fieldErrors.username }}</p>
           </div>
           <div>
             <label class="block text-[11px] font-bold text-muted uppercase tracking-wide mb-1.5">Password</label>
-            <UInput
+            <PasswordInput
               v-model="form.password"
               name="password"
-              type="password"
-              placeholder="••••••••"
               autocomplete="current-password"
-              class="w-full"
               required
+              @blur="touched.password = true; validateField('password')"
             />
+            <p v-if="fieldErrors.password" class="text-[11px] text-red-400 mt-1" role="alert">{{ fieldErrors.password }}</p>
           </div>
           <UButton
             type="submit"

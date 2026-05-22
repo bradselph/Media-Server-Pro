@@ -1051,13 +1051,13 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
         </template>
         <div class="space-y-3 max-w-sm">
           <UFormField label="Current Password">
-            <UInput v-model="pw.current" type="password" placeholder="••••••••" />
+            <PasswordInput v-model="pw.current" autocomplete="current-password" />
           </UFormField>
           <UFormField label="New Password">
-            <UInput v-model="pw.new" type="password" placeholder="••••••••" />
+            <PasswordInput v-model="pw.new" autocomplete="new-password" :minlength="8" />
           </UFormField>
           <UFormField label="Confirm New Password">
-            <UInput v-model="pw.confirm" type="password" placeholder="••••••••" />
+            <PasswordInput v-model="pw.confirm" autocomplete="new-password" />
           </UFormField>
           <UButton :loading="pwLoading" label="Change Password" @click="handleChangePassword" />
         </div>
@@ -1103,7 +1103,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
           <template #body>
             <p class="text-sm text-muted mb-4">Enter your password to confirm account deletion.</p>
             <UFormField label="Password" :error="selfDeleteError ?? undefined">
-              <UInput v-model="selfDeletePassword" type="password" placeholder="Your current password" @keydown.enter="handleSelfDelete" />
+              <PasswordInput v-model="selfDeletePassword" autocomplete="current-password" placeholder="Your current password" @keydown.enter="handleSelfDelete" />
             </UFormField>
           </template>
           <template #footer>
