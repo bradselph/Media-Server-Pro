@@ -214,4 +214,51 @@ internal/
 pkg/
   models/              # domain types
   helpers/             # cross-cutting utilities (SafeHTTPTransport, etc.)
-  middle
+  middleware/          # gin middleware (rate limit, IP filter, security headers)
+  storage/             # S3/MinIO backend
+  huggingface/         # HF API client
+repositories/          # GORM-backed persistence
+web/
+  nuxt-ui/             # Nuxt 3 SPA (frontend source)
+  static/              # Embedded SPA build output
+  server.go            # Static asset embedding
+api_spec/openapi.yaml  # Authoritative API contract
+patches/               # Vendored dependency patches (ffmpeg-go without aws-sdk-go-v1)
+systemd/               # Service unit templates
+deploy.sh              # SSH-based deploy/update for the server
+deploy-knobs.sh        # Knob registry sourced by deploy.sh + deploy-configure.sh
+deploy-configure.sh    # Interactive prompter for newly-added knobs
+deploy-knobs-merge.py  # Atomic merge of forwarded knobs into the VPS .env
+setup.sh / install.sh  # Interactive native setup
+```
+
+---
+
+## Development
+
+```bash
+# Backend (Go 1.26.2)
+go build ./...
+go test ./...
+
+# Frontend (Node 22, npm)
+cd web/nuxt-ui
+npm install
+npm run dev          # standalone dev server (proxy to Go on :8080)
+npm run check        # codegen + typecheck + generate
+npm run build        # writes static SPA into web/static
+```
+
+The Go binary embeds `web/static`, so a full release is `cd web/nuxt-ui && npm run build && cd ../.. && go build ./cmd/server`.
+
+---
+
+## License
+
+Proprietary. See repository for full terms.
+
+---
+
+## Project status
+
+Active development. See the commit log for recent direction. Issues and pull requests welcome at <https://github.com/bradselph/Media-Server-Pro>.
