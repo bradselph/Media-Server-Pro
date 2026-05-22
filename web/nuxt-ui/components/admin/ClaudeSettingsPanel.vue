@@ -233,7 +233,7 @@ onMounted(load)
           <div class="flex items-center justify-between py-2">
             <div>
               <p class="font-medium text-sm">Require Confirmation for Writes</p>
-              <p class="text-xs text-muted">Reserved for future interactive-approval bridge. Currently informational.</p>
+              <p class="text-xs text-muted">Force advisory (read-only) mode for every turn. Claude can analyze and suggest but can't run Edit, Write, or Bash regardless of the default mode.</p>
             </div>
             <UToggle v-model="draft.require_confirm_for_writes" />
           </div>

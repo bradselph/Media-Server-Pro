@@ -262,6 +262,35 @@ func TestSummarize_CollapsesNewlines(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// applyWriteGate
+// ---------------------------------------------------------------------------
+
+func TestApplyWriteGate_OffPassthrough(t *testing.T) {
+	for _, m := range []string{ModeAdvisory, ModeInteractive, ModeAutonomous} {
+		got, gated := applyWriteGate(m, false)
+		if got != m || gated {
+			t.Errorf("gate off should pass %q through; got (%q, %v)", m, got, gated)
+		}
+	}
+}
+
+func TestApplyWriteGate_OnDowngradesNonAdvisory(t *testing.T) {
+	for _, m := range []string{ModeInteractive, ModeAutonomous} {
+		got, gated := applyWriteGate(m, true)
+		if got != ModeAdvisory || !gated {
+			t.Errorf("gate on should downgrade %q to advisory; got (%q, gated=%v)", m, got, gated)
+		}
+	}
+}
+
+func TestApplyWriteGate_OnLeavesAdvisoryAlone(t *testing.T) {
+	got, gated := applyWriteGate(ModeAdvisory, true)
+	if got != ModeAdvisory || gated {
+		t.Errorf("gate on advisory should be a no-op; got (%q, gated=%v)", got, gated)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // permissionModeFor
 // ---------------------------------------------------------------------------
 

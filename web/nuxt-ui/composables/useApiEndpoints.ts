@@ -600,6 +600,13 @@ export function useAdminApi() {
         enableTask: (id: string) => api.post<void>(`${base}/tasks/${encodeURIComponent(id)}/enable`),
         disableTask: (id: string) => api.post<void>(`${base}/tasks/${encodeURIComponent(id)}/disable`),
         stopTask: (id: string) => api.post<void>(`${base}/tasks/${encodeURIComponent(id)}/stop`),
+        // schedule_secs must be >= 60. The override is persisted so the new
+        // cadence survives a restart.
+        updateTaskSchedule: (id: string, scheduleSecs: number) =>
+            api.post<{ message: string; schedule_secs: number }>(
+                `${base}/tasks/${encodeURIComponent(id)}/schedule`,
+                { schedule_secs: scheduleSecs },
+            ),
 
         // Audit log
         getAuditLog: (params?: { offset?: number; limit?: number; user_id?: string }) => {

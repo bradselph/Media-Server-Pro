@@ -317,3 +317,48 @@ func TestRateLimitConfig_Fields(t *testing.T) {
 		t.Errorf("ViolationsForBan = %d", cfg.ViolationsForBan)
 	}
 }
+
+
+// TestRateLimiter_SetWindows locks in the new hot-reload path: SetWindows must
+// mutate the live config copy under the limiter's lock so window edits take
+// effect on the next CheckRequest without a server restart.
+func TestRateLimiter_SetWindows(t *testing.T) {
+	rl := NewRateLimiter(RateLimitConfig{
+		RequestsPerMinute: 60,
+		BurstLimit:        10,
+		RateLimitWindow:   1 * time.Minute,
+		BurstWindow:       1 * time.Second,
+		BanDuration:       10 * time.Minute,
+		ViolationsForBan:  3,
+	})
+
+	// Sanity: starting values.
+	if rl.config.RateLimitWindow != time.Minute {
+		t.Fatalf("baseline RateLimitWindow = %v, want 1m", rl.config.RateLimitWindow)
+	}
+
+	// Hot-reload to new windows + ban duration.
+	rl.SetWindows(2*time.Minute, 5*time.Second, 30*time.Minute)
+
+	if rl.config.RateLimitWindow != 2*time.Minute {
+		t.Errorf("RateLimitWindow = %v, want 2m", rl.config.RateLimitWindow)
+	}
+	if rl.config.BurstWindow != 5*time.Second {
+		t.Errorf("BurstWindow = %v, want 5s", rl.config.BurstWindow)
+	}
+	if rl.config.BanDuration != 30*time.Minute {
+		t.Errorf("BanDuration = %v, want 30m", rl.config.BanDuration)
+	}
+
+	// Zero values must be ignored so callers can leave a window unchanged.
+	rl.SetWindows(0, 0, 0)
+	if rl.config.RateLimitWindow != 2*time.Minute {
+		t.Errorf("zero-skip: RateLimitWindow changed to %v", rl.config.RateLimitWindow)
+	}
+	if rl.config.BurstWindow != 5*time.Second {
+		t.Errorf("zero-skip: BurstWindow changed to %v", rl.config.BurstWindow)
+	}
+	if rl.config.BanDuration != 30*time.Minute {
+		t.Errorf("zero-skip: BanDuration changed to %v", rl.config.BanDuration)
+	}
+}

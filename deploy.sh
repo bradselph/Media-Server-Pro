@@ -16,6 +16,14 @@
 #                                       # ./deploy-configure.sh directly.
 #   ./deploy.sh --review                # interactive: re-walk every knob,
 #                                       # even ones already set, then exit.
+#   ./deploy.sh --docker                # alternative: deploy via the GHCR
+#                                       # image + docker compose instead of
+#                                       # native build + systemd. Native
+#                                       # path stays the default; --docker
+#                                       # is opt-in for that single run.
+#                                       # Stops/disables the systemd unit
+#                                       # if it's running (port conflict),
+#                                       # then `docker compose up -d`.
 #
 # Knob system:
 #   .deploy.env is the single source of truth for deploy-time + runtime
@@ -128,6 +136,17 @@ SETUP=false
 SETUP_RECEIVER=false
 CONFIGURE_ONLY=false
 REVIEW_ONLY=false
+# DOCKER_MODE swaps the build+systemd backend for `docker compose up` against
+# the GHCR image. Native path is the default; --docker is opt-in per run and
+# does NOT persist into .deploy.env — each deploy chooses its own backend.
+# When set, deploy.sh:
+#   1. Forwards the runtime knob set to $DEPLOY_DIR/.env.docker (not .env --
+#      keeps the two deploy modes from clobbering each other's config file).
+#   2. Skips the Go/Node toolchain install + native build steps.
+#   3. Stops + disables the systemd unit so the host port is free for compose.
+#   4. Installs docker if not present, then `docker compose pull && up -d`.
+#   5. Polls the same /health endpoint as the native path.
+DOCKER_MODE=false
 
 # Default branch: read from .env UPDATER_BRANCH, fall back to "main"
 # Can be overridden by --branch or --dev flags (parsed after this block).
@@ -149,6 +168,7 @@ while [[ $# -gt 0 ]]; do
     --dev)             BRANCH="development"  ; shift ;;
     --configure)       CONFIGURE_ONLY=true   ; shift ;;
     --review)          REVIEW_ONLY=true      ; shift ;;
+    --docker)          DOCKER_MODE=true      ; shift ;;
     --help|-h)
       sed -n '/^# Usage/,/^[^#]/p' "$0" | head -n -1
       exit 0
@@ -346,6 +366,11 @@ info "VPS        : $VPS_USER@$VPS_HOST:$VPS_PORT"
 info "Deploy dir : $DEPLOY_DIR"
 info "Service    : $SERVICE"
 info "Branch     : $BRANCH"
+if $DOCKER_MODE; then
+  info "Backend    : docker compose (GHCR image: ghcr.io/bradselph/media-server-pro:${IMAGE_TAG:-$BRANCH})"
+else
+  info "Backend    : native (Go build + systemd)"
+fi
 $DRY_RUN && warn "DRY RUN — no commands will execute"
 echo ""
 
@@ -760,12 +785,27 @@ if ! $DRY_RUN; then
   done
   unset _k _v
 
+  # Target file depends on backend mode:
+  #   native (default) — $DEPLOY_DIR/.env (consumed by the Go binary + systemd)
+  #   docker           — $DEPLOY_DIR/.env.docker (consumed by `docker compose
+  #                      --env-file .env.docker`). Different filename so the
+  #                      two paths don't clobber each other's config and the
+  #                      operator can switch back and forth without losing
+  #                      hand-set values in the other mode's file.
+  if $DOCKER_MODE; then
+    RUNTIME_TARGET="$DEPLOY_DIR/.env.docker"
+    RUNTIME_LABEL=".env.docker"
+  else
+    RUNTIME_TARGET="$DEPLOY_DIR/.env"
+    RUNTIME_LABEL=".env"
+  fi
+
   if [[ $RUNTIME_COUNT -gt 0 ]]; then
-    info "Forwarding $RUNTIME_COUNT runtime knob(s) → $DEPLOY_DIR/.env"
+    info "Forwarding $RUNTIME_COUNT runtime knob(s) → $RUNTIME_TARGET"
     scp "${SCP_OPTS[@]}" "$RUNTIME_PAYLOAD" "$REMOTE_USER@$REMOTE_HOST:/tmp/msp-runtime.env" >/dev/null
     remote "
       set -euo pipefail
-      ENV='$DEPLOY_DIR/.env'
+      ENV='$RUNTIME_TARGET'
       [ -f \"\$ENV\" ] || sudo touch \"\$ENV\"
       sudo python3 '$DEPLOY_DIR/deploy-knobs-merge.py' /tmp/msp-runtime.env \"\$ENV\"
       sudo chmod 600 \"\$ENV\"
@@ -786,6 +826,15 @@ if ! $DRY_RUN; then
 
   rm -f "$RUNTIME_PAYLOAD" "$BUILD_PAYLOAD"
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# From here down, the script branches: native flow (default) builds Go + Nuxt
+# on the VPS and runs the binary under systemd; docker flow installs Docker on
+# the VPS and runs `docker compose up -d` against the GHCR image. Both end at
+# the same /health poll, so the success criteria match.
+# ─────────────────────────────────────────────────────────────────────────────
+
+if ! $DOCKER_MODE; then
 
 # ── Ensure dependencies are installed on VPS ─────────────────────────────────
 info "Checking dependencies on VPS..."
@@ -964,7 +1013,6 @@ run_or_dry remote "
     echo '[deploy] ERROR: service failed to start'
     journalctl -u '$SERVICE' --no-pager -n 30 2>/dev/null || true
 
-    # Rollback on failure
     if [ -f '$DEPLOY_DIR/server.bak' ]; then
       echo '[deploy] Rolling back...'
       cd '$DEPLOY_DIR'
@@ -975,7 +1023,6 @@ run_or_dry remote "
     exit 1
   fi
 
-  # Poll health endpoint until fully ready (200) or timeout after 90s
   PORT=\$(grep -o 'SERVER_PORT=[0-9]*' '$DEPLOY_DIR/.env' 2>/dev/null | cut -d= -f2 || echo 8080)
   HEALTH_URL=\"http://127.0.0.1:\${PORT}/health\"
   echo \"[deploy] Polling \$HEALTH_URL (waiting for media scan to complete)...\"
@@ -983,22 +1030,113 @@ run_or_dry remote "
   for i in \$(seq 1 30); do
     CODE=\$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \"\$HEALTH_URL\" 2>/dev/null || echo 000)
     if [ \"\$CODE\" = '200' ]; then
-      echo \"[deploy] Health check: HTTP 200 — server ready\"
+      echo \"[deploy] Health check: HTTP 200 -- server ready\"
       OK=true
       break
     elif [ \"\$CODE\" = '503' ]; then
-      echo \"[deploy] Health check: HTTP 503 — still initializing (\${i}/30)\"
+      echo \"[deploy] Health check: HTTP 503 -- still initializing (\${i}/30)\"
     fi
     sleep 3
   done
-  \$OK || echo '[deploy] WARNING: health endpoint did not reach 200 — check logs: journalctl -u $SERVICE -n 50'
+  \$OK || echo '[deploy] WARNING: health endpoint did not reach 200 -- check logs: journalctl -u $SERVICE -n 50'
 "
+
+else  # DOCKER_MODE branch
+
+# ── Docker mode: install Docker, stop systemd unit, compose up ───────────────
+info "Checking Docker on VPS..."
+run_or_dry remote "
+  set -euo pipefail
+  MISSING=()
+  for pkg in curl ca-certificates; do
+    dpkg -s \"\$pkg\" &>/dev/null || MISSING+=(\"\$pkg\")
+  done
+  if [ \${#MISSING[@]} -gt 0 ]; then
+    sudo apt-get update -qq
+    sudo apt-get install -y \"\${MISSING[@]}\"
+  fi
+
+  if ! command -v docker &>/dev/null; then
+    echo '[docker] Installing Docker via the official convenience script...'
+    curl -fsSL https://get.docker.com | sudo sh
+  fi
+
+  if ! docker compose version &>/dev/null 2>&1; then
+    echo '[docker] ERROR: docker compose plugin not available even after install.'
+    exit 1
+  fi
+  echo \"[docker] \$(docker --version)\"
+  echo \"[docker] \$(docker compose version 2>&1 | head -1)\"
+"
+
+info "Stopping any native systemd unit (port would conflict otherwise)..."
+run_or_dry remote "
+  if systemctl is-active '$SERVICE' &>/dev/null; then
+    sudo systemctl stop '$SERVICE' || true
+    sudo systemctl disable '$SERVICE' || true
+    echo '[docker] Stopped + disabled $SERVICE so compose owns the port.'
+  else
+    echo '[docker] No active $SERVICE unit -- nothing to stop.'
+  fi
+"
+
+DOCKER_IMAGE_TAG="${IMAGE_TAG:-$BRANCH}"
+info "Pulling ghcr.io/bradselph/media-server-pro:$DOCKER_IMAGE_TAG..."
+run_or_dry remote "
+  set -euo pipefail
+  cd '$DEPLOY_DIR'
+
+  if [ ! -f docker-compose.yml ]; then
+    echo '[docker] ERROR: docker-compose.yml not found in $DEPLOY_DIR.'
+    echo '         Branch $BRANCH may pre-date the Docker setup -- switch with --branch main.'
+    exit 1
+  fi
+  if [ ! -f .env.docker ]; then
+    echo '[docker] WARNING: .env.docker is empty -- compose will fail on the DB_ROOT_PASSWORD :? guard.'
+    echo '         Run: ./deploy.sh --docker --review  to walk every knob, or edit .env.docker on the VPS.'
+  fi
+
+  export IMAGE_TAG='$DOCKER_IMAGE_TAG'
+
+  if ! sudo IMAGE_TAG='$DOCKER_IMAGE_TAG' docker compose --env-file .env.docker pull server 2>/dev/null; then
+    echo '[docker] Pull failed -- falling back to local build (a few minutes the first time).'
+    sudo IMAGE_TAG='$DOCKER_IMAGE_TAG' docker compose --env-file .env.docker build server
+  fi
+
+  echo '[docker] Starting compose stack...'
+  sudo IMAGE_TAG='$DOCKER_IMAGE_TAG' docker compose --env-file .env.docker up -d --remove-orphans
+
+  PORT=\$(grep -E '^SERVER_PORT=' .env.docker 2>/dev/null | tail -1 | cut -d= -f2 || echo 3000)
+  PORT=\${PORT:-3000}
+  HEALTH_URL=\"http://127.0.0.1:\${PORT}/health\"
+  echo \"[docker] Polling \$HEALTH_URL (waiting for container + DB to come up)...\"
+  OK=false
+  for i in \$(seq 1 30); do
+    CODE=\$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \"\$HEALTH_URL\" 2>/dev/null || echo 000)
+    if [ \"\$CODE\" = '200' ]; then
+      echo \"[docker] Health check: HTTP 200 -- server ready\"
+      OK=true
+      break
+    elif [ \"\$CODE\" = '503' ]; then
+      echo \"[docker] Health check: HTTP 503 -- still initializing (\${i}/30)\"
+    fi
+    sleep 3
+  done
+  \$OK || echo '[docker] WARNING: health endpoint did not reach 200 -- check container logs: docker compose --env-file .env.docker logs server'
+"
+
+fi  # end DOCKER_MODE branch
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 success "Deploy complete."
 if ! $DRY_RUN; then
-  info "Status: $(remote "systemctl is-active '$SERVICE' 2>/dev/null || echo unknown")"
-  info "Logs:   ssh -p $VPS_PORT $VPS_USER@$VPS_HOST 'journalctl -u $SERVICE -f'"
+  if $DOCKER_MODE; then
+    info "Status: $(remote "cd '$DEPLOY_DIR' && sudo docker compose --env-file .env.docker ps --format '{{.Name}} {{.Status}}' 2>/dev/null | head -3" || echo unknown)"
+    info "Logs:   ssh -p $VPS_PORT $VPS_USER@$VPS_HOST 'cd $DEPLOY_DIR && sudo docker compose --env-file .env.docker logs -f server'"
+  else
+    info "Status: $(remote "systemctl is-active '$SERVICE' 2>/dev/null || echo unknown")"
+    info "Logs:   ssh -p $VPS_PORT $VPS_USER@$VPS_HOST 'journalctl -u $SERVICE -f'"
+  fi
 fi
 echo ""

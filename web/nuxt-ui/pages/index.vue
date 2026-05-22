@@ -63,7 +63,21 @@ const toast = useToast()
 
 // Library stats (public, shown to guests too)
 const libraryStats = ref<MediaStats | null>(null)
-mediaApi.getStats().then(s => { libraryStats.value = s }).catch(() => {})
+const libraryStatsFailed = ref(false)
+mediaApi.getStats()
+  .then(s => { libraryStats.value = s })
+  .catch(err => {
+    // Stats are public + best-effort; we deliberately don't surface a toast
+    // (a logged-out home page shouldn't blow up with errors if the API is
+    // briefly unavailable). But silently swallowing was masking real outages
+    // -- log it so it shows up in browser devtools and let the template
+    // hide the stats strip via libraryStatsFailed instead of rendering an
+    // empty "0 / 0" placeholder.
+    libraryStatsFailed.value = true
+    if (typeof console !== 'undefined') {
+      console.warn('[index] library stats fetch failed:', err)
+    }
+  })
 
 // Multi-select / bulk-add-to-playlist
 const selectionMode = ref(false)

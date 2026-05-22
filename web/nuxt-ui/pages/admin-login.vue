@@ -57,7 +57,7 @@ async function handleLogin() {
             <UInput v-model="form.username" name="username" placeholder="admin" autocomplete="username" required />
           </UFormField>
           <UFormField label="Password">
-            <UInput v-model="form.password" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required />
+            <PasswordInput v-model="form.password" name="password" autocomplete="current-password" required />
           </UFormField>
           <UButton type="submit" class="w-full justify-center" :loading="loading" label="Sign In" />
         </form>

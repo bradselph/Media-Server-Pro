@@ -207,6 +207,30 @@ func requireAuth() gin.HandlerFunc {
 	}
 }
 
+// trustedProxyListForGin builds the union of built-in private ranges and
+// operator-configured CIDRs for engine.SetTrustedProxies. Kept in sync with
+// the private-range list in pkg/middleware so Gin's c.ClientIP() and our own
+// middleware.IsTrustedProxy() agree on which hops are reverse proxies.
+func trustedProxyListForGin(extra []string) []string {
+	defaults := []string{
+		"127.0.0.0/8",    // IPv4 loopback
+		"10.0.0.0/8",     // IPv4 private
+		"172.16.0.0/12",  // IPv4 private
+		"192.168.0.0/16", // IPv4 private
+		"::1/128",        // IPv6 loopback
+		"fc00::/7",       // IPv6 unique local
+	}
+	out := make([]string, 0, len(defaults)+len(extra))
+	out = append(out, defaults...)
+	for _, c := range extra {
+		c = strings.TrimSpace(c)
+		if c != "" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 const etagMaxBodySize = 1024 * 1024 // 1 MB; larger responses stream through without ETag
 
 // ginETags adds content-based ETag for GET/HEAD on /api/*. Responses larger than
@@ -289,6 +313,20 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// srv may be nil in tests; status/modules routes are skipped when nil
 	log := logger.New("routes")
 
+	// Tell Gin which proxies' X-Forwarded-* headers to honor for its own
+	// c.ClientIP() — the union of built-in private ranges (so localhost dev and
+	// docker bridges keep working) plus any operator-configured CIDRs from
+	// SecurityConfig.TrustedProxyCIDRs. Without this Gin's default is "trust
+	// everyone" with a runtime warning, and the configured list was ignored.
+	//
+	// SetTrustedProxies is not designed for concurrent re-application, so this
+	// is one-shot at startup. The security module separately mirrors the
+	// configured list into middleware.SetExtraTrustedProxies on every config
+	// change for the IsTrustedProxy hot-path, which IS safe to hot-reload.
+	if err := r.SetTrustedProxies(trustedProxyListForGin(cfg.Get().Security.TrustedProxyCIDRs)); err != nil {
+		log.Warn("SetTrustedProxies failed (Gin will fall back to default): %v", err)
+	}
+
 	// Request ID for tracing
 	r.Use(middleware.GinRequestID())
 
@@ -306,47 +344,63 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 		return csp, hstsMaxAge
 	}))
 
-	// CORS — only applied when explicitly configured.
-	// When auth is enabled and CORS origins contains only "*", replace the
-	// wildcard with the server's own public URL to prevent accidental open
-	// CORS in production.  HLS/extractor modules handle their own CORS for
-	// media player compatibility.
-	secCfg := cfg.Get().Security
-	if secCfg.CORSEnabled && len(secCfg.CORSOrigins) > 0 {
-		corsOrigins := secCfg.CORSOrigins
-		authCfg := cfg.Get().Auth
-		if authCfg.Enabled && len(corsOrigins) == 1 && corsOrigins[0] == "*" {
-			serverCfg := cfg.Get().Server
-			scheme := "http"
-			if serverCfg.EnableHTTPS {
-				scheme = "https"
-			}
-			host := serverCfg.Host
-			if host == "" || host == "0.0.0.0" || host == "127.0.0.1" {
-				// Cannot determine public origin; disable CORS entirely
-				// since same-origin requests don't need it.
-				log.Warn("CORS wildcard origin (*) with auth enabled — disabling CORS. " +
-					"Set cors_origins to your frontend domain to enable cross-origin access.")
-				corsOrigins = nil
-			} else {
-				port := serverCfg.Port
-				origin := fmt.Sprintf("%s://%s", scheme, host)
-				if (scheme == "http" && port != 80) || (scheme == "https" && port != 443) {
-					origin = fmt.Sprintf("%s:%d", origin, port)
-				}
-				log.Warn("CORS wildcard origin (*) with auth enabled — restricting to %s. "+
-					"Set cors_origins explicitly to override.", origin)
-				corsOrigins = []string{origin}
-			}
+	// CORS — registered unconditionally with a closure that re-reads the live
+	// config on each request, so edits to cors_origins / cors_enabled take effect
+	// without a server restart (matches the hot-reload pattern used by HLS and
+	// extractor for their own CORS handling).
+	//
+	// When auth is enabled and CORS origins contains only "*", we substitute the
+	// server's own public URL to prevent accidental open CORS in production.
+	// HLS/extractor modules handle their own CORS for media player compatibility.
+	//
+	// The closure returns nil when CORS is disabled or no origins are configured;
+	// GinCORSDynamic treats that as "skip writing any CORS headers".
+	effectiveCORSOrigins := func() []string {
+		sc := cfg.Get().Security
+		if !sc.CORSEnabled || len(sc.CORSOrigins) == 0 {
+			return nil
 		}
-		if len(corsOrigins) > 0 {
-			r.Use(middleware.GinCORS(
-				corsOrigins,
-				[]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-				[]string{"Content-Type", "Authorization", "X-Requested-With"},
-			))
+		origins := sc.CORSOrigins
+		if !(cfg.Get().Auth.Enabled && len(origins) == 1 && origins[0] == "*") {
+			return origins
+		}
+		// Wildcard-with-auth: substitute the server's own public URL.
+		serverCfg := cfg.Get().Server
+		scheme := "http"
+		if serverCfg.EnableHTTPS {
+			scheme = "https"
+		}
+		host := serverCfg.Host
+		if host == "" || host == "0.0.0.0" || host == "127.0.0.1" {
+			// Cannot determine public origin; disable CORS entirely
+			// since same-origin requests don't need it.
+			return nil
+		}
+		port := serverCfg.Port
+		origin := fmt.Sprintf("%s://%s", scheme, host)
+		if (scheme == "http" && port != 80) || (scheme == "https" && port != 443) {
+			origin = fmt.Sprintf("%s:%d", origin, port)
+		}
+		return []string{origin}
+	}
+	// Emit a startup warning once if the current config triggers the
+	// wildcard-with-auth substitution path, so operators see it in their boot log.
+	if startup := cfg.Get().Security; startup.CORSEnabled && len(startup.CORSOrigins) == 1 &&
+		startup.CORSOrigins[0] == "*" && cfg.Get().Auth.Enabled {
+		switch eff := effectiveCORSOrigins(); {
+		case len(eff) == 0:
+			log.Warn("CORS wildcard origin (*) with auth enabled — disabling CORS. " +
+				"Set cors_origins to your frontend domain to enable cross-origin access.")
+		default:
+			log.Warn("CORS wildcard origin (*) with auth enabled — restricting to %s. "+
+				"Set cors_origins explicitly to override.", eff[0])
 		}
 	}
+	r.Use(middleware.GinCORSDynamic(
+		effectiveCORSOrigins,
+		[]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		[]string{"Content-Type", "Authorization", "X-Requested-With"},
+	))
 
 	// Apply compression middleware for all responses (except media streams).
 	// gin-contrib/gzip skips paths that start with the excluded prefixes.
@@ -737,6 +791,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.POST("/tasks/:id/enable", h.AdminEnableTask)
 	adminGrp.POST("/tasks/:id/disable", h.AdminDisableTask)
 	adminGrp.POST("/tasks/:id/stop", h.AdminStopTask)
+	adminGrp.POST("/tasks/:id/schedule", h.AdminUpdateTaskSchedule)
 
 	// Admin playlist management — /bulk and /stats must be before :id wildcard
 	adminGrp.GET(pathPlaylists, h.AdminListPlaylists)

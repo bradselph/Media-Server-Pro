@@ -126,6 +126,7 @@ const (
 	EventAdminTaskEnable        = "admin_task_enable"
 	EventAdminTaskDisable       = "admin_task_disable"
 	EventAdminTaskStop          = "admin_task_stop"
+	EventAdminTaskSchedule      = "admin_task_schedule"
 	EventFollowerSettingsUpdate = "follower_settings_update"
 
 	// User management events. Account creation/update/deletion is a sensitive

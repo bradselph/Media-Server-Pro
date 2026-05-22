@@ -317,6 +317,25 @@ onMounted(loadConfig)
               </div>
             </template>
           </div>
+          <!-- Per-role key prefixes: lets a single bucket host multiple roles
+               (or multiple deployments) without colliding. Each input is
+               optional; empty falls through to "<role>/" in pkg/storage. -->
+          <div v-if="get('storage', 'backend') === 's3'" class="mt-4">
+            <p class="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Per-Role Key Prefixes <span class="font-normal normal-case opacity-70">(optional)</span></p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl">
+              <UFormField v-for="role in ['videos', 'music', 'thumbnails', 'uploads', 'hls_cache']" :key="role" :label="role">
+                <UInput
+                  :model-value="get('storage', 's3')?.prefixes?.[role] || ''"
+                  :placeholder="`${role}/`"
+                  @update:model-value="set('storage', 's3', { ...get('storage', 's3'), prefixes: { ...(get('storage', 's3')?.prefixes || {}), [role]: $event } })"
+                />
+              </UFormField>
+            </div>
+            <p class="text-xs text-neutral-500 mt-2">
+              Defaults to <code>&lt;role&gt;/</code>. Useful when sharing a bucket across
+              environments (e.g. set <code>prod/videos/</code> and <code>staging/videos/</code>).
+            </p>
+          </div>
           <p v-if="get('storage', 'backend') === 's3'" class="text-xs text-neutral-500 mt-3">
             S3-compatible storage works with Backblaze B2, AWS S3, MinIO, Cloudflare R2, and Wasabi. Changing storage backend requires a server restart.
           </p>
@@ -601,8 +620,19 @@ onMounted(loadConfig)
             <UFormField label="Retention (minutes)">
               <UInput type="number" :model-value="get('hls', 'retention_minutes')" @update:model-value="set('hls', 'retention_minutes', Number($event))" />
             </UFormField>
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Cleanup Enabled</span>
+            <UFormField label="Cleanup Interval (seconds)" help="How often the hls-inactive-cleanup task runs. Minimum 60s.">
+              <UInput
+                type="number"
+                min="60"
+                :model-value="Math.round(Number(get('hls', 'cleanup_interval') ?? 0) / 1_000_000_000)"
+                @update:model-value="set('hls', 'cleanup_interval', Number($event) * 1_000_000_000)"
+              />
+            </UFormField>
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <span class="text-sm">Cleanup Enabled</span>
+                <p class="text-xs text-muted mt-0.5">When on, the <code>hls-inactive-cleanup</code> task evicts cached jobs idle longer than the retention above. Off by default — leaves the cache untouched.</p>
+              </div>
               <USwitch :model-value="get('hls', 'cleanup_enabled')" @update:model-value="set('hls', 'cleanup_enabled', $event)" />
             </div>
             <UFormField label="CDN Base URL">
@@ -943,6 +973,9 @@ onMounted(loadConfig)
             <UFormField label="Max Query Rows">
               <UInput type="number" :model-value="get('admin', 'max_query_rows')" @update:model-value="set('admin', 'max_query_rows', Number($event))" />
             </UFormField>
+            <UFormField label="Audit Log Retention (days)" help="0 disables retention (keep forever). Negative also disables. Default 90.">
+              <UInput type="number" :model-value="get('admin', 'audit_log_retention_days')" @update:model-value="set('admin', 'audit_log_retention_days', Number($event))" />
+            </UFormField>
           </div>
         </UCard>
 
@@ -1148,13 +1181,13 @@ onMounted(loadConfig)
         </template>
         <div class="space-y-3 max-w-sm">
           <UFormField label="Current Password">
-            <UInput v-model="pwCurrent" type="password" placeholder="••••••••" />
+            <PasswordInput v-model="pwCurrent" autocomplete="current-password" />
           </UFormField>
           <UFormField label="New Password">
-            <UInput v-model="pwNew" type="password" placeholder="••••••••" />
+            <PasswordInput v-model="pwNew" autocomplete="new-password" :minlength="8" />
           </UFormField>
           <UFormField label="Confirm New Password">
-            <UInput v-model="pwConfirm" type="password" placeholder="••••••••" />
+            <PasswordInput v-model="pwConfirm" autocomplete="new-password" />
           </UFormField>
           <UButton :loading="pwLoading" label="Change Password" @click="changeAdminPassword" />
         </div>

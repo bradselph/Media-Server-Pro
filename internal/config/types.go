@@ -33,6 +33,24 @@ type Config struct {
 	Downloader    DownloaderConfig    `json:"downloader"`
 	Storage       StorageConfig       `json:"storage"`
 	Claude        ClaudeConfig        `json:"claude"`
+	Tasks         TasksConfig         `json:"tasks"`
+}
+
+// TasksConfig holds per-task admin overrides for the background scheduler.
+//
+// Each entry in Overrides is keyed by the task ID registered in
+// cmd/server/main.go (e.g. "media-scan", "hls-inactive-cleanup"). Both
+// fields are pointers so a "leave default" intent (nil) is distinguishable
+// from "explicitly set false" (non-nil pointer to false).
+type TasksConfig struct {
+	Overrides map[string]TaskOverride `json:"overrides,omitempty"`
+}
+
+// TaskOverride is the admin-controlled state for a single scheduled task.
+// nil pointers mean "use the value the task was registered with".
+type TaskOverride struct {
+	Enabled        *bool `json:"enabled,omitempty"`
+	ScheduleSecs   *int  `json:"schedule_secs,omitempty"`
 }
 
 // ClaudeConfig holds settings for the Claude Code–powered admin assistant.
@@ -72,8 +90,10 @@ type ClaudeConfig struct {
 	// --append-system-prompt.
 	SystemPrompt string `json:"system_prompt"`
 
-	// RequireConfirmForWrites reserved for future use — gates writes regardless
-	// of mode once the interactive approval bridge is implemented.
+	// RequireConfirmForWrites, when true, forces every chat turn into
+	// advisory (read-only) mode regardless of the per-turn or default mode
+	// — Edit/Write/Bash are refused by the CLI, Read/Grep/Glob still work.
+	// Applied in claude.Module.ChatTurn before the mode reaches the CLI.
 	RequireConfirmForWrites bool `json:"require_confirm_for_writes"`
 
 	// MaxToolCallsPerTurn caps how many tools Claude can invoke before the
@@ -287,6 +307,11 @@ type AdminConfig struct {
 	SessionTimeout time.Duration `json:"session_timeout"`
 	QueryTimeout   time.Duration `json:"query_timeout"`
 	MaxQueryRows   int           `json:"max_query_rows"`
+
+	// AuditLogRetentionDays controls how long admin audit log entries are
+	// kept before the audit-log-cleanup scheduled task evicts them. <= 0
+	// disables retention entirely (audit log grows unbounded). Default: 90.
+	AuditLogRetentionDays int `json:"audit_log_retention_days"`
 }
 
 // AuthConfig holds user authentication settings
@@ -335,6 +360,14 @@ type HLSConfig struct {
 	// Migration flag: set to true once migrateHLSQualityEnabled has run so
 	// the migration is not repeated when a user deliberately disables all profiles.
 	QualityProfilesMigrated bool `json:"quality_profiles_migrated"`
+
+	// CleanupMigrated guards the one-shot CleanupEnabled=false migration that
+	// runs the first time a legacy config is loaded. Older builds defaulted
+	// CleanupEnabled to true but never read it; once the hls-inactive-cleanup
+	// task started reading the flag we had to forcibly opt every existing
+	// install out, because the memory rule says HLS cache must never be
+	// auto-deleted without explicit admin action.
+	CleanupMigrated bool `json:"cleanup_migrated"`
 }
 
 // HLSQuality defines an HLS quality profile

@@ -170,11 +170,12 @@ func defaultSecurityConfig() SecurityConfig {
 
 func defaultAdminConfig() AdminConfig {
 	return AdminConfig{
-		Enabled:        true,
-		Username:       "admin",
-		SessionTimeout: 24 * time.Hour,
-		QueryTimeout:   30 * time.Second,
-		MaxQueryRows:   1000,
+		Enabled:               true,
+		Username:              "admin",
+		SessionTimeout:        24 * time.Hour,
+		QueryTimeout:          30 * time.Second,
+		MaxQueryRows:          1000,
+		AuditLogRetentionDays: 90,
 	}
 }
 
@@ -202,7 +203,11 @@ func defaultHLSConfig() HLSConfig {
 		Enabled:                  true,
 		SegmentDuration:          6,
 		PlaylistLength:           6,
-		CleanupEnabled:           true,
+		// HLS cache cleanup defaults OFF — owner product rule says the cache
+		// must never be auto-deleted without an explicit admin action. Admins
+		// who want eviction can flip CleanupEnabled and tune the interval +
+		// retention; the hls-inactive-cleanup scheduled task honours all three.
+		CleanupEnabled:           false,
 		CleanupInterval:          1 * time.Hour,
 		RetentionMinutes:         60,
 		AutoGenerate:             false,

@@ -351,12 +351,31 @@ func (h *Handler) GetEventsByMedia(c *gin.Context) {
 // Precedence: explicit since/until > days > none. days is the easy case for
 // the dashboard ("last 7 days"); since/until is the escape hatch for ad-hoc
 // reports that need a specific calendar range.
+//
+// If both since and until are explicitly set and the operator swapped them
+// (since > until), we silently swap them back rather than returning an empty
+// result set. The dashboard previously rendered "no data" with no hint that
+// the inputs were reversed, which is a frustrating dead end — swapping is
+// forgiving and matches what every spreadsheet does with a flipped range.
+// Empty strings are left as-is so the "only one side bounded" case still works.
 func resolveAnalyticsTimeWindow(c *gin.Context) (since, until string) {
 	since = c.Query("since")
 	until = c.Query("until")
 	if since == "" && until == "" {
 		if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
 			since = time.Now().AddDate(0, 0, -d).Format(time.RFC3339)
+		}
+		return since, until
+	}
+	// Both ends supplied -- guard against operator-swapped pairs. Both must
+	// parse as RFC3339 for the swap to be safe; if either side is malformed
+	// we leave the pair alone and let the repository's own validation surface
+	// a clearer error.
+	if since != "" && until != "" {
+		if s, errS := time.Parse(time.RFC3339, since); errS == nil {
+			if u, errU := time.Parse(time.RFC3339, until); errU == nil && s.After(u) {
+				since, until = until, since
+			}
 		}
 	}
 	return since, until

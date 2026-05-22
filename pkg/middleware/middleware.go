@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -44,12 +45,24 @@ const (
 	RequestIDKey ContextKey = "request_id"
 )
 
-// trustedProxies is a configurable set of trusted proxy IPs/CIDRs.
-// Only requests from these addresses will have X-Forwarded-For / X-Real-IP headers honored.
-// By default, private network ranges are trusted.
+// ipNetList aliases the parsed CIDR slice so atomic.Pointer's type-parameter
+// brackets aren't followed directly by slice brackets (Go's parser rejects
+// `atomic.Pointer[[]*net.IPNet]` even though the type is otherwise valid).
+type ipNetList = []*net.IPNet
+
+// trustedProxyNets is the built-in set of RFC-1918 + loopback ranges that are
+// always trusted. Only requests from these addresses (or from the configured
+// extra set, see SetExtraTrustedProxies) will have X-Forwarded-For / X-Real-IP /
+// X-Forwarded-Proto honored.
 var (
 	trustedProxyNets []*net.IPNet
 	trustedProxyOnce sync.Once
+
+	// extraTrustedNets holds the operator-configured additional CIDRs from
+	// SecurityConfig.TrustedProxyCIDRs. Updated atomically by SetExtraTrustedProxies
+	// so the security module's config watcher can hot-reload the list without
+	// taking any read-side locks on the request hot path.
+	extraTrustedNets atomic.Pointer[ipNetList]
 )
 
 func initTrustedProxies() {
@@ -66,8 +79,35 @@ func initTrustedProxies() {
 	})
 }
 
-// IsTrustedProxy reports whether remoteAddr belongs to a trusted proxy range
-// (private networks by default). Exported so handlers can use the same logic.
+// SetExtraTrustedProxies registers additional trusted-proxy CIDRs on top of the
+// built-in RFC-1918 + loopback ranges. Pass an empty slice to revert to
+// private-ranges-only behavior. Invalid CIDR strings are silently dropped.
+//
+// This is the bridge between SecurityConfig.TrustedProxyCIDRs (the admin-editable
+// list) and every IsTrustedProxy() callsite — without it, those callsites would
+// only see the hard-coded private list and the admin setting would have no effect
+// on the request hot path.
+//
+// Safe to call concurrently and at any time; readers will observe the new set
+// atomically on their next IsTrustedProxy call.
+func SetExtraTrustedProxies(cidrs []string) {
+	parsed := make(ipNetList, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		s := strings.TrimSpace(cidr)
+		if s == "" {
+			continue
+		}
+		if _, ipNet, err := net.ParseCIDR(s); err == nil {
+			parsed = append(parsed, ipNet)
+		}
+	}
+	extraTrustedNets.Store(&parsed)
+}
+
+// IsTrustedProxy reports whether remoteAddr belongs to a trusted proxy range —
+// either one of the built-in private ranges (RFC-1918, loopback, ULA) or one of
+// the operator-configured extra CIDRs registered via SetExtraTrustedProxies.
+// Exported so handlers can use the same logic as the middleware.
 func IsTrustedProxy(remoteAddr string) bool {
 	initTrustedProxies()
 	ip := net.ParseIP(remoteAddr)
@@ -77,6 +117,13 @@ func IsTrustedProxy(remoteAddr string) bool {
 	for _, ipNet := range trustedProxyNets {
 		if ipNet.Contains(ip) {
 			return true
+		}
+	}
+	if extra := extraTrustedNets.Load(); extra != nil {
+		for _, ipNet := range *extra {
+			if ipNet.Contains(ip) {
+				return true
+			}
 		}
 	}
 	return false
@@ -158,63 +205,131 @@ func GinSecurityHeaders(getCfg func() (csp string, hstsMaxAge int)) gin.HandlerF
 	}
 }
 
-// corsConfig holds parsed CORS settings for the handler.
-type corsConfig struct {
+// originSet holds the parsed CORS origin allowlist.
+//
+// Factored out from corsConfig so both the static GinCORS (whose origins list
+// is fixed at construction) and the dynamic GinCORSDynamic (which re-reads it
+// on every request) can share the same matching logic.
+type originSet struct {
 	allowAll       bool
 	allowedOrigins map[string]bool
-	methodsStr     string
-	headersStr     string
 }
 
-func parseCORSConfig(origins, methods, headers []string) corsConfig {
-	allowedOrigins := make(map[string]bool)
-	allowAll := false
+func parseOriginSet(origins []string) originSet {
+	s := originSet{allowedOrigins: make(map[string]bool, len(origins))}
 	for _, origin := range origins {
 		if origin == "*" {
-			allowAll = true
-			break
+			s.allowAll = true
+			return s
 		}
-		allowedOrigins[origin] = true
+		s.allowedOrigins[origin] = true
 	}
-	return corsConfig{
-		allowAll:       allowAll,
-		allowedOrigins: allowedOrigins,
-		methodsStr:     strings.Join(methods, ", "),
-		headersStr:     strings.Join(headers, ", "),
-	}
+	return s
 }
 
 // allowOrigin returns the value for Access-Control-Allow-Origin and whether CORS is allowed.
 // When allowAll is true, always returns literal "*" to prevent browsers from sending credentials
 // cross-origin — reflecting the specific origin with Allow-Credentials: true would allow any
 // site to make credentialed requests and steal session cookies.
-func (cfg *corsConfig) allowOrigin(origin string) (value string, allowed bool) {
-	if cfg.allowAll {
+func (s *originSet) allowOrigin(origin string) (value string, allowed bool) {
+	if s.allowAll {
 		return "*", true
 	}
-	if cfg.allowedOrigins[origin] {
+	if s.allowedOrigins[origin] {
 		return origin, true
 	}
 	return "", false
 }
 
-// GinCORS adds CORS headers to Gin responses.
+// corsConfig holds parsed CORS settings for the handler.
+type corsConfig struct {
+	originSet
+	methodsStr string
+	headersStr string
+}
+
+func parseCORSConfig(origins, methods, headers []string) corsConfig {
+	return corsConfig{
+		originSet:  parseOriginSet(origins),
+		methodsStr: strings.Join(methods, ", "),
+		headersStr: strings.Join(headers, ", "),
+	}
+}
+
+// writeCORSHeaders writes the per-response CORS headers when the request's
+// Origin is in the allowed set. Shared by GinCORS and GinCORSDynamic.
+func writeCORSHeaders(c *gin.Context, set *originSet, methodsStr, headersStr string) {
+	origin := c.GetHeader("Origin")
+	value, allowed := set.allowOrigin(origin)
+	if !allowed {
+		return
+	}
+	c.Header("Access-Control-Allow-Origin", value)
+	c.Header("Vary", "Origin")
+	c.Header("Access-Control-Allow-Methods", methodsStr)
+	c.Header("Access-Control-Allow-Headers", headersStr)
+	c.Header("Access-Control-Max-Age", "86400")
+	if value != "*" {
+		c.Header("Access-Control-Allow-Credentials", "true")
+	}
+}
+
+// GinCORS adds CORS headers to Gin responses with a fixed origin allowlist
+// captured at construction time. Prefer GinCORSDynamic when the allowlist
+// needs to track config changes without a server restart.
+//
 // When allowAll is true and a specific Origin is present, Access-Control-Allow-Credentials
 // is set so cookie-based session auth works for cross-origin credentialed requests.
 func GinCORS(origins, methods, headers []string) gin.HandlerFunc {
 	cfg := parseCORSConfig(origins, methods, headers)
 
 	return func(c *gin.Context) {
-		origin := c.GetHeader("Origin")
-		if value, allowed := cfg.allowOrigin(origin); allowed {
-			c.Header("Access-Control-Allow-Origin", value)
-			c.Header("Vary", "Origin")
-			c.Header("Access-Control-Allow-Methods", cfg.methodsStr)
-			c.Header("Access-Control-Allow-Headers", cfg.headersStr)
-			c.Header("Access-Control-Max-Age", "86400")
-			if value != "*" {
-				c.Header("Access-Control-Allow-Credentials", "true")
-			}
+		writeCORSHeaders(c, &cfg.originSet, cfg.methodsStr, cfg.headersStr)
+
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// GinCORSDynamic is like GinCORS but reads the allowed origins list on every
+// request via getOrigins, so edits to cors_origins take effect immediately
+// without a server restart. Methods and headers are fixed at construction time
+// since those rarely change at runtime.
+//
+// The parsed origin set is cached and only rebuilt when getOrigins returns a
+// slice that differs from the previous one — avoiding the per-request map
+// allocation in the common case where the config is steady.
+//
+// If getOrigins returns nil or empty, no CORS headers are written (treated as
+// "CORS disabled"). This lets the caller's closure encode policy like
+// "wildcard + auth → no CORS" cleanly.
+func GinCORSDynamic(getOrigins func() []string, methods, headers []string) gin.HandlerFunc {
+	methodsStr := strings.Join(methods, ", ")
+	headersStr := strings.Join(headers, ", ")
+
+	var (
+		mu        sync.Mutex
+		cachedRaw []string
+		cachedSet originSet
+	)
+
+	return func(c *gin.Context) {
+		raw := getOrigins()
+		mu.Lock()
+		if !slices.Equal(raw, cachedRaw) {
+			// Copy to avoid retaining a reference the caller might mutate.
+			cachedRaw = append(cachedRaw[:0], raw...)
+			cachedSet = parseOriginSet(raw)
+		}
+		set := cachedSet
+		mu.Unlock()
+
+		if len(raw) > 0 {
+			writeCORSHeaders(c, &set, methodsStr, headersStr)
 		}
 
 		if c.Request.Method == http.MethodOptions {

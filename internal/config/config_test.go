@@ -405,3 +405,143 @@ func TestSyncFeatureToggles(t *testing.T) {
 		t.Error("Analytics.Enabled should be false after syncFeatureToggles (feature disabled)")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TasksConfig / TaskOverride
+// ---------------------------------------------------------------------------
+
+func TestTasksConfig_DefaultHasNoOverrides(t *testing.T) {
+	cfg := DefaultConfig()
+	if len(cfg.Tasks.Overrides) != 0 {
+		t.Errorf("default Tasks.Overrides should be empty, got %d entries", len(cfg.Tasks.Overrides))
+	}
+}
+
+func TestTasksConfig_HLSCleanupOffByDefault(t *testing.T) {
+	// Memory rule: HLS cache must NEVER be auto-deleted without an explicit
+	// admin action. Defaults must respect this.
+	cfg := DefaultConfig()
+	if cfg.HLS.CleanupEnabled {
+		t.Error("HLS.CleanupEnabled must default to false; admin opt-in only")
+	}
+}
+
+func TestMigrateHLSCleanupEnabled_LegacyConfigForcedOff(t *testing.T) {
+	// Simulate a legacy config: CleanupEnabled=true (old default), no
+	// migration flag. Migration must flip it to false and mark migrated.
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	raw := `{"hls":{"cleanup_enabled":true}}`
+	if err := os.WriteFile(cfgPath, []byte(raw), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	m := NewManager(cfgPath)
+	if err := m.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if m.Get().HLS.CleanupEnabled {
+		t.Error("legacy CleanupEnabled=true should have been forced off")
+	}
+	if !m.Get().HLS.CleanupMigrated {
+		t.Error("CleanupMigrated flag should be set after migration")
+	}
+}
+
+func TestDefaultAdminConfig_AuditLogRetention(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Admin.AuditLogRetentionDays != 90 {
+		t.Errorf("default audit_log_retention_days = %d, want 90", cfg.Admin.AuditLogRetentionDays)
+	}
+}
+
+func TestMigrateHLSCleanupEnabled_RespectsExplicitOptIn(t *testing.T) {
+	// If the migration has already run and the admin then explicitly turned
+	// CleanupEnabled back on, a subsequent reload must NOT flip it back off.
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	raw := `{"hls":{"cleanup_enabled":true,"cleanup_migrated":true}}`
+	if err := os.WriteFile(cfgPath, []byte(raw), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	m := NewManager(cfgPath)
+	if err := m.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !m.Get().HLS.CleanupEnabled {
+		t.Error("post-migration explicit CleanupEnabled=true must be preserved")
+	}
+}
+
+func TestTaskOverride_RoundTripJSON(t *testing.T) {
+	// Pointer-typed fields must round-trip through JSON so the absent-vs-false
+	// distinction survives a save/load cycle.
+	enabled := false
+	secs := 1800
+	in := TaskOverride{Enabled: &enabled, ScheduleSecs: &secs}
+
+	blob, err := json.Marshal(in)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var out TaskOverride
+	if err := json.Unmarshal(blob, &out); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	if out.Enabled == nil || *out.Enabled != false {
+		t.Errorf("Enabled lost across round-trip: got %v", out.Enabled)
+	}
+	if out.ScheduleSecs == nil || *out.ScheduleSecs != 1800 {
+		t.Errorf("ScheduleSecs lost across round-trip: got %v", out.ScheduleSecs)
+	}
+}
+
+func TestTaskOverride_NilFieldsOmitted(t *testing.T) {
+	// A TaskOverride with no fields set must marshal to "{}" — important so
+	// the persisted config doesn't pin every task to false/0 just because the
+	// admin touched one.
+	blob, err := json.Marshal(TaskOverride{})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if string(blob) != "{}" {
+		t.Errorf("zero TaskOverride should marshal to {}, got %s", blob)
+	}
+}
+
+func TestTasksConfig_UpdatePersistsOverrides(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	m := NewManager(cfgPath)
+	// Seed with defaults so the file exists.
+	if err := m.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	enabled := false
+	secs := 7200
+	if err := m.Update(func(c *Config) {
+		if c.Tasks.Overrides == nil {
+			c.Tasks.Overrides = make(map[string]TaskOverride)
+		}
+		c.Tasks.Overrides["hls-inactive-cleanup"] = TaskOverride{
+			Enabled:      &enabled,
+			ScheduleSecs: &secs,
+		}
+	}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	// Reload from disk and verify the override survived.
+	m2 := NewManager(cfgPath)
+	if err := m2.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	over, ok := m2.Get().Tasks.Overrides["hls-inactive-cleanup"]
+	if !ok {
+		t.Fatal("override not persisted across save/load")
+	}
+	if over.Enabled == nil || *over.Enabled {
+		t.Errorf("Enabled override not persisted; got %v", over.Enabled)
+	}
+	if over.ScheduleSecs == nil || *over.ScheduleSecs != 7200 {
+		t.Errorf("ScheduleSecs override not persisted; got %v", over.ScheduleSecs)
+	}
+}

@@ -20,6 +20,7 @@ import (
 	"media-server-pro/internal/repositories"
 	mysqlrepo "media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/helpers"
+	"media-server-pro/pkg/middleware"
 	"media-server-pro/pkg/models"
 )
 
@@ -246,10 +247,21 @@ func (m *Module) Start(_ context.Context) error {
 	m.rateLimiter.StartCleanup(m.whitelist, m.blacklist)
 	m.authRateLimiter.StartCleanup(nil, nil)
 
-	// Hot-reload rate limiter limits when security config changes.
+	// Publish the configured extra trusted-proxy CIDRs to pkg/middleware so the
+	// shared IsTrustedProxy helper (used by the age gate, SEO/feed proxy detection,
+	// X-Forwarded-Proto check, and any handler that asks "is this remote address
+	// a trusted reverse proxy?") honors the admin-editable setting rather than
+	// only the built-in private ranges.
+	middleware.SetExtraTrustedProxies(m.config.Get().Security.TrustedProxyCIDRs)
+
+	// Hot-reload rate limits, windows, and trusted-proxy CIDRs when security
+	// config changes. Window/ban-duration edits previously required a restart
+	// because RateLimitConfig was captured by value into the RateLimiter at
+	// construction time; SetWindows mutates the live copy under the limiter's lock.
 	m.config.OnChange(func(cfg *config.Config) {
 		secCfg := cfg.Security
 		m.rateLimiter.SetLimits(secCfg.RateLimitRequests, secCfg.BurstLimit, secCfg.ViolationsForBan)
+		m.rateLimiter.SetWindows(secCfg.RateLimitWindow, secCfg.BurstWindow, secCfg.BanDuration)
 		authLimit := secCfg.AuthRateLimit
 		if authLimit <= 0 {
 			authLimit = 20
@@ -259,6 +271,9 @@ func (m *Module) Start(_ context.Context) error {
 			authBurst = 5
 		}
 		m.authRateLimiter.SetLimits(authLimit, authBurst, secCfg.ViolationsForBan)
+		m.authRateLimiter.SetWindows(secCfg.RateLimitWindow, secCfg.BurstWindow, secCfg.BanDuration)
+
+		middleware.SetExtraTrustedProxies(secCfg.TrustedProxyCIDRs)
 	})
 
 	m.mu.Lock()
@@ -819,6 +834,26 @@ func (r *RateLimiter) SetLimits(requestsPerMinute, burstLimit, violationsForBan 
 	r.config.BurstLimit = burstLimit
 	r.config.ViolationsForBan = violationsForBan
 	r.mu.Unlock()
+}
+
+// SetWindows atomically updates the sliding-window durations and ban duration
+// used by CheckRequest. Zero values are ignored so callers can leave a window
+// unchanged. Safe to call from the config watcher while requests are in flight.
+//
+// Without this, edits to rate_limit_window / burst_window / ban_duration via the
+// admin UI persisted to disk but had no effect on running limiters until restart.
+func (r *RateLimiter) SetWindows(rateLimitWindow, burstWindow, banDuration time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if rateLimitWindow > 0 {
+		r.config.RateLimitWindow = rateLimitWindow
+	}
+	if burstWindow > 0 {
+		r.config.BurstWindow = burstWindow
+	}
+	if banDuration > 0 {
+		r.config.BanDuration = banDuration
+	}
 }
 
 // Limit returns the current requests-per-minute limit under the lock.

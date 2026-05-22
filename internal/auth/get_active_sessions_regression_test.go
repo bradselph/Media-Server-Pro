@@ -273,3 +273,77 @@ func findSessionByID(sessions []*models.Session, id string) *models.Session {
 	}
 	return nil
 }
+
+// TestGetActiveSessions_IncludesAdminSessions is a regression test for the
+// bug where the admin Users tab "View Sessions" was always blank for users
+// whose role caused their session to land in m.adminSessions instead of
+// m.sessions. GetActiveSessions must iterate both caches.
+func TestGetActiveSessions_IncludesAdminSessions(t *testing.T) {
+	m := &Module{
+		sessions:      make(map[string]*models.Session),
+		adminSessions: make(map[string]*models.AdminSession),
+		sessionsMu:    sync.RWMutex{},
+	}
+
+	now := time.Now()
+	expires := now.Add(1 * time.Hour)
+
+	// Alice has only an admin session — exactly the case the previous code missed.
+	m.adminSessions["sess-alice-admin"] = &models.AdminSession{
+		Session: models.Session{
+			ID:        "sess-alice-admin",
+			Username:  "alice",
+			UserID:    "user-alice",
+			ExpiresAt: expires,
+		},
+	}
+	// Bob is unrelated; must not leak into Alice's result.
+	m.sessions["sess-bob"] = &models.Session{
+		ID:        "sess-bob",
+		Username:  "bob",
+		UserID:    "user-bob",
+		ExpiresAt: expires,
+	}
+
+	active := m.GetActiveSessions("alice")
+	if len(active) != 1 {
+		t.Fatalf("expected 1 admin session for alice, got %d", len(active))
+	}
+	if active[0].ID != "sess-alice-admin" {
+		t.Errorf("expected sess-alice-admin, got %q", active[0].ID)
+	}
+}
+
+// TestGetActiveSessions_MergesAdminAndRegular covers the mixed case where the
+// same username has both a regular and an admin session (e.g. an admin role
+// user who has logged in twice with different cookie scopes).
+func TestGetActiveSessions_MergesAdminAndRegular(t *testing.T) {
+	m := &Module{
+		sessions:      make(map[string]*models.Session),
+		adminSessions: make(map[string]*models.AdminSession),
+		sessionsMu:    sync.RWMutex{},
+	}
+
+	now := time.Now()
+	expires := now.Add(1 * time.Hour)
+
+	m.sessions["sess-regular"] = &models.Session{
+		ID: "sess-regular", Username: "alice", UserID: "user-alice", ExpiresAt: expires,
+	}
+	m.adminSessions["sess-admin"] = &models.AdminSession{
+		Session: models.Session{
+			ID: "sess-admin", Username: "alice", UserID: "user-alice", ExpiresAt: expires,
+		},
+	}
+
+	active := m.GetActiveSessions("alice")
+	if len(active) != 2 {
+		t.Fatalf("expected 2 sessions for alice, got %d", len(active))
+	}
+	if findSessionByID(active, "sess-regular") == nil {
+		t.Error("regular session missing from merged result")
+	}
+	if findSessionByID(active, "sess-admin") == nil {
+		t.Error("admin session missing from merged result")
+	}
+}

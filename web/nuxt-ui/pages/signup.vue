@@ -8,9 +8,64 @@ const router = useRouter()
 
 const form = reactive({ username: '', password: '', confirm: '', email: '' })
 const loading = ref(false)
+// Top-level submission error (server-side, e.g. token expired). Per-field
+// validation goes through `fieldErrors` so the user sees the message right
+// next to the offending input rather than as a banner.
 const error = ref('')
+const fieldErrors = reactive({ username: '', email: '', password: '', confirm: '' })
+// Tracks which fields the user has touched, so we only surface "required"
+// errors after they leave the field -- typing into an empty field shouldn't
+// immediately flash a red border on the field they're filling out.
+const touched = reactive({ username: false, email: false, password: false, confirm: false })
 const registrationClosed = ref(false)
 const regToken = ref('')
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function validateField(field: 'username' | 'email' | 'password' | 'confirm', soft = false) {
+  // `soft` mode skips empty-field "required" errors so we don't yell at the
+  // user while they're still typing. Submit calls with soft=false to catch
+  // all of them.
+  switch (field) {
+    case 'username': {
+      const v = form.username.trim()
+      if (!v) { fieldErrors.username = soft ? '' : 'Username is required'; break }
+      if (v.length < 3) { fieldErrors.username = 'Must be at least 3 characters'; break }
+      fieldErrors.username = ''
+      break
+    }
+    case 'email': {
+      // Email is optional, but if provided it must look like an email.
+      const v = form.email.trim()
+      if (!v) { fieldErrors.email = ''; break }
+      fieldErrors.email = EMAIL_RE.test(v) ? '' : 'Enter a valid email address'
+      break
+    }
+    case 'password': {
+      const v = form.password
+      if (!v) { fieldErrors.password = soft ? '' : 'Password is required'; break }
+      if (v.length < 8) { fieldErrors.password = 'Must be at least 8 characters'; break }
+      fieldErrors.password = ''
+      // Re-validate confirm against the new password value so a fixed
+      // password clears the "passwords do not match" error on the confirm
+      // field automatically.
+      if (touched.confirm || form.confirm) validateField('confirm', true)
+      break
+    }
+    case 'confirm': {
+      if (!form.confirm) { fieldErrors.confirm = soft ? '' : 'Please confirm your password'; break }
+      fieldErrors.confirm = form.confirm === form.password ? '' : 'Passwords do not match'
+      break
+    }
+  }
+}
+
+// Live re-validate touched fields as the user types. Keeps the UI honest
+// without firing errors on fields they haven't visited yet.
+watch(() => form.username, () => { if (touched.username) validateField('username', true) })
+watch(() => form.email, () => { if (touched.email) validateField('email', true) })
+watch(() => form.password, () => { if (touched.password) validateField('password', true) })
+watch(() => form.confirm, () => { if (touched.confirm) validateField('confirm', true) })
 
 onMounted(async () => {
   if (authStore.isLoggedIn) { router.replace('/'); return }
@@ -31,22 +86,15 @@ onMounted(async () => {
 
 async function handleSignup() {
   error.value = ''
-  if (!form.username.trim()) {
-    error.value = 'Username is required'
-    return
-  }
-  if (form.username.trim().length < 3) {
-    error.value = 'Username must be at least 3 characters'
-    return
-  }
-  if (form.password !== form.confirm) {
-    error.value = 'Passwords do not match'
-    return
-  }
-  if (form.password.length < 8) {
-    error.value = 'Password must be at least 8 characters'
-    return
-  }
+  // Force a full validation pass so any field the user never touched still
+  // gets its "required" error surfaced before submit.
+  touched.username = touched.email = touched.password = touched.confirm = true
+  validateField('username')
+  validateField('email')
+  validateField('password')
+  validateField('confirm')
+  if (fieldErrors.username || fieldErrors.email || fieldErrors.password || fieldErrors.confirm) return
+
   loading.value = true
   try {
     await register(form.username, form.password, regToken.value, form.email || undefined)
@@ -98,20 +146,57 @@ async function handleSignup() {
           <UAlert v-if="error" :title="error" color="error" variant="soft" icon="i-lucide-x-circle" />
           <div>
             <label class="block text-[11px] font-bold text-muted uppercase tracking-wide mb-1.5">Username <span class="text-red-400">*</span></label>
-            <UInput v-model="form.username" name="username" placeholder="username" autocomplete="username" class="w-full" required autofocus />
+            <UInput
+              v-model="form.username"
+              name="username"
+              placeholder="username"
+              autocomplete="username"
+              class="w-full"
+              required
+              autofocus
+              :aria-invalid="!!fieldErrors.username"
+              @blur="touched.username = true; validateField('username')"
+            />
+            <p v-if="fieldErrors.username" class="text-[11px] text-red-400 mt-1" role="alert">{{ fieldErrors.username }}</p>
           </div>
           <div>
             <label class="block text-[11px] font-bold text-muted uppercase tracking-wide mb-1.5">Email <span class="text-muted opacity-60 normal-case font-normal">(optional)</span></label>
-            <UInput v-model="form.email" name="email" type="email" placeholder="user@example.com" autocomplete="email" class="w-full" />
+            <UInput
+              v-model="form.email"
+              name="email"
+              type="email"
+              placeholder="user@example.com"
+              autocomplete="email"
+              class="w-full"
+              :aria-invalid="!!fieldErrors.email"
+              @blur="touched.email = true; validateField('email')"
+            />
+            <p v-if="fieldErrors.email" class="text-[11px] text-red-400 mt-1" role="alert">{{ fieldErrors.email }}</p>
           </div>
           <div>
             <label class="block text-[11px] font-bold text-muted uppercase tracking-wide mb-1.5">Password <span class="text-red-400">*</span></label>
-            <UInput v-model="form.password" name="new-password" type="password" placeholder="••••••••" autocomplete="new-password" class="w-full" required minlength="8" />
-            <p class="text-[10px] text-muted mt-1">Minimum 8 characters.</p>
+            <PasswordInput
+              v-model="form.password"
+              name="new-password"
+              autocomplete="new-password"
+              required
+              :minlength="8"
+              @blur="touched.password = true; validateField('password')"
+            />
+            <PasswordStrength :value="form.password" />
+            <p v-if="fieldErrors.password" class="text-[11px] text-red-400 mt-1" role="alert">{{ fieldErrors.password }}</p>
+            <p v-else class="text-[10px] text-muted mt-1">Minimum 8 characters.</p>
           </div>
           <div>
             <label class="block text-[11px] font-bold text-muted uppercase tracking-wide mb-1.5">Confirm Password <span class="text-red-400">*</span></label>
-            <UInput v-model="form.confirm" name="confirm-password" type="password" placeholder="••••••••" autocomplete="new-password" class="w-full" required />
+            <PasswordInput
+              v-model="form.confirm"
+              name="confirm-password"
+              autocomplete="new-password"
+              required
+              @blur="touched.confirm = true; validateField('confirm')"
+            />
+            <p v-if="fieldErrors.confirm" class="text-[11px] text-red-400 mt-1" role="alert">{{ fieldErrors.confirm }}</p>
           </div>
           <UButton type="submit" class="w-full justify-center mt-1" :loading="loading" :disabled="!regToken" label="Create Account" color="primary" />
         </form>

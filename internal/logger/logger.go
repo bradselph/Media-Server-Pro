@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -44,6 +45,31 @@ var levelColors = map[Level]string{
 }
 
 const colorReset = "\033[0m"
+
+// singleLineMode strips embedded newlines from log output. Enabled
+// automatically when running under systemd (INVOCATION_ID is set) so each
+// log message lands as a single MESSAGE field in journald rather than being
+// hidden as "[NNNB blob data]" — which is what journald does whenever a
+// message contains a literal newline. Wrapped errors (fmt.Errorf("a: %w", err))
+// and ffmpeg/GORM driver output that include newlines were previously
+// invisible during deploys.
+var singleLineMode = os.Getenv("INVOCATION_ID") != ""
+
+// normalizeForJournal converts embedded newlines / carriage returns to an
+// inline separator when singleLineMode is enabled. No-op otherwise.
+func normalizeForJournal(s string) string {
+	if !singleLineMode {
+		return s
+	}
+	if !strings.ContainsAny(s, "\n\r") {
+		return s
+	}
+	// Replace CRLF first so we don't end up with " |  | " for one logical break.
+	s = strings.ReplaceAll(s, "\r\n", " | ")
+	s = strings.ReplaceAll(s, "\n", " | ")
+	s = strings.ReplaceAll(s, "\r", " | ")
+	return s
+}
 
 // ridKeyType is the context key for request ID propagation.
 type ridKeyType struct{}
@@ -375,8 +401,9 @@ func (l *Logger) logWithRIDSkip(level Level, requestID string, extraSkip int, ms
 		formatted = l.formatMessage(level, requestID, msg, extraSkip, args...)
 	}
 
-	// Write to stdout
-	_, _ = fmt.Fprintln(l.output, formatted)
+	// Write to stdout. Under systemd, normalize embedded newlines so journald
+	// shows the message instead of "[NNNB blob data]".
+	_, _ = fmt.Fprintln(l.output, normalizeForJournal(formatted))
 	l.mu.Unlock()
 
 	// Delegate file writes to globalLogger to avoid stale file handles after rotation
