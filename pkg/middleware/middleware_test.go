@@ -310,3 +310,129 @@ func TestIsTrustedProxy(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// SetExtraTrustedProxies + IsTrustedProxy with configured CIDRs
+// ---------------------------------------------------------------------------
+
+func TestIsTrustedProxy_ExtraCIDR(t *testing.T) {
+	// Save and restore the package state so this test doesn't leak into others.
+	saved := extraTrustedNets.Load()
+	t.Cleanup(func() {
+		if saved == nil {
+			extraTrustedNets.Store(nil)
+		} else {
+			extraTrustedNets.Store(saved)
+		}
+	})
+
+	// Baseline: 203.0.113.5 is a public IP, untrusted by default.
+	if IsTrustedProxy("203.0.113.5") {
+		t.Fatalf("baseline: 203.0.113.5 should not be trusted before SetExtraTrustedProxies")
+	}
+
+	// Register a public CIDR as trusted (simulates a cloud load balancer).
+	SetExtraTrustedProxies([]string{"203.0.113.0/24"})
+
+	if !IsTrustedProxy("203.0.113.5") {
+		t.Errorf("after SetExtraTrustedProxies: 203.0.113.5 should be trusted (203.0.113.0/24)")
+	}
+	if IsTrustedProxy("198.51.100.5") {
+		t.Errorf("after SetExtraTrustedProxies: 198.51.100.5 must remain untrusted")
+	}
+	// Built-in private ranges must continue to work.
+	if !IsTrustedProxy("10.0.0.1") {
+		t.Errorf("built-in private range 10.0.0.1 lost trust after SetExtraTrustedProxies")
+	}
+
+	// Reverting to empty must drop the extra trust again.
+	SetExtraTrustedProxies(nil)
+	if IsTrustedProxy("203.0.113.5") {
+		t.Errorf("after SetExtraTrustedProxies(nil): 203.0.113.5 should no longer be trusted")
+	}
+}
+
+func TestSetExtraTrustedProxies_IgnoresInvalid(t *testing.T) {
+	saved := extraTrustedNets.Load()
+	t.Cleanup(func() { extraTrustedNets.Store(saved) })
+
+	// Mix valid, invalid, blank, and whitespace-padded entries; only the valid
+	// one should be honored. Invalid strings must be silently dropped so a typo
+	// in the admin UI doesn't take down the whole list.
+	SetExtraTrustedProxies([]string{"203.0.113.0/24", "not-a-cidr", "", "  192.0.2.0/24  "})
+
+	if !IsTrustedProxy("203.0.113.1") {
+		t.Errorf("203.0.113.1 should be trusted (203.0.113.0/24)")
+	}
+	if !IsTrustedProxy("192.0.2.1") {
+		t.Errorf("192.0.2.1 should be trusted (whitespace-padded 192.0.2.0/24)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GinCORSDynamic
+// ---------------------------------------------------------------------------
+
+func TestGinCORSDynamic_ReflectsConfigChange(t *testing.T) {
+	// Drive a mutable origin list to simulate an admin edit between requests.
+	var origins []string
+	r := gin.New()
+	r.Use(GinCORSDynamic(
+		func() []string { return origins },
+		[]string{"GET", "POST"},
+		[]string{"Content-Type"},
+	))
+	r.GET("/x", func(c *gin.Context) { c.String(200, "ok") })
+
+	// Initially no origins configured: no CORS headers written.
+	w1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest("GET", "/x", nil)
+	req1.Header.Set("Origin", testAllowedOrigin)
+	r.ServeHTTP(w1, req1)
+	if got := w1.Header().Get(testAllowOriginHdr); got != "" {
+		t.Errorf("with empty origins, expected no CORS header, got %q", got)
+	}
+
+	// Admin edits cors_origins to include testAllowedOrigin.
+	origins = []string{testAllowedOrigin}
+
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest("GET", "/x", nil)
+	req2.Header.Set("Origin", testAllowedOrigin)
+	r.ServeHTTP(w2, req2)
+	if got := w2.Header().Get(testAllowOriginHdr); got != testAllowedOrigin {
+		t.Errorf("after config change, expected Allow-Origin %q, got %q", testAllowedOrigin, got)
+	}
+
+	// And the next admin edit removes it: subsequent request must lose the header.
+	origins = nil
+	w3 := httptest.NewRecorder()
+	req3 := httptest.NewRequest("GET", "/x", nil)
+	req3.Header.Set("Origin", testAllowedOrigin)
+	r.ServeHTTP(w3, req3)
+	if got := w3.Header().Get(testAllowOriginHdr); got != "" {
+		t.Errorf("after origins cleared, expected no CORS header, got %q", got)
+	}
+}
+
+func TestGinCORSDynamic_HandlesOptionsPreflight(t *testing.T) {
+	r := gin.New()
+	r.Use(GinCORSDynamic(
+		func() []string { return []string{testAllowedOrigin} },
+		[]string{"GET", "POST"},
+		[]string{"Content-Type"},
+	))
+	// No route registered for /x — middleware must short-circuit OPTIONS itself.
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("OPTIONS", "/x", nil)
+	req.Header.Set("Origin", testAllowedOrigin)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("OPTIONS preflight: expected 204, got %d", w.Code)
+	}
+	if got := w.Header().Get(testAllowOriginHdr); got != testAllowedOrigin {
+		t.Errorf("OPTIONS preflight: expected Allow-Origin %q, got %q", testAllowedOrigin, got)
+	}
+}
