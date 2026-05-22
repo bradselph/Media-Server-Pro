@@ -92,7 +92,9 @@ The deploy stack reads `.deploy.env` (local, gitignored) for VPS coordinates and
 
 ### Docker
 
-`deploy.sh` is the supported production path. Docker is an alternative for operators who prefer a container image — same binary, same env-var contract, just packaged.
+`deploy.sh` (native build + systemd) is the supported production path. Docker is an alternative for operators who prefer a container image — same Go binary, same env-var contract, just packaged.
+
+**Local stack** (your laptop / a hand-managed host):
 
 ```bash
 cp .env.docker.example .env.docker
@@ -101,7 +103,16 @@ docker compose --env-file .env.docker up -d
 # Open http://localhost:3000
 ```
 
-The stack ships with MariaDB + the server in two containers. The published image lives at `ghcr.io/bradselph/media-server-pro` (tags: `:main`, `:development`, `:1.x.y`, `:latest`, `:sha-<short>`). Image publishes are manual-only — kick off the "Docker Publish" workflow from the Actions tab when you want a fresh image.
+**Remote VPS via deploy.sh** (same SSH + knob flow, swaps the backend):
+
+```bash
+./deploy.sh --docker         # installs Docker if missing, stops systemd unit, runs the GHCR image via compose
+./deploy.sh --docker --dev   # same against the development branch / :dev tag
+```
+
+`--docker` is per-run; running `./deploy.sh` afterwards goes back to the native path. The two modes write to different env files (`.env` vs `.env.docker`) so switching back and forth never loses values.
+
+The stack ships with MariaDB + the server in two containers. The published image lives at `ghcr.io/bradselph/media-server-pro` (tags: `:main`, `:development`, `:1.x.y`, `:latest`, `:sha-<short>`). Image publishes are manual-only — kick off the "Docker Publish" workflow from the Actions tab when you want a fresh image. If `--docker` can't pull (no image published yet, private fork) it falls back to a local `docker compose build`.
 
 If you'd rather just run the binary container against your own database, skip compose and use `docker run` with `--env-file` (see the comment header in `Dockerfile` for the exact invocation).
 
@@ -203,16 +214,4 @@ internal/
 pkg/
   models/              # domain types
   helpers/             # cross-cutting utilities (SafeHTTPTransport, etc.)
-  middleware/          # gin middleware (rate limit, IP filter, security headers)
-  storage/             # S3/MinIO backend
-  huggingface/         # HF API client
-repositories/          # GORM-backed persistence
-web/
-  nuxt-ui/             # Nuxt 3 SPA (frontend source)
-  static/              # Embedded SPA build output
-  server.go            # Static asset embedding
-api_spec/openapi.yaml  # Authoritative API contract
-patches/               # Vendored dependency patches (ffmpeg-go without aws-sdk-go-v1)
-systemd/               # Service unit templates
-deploy.sh              # SSH-based deploy/update for the server
-deploy-knobs.sh        # Knob registry sourced by deploy.sh +
+  middle
