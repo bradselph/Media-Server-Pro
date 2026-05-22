@@ -335,6 +335,24 @@ function defaultSmartRules(): SmartPlaylistRules {
   }
 }
 
+// Smart-playlist conditions need a stable identity for v-for keys: deleting a
+// middle row was reshuffling Vue's DOM-keyed diff and dragging the wrong row's
+// focus/validation state with it. We mint a monotonic transient id on push and
+// attach it as a non-enumerable property so it never leaks into the JSON sent
+// to the API.
+let _condUID = 0
+function withCondKey<T extends object>(o: T): T {
+  Object.defineProperty(o, '__cid', { value: ++_condUID, enumerable: false, writable: false, configurable: false })
+  return o
+}
+function condKey(c: { __cid?: number }): number {
+  if (c.__cid == null) {
+    // Condition loaded from the API on edit: assign on first read.
+    Object.defineProperty(c, '__cid', { value: ++_condUID, enumerable: false, writable: false, configurable: false })
+  }
+  return c.__cid as number
+}
+
 async function createSmartPlaylist() {
   if (!spNewName.value.trim()) return
   spCreating.value = true
@@ -809,7 +827,7 @@ onMounted(() => {
                   />
                 </div>
                 <div class="space-y-2 pl-2 border-l-2 border-default">
-                  <div v-for="(cond, idx) in spNewRules.conditions" :key="idx" class="flex items-end gap-2">
+                  <div v-for="(cond, idx) in spNewRules.conditions" :key="condKey(cond)" class="flex items-end gap-2">
                     <USelect
                       v-model="cond.field"
                       :options="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
@@ -842,7 +860,7 @@ onMounted(() => {
                     variant="outline"
                     color="neutral"
                     size="sm"
-                    @click="spNewRules.conditions.push({ field: 'type', op: 'eq', value: '' })"
+                    @click="spNewRules.conditions.push(withCondKey({ field: 'type', op: 'eq', value: '' }))"
                   />
                 </div>
                 <div class="flex items-center gap-2 pt-2">
@@ -902,7 +920,7 @@ onMounted(() => {
                   />
                 </div>
                 <div class="space-y-2 pl-2 border-l-2 border-default">
-                  <div v-for="(cond, idx) in spEditRules.conditions" :key="idx" class="flex items-end gap-2">
+                  <div v-for="(cond, idx) in spEditRules.conditions" :key="condKey(cond)" class="flex items-end gap-2">
                     <USelect
                       v-model="cond.field"
                       :options="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
@@ -935,7 +953,7 @@ onMounted(() => {
                     variant="outline"
                     color="neutral"
                     size="sm"
-                    @click="spEditRules.conditions.push({ field: 'type', op: 'eq', value: '' })"
+                    @click="spEditRules.conditions.push(withCondKey({ field: 'type', op: 'eq', value: '' }))"
                   />
                 </div>
                 <div class="flex items-center gap-2 pt-2">
