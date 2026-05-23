@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.16.0] - 2026-05-23 (minor)
+
+- chore(web): refresh lockfile, split admin tabs, silence intentional chunk warning
+- fix(mobile): pad main for bottom dock, correct play-chip corner, widen condKey type
+- feat(downloader): shared internal token + proxy pool surfacing
+- Update README.md
+- feat(deploy): add --docker flag (compose-up alternative to native build)
+- feat(docker): restore container build as a deploy.sh alternative
+- fix(ui): suppress global shortcuts modal on /player to prevent double-open
+- fix(analytics,playlists): swap reversed date ranges + stable smart-rule keys
+- fix(logger): inline multi-line messages under systemd
+- fix(thumbnails,ui): probe timeout honors config + S3 prefix UI
+- feat(ui): password polish + inline form validation
+- fix(security): hot-reload CORS, trusted-proxy CIDRs, and rate-limit windows
+- fix(auth): GetActiveSessions(username) now also iterates admin cache
+- feat(tasks): hoist module tickers onto the scheduler + audit log knob
+- fix(hls): one-shot migration flips legacy CleanupEnabled=true to false
+- feat(tasks): admin-controlled scheduling + four new cleanup tasks
+- feat(claude): wire RequireConfirmForWrites toggle into the chat gate
+- chore(cleanup): retire stale stubs and replace placeholder tests
+- chore(deploy): expose brand + 2257/DMCA fields as build-scope knobs
+- feat(seo,ui): popper z-fix, OG/JSON-LD on player, sitemap + compliance pages
+- feat(config): full admin coverage across every schema field
+- refactor(ui): merge redundant home rows, harden media title cleanup
+- feat(ui): polish first-time UX across landing, signup, and home
+- fix(follower): dampen reconnect log spam from stale master pairings
+- chore: drop Docker + make knob defaults safe-by-default
+- feat(deploy): knob registry + GA4 analytics wiring
+
+
 ## [1.15.0] - 2026-05-14 (minor)
 
 - feat(home): progress + Watched marker on RecommendationRow cards (§6)
