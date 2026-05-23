@@ -52,6 +52,16 @@ export default defineNuxtConfig({
         },
     },
 
+    // hls.js is dynamically imported from useHLS only when /player activates
+    // HLS, so its ~525 kB chunk never affects first-load. Bump the warning
+    // ceiling past hls.js so the build stays quiet about an intentional
+    // code-split; anything genuinely too large will still trip the warning.
+    vite: {
+        build: {
+            chunkSizeWarningLimit: 600,
+        },
+    },
+
     app: {
         head: {
             htmlAttrs: {lang: 'en'},
