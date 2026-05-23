@@ -23,13 +23,16 @@ const (
 // IMPORTANT: Uses a plain http.Transport (NOT helpers.SafeHTTPTransport)
 // because the downloader runs on localhost and the SSRF guard blocks loopback.
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
-	log        *logger.Logger
+	baseURL       string
+	httpClient    *http.Client
+	internalToken string
+	log           *logger.Logger
 }
 
-// NewClient creates a client for the downloader API.
-func NewClient(baseURL string, timeout time.Duration) *Client {
+// NewClient creates a client for the downloader API. When internalToken is
+// non-empty it is sent as the `X-MSP-Internal-Token` header on every request,
+// letting the downloader trust this caller without a session-cookie round-trip.
+func NewClient(baseURL string, timeout time.Duration, internalToken string) *Client {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
@@ -43,7 +46,8 @@ func NewClient(baseURL string, timeout time.Duration) *Client {
 				DialContext: dialer.DialContext,
 			},
 		},
-		log: logger.New("downloader-client"),
+		internalToken: internalToken,
+		log:           logger.New("downloader-client"),
 	}
 }
 
@@ -128,6 +132,7 @@ type SettingsResponse struct {
 	Theme                  string   `json:"theme"`
 	AudioFormat            string   `json:"audioFormat"`
 	BrowserRelayConfigured bool     `json:"browserRelayConfigured"`
+	ProxyPoolSize          int      `json:"proxyPoolSize"`
 }
 
 // Health checks the downloader's health endpoint.
@@ -207,8 +212,26 @@ func (c *Client) GetSettings() (*SettingsResponse, error) {
 	return &resp, nil
 }
 
+// attachAuth adds the shared MSP internal token (when configured) and an
+// optional admin session ID. Callers should invoke this on every outbound
+// request that mutates downloader state.
+func (c *Client) attachAuth(req *http.Request, mspSessionID string) {
+	if c.internalToken != "" {
+		req.Header.Set("X-MSP-Internal-Token", c.internalToken)
+	}
+	if mspSessionID != "" {
+		req.Header.Set("X-MSP-Session", mspSessionID)
+	}
+}
+
 func (c *Client) get(path string, result any) error {
-	resp, err := c.httpClient.Get(c.baseURL + path)
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+path, http.NoBody)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	c.attachAuth(req, "")
+
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf(errRequestFailed, err)
 	}
@@ -244,9 +267,7 @@ func (c *Client) postWithSession(path string, body, result any, mspSessionID str
 		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if mspSessionID != "" {
-		req.Header.Set("X-MSP-Session", mspSessionID)
-	}
+	c.attachAuth(req, mspSessionID)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -270,6 +291,7 @@ func (c *Client) del(path string) error {
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
+	c.attachAuth(req, "")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

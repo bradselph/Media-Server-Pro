@@ -1657,7 +1657,7 @@ onUnmounted(() => {
                is reserved for duration, so we offset to bottom-7). -->
           <div
             v-if="!selectionMode && !(item.is_mature && !canViewMature)"
-            class="absolute bottom-7 left-1 hidden [@media(pointer:coarse)]:flex items-center justify-center w-6 h-6 rounded-full bg-black/60 backdrop-blur-sm border border-white/30 pointer-events-none"
+            class="absolute bottom-7 right-1 hidden [@media(pointer:coarse)]:flex items-center justify-center w-6 h-6 rounded-full bg-black/60 backdrop-blur-sm border border-white/30 pointer-events-none"
             aria-hidden="true"
           >
             <UIcon name="i-lucide-play" class="size-3 text-white ml-0.5" />

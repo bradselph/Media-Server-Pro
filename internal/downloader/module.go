@@ -74,7 +74,10 @@ func (m *Module) Start(_ context.Context) error {
 	if timeout <= 0 {
 		timeout = defaultDownloaderTimeout
 	}
-	m.client = NewClient(cfg.Downloader.URL, timeout)
+	m.client = NewClient(cfg.Downloader.URL, timeout, cfg.Downloader.InternalToken)
+	if cfg.Downloader.InternalToken == "" {
+		m.log.Warn("DOWNLOADER_INTERNAL_TOKEN not set — bearer-token admins will not be able to use server-side storage")
+	}
 
 	if cfg.Downloader.DownloadsDir == "" {
 		m.log.Warn("Downloader downloads_dir not configured — file import will be unavailable")

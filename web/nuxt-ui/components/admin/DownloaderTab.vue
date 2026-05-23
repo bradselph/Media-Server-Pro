@@ -392,6 +392,15 @@ function progressBarColor(status: DownloaderProgress['status']) {
           <p class="text-xs text-muted">Browser Relay</p>
           <UBadge :label="settings.browserRelayConfigured ? 'Configured' : 'Not configured'" :color="settings.browserRelayConfigured ? 'success' : 'neutral'" variant="subtle" size="xs" />
         </div>
+        <div v-if="settings.proxyPoolSize != null">
+          <p class="text-xs text-muted">Proxy Pool</p>
+          <UBadge
+            :label="settings.proxyPoolSize > 0 ? `${settings.proxyPoolSize} entr${settings.proxyPoolSize === 1 ? 'y' : 'ies'}` : 'None'"
+            :color="settings.proxyPoolSize > 0 ? 'success' : 'neutral'"
+            variant="subtle"
+            size="xs"
+          />
+        </div>
       </div>
       <div v-if="settings.supportedSites?.length" class="mt-3">
         <p class="text-xs text-muted mb-1">Supported Sites ({{ settings.supportedSites.length }})</p>

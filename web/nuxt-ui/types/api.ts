@@ -1476,6 +1476,7 @@ export interface DownloaderSettings {
     theme?: string
     browserRelayConfigured?: boolean
     downloadsDir?: string
+    proxyPoolSize?: number
 }
 
 export interface ImportableFile {

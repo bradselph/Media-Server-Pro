@@ -345,7 +345,7 @@ function withCondKey<T extends object>(o: T): T {
   Object.defineProperty(o, '__cid', { value: ++_condUID, enumerable: false, writable: false, configurable: false })
   return o
 }
-function condKey(c: { __cid?: number }): number {
+function condKey(c: SmartCondition & { __cid?: number }): number {
   if (c.__cid == null) {
     // Condition loaded from the API on edit: assign on first read.
     Object.defineProperty(c, '__cid', { value: ++_condUID, enumerable: false, writable: false, configurable: false })

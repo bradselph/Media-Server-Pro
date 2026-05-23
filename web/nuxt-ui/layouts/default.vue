@@ -302,8 +302,12 @@ onUnmounted(() => {
 
 watchEffect(() => {
   if (typeof document === 'undefined') return
-  if (!sidebarVisible.value || isMobileViewport.value) {
+  if (!sidebarVisible.value) {
     document.body.dataset.sidebar = 'off'
+    return
+  }
+  if (isMobileViewport.value) {
+    document.body.dataset.sidebar = 'dock'
     return
   }
   document.body.dataset.sidebar = sidebarState.open.value ? 'open' : 'rail'
