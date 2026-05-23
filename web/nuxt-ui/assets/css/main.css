@@ -231,6 +231,19 @@ body {
     body[data-sidebar="off"]  main { padding-right: 0; }
 }
 
+/* On mobile the sidebar collapses to a fixed bottom dock (.dock-root in
+   NowPlayingSidebar.vue). Without bottom padding on <main>, the dock
+   permanently covers the bottom 60px of every page (footer + last row
+   of any grid / list). data-sidebar="dock" is set by default.vue only
+   when the dock is actually rendered (mobile + non-hidden route), so
+   /player and auth pages keep their full viewport. Include
+   env(safe-area-inset-bottom) for iPhone home-indicator clearance. */
+@media (max-width: 768px) {
+    body[data-sidebar="dock"] main {
+        padding-bottom: calc(var(--sb-width-mobile) + env(safe-area-inset-bottom, 0px));
+    }
+}
+
 /* Thin scrollbar variant used inside the sidebar lists. The global
    ::-webkit-scrollbar is already 6px wide; this just hides the thumb on
    tracks until hover so the sidebar reads as a flat panel. */
