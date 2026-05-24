@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"io"
 	"net/http"
 
@@ -31,7 +32,7 @@ func (h *Handler) UploadCustomThumbnail(c *gin.Context) {
 	// Validate file type by magic bytes to prevent SVG/HTML/script injection.
 	sniff := make([]byte, 512)
 	n, readErr := file.Read(sniff)
-	if readErr != nil && readErr != io.EOF {
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
 		h.log.Warn("UploadCustomThumbnail: failed to read magic bytes: %v", readErr)
 		writeError(c, http.StatusBadRequest, "failed to process uploaded file")
 		return
