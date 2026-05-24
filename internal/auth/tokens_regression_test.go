@@ -28,13 +28,11 @@ func TestFND0016_CreateAPIToken_WithTTL_ExpiresAtNonNil(t *testing.T) {
 	beforeCall := time.Now()
 	rawToken, rec, err := m.CreateAPIToken(ctx, "test-user", "test-token", ttl)
 
-	// Assertions
-	if err != nil {
-		// The error is expected if the mock repo doesn't support Create, but the token record
-		// should be constructed correctly before that call.
-		// For this test, we focus on the fix: rec should be nil if Create failed,
-		// but in a real test we'd use a working mock. Let's verify the record construction logic.
-	}
+	// Note: err may be non-nil if the mock repo doesn't support Create, but the
+	// token record should still be constructed correctly before that call. We
+	// rely on the t.Skip at the rec == nil branch below to bail out cleanly
+	// when no DB-backed mock is available.
+	_ = err
 
 	// The fix ensures that when ttl > 0, ExpiresAt is allocated as a pointer to a non-zero time.Time
 	if ttl > 0 {
