@@ -2,6 +2,7 @@
 import type { MediaItem, MediaChapter, Suggestion, Playlist, PlaylistItem, MediaCollection } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration, formatBytes, formatBitrate, formatRelativeDate } from '~/utils/format'
+import { safeJsonLD } from '~/utils/jsonld'
 import { useQueueStore } from '~/stores/queue'
 import { useCollectionsApi } from '~/composables/useApiEndpoints'
 
@@ -152,15 +153,16 @@ useHead(computed(() => {
   }
   const thumb = absUrl(item.thumbnail_url ?? '')
   if (thumb) ld.thumbnailUrl = thumb
-  // Escape '<' as < so a media title containing "</script>" cannot break
-  // out of the LD+JSON block and execute injected HTML downstream.
-  const safeLD = JSON.stringify(ld).replace(/</g, '\\u003c')
+  // safeJsonLD escapes raw less-than characters before they reach the
+  // browser, preventing a crafted media title from breaking out of the
+  // application/ld+json block. See utils/jsonld.ts for why the helper
+  // lives outside this file.
   return {
     script: [{
       type: 'application/ld+json',
-      children: safeLD,
-      // Tagging the script with a hid so a route change replaces it instead
-      // of stacking multiple LD blobs into <head>.
+      children: safeJsonLD(ld),
+      // hid lets a route change replace this LD blob in place rather
+      // than stack multiple copies into the document head.
       hid: 'media-jsonld',
     }],
     link: [{ rel: 'canonical', href: playerCanonicalUrl.value }],
