@@ -937,17 +937,26 @@ function navigateToPrevItem() {
 function skipPrevItem() { navigateToPrevItem() }
 function skipNextItem() { navigateToNextItem() }
 
+// playlistSeq guards against rapid playlist switches: only the most recent
+// watch fire's response may overwrite playlistItems. Without this, a slow
+// response for the previous playlist arriving after a newer playlist load
+// would clobber the current playlist's items.
+let playlistSeq = 0
 watch(playlistIdParam, async id => {
+  const seq = ++playlistSeq
   if (!id) { playlistItems.value = []; return }
   try {
     const pl = await playlistApi.get(id)
+    if (seq !== playlistSeq) return
     playlistItems.value = pl?.items ?? []
     // Tell the Now Playing sidebar to pin this playlist so its Playlist tab
     // tracks the source the user is playing from.
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('msp:playlist-context', { detail: { id } }))
     }
-  } catch { playlistItems.value = [] }
+  } catch {
+    if (seq === playlistSeq) playlistItems.value = []
+  }
 }, { immediate: true })
 
 // Loop mode: 'off' | 'one' | 'all'

@@ -598,7 +598,13 @@ async function reloadTopUsers() {
 }
 watch(topUserMetric, reloadTopUsers)
 // Reload timelines when the user widens the chart range.
+// loadSeq guards against rapid range changes: only the most recent watch
+// fire's responses may overwrite the timeline refs. Without this, a slow
+// response for days=7 arriving after a days=30 request would clobber the
+// 30-day chart with 7-day data.
+let timelineSeq = 0
 watch(timelineDays, async (n) => {
+  const seq = ++timelineSeq
   const [v, s, u, b, l, e] = await Promise.allSettled([
     analyticsApi.getMetricTimeline('total_views', n),
     analyticsApi.getMetricTimeline('stream_starts', n),
@@ -607,6 +613,7 @@ watch(timelineDays, async (n) => {
     analyticsApi.getMetricTimeline('logins', n),
     analyticsApi.getMetricTimeline('server_errors', n),
   ])
+  if (seq !== timelineSeq) return
   if (v.status === 'fulfilled') tlViews.value = v.value ?? []
   if (s.status === 'fulfilled') tlStreams.value = s.value ?? []
   if (u.status === 'fulfilled') tlUploads.value = u.value ?? []
