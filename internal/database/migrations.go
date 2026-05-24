@@ -540,7 +540,7 @@ var tableDefs = []struct {
 			INDEX idx_media_reports_reporter (reporter_id),
 			INDEX idx_media_reports_created  (created_at)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-		{"smart_playlists", `
+	{"smart_playlists", `
 			CREATE TABLE IF NOT EXISTS smart_playlists (
 				id          VARCHAR(36)  PRIMARY KEY,
 				name        VARCHAR(255) NOT NULL,
@@ -551,7 +551,7 @@ var tableDefs = []struct {
 				updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				INDEX idx_smart_playlist_user (user_id)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-		{"auto_tag_rules", `
+	{"auto_tag_rules", `
 			CREATE TABLE IF NOT EXISTS auto_tag_rules (
 				id         VARCHAR(36)  PRIMARY KEY,
 				name       VARCHAR(255) NOT NULL,
@@ -563,7 +563,7 @@ var tableDefs = []struct {
 				updated_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				INDEX idx_auto_tag_rules_priority (priority)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-		{"media_collections", `
+	{"media_collections", `
 			CREATE TABLE IF NOT EXISTS media_collections (
 				id             VARCHAR(36)  PRIMARY KEY,
 				name           VARCHAR(255) NOT NULL,
@@ -573,7 +573,7 @@ var tableDefs = []struct {
 				updated_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				INDEX idx_media_collections_name (name)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-		{"media_collection_items", `
+	{"media_collection_items", `
 			CREATE TABLE IF NOT EXISTS media_collection_items (
 				collection_id VARCHAR(36) NOT NULL,
 				media_id      VARCHAR(36) NOT NULL,
@@ -583,7 +583,7 @@ var tableDefs = []struct {
 				INDEX idx_collection_items_media (media_id),
 				INDEX idx_collection_items_position (collection_id, position)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-		{"claude_conversations", `
+	{"claude_conversations", `
 			CREATE TABLE IF NOT EXISTS claude_conversations (
 				id              VARCHAR(64)  PRIMARY KEY,
 				user_id         VARCHAR(255) NOT NULL,
@@ -597,7 +597,7 @@ var tableDefs = []struct {
 				INDEX idx_claude_conv_user (user_id),
 				INDEX idx_claude_conv_updated (updated_at)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-		{"claude_messages", `
+	{"claude_messages", `
 			CREATE TABLE IF NOT EXISTS claude_messages (
 				id              VARCHAR(64)  PRIMARY KEY,
 				conversation_id VARCHAR(64)  NOT NULL,
@@ -612,7 +612,7 @@ var tableDefs = []struct {
 				INDEX idx_claude_msg_created (created_at),
 				FOREIGN KEY (conversation_id) REFERENCES claude_conversations(id) ON DELETE CASCADE
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-	}
+}
 
 // ensureSchema idempotently creates all required tables and columns.
 // Safe to call on every startup:

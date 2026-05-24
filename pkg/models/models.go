@@ -121,34 +121,34 @@ func (UserPermissions) TableName() string {
 // keys, mapping them to the canonical fields AutoPlay and EqualizerPreset respectively.
 // Use Validate() to ensure all fields contain reasonable values before persistence.
 type UserPreferences struct {
-	UserID              string                 `json:"user_id,omitempty" db:"user_id" gorm:"primaryKey;size:255"`
-	Theme               string                 `json:"theme" db:"theme" gorm:"size:50;default:dark"`
-	ViewMode            string                 `json:"view_mode" db:"view_mode" gorm:"size:50;default:grid"`
-	DefaultQuality      string                 `json:"default_quality" db:"default_quality" gorm:"size:50;default:auto"`
-	AutoPlay            bool                   `json:"auto_play" db:"auto_play" gorm:"default:false"`
-	PlaybackSpeed       float64                `json:"playback_speed" db:"playback_speed" gorm:"default:1.0"`
-	Volume              float64                `json:"volume" db:"volume" gorm:"default:1.0"`
-	ShowMature          bool                   `json:"show_mature" db:"show_mature" gorm:"default:false"`
-	MaturePreferenceSet bool                   `json:"mature_preference_set" db:"mature_preference_set" gorm:"default:false"`
-	Language            string                 `json:"language" db:"language" gorm:"size:10;default:en"`
-	EqualizerPreset     string                 `json:"equalizer_preset" db:"equalizer_preset" gorm:"size:100"`
-	ResumePlayback      bool                   `json:"resume_playback" db:"resume_playback" gorm:"not null"`
-	ShowAnalytics       bool                   `json:"show_analytics" db:"show_analytics" gorm:"not null"`
-	ItemsPerPage        int                    `json:"items_per_page" db:"items_per_page" gorm:"default:20"`
-	SortBy              string                 `json:"sort_by" db:"sort_by" gorm:"size:50;default:date_added"`
-	SortOrder           string                 `json:"sort_order" db:"sort_order" gorm:"size:10;default:desc"`
-	FilterCategory      string                 `json:"filter_category" db:"filter_category" gorm:"size:100"`
-	FilterMediaType     string                 `json:"filter_media_type" db:"filter_media_type" gorm:"size:50"`
+	UserID              string         `json:"user_id,omitempty" db:"user_id" gorm:"primaryKey;size:255"`
+	Theme               string         `json:"theme" db:"theme" gorm:"size:50;default:dark"`
+	ViewMode            string         `json:"view_mode" db:"view_mode" gorm:"size:50;default:grid"`
+	DefaultQuality      string         `json:"default_quality" db:"default_quality" gorm:"size:50;default:auto"`
+	AutoPlay            bool           `json:"auto_play" db:"auto_play" gorm:"default:false"`
+	PlaybackSpeed       float64        `json:"playback_speed" db:"playback_speed" gorm:"default:1.0"`
+	Volume              float64        `json:"volume" db:"volume" gorm:"default:1.0"`
+	ShowMature          bool           `json:"show_mature" db:"show_mature" gorm:"default:false"`
+	MaturePreferenceSet bool           `json:"mature_preference_set" db:"mature_preference_set" gorm:"default:false"`
+	Language            string         `json:"language" db:"language" gorm:"size:10;default:en"`
+	EqualizerPreset     string         `json:"equalizer_preset" db:"equalizer_preset" gorm:"size:100"`
+	ResumePlayback      bool           `json:"resume_playback" db:"resume_playback" gorm:"not null"`
+	ShowAnalytics       bool           `json:"show_analytics" db:"show_analytics" gorm:"not null"`
+	ItemsPerPage        int            `json:"items_per_page" db:"items_per_page" gorm:"default:20"`
+	SortBy              string         `json:"sort_by" db:"sort_by" gorm:"size:50;default:date_added"`
+	SortOrder           string         `json:"sort_order" db:"sort_order" gorm:"size:10;default:desc"`
+	FilterCategory      string         `json:"filter_category" db:"filter_category" gorm:"size:100"`
+	FilterMediaType     string         `json:"filter_media_type" db:"filter_media_type" gorm:"size:50"`
 	CustomEQPresets     map[string]any `json:"custom_eq_presets,omitempty" db:"custom_eq_presets" gorm:"type:json;serializer:json"`
 	// Home section visibility — default true (show all sections)
 	ShowContinueWatching bool `json:"show_continue_watching" db:"show_continue_watching" gorm:"not null"`
 	ShowRecommended      bool `json:"show_recommended" db:"show_recommended" gorm:"not null"`
 	ShowTrending         bool `json:"show_trending" db:"show_trending" gorm:"not null"`
 	// Player behavior
-	SkipInterval    int  `json:"skip_interval" db:"skip_interval" gorm:"default:10"`
-	ShuffleEnabled  bool `json:"shuffle_enabled" db:"shuffle_enabled" gorm:"default:false"`
-	ShowBufferBar   bool `json:"show_buffer_bar" db:"show_buffer_bar" gorm:"not null"`
-	DownloadPrompt  bool `json:"download_prompt" db:"download_prompt" gorm:"not null"`
+	SkipInterval   int  `json:"skip_interval" db:"skip_interval" gorm:"default:10"`
+	ShuffleEnabled bool `json:"shuffle_enabled" db:"shuffle_enabled" gorm:"default:false"`
+	ShowBufferBar  bool `json:"show_buffer_bar" db:"show_buffer_bar" gorm:"not null"`
+	DownloadPrompt bool `json:"download_prompt" db:"download_prompt" gorm:"not null"`
 	// AutoplaySimilar (retention plan B.3): when true and the queue is
 	// empty, the player auto-loads a similar item via the suggestions API
 	// when the current item finishes. Defaults to true at the API level
@@ -273,12 +273,12 @@ func (MediaTag) TableName() string {
 
 // MediaChapter represents a named time range (scene marker / act chapter) for a media item.
 type MediaChapter struct {
-	ID        string     `json:"id" db:"id" gorm:"primaryKey;size:36"`
-	MediaID   string     `json:"media_id" db:"media_id" gorm:"size:255;index"`
-	StartTime float64    `json:"start_time" db:"start_time"`
-	EndTime   *float64   `json:"end_time,omitempty" db:"end_time"`
-	Label     string     `json:"label" db:"label" gorm:"size:255"`
-	CreatedAt time.Time  `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
+	ID        string    `json:"id" db:"id" gorm:"primaryKey;size:36"`
+	MediaID   string    `json:"media_id" db:"media_id" gorm:"size:255;index"`
+	StartTime float64   `json:"start_time" db:"start_time"`
+	EndTime   *float64  `json:"end_time,omitempty" db:"end_time"`
+	Label     string    `json:"label" db:"label" gorm:"size:255"`
+	CreatedAt time.Time `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
 }
 
 // TableName specifies the table name for GORM
@@ -508,14 +508,14 @@ func (MediaCollectionItem) TableName() string { return "media_collection_items" 
 
 // AnalyticsEvent represents a tracked event
 type AnalyticsEvent struct {
-	ID        string                 `json:"id" db:"id" gorm:"primaryKey;size:255"`
-	Type      string                 `json:"type" db:"type" gorm:"size:100;not null;index"`
-	MediaID   string                 `json:"media_id,omitempty" db:"media_id" gorm:"size:255;index"`
-	UserID    string                 `json:"user_id,omitempty" db:"user_id" gorm:"size:255;index"`
-	SessionID string                 `json:"session_id,omitempty" db:"session_id" gorm:"size:255"`
-	IPAddress string                 `json:"ip_address" db:"ip_address" gorm:"size:45"`
-	UserAgent string                 `json:"user_agent" db:"user_agent" gorm:"type:text"`
-	Timestamp time.Time              `json:"timestamp" db:"timestamp" gorm:"autoCreateTime;index"`
+	ID        string         `json:"id" db:"id" gorm:"primaryKey;size:255"`
+	Type      string         `json:"type" db:"type" gorm:"size:100;not null;index"`
+	MediaID   string         `json:"media_id,omitempty" db:"media_id" gorm:"size:255;index"`
+	UserID    string         `json:"user_id,omitempty" db:"user_id" gorm:"size:255;index"`
+	SessionID string         `json:"session_id,omitempty" db:"session_id" gorm:"size:255"`
+	IPAddress string         `json:"ip_address" db:"ip_address" gorm:"size:45"`
+	UserAgent string         `json:"user_agent" db:"user_agent" gorm:"type:text"`
+	Timestamp time.Time      `json:"timestamp" db:"timestamp" gorm:"autoCreateTime;index"`
 	Data      map[string]any `json:"data,omitempty" db:"data" gorm:"type:json;serializer:json"`
 }
 
@@ -584,15 +584,15 @@ type DailyStats struct {
 	// Engagement / access-control / admin-bulk traffic. BytesServed is the
 	// only float64 column — populated from stream-end event payloads, not
 	// counted as a discrete tick.
-	StreamStarts       int     `json:"stream_starts" gorm:"column:stream_starts;not null;default:0"`
-	StreamEnds         int     `json:"stream_ends" gorm:"column:stream_ends;not null;default:0"`
-	BytesServed        int64   `json:"bytes_served" gorm:"column:bytes_served;not null;default:0"`
-	MatureBlocked      int     `json:"mature_blocked" gorm:"column:mature_blocked;not null;default:0"`
-	PermissionDenied   int     `json:"permission_denied" gorm:"column:permission_denied;not null;default:0"`
-	PreferencesChanges int     `json:"preferences_changes" gorm:"column:preferences_changes;not null;default:0"`
-	BulkDeletes        int     `json:"bulk_deletes" gorm:"column:bulk_deletes;not null;default:0"`
-	BulkUpdates        int     `json:"bulk_updates" gorm:"column:bulk_updates;not null;default:0"`
-	UserRoleChanges    int     `json:"user_role_changes" gorm:"column:user_role_changes;not null;default:0"`
+	StreamStarts       int   `json:"stream_starts" gorm:"column:stream_starts;not null;default:0"`
+	StreamEnds         int   `json:"stream_ends" gorm:"column:stream_ends;not null;default:0"`
+	BytesServed        int64 `json:"bytes_served" gorm:"column:bytes_served;not null;default:0"`
+	MatureBlocked      int   `json:"mature_blocked" gorm:"column:mature_blocked;not null;default:0"`
+	PermissionDenied   int   `json:"permission_denied" gorm:"column:permission_denied;not null;default:0"`
+	PreferencesChanges int   `json:"preferences_changes" gorm:"column:preferences_changes;not null;default:0"`
+	BulkDeletes        int   `json:"bulk_deletes" gorm:"column:bulk_deletes;not null;default:0"`
+	BulkUpdates        int   `json:"bulk_updates" gorm:"column:bulk_updates;not null;default:0"`
+	UserRoleChanges    int   `json:"user_role_changes" gorm:"column:user_role_changes;not null;default:0"`
 }
 
 // TableName specifies the table name for GORM.
@@ -658,15 +658,15 @@ type MatureReviewItem struct {
 
 // AuditLogEntry represents an entry in the audit log
 type AuditLogEntry struct {
-	ID        string                 `json:"id" db:"id" gorm:"primaryKey;size:255"`
-	Timestamp time.Time              `json:"timestamp" db:"timestamp" gorm:"autoCreateTime;index"`
-	UserID    string                 `json:"user_id" db:"user_id" gorm:"size:255;index"`
-	Username  string                 `json:"username" db:"username" gorm:"size:255"`
-	Action    string                 `json:"action" db:"action" gorm:"size:255;not null;index"`
-	Resource  string                 `json:"resource" db:"resource" gorm:"size:1024;index"`
+	ID        string         `json:"id" db:"id" gorm:"primaryKey;size:255"`
+	Timestamp time.Time      `json:"timestamp" db:"timestamp" gorm:"autoCreateTime;index"`
+	UserID    string         `json:"user_id" db:"user_id" gorm:"size:255;index"`
+	Username  string         `json:"username" db:"username" gorm:"size:255"`
+	Action    string         `json:"action" db:"action" gorm:"size:255;not null;index"`
+	Resource  string         `json:"resource" db:"resource" gorm:"size:1024;index"`
 	Details   map[string]any `json:"details,omitempty" db:"details" gorm:"type:json;serializer:json"`
-	IPAddress string                 `json:"ip_address" db:"ip_address" gorm:"size:45"`
-	Success   bool                   `json:"success" db:"success" gorm:"index"`
+	IPAddress string         `json:"ip_address" db:"ip_address" gorm:"size:45"`
+	Success   bool           `json:"success" db:"success" gorm:"index"`
 }
 
 // TableName specifies the table name for GORM
@@ -705,10 +705,10 @@ type HealthStatus struct {
 
 // APIResponse represents a standard API response
 type APIResponse struct {
-	Success bool        `json:"success"`
-	Data    any `json:"data,omitempty"`
-	Error   string      `json:"error,omitempty"`
-	Message string      `json:"message,omitempty"`
+	Success bool   `json:"success"`
+	Data    any    `json:"data,omitempty"`
+	Error   string `json:"error,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // SuggestionType represents a naming suggestion type
