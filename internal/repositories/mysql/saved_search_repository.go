@@ -88,7 +88,7 @@ func (r *SavedSearchRepository) Get(ctx context.Context, id, userID string) (*re
 		First(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
 		}
 		return nil, fmt.Errorf("get saved search: %w", err)
 	}

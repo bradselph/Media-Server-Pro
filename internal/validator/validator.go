@@ -181,8 +181,8 @@ func (m *Module) getCachedResult(path string) (*ValidationResult, bool) {
 	if !ok || time.Since(result.ValidatedAt) >= 7*24*time.Hour {
 		return nil, false
 	}
-	copy := *result
-	return &copy, true
+	cp := *result
+	return &cp, true
 }
 
 // setFinalStatus sets result.Status based on issues and codec support.
@@ -538,8 +538,8 @@ func (m *Module) GetResult(path string) (*ValidationResult, bool) {
 	if !ok {
 		return nil, false
 	}
-	copy := *result
-	return &copy, true
+	cp := *result
+	return &cp, true
 }
 
 // GetStats returns validation statistics
