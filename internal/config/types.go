@@ -49,8 +49,8 @@ type TasksConfig struct {
 // TaskOverride is the admin-controlled state for a single scheduled task.
 // nil pointers mean "use the value the task was registered with".
 type TaskOverride struct {
-	Enabled        *bool `json:"enabled,omitempty"`
-	ScheduleSecs   *int  `json:"schedule_secs,omitempty"`
+	Enabled      *bool `json:"enabled,omitempty"`
+	ScheduleSecs *int  `json:"schedule_secs,omitempty"`
 }
 
 // ClaudeConfig holds settings for the Claude Code–powered admin assistant.
@@ -196,10 +196,10 @@ type ServerConfig struct {
 	WriteTimeout      time.Duration `json:"write_timeout"`
 	IdleTimeout       time.Duration `json:"idle_timeout"`
 	MaxHeaderBytes    int           `json:"max_header_bytes"`
-	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
-	EnableHTTPS     bool          `json:"enable_https"`
-	CertFile        string        `json:"cert_file"`
-	KeyFile         string        `json:"key_file"`
+	ShutdownTimeout   time.Duration `json:"shutdown_timeout"`
+	EnableHTTPS       bool          `json:"enable_https"`
+	CertFile          string        `json:"cert_file"`
+	KeyFile           string        `json:"key_file"`
 }
 
 // DirectoriesConfig holds directory paths
