@@ -122,7 +122,7 @@ func TestRowToSlaveRecord_FND0465_StderrWarningOnParseError(t *testing.T) {
 
 	// Verify the record was still created (with zero-value LastSeen)
 	if rec == nil {
-		t.Error("rowToSlaveRecord returned nil")
+		t.Fatal("rowToSlaveRecord returned nil")
 	}
 	if rec.LastSeen != (time.Time{}) {
 		t.Errorf("LastSeen should be zero-value on parse error, got %v", rec.LastSeen)
@@ -177,7 +177,7 @@ func TestRowToMediaRecord_FND0466_StderrWarningOnParseError(t *testing.T) {
 
 	// Verify the record was still created (with zero-value UpdatedAt)
 	if rec == nil {
-		t.Error("rowToMediaRecord returned nil")
+		t.Fatal("rowToMediaRecord returned nil")
 	}
 	if rec.UpdatedAt != (time.Time{}) {
 		t.Errorf("UpdatedAt should be zero-value on parse error, got %v", rec.UpdatedAt)
