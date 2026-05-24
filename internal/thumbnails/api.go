@@ -183,17 +183,17 @@ func (m *Module) SaveCustomThumbnail(mediaID string, r io.Reader) error {
 		return fmt.Errorf("creating temp file: %w", err)
 	}
 	if _, err := io.Copy(f, r); err != nil {
-		f.Close()
-		os.Remove(tmp)
+		_ = f.Close()
+		_ = os.Remove(tmp)
 		return fmt.Errorf("writing thumbnail data: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("closing temp file: %w", err)
 	}
 	// Atomic replace
 	if err := os.Rename(tmp, destPath); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("replacing thumbnail: %w", err)
 	}
 	// Remove stale WebP and preview frames so browser gets fresh content
