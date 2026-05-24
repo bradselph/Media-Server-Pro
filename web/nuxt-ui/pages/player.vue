@@ -152,10 +152,13 @@ useHead(computed(() => {
   }
   const thumb = absUrl(item.thumbnail_url ?? '')
   if (thumb) ld.thumbnailUrl = thumb
+  // Escape '<' as < so a media title containing "</script>" cannot break
+  // out of the LD+JSON block and execute injected HTML downstream.
+  const safeLD = JSON.stringify(ld).replace(/</g, '\\u003c')
   return {
     script: [{
       type: 'application/ld+json',
-      children: JSON.stringify(ld),
+      children: safeLD,
       // Tagging the script with a hid so a route change replaces it instead
       // of stacking multiple LD blobs into <head>.
       hid: 'media-jsonld',
