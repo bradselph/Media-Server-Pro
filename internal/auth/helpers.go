@@ -126,10 +126,7 @@ func (m *Module) RevokeUserSession(ctx context.Context, userID, sessionID string
 	if err := m.Logout(ctx, sessionID); err != nil {
 		if errors.Is(err, ErrSessionNotFound) {
 			// Already gone from cache; try admin path for completeness.
-			if adminErr := m.LogoutAdmin(ctx, sessionID); adminErr != nil {
-				return adminErr
-			}
-			return nil
+			return m.LogoutAdmin(ctx, sessionID)
 		}
 		return err
 	}
