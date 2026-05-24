@@ -261,7 +261,11 @@ func (b *Backend) WriteFile(_ context.Context, path string, data []byte) error {
 		_ = os.Remove(tmpName)
 		return fmt.Errorf("local storage: close: %w", closeErr)
 	}
-	return os.Rename(tmpName, abs)
+	if err := os.Rename(tmpName, abs); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("local storage: rename: %w", err)
+	}
+	return nil
 }
 
 // AbsPath returns the absolute filesystem path.

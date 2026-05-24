@@ -33,6 +33,7 @@ type Module struct {
 	online    bool
 
 	cancelHealth context.CancelFunc
+	scanWG       sync.WaitGroup
 }
 
 // NewModule creates a new downloader integration module.
@@ -97,6 +98,13 @@ func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping downloader module...")
 	if m.cancelHealth != nil {
 		m.cancelHealth()
+	}
+	done := make(chan struct{})
+	go func() { m.scanWG.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		m.log.Warn("Background media rescan still running at shutdown; leaving to media module")
 	}
 	m.setHealth(false, "Stopped")
 	return nil
@@ -166,13 +174,13 @@ func (m *Module) Import(filename string, deleteSource, triggerScan bool) (destPa
 	m.log.Info("Imported %s → %s", filename, destPath)
 
 	if triggerScan && m.mediaModule != nil {
-		go func() {
+		m.scanWG.Go(func() {
 			if err := m.mediaModule.Scan(); err != nil {
 				m.log.Warn("Media rescan after import failed: %v", err)
 			} else {
 				m.log.Info("Media rescan triggered after import")
 			}
-		}()
+		})
 	}
 
 	return destPath, sourceDeleted, nil

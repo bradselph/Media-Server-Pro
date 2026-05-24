@@ -161,6 +161,19 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 	go func() {
 		defer close(doneCh)
 		defer m.activeJobs.Done()
+		// Release the per-job context regardless of exit path (success, failure,
+		// or panic). finalizeJobCompleted handles the success path explicitly,
+		// but failure/panic paths inside transcode() never reach that code and
+		// would otherwise leak the cancel func until module Stop. cancel() is
+		// idempotent so the success-path call is harmless.
+		defer func() {
+			m.jobsMu.Lock()
+			if cancel, ok := m.jobCancels[p.JobID]; ok {
+				cancel()
+				delete(m.jobCancels, p.JobID)
+			}
+			m.jobsMu.Unlock()
+		}()
 		defer func() {
 			if r := recover(); r != nil {
 				m.log.Error("Panic in HLS transcode for job %s: %v\n%s", p.JobID, r, debug.Stack())

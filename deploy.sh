@@ -943,15 +943,42 @@ run_or_dry remote "
   echo '[deploy] Building Nuxt UI frontend...'
   cd web/nuxt-ui
 
+  # Install Node dependencies.
+  # 1. Try npm ci against the committed lockfile (fast + deterministic).
+  # 2. If the lock is out of sync with package.json, regenerate it with
+  #    npm install. This shadows the committed lock for this build only —
+  #    a stale committed lock keeps tripping the same path next deploy
+  #    until the operator commits a refreshed one.
+  # 3. After install, audit the resolved tree. A committed lock can pin
+  #    transitively-vulnerable versions that npm ci faithfully reproduces;
+  #    when high-severity issues are present, regenerate the lock and
+  #    reinstall so the shipped artifact is clean even if the committed
+  #    lock is not. Audit failures are non-fatal — they only inform.
+  install_ok=1
   if [ -f package-lock.json ]; then
     echo '[deploy] package-lock.json found — trying npm ci'
-    if ! npm ci 2>&1; then
-      echo '[deploy] npm ci failed (lock file out of sync) — falling back to npm install'
-      npm install
+    if ! npm ci --no-audit --no-fund 2>&1; then
+      echo '[deploy] npm ci failed (lock out of sync) — regenerating package-lock.json'
+      rm -f package-lock.json
+      npm install --no-audit --no-fund || install_ok=0
     fi
   else
-    echo '[deploy] No package-lock.json — using npm install'
-    npm install
+    echo '[deploy] No package-lock.json — running npm install'
+    npm install --no-audit --no-fund || install_ok=0
+  fi
+  [ \"\$install_ok\" = 1 ] || { echo '[deploy] npm install failed'; exit 1; }
+
+  if npm audit --omit=dev --audit-level=high --no-color >/dev/null 2>&1; then
+    echo '[deploy] npm audit clean (no high/critical vulnerabilities)'
+  else
+    echo '[deploy] npm audit reports high/critical vulnerabilities — regenerating package-lock.json'
+    rm -f package-lock.json
+    npm install --no-audit --no-fund
+    if npm audit --omit=dev --audit-level=high --no-color >/dev/null 2>&1; then
+      echo '[deploy] Vulnerabilities resolved after lockfile regeneration'
+    else
+      echo '[deploy] WARNING: high/critical vulnerabilities remain after regen — see \`npm audit\`'
+    fi
   fi
 
   # Load FORWARDED_BUILD knobs (NUXT_PUBLIC_*) from /tmp/msp-build.env if the

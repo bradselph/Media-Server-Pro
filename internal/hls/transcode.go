@@ -117,7 +117,10 @@ func (m *Module) finalizeJobCompleted(job *models.HLSJob) {
 	job.Status = models.HLSStatusCompleted
 	job.Progress = 100
 	job.CompletedAt = new(time.Now())
-	delete(m.jobCancels, job.ID)
+	if cancel, ok := m.jobCancels[job.ID]; ok {
+		cancel()
+		delete(m.jobCancels, job.ID)
+	}
 	// Do NOT delete from jobDone here. finalizeJobCompleted runs inside transcode(),
 	// which is called from the goroutine body. The goroutine's "defer close(doneCh)"
 	// hasn't fired yet at this point. Deleting jobDone[id] before close(doneCh)
