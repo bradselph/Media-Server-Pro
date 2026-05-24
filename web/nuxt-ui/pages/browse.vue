@@ -54,6 +54,13 @@ async function load() {
 
 onMounted(load)
 
+onBeforeUnmount(() => {
+    if (previewTimer) {
+        clearTimeout(previewTimer)
+        previewTimer = null
+    }
+})
+
 const filteredTags = computed(() => {
     const q = searchQuery.value.trim().toLowerCase()
     if (!q) return tags.value
