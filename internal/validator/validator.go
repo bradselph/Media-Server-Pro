@@ -463,7 +463,9 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 
 	// Estimate required space as 2× input size (transcode can expand file; add headroom).
 	// Skip the block if disk usage is unavailable — don't abort a valid repair for a missing metric.
-	if inStat, err := os.Stat(path); err == nil {
+	// Guard against a negative os.Stat size (theoretical for special files) before the uint64
+	// conversion so we don't compute a bogus huge "required" value.
+	if inStat, err := os.Stat(path); err == nil && inStat.Size() > 0 {
 		required := uint64(inStat.Size()) * 2
 		if du, err := helpers.GetDiskUsage(filepath.Dir(outputPath)); err == nil && du.Available < required {
 			return nil, fmt.Errorf("insufficient disk space: need ~%d MB, have %d MB free",
