@@ -23,7 +23,7 @@ func (m *Module) GenerateThumbnailRequest(req *ThumbnailRequest) (string, error)
 
 func (m *Module) generateThumbnailFromRequest(req *generateThumbnailRequest) (string, error) {
 	if m.ffmpegPath == "" {
-		return "", fmt.Errorf(errFFmpegNotAvailable)
+		return "", errors.New(errFFmpegNotAvailable)
 	}
 	if req.MediaID == "" {
 		return "", fmt.Errorf("mediaID cannot be empty")
@@ -101,7 +101,7 @@ func (m *Module) GeneratePreviewThumbnailsRequest(req *PreviewThumbnailsRequest)
 
 func (m *Module) generatePreviewThumbnailsFromRequest(req *generatePreviewThumbnailsRequest) (string, error) {
 	if m.ffmpegPath == "" {
-		return "", fmt.Errorf(errFFmpegNotAvailable)
+		return "", errors.New(errFFmpegNotAvailable)
 	}
 	if req.MediaID == "" {
 		return "", fmt.Errorf("mediaID cannot be empty")
@@ -213,7 +213,7 @@ func (m *Module) SaveCustomThumbnail(mediaID string, r io.Reader) error {
 func (m *Module) generateThumbnailSyncFromRequest(req *ThumbnailSyncRequest) (string, error) {
 	if m.ffmpegPath == "" {
 		m.log.Error("Cannot generate thumbnail - FFmpeg not available")
-		return "", fmt.Errorf(errFFmpegNotAvailable)
+		return "", errors.New(errFFmpegNotAvailable)
 	}
 	if req.MediaID == "" {
 		return "", fmt.Errorf("mediaID cannot be empty")
