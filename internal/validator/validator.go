@@ -561,6 +561,8 @@ func (m *Module) GetStats() Stats {
 			stats.Failed++
 		case StatusUnsupported:
 			stats.Unsupported++
+		case StatusPending:
+			stats.Pending++
 		}
 	}
 	return stats
@@ -574,6 +576,7 @@ type Stats struct {
 	Fixed       int `json:"fixed"`
 	Failed      int `json:"failed"`
 	Unsupported int `json:"unsupported"`
+	Pending     int `json:"pending"`
 }
 
 // ClearResult removes a validation result

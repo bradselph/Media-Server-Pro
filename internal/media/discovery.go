@@ -1536,6 +1536,8 @@ func (m *Module) GetStats() Stats {
 			stats.VideoCount++
 		case models.MediaTypeAudio:
 			stats.AudioCount++
+		case models.MediaTypeUnknown:
+			stats.UnknownCount++
 		}
 	}
 
@@ -1544,12 +1546,13 @@ func (m *Module) GetStats() Stats {
 
 // Stats holds media statistics
 type Stats struct {
-	TotalCount int       `json:"total_count"`
-	VideoCount int       `json:"video_count"`
-	AudioCount int       `json:"audio_count"`
-	TotalSize  int64     `json:"total_size"`
-	LastScan   time.Time `json:"last_scan"`
-	Version    int64     `json:"version"`
+	TotalCount   int       `json:"total_count"`
+	VideoCount   int       `json:"video_count"`
+	AudioCount   int       `json:"audio_count"`
+	UnknownCount int       `json:"unknown_count"`
+	TotalSize    int64     `json:"total_size"`
+	LastScan     time.Time `json:"last_scan"`
+	Version      int64     `json:"version"`
 }
 
 // IncrementViews increments view count for a media item (DB and in-memory updated separately; not atomic).
