@@ -216,7 +216,7 @@ func (h *Handler) tryRecordView(userID, mediaID string) bool {
 	}
 	if prev, ok := h.viewCooldown.Load(key); ok {
 		// Type assertion is safe: viewCooldown is only ever Store'd with a time.Time below.
-		if now.Sub(prev.(time.Time)) < cooldown {
+		if now.Sub(prev.(time.Time)) < cooldown { //nolint:errcheck // viewCooldown only ever Stores time.Time
 			return false
 		}
 	}
