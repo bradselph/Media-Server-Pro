@@ -531,9 +531,9 @@ func (m *Module) computeTopUsers(ctx context.Context, metric, since, until strin
 	}
 
 	type bucket struct {
-		userID                                                  string
-		views, playbacks, completions, uploads, downloads, evts int
-		watchTime                                               float64
+		userID                                     string
+		views, playbacks, uploads, downloads, evts int
+		watchTime                                  float64
 	}
 	rows := make(map[string]*bucket)
 	for _, ev := range events {

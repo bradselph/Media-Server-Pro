@@ -750,32 +750,6 @@ func (h *Handler) logAdminAction(c *gin.Context, p *adminLogActionParams) {
 	})
 }
 
-// adminLogResultParams groups arguments for logAdminActionResult to avoid excess parameters.
-type adminLogResultParams struct {
-	UserID   string
-	Username string
-	Action   string
-	Target   string
-	Details  map[string]any
-	Success  bool
-}
-
-// logAdminActionResult is like logAdminAction but lets the caller specify success/failure.
-func (h *Handler) logAdminActionResult(c *gin.Context, p *adminLogResultParams) {
-	if h.admin == nil {
-		return
-	}
-	userID, username := p.UserID, p.Username
-	if session := getSession(c); session != nil {
-		userID = session.UserID
-		username = session.Username
-	}
-	h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
-		UserID: userID, Username: username, Action: p.Action, Resource: p.Target,
-		Details: p.Details, IPAddress: c.ClientIP(), Success: p.Success,
-	})
-}
-
 // checkMatureAccess verifies the current user has permission to access mature content.
 // isMature must be sourced from the caller's already-resolved MediaItem to avoid a
 // secondary lookup and its fail-open failure mode. Returns true if access is allowed.
