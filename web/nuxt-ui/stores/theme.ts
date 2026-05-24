@@ -13,12 +13,18 @@ export const THEMES = [
 
 export type ThemeValue = typeof THEMES[number]['value']
 
+const VALID_THEMES = new Set<string>(THEMES.map(t => t.value))
+
+function readStoredTheme(): ThemeValue {
+    if (!import.meta.client) return 'dark'
+    const raw = localStorage.getItem('msp-theme')
+    return raw && VALID_THEMES.has(raw) ? (raw as ThemeValue) : 'dark'
+}
+
 export const useThemeStore = defineStore('theme', () => {
     const colorMode = useColorMode()
 
-    const currentTheme = ref<ThemeValue>(
-        (import.meta.client ? localStorage.getItem('msp-theme') as ThemeValue : null) ?? 'dark',
-    )
+    const currentTheme = ref<ThemeValue>(readStoredTheme())
 
     function setTheme(theme: ThemeValue) {
         currentTheme.value = theme
