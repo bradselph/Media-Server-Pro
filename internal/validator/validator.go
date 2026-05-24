@@ -466,7 +466,7 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 	// Guard against a negative os.Stat size (theoretical for special files) before the uint64
 	// conversion so we don't compute a bogus huge "required" value.
 	if inStat, err := os.Stat(path); err == nil && inStat.Size() > 0 {
-		required := uint64(inStat.Size()) * 2
+		required := uint64(inStat.Size()) * 2 //nolint:gosec // G115: size guarded > 0 above; *2 cannot overflow uint64 for any real file
 		if du, err := helpers.GetDiskUsage(filepath.Dir(outputPath)); err == nil && du.Available < required {
 			return nil, fmt.Errorf("insufficient disk space: need ~%d MB, have %d MB free",
 				required/1024/1024, du.Available/1024/1024)
