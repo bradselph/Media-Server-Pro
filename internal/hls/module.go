@@ -44,6 +44,10 @@ type Capabilities struct {
 	Qualities     []string `json:"qualities"`
 	AutoGenerate  bool     `json:"auto_generate"`
 	MaxConcurrent int      `json:"max_concurrent"`
+	// VideoEncoder is the encoder resolved at startup: "libx264" (software) or
+	// a hardware encoder such as "h264_nvenc"/"h264_vaapi". Lets the admin UI
+	// show whether the configured hardware_accel setting actually took effect.
+	VideoEncoder string `json:"video_encoder"`
 }
 
 // Module implements HLS transcoding and serving
@@ -64,6 +68,8 @@ type Module struct {
 	cacheDir           string
 	ffmpegPath         string
 	ffprobePath        string
+	hwEncoder          string // resolved hardware video encoder (e.g. "h264_nvenc"); "" = software libx264
+	hwDevice           string // VAAPI render device path when hwEncoder is "h264_vaapi"
 	accessTracker      *AccessTracker
 	activeJobs         sync.WaitGroup     // Tracks active transcoding jobs for graceful shutdown
 	stopping           atomic.Bool        // Set to true during Stop() to distinguish cancellation from real failures
@@ -151,6 +157,8 @@ func (m *Module) Start(_ context.Context) error {
 	if m.applyStartupHealthCacheDir() {
 		return nil
 	}
+
+	m.detectHWEncoder(cfg)
 
 	m.runPostLoadStartupTasks()
 
@@ -435,5 +443,15 @@ func (m *Module) GetCapabilities() Capabilities {
 		Qualities:     qualities,
 		AutoGenerate:  cfg.HLS.AutoGenerate,
 		MaxConcurrent: cfg.HLS.ConcurrentLimit,
+		VideoEncoder:  m.videoEncoderName(),
 	}
+}
+
+// videoEncoderName reports the resolved encoder for display: the hardware
+// encoder when one is active, otherwise software libx264.
+func (m *Module) videoEncoderName() string {
+	if m.hwEncoder != "" {
+		return m.hwEncoder
+	}
+	return "libx264"
 }

@@ -34,8 +34,16 @@ func NewManager(configPath string) *Manager {
 	}
 }
 
-// Load loads configuration from file and merges with defaults
-// Loading order: defaults -> .env file -> config.json -> environment overrides
+// Load loads configuration from file and merges with defaults.
+//
+// Precedence (see env_overrides.go for the infra/tunable split):
+//   - Infrastructure/secret env vars (paths, bind, DB/storage creds, log level,
+//     updater branch, admin bootstrap) ALWAYS apply, on every load. They are
+//     owned by the deployment environment, not the admin UI.
+//   - Tunable settings (HLS, security, features, UI, etc.) are owned by
+//     config.json / the admin UI. Tunable env vars only seed a brand-new
+//     config.json, or run once during the EnvSeedMigrated upgrade. After that,
+//     a value changed in the UI is authoritative and is never reverted by env.
 func (m *Manager) Load() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -45,7 +53,8 @@ func (m *Manager) Load() error {
 	// Start with defaults
 	m.config = DefaultConfig()
 
-	// Load .env file if it exists
+	// Load .env file if it exists (populates the process environment that the
+	// *EnvOverrides readers below consult).
 	envPath := m.findEnvFile()
 	if envPath != "" {
 		m.log.Info("Loading environment from %s", envPath)
@@ -54,9 +63,11 @@ func (m *Manager) Load() error {
 		}
 	}
 
-	// Check if config file exists. If it does not, check for a .bak file left
-	// by a crash between the rename steps in save() — if found, restore it
-	// rather than silently creating a fresh default config.
+	// Determine whether a config file already exists. If it is missing, check
+	// for a .bak file left by a crash between the rename steps in save() — if
+	// found, restore it (counts as "exists") rather than silently creating a
+	// fresh default config.
+	configExists := true
 	if _, err := os.Stat(m.configPath); os.IsNotExist(err) {
 		bakPath := m.configPath + ".bak"
 		if _, bakErr := os.Stat(bakPath); bakErr == nil {
@@ -65,23 +76,43 @@ func (m *Manager) Load() error {
 				return fmt.Errorf("crash recovery: failed to restore %s to %s: %w", bakPath, m.configPath, renameErr)
 			}
 		} else {
-			m.log.Info("Configuration file not found, creating with current settings")
-			return m.save()
+			configExists = false
 		}
 	}
 
-	// Read config file
-	m.log.Info("Loading configuration from %s", m.configPath)
-	data, err := os.ReadFile(m.configPath)
-	if err != nil {
-		return fmt.Errorf("failed to read config file: %w", err)
+	needsSave := false
+
+	if configExists {
+		m.log.Info("Loading configuration from %s", m.configPath)
+		data, err := os.ReadFile(m.configPath)
+		if err != nil {
+			return fmt.Errorf("failed to read config file: %w", err)
+		}
+		if err := json.Unmarshal(data, m.config); err != nil {
+			return fmt.Errorf("failed to parse config file: %w", err)
+		}
+
+		// Infrastructure/secret env vars always win; tunables stay as saved.
+		m.applyInfraEnvOverrides()
+
+		// One-shot upgrade: bake the current env-driven tunable values into
+		// config.json so effective behaviour does not change on the first load
+		// after the upgrade, then let config.json own tunables from then on.
+		if !m.config.EnvSeedMigrated {
+			m.applyTunableEnvOverrides()
+			m.config.EnvSeedMigrated = true
+			needsSave = true
+			m.log.Info("Config migration: tunable settings are now owned by config.json / the admin UI (environment variables seed only)")
+		}
+	} else {
+		// Fresh install: seed the whole config from environment + defaults and
+		// persist it. config.json is authoritative for tunables from here on.
+		m.log.Info("Configuration file not found, seeding from environment and defaults")
+		m.applyEnvOverrides()
+		m.config.EnvSeedMigrated = true
+		needsSave = true
 	}
 
-	if err := json.Unmarshal(data, m.config); err != nil {
-		return fmt.Errorf("failed to parse config file: %w", err)
-	}
-
-	m.applyEnvOverrides()
 	m.resolveAbsolutePaths()
 	m.syncFeatureToggles()
 	m.migrateHLSQualityEnabled()
@@ -89,6 +120,12 @@ func (m *Manager) Load() error {
 	m.normalizeHLSScalars()
 	if err := m.validate(); err != nil {
 		return err
+	}
+
+	if needsSave {
+		if err := m.save(); err != nil {
+			return err
+		}
 	}
 
 	m.log.Info("Configuration loaded successfully")
@@ -282,6 +319,19 @@ func (m *Manager) normalizeHLSScalars() {
 			f.repair()
 			m.log.Warn("hls.%s was invalid; restored default: %v", f.field, f.toValue)
 		}
+	}
+
+	// Normalize hardware_accel to a known value so the encoder selector never
+	// has to guess. Unknown values fall back to "auto" (probe + software
+	// fallback) rather than blocking startup.
+	switch hls.HardwareAccel {
+	case "", "auto", "none", "nvenc", "qsv", "vaapi", "videotoolbox":
+		if hls.HardwareAccel == "" {
+			hls.HardwareAccel = "auto"
+		}
+	default:
+		m.log.Warn("hls.hardware_accel %q is not recognized; falling back to \"auto\"", hls.HardwareAccel)
+		hls.HardwareAccel = "auto"
 	}
 }
 

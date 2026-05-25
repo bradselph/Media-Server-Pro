@@ -67,15 +67,16 @@ func defaultClaudeConfig() ClaudeConfig {
 
 func defaultServerConfig() ServerConfig {
 	return ServerConfig{
-		Host:              "0.0.0.0",
-		Port:              8080,
-		ReadHeaderTimeout: 15 * time.Second, // protect against slowloris; body has no limit
-		ReadTimeout:       0,                // no limit; large file uploads must not be killed mid-transfer
-		WriteTimeout:      0,                // no limit; long media streams would be cut off
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 20,
-		ShutdownTimeout:   30 * time.Second,
-		EnableHTTPS:       false,
+		Host:               "0.0.0.0",
+		Port:               8080,
+		ReadHeaderTimeout:  15 * time.Second, // protect against slowloris; body has no limit
+		ReadTimeout:        0,                // no limit; large file uploads must not be killed mid-transfer
+		WriteTimeout:       0,                // no limit; long media streams would be cut off
+		IdleTimeout:        120 * time.Second,
+		MaxHeaderBytes:     1 << 20,
+		ShutdownTimeout:    30 * time.Second,
+		EnableHTTPS:        false,
+		MemoryLimitPercent: 0, // 0 = auto (75% of RAM); see internal/runtimeenv
 	}
 }
 
@@ -213,6 +214,7 @@ func defaultHLSConfig() HLSConfig {
 		AutoGenerate:             false,
 		PreGenerateIntervalHours: 1,
 		ConcurrentLimit:          2,
+		HardwareAccel:            "auto",
 		MaxConsecutiveFailures:   3,
 		ProbeTimeout:             30 * time.Second,
 		StaleLockThreshold:       2 * time.Hour,

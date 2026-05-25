@@ -279,6 +279,9 @@ onMounted(loadConfig)
             <UFormField label="Max Header Bytes">
               <UInput type="number" :model-value="get('server', 'max_header_bytes')" @update:model-value="set('server', 'max_header_bytes', Number($event))" />
             </UFormField>
+            <UFormField label="Memory Limit (% of RAM)" help="Go soft memory limit as a % of total RAM. 0 = auto (75%). Lets a large server use its RAM as GC headroom. Applies live; ignored if GOMEMLIMIT is set.">
+              <UInput type="number" min="0" max="95" :model-value="get('server', 'memory_limit_percent')" @update:model-value="set('server', 'memory_limit_percent', Number($event))" />
+            </UFormField>
           </div>
           <p class="text-xs text-neutral-500 mt-3">Server address/port and HTTP timeouts (read/write/idle/shutdown) require a restart and live in raw JSON.</p>
         </UCard>
@@ -611,8 +614,15 @@ onMounted(loadConfig)
               <span class="text-sm">Lazy Transcode</span>
               <USwitch :model-value="get('hls', 'lazy_transcode')" @update:model-value="set('hls', 'lazy_transcode', $event)" />
             </div>
-            <UFormField label="Concurrent Limit">
+            <UFormField label="Concurrent Limit" help="How many transcodes run at once. Raising this only helps throughput if the CPU/GPU has spare capacity — a single video's speed is set by the encoder below.">
               <UInput type="number" :model-value="get('hls', 'concurrent_limit')" @update:model-value="set('hls', 'concurrent_limit', Number($event))" />
+            </UFormField>
+            <UFormField label="Hardware Acceleration" help="auto probes for a GPU encoder (NVENC/QSV/VAAPI) and falls back to software libx264. On a CPU-only server this stays software.">
+              <USelect
+                :model-value="get('hls', 'hardware_accel') || 'auto'"
+                :items="[{label:'Auto (detect GPU, else software)',value:'auto'},{label:'Software only (libx264)',value:'none'},{label:'NVIDIA NVENC',value:'nvenc'},{label:'Intel QuickSync (QSV)',value:'qsv'},{label:'VAAPI (Linux /dev/dri)',value:'vaapi'},{label:'Apple VideoToolbox',value:'videotoolbox'}]"
+                @update:model-value="set('hls', 'hardware_accel', $event)"
+              />
             </UFormField>
             <UFormField label="Segment Duration (s)">
               <UInput type="number" :model-value="get('hls', 'segment_duration')" @update:model-value="set('hls', 'segment_duration', Number($event))" />

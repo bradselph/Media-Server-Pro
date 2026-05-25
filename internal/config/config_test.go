@@ -212,6 +212,75 @@ func TestManager_Load_FromFile(t *testing.T) {
 	}
 }
 
+// TestManager_Load_TunableEnvSeedsOnly_InfraAlwaysApplies locks in the
+// precedence guarantee: for an already-migrated config.json, tunable env vars
+// (e.g. HLS_CONCURRENT_LIMIT) must NOT override the saved value, while
+// infrastructure env vars (e.g. SERVER_PORT) must still apply on every load.
+func TestManager_Load_TunableEnvSeedsOnly_InfraAlwaysApplies(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, testConfigFilename)
+
+	custom := DefaultConfig()
+	custom.EnvSeedMigrated = true // simulate a config saved after the upgrade
+	custom.HLS.ConcurrentLimit = 5
+	custom.Server.Port = 8080
+	data, _ := json.MarshalIndent(custom, "", "  ")
+	if err := os.WriteFile(cfgPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("HLS_CONCURRENT_LIMIT", "2") // tunable: must be ignored
+	t.Setenv("SERVER_PORT", "9999")       // infra: must apply
+
+	m := NewManager(cfgPath)
+	if err := m.Load(); err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	cfg := m.Get()
+	if cfg.HLS.ConcurrentLimit != 5 {
+		t.Errorf("HLS.ConcurrentLimit = %d, want 5 (config.json must win over tunable env)", cfg.HLS.ConcurrentLimit)
+	}
+	if cfg.Server.Port != 9999 {
+		t.Errorf("Server.Port = %d, want 9999 (infra env must win)", cfg.Server.Port)
+	}
+}
+
+// TestManager_Load_OneShotMigrationBakesEnv verifies the EnvSeedMigrated
+// upgrade: on the first load of a legacy config (flag false) the env-driven
+// tunable value is baked into config.json, and on subsequent loads env no
+// longer overrides it.
+func TestManager_Load_OneShotMigrationBakesEnv(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, testConfigFilename)
+
+	legacy := DefaultConfig()
+	legacy.EnvSeedMigrated = false // legacy config predating the upgrade
+	legacy.HLS.ConcurrentLimit = 2
+	data, _ := json.MarshalIndent(legacy, "", "  ")
+	if err := os.WriteFile(cfgPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("HLS_CONCURRENT_LIMIT", "7")
+	m := NewManager(cfgPath)
+	if err := m.Load(); err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if got := m.Get().HLS.ConcurrentLimit; got != 7 {
+		t.Errorf("first load ConcurrentLimit = %d, want 7 (env baked in once)", got)
+	}
+
+	// After migration the flag is persisted; a different env value must be ignored.
+	t.Setenv("HLS_CONCURRENT_LIMIT", "3")
+	m2 := NewManager(cfgPath)
+	if err := m2.Load(); err != nil {
+		t.Fatalf("second Load() error: %v", err)
+	}
+	if got := m2.Get().HLS.ConcurrentLimit; got != 7 {
+		t.Errorf("second load ConcurrentLimit = %d, want 7 (env must not override after migration)", got)
+	}
+}
+
 func TestManager_Get_ReturnsCopy(t *testing.T) {
 	m := NewManager(testTmpConfigPath)
 	c1 := m.Get()

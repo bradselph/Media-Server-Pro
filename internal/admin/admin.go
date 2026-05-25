@@ -373,38 +373,39 @@ type configMapSection func(cfg *config.Config, qualityNames []string) map[string
 
 func buildConfigServerMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"port":                cfg.Server.Port,
-		"host":                cfg.Server.Host,
-		"enable_https":        cfg.Server.EnableHTTPS,
-		"cert_file":           cfg.Server.CertFile,
-		"key_file":            cfg.Server.KeyFile,
-		"read_header_timeout": cfg.Server.ReadHeaderTimeout,
-		"read_timeout":        cfg.Server.ReadTimeout,
-		"write_timeout":       cfg.Server.WriteTimeout,
-		"idle_timeout":        cfg.Server.IdleTimeout,
-		"max_header_bytes":    cfg.Server.MaxHeaderBytes,
-		"shutdown_timeout":    cfg.Server.ShutdownTimeout,
+		"port":                 cfg.Server.Port,
+		"host":                 cfg.Server.Host,
+		"enable_https":         cfg.Server.EnableHTTPS,
+		"cert_file":            cfg.Server.CertFile,
+		"key_file":             cfg.Server.KeyFile,
+		"read_header_timeout":  cfg.Server.ReadHeaderTimeout,
+		"read_timeout":         cfg.Server.ReadTimeout,
+		"write_timeout":        cfg.Server.WriteTimeout,
+		"idle_timeout":         cfg.Server.IdleTimeout,
+		"max_header_bytes":     cfg.Server.MaxHeaderBytes,
+		"shutdown_timeout":     cfg.Server.ShutdownTimeout,
+		"memory_limit_percent": cfg.Server.MemoryLimitPercent,
 	}
 }
 
 func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"enable_thumbnails":         cfg.Features.EnableThumbnails,
-		"enable_hls":                cfg.Features.EnableHLS,
-		"enable_analytics":          cfg.Features.EnableAnalytics,
-		"enable_uploads":            cfg.Features.EnableUploads,
-		"enable_huggingface":        cfg.Features.EnableHuggingFace,
-		"enable_playlists":          cfg.Features.EnablePlaylists,
-		"enable_suggestions":        cfg.Features.EnableSuggestions,
-		"enable_auto_discovery":     cfg.Features.EnableAutoDiscovery,
-		"enable_mature_scanner":     cfg.Features.EnableMatureScanner,
-		"enable_remote_media":       cfg.Features.EnableRemoteMedia,
-		"enable_receiver":           cfg.Features.EnableReceiver,
-		"enable_extractor":          cfg.Features.EnableExtractor,
-		"enable_crawler":            cfg.Features.EnableCrawler,
+		"enable_thumbnails":          cfg.Features.EnableThumbnails,
+		"enable_hls":                 cfg.Features.EnableHLS,
+		"enable_analytics":           cfg.Features.EnableAnalytics,
+		"enable_uploads":             cfg.Features.EnableUploads,
+		"enable_huggingface":         cfg.Features.EnableHuggingFace,
+		"enable_playlists":           cfg.Features.EnablePlaylists,
+		"enable_suggestions":         cfg.Features.EnableSuggestions,
+		"enable_auto_discovery":      cfg.Features.EnableAutoDiscovery,
+		"enable_mature_scanner":      cfg.Features.EnableMatureScanner,
+		"enable_remote_media":        cfg.Features.EnableRemoteMedia,
+		"enable_receiver":            cfg.Features.EnableReceiver,
+		"enable_extractor":           cfg.Features.EnableExtractor,
+		"enable_crawler":             cfg.Features.EnableCrawler,
 		"enable_duplicate_detection": cfg.Features.EnableDuplicateDetection,
-		"enable_downloader":         cfg.Features.EnableDownloader,
-		"enable_claude":             cfg.Features.EnableClaude,
+		"enable_downloader":          cfg.Features.EnableDownloader,
+		"enable_claude":              cfg.Features.EnableClaude,
 	}
 }
 
@@ -450,6 +451,7 @@ func buildConfigHLSMap(cfg *config.Config, _ []string) map[string]any {
 		"enabled":                     cfg.HLS.Enabled,
 		"auto_generate":               cfg.HLS.AutoGenerate,
 		"concurrent_limit":            cfg.HLS.ConcurrentLimit,
+		"hardware_accel":              cfg.HLS.HardwareAccel,
 		"segment_duration":            cfg.HLS.SegmentDuration,
 		"playlist_length":             cfg.HLS.PlaylistLength,
 		"cleanup_enabled":             cfg.HLS.CleanupEnabled,
@@ -568,13 +570,13 @@ func buildConfigDownloadMap(cfg *config.Config, _ []string) map[string]any {
 
 func buildConfigLoggingMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"level":          cfg.Logging.Level,
-		"format":         cfg.Logging.Format,
-		"file_enabled":   cfg.Logging.FileEnabled,
-		"file_rotation":  cfg.Logging.FileRotation,
-		"max_file_size":  cfg.Logging.MaxFileSize,
-		"max_backups":    cfg.Logging.MaxBackups,
-		"color_enabled":  cfg.Logging.ColorEnabled,
+		"level":         cfg.Logging.Level,
+		"format":        cfg.Logging.Format,
+		"file_enabled":  cfg.Logging.FileEnabled,
+		"file_rotation": cfg.Logging.FileRotation,
+		"max_file_size": cfg.Logging.MaxFileSize,
+		"max_backups":   cfg.Logging.MaxBackups,
+		"color_enabled": cfg.Logging.ColorEnabled,
 	}
 }
 
@@ -651,10 +653,10 @@ func buildConfigBackupMap(cfg *config.Config, _ []string) map[string]any {
 
 func buildConfigUpdaterMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"update_method":       cfg.Updater.UpdateMethod,
-		"branch":              cfg.Updater.Branch,
-		"app_dir":             cfg.Updater.AppDir,
-		"github_username":     cfg.Updater.GitHubUsername,
+		"update_method":   cfg.Updater.UpdateMethod,
+		"branch":          cfg.Updater.Branch,
+		"app_dir":         cfg.Updater.AppDir,
+		"github_username": cfg.Updater.GitHubUsername,
 		// Secrets surface as "*_set" flags so the admin UI can show whether they
 		// are populated without exposing the value itself.
 		"github_token_set":    cfg.Updater.GitHubToken != "",

@@ -30,6 +30,7 @@ import (
 	"media-server-pro/internal/playlist"
 	"media-server-pro/internal/receiver"
 	"media-server-pro/internal/remote"
+	"media-server-pro/internal/runtimeenv"
 	"media-server-pro/internal/scanner"
 	"media-server-pro/internal/security"
 	"media-server-pro/internal/server"
@@ -89,6 +90,14 @@ func main() {
 
 	cfg := srv.Config()
 	log := logger.New("main")
+
+	// ── Runtime memory tuning ──────────────────────────────────────────────
+	// Let a large host use its RAM as GC headroom instead of collecting at ~2x
+	// a tiny live heap. Re-applied live when the admin changes the knob.
+	runtimeenv.TuneMemoryLimit(cfg.Get().Server.MemoryLimitPercent, log)
+	cfg.OnChange(func(c *config.Config) {
+		runtimeenv.TuneMemoryLimit(c.Server.MemoryLimitPercent, log)
+	})
 
 	// ── Storage backends ───────────────────────────────────────────────────
 	stores := initStorage(cfg, log)

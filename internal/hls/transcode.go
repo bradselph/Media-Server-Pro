@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"os"
 	"os/exec"
@@ -200,42 +201,98 @@ func (m *Module) prepareVariantDir(job *models.HLSJob, quality string) (variantD
 }
 
 // buildFFmpegTranscodeCmd builds the ffmpeg command for HLS transcoding.
-// Keyframes are placed at segment boundaries via force_key_frames (frame-rate independent).
+// The video encoder (software libx264 or a hardware encoder resolved at
+// startup) is chosen by buildVideoEncodeArgs. Keyframes are placed at segment
+// boundaries via force_key_frames (frame-rate independent).
 func (m *Module) buildFFmpegTranscodeCmd(ctx context.Context, paths *transcodePaths, profile *config.HLSQuality) *exec.Cmd {
 	cfg := m.config.Get()
 	// Resolve S3 keys to presigned URLs so ffmpeg can fetch the source over HTTPS.
 	mediaInput := m.resolveMediaInputPath(ctx, paths.MediaPath)
-	stream := ffmpeg.Input(mediaInput)
-	stream = stream.Output(paths.PlaylistPath,
-		ffmpeg.KwArgs{
-			"c:v":              "libx264",
-			"preset":           "fast",
-			"vf":               fmt.Sprintf("scale=%d:%d", profile.Width, profile.Height),
-			"b:v":              fmt.Sprintf("%dk", profile.Bitrate/1000),
-			"maxrate":          fmt.Sprintf("%dk", profile.Bitrate/1000),
-			"bufsize":          fmt.Sprintf("%dk", profile.Bitrate*2/1000),
-			"force_key_frames": fmt.Sprintf("expr:gte(t,n_forced*%d)", cfg.HLS.SegmentDuration),
-			"sc_threshold":     "0",
 
-			"c:a": "aac",
-			"b:a": fmt.Sprintf("%dk", profile.AudioBitrate/1000),
-			"ac":  "2",
+	inputArgs, videoArgs := m.buildVideoEncodeArgs(profile, cfg.HLS.SegmentDuration)
 
-			"f":                    "hls",
-			"hls_time":             strconv.Itoa(cfg.HLS.SegmentDuration),
-			"hls_playlist_type":    "vod",
-			"hls_segment_type":     "mpegts",
-			"hls_list_size":        "0",
-			"hls_segment_filename": paths.SegmentPattern,
-			"hls_flags":            "independent_segments",
-		},
-	).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
+	outArgs := ffmpeg.KwArgs{
+		"c:a": "aac",
+		"b:a": fmt.Sprintf("%dk", profile.AudioBitrate/1000),
+		"ac":  "2",
+
+		"f":                    "hls",
+		"hls_time":             strconv.Itoa(cfg.HLS.SegmentDuration),
+		"hls_playlist_type":    "vod",
+		"hls_segment_type":     "mpegts",
+		"hls_list_size":        "0",
+		"hls_segment_filename": paths.SegmentPattern,
+		"hls_flags":            "independent_segments",
+	}
+	maps.Copy(outArgs, videoArgs)
+
+	var stream *ffmpeg.Stream
+	if len(inputArgs) > 0 {
+		stream = ffmpeg.Input(mediaInput, inputArgs)
+	} else {
+		stream = ffmpeg.Input(mediaInput)
+	}
+	stream = stream.Output(paths.PlaylistPath, outArgs).OverWriteOutput().SetFfmpegPath(m.ffmpegPath)
 
 	compiled := stream.Compile()
 	cmd := exec.CommandContext(ctx, compiled.Path, compiled.Args[1:]...) //nolint:gosec // G204: compiled.Path is the validated ffmpeg binary path
 	cmd.Env = compiled.Env
 	cmd.Dir = compiled.Dir
 	return cmd
+}
+
+// buildVideoEncodeArgs returns the ffmpeg input options and video-encode output
+// options for the resolved encoder. Software libx264 is the default; a hardware
+// encoder (resolved once at startup in detectHWEncoder) is used when available.
+//
+// All paths target the same per-segment keyframe alignment and bitrate ceiling
+// so the HLS output is interchangeable regardless of which encoder produced it.
+func (m *Module) buildVideoEncodeArgs(profile *config.HLSQuality, segmentDuration int) (inputArgs, videoArgs ffmpeg.KwArgs) {
+	bv := fmt.Sprintf("%dk", profile.Bitrate/1000)
+	bufsize := fmt.Sprintf("%dk", profile.Bitrate*2/1000)
+	forceKey := fmt.Sprintf("expr:gte(t,n_forced*%d)", segmentDuration)
+	scale := fmt.Sprintf("scale=%d:%d", profile.Width, profile.Height)
+
+	switch m.hwEncoder {
+	case "h264_nvenc", "h264_qsv", "h264_videotoolbox":
+		// These encoders accept CPU-decoded frames, so CPU scaling is fine.
+		// Preset names differ across ffmpeg builds, so we omit preset and rely
+		// on the bitrate ceiling for portability.
+		return nil, ffmpeg.KwArgs{
+			"c:v":              m.hwEncoder,
+			"vf":               scale,
+			"b:v":              bv,
+			"maxrate":          bv,
+			"bufsize":          bufsize,
+			"force_key_frames": forceKey,
+		}
+	case "h264_vaapi":
+		// VAAPI scales on the GPU after uploading NV12 frames; the render
+		// device is passed as an input option.
+		in := ffmpeg.KwArgs{}
+		if m.hwDevice != "" {
+			in["vaapi_device"] = m.hwDevice
+		}
+		return in, ffmpeg.KwArgs{
+			"c:v":              "h264_vaapi",
+			"vf":               fmt.Sprintf("format=nv12,hwupload,scale_vaapi=%d:%d", profile.Width, profile.Height),
+			"b:v":              bv,
+			"maxrate":          bv,
+			"bufsize":          bufsize,
+			"force_key_frames": forceKey,
+		}
+	default: // software libx264
+		return nil, ffmpeg.KwArgs{
+			"c:v":              "libx264",
+			"preset":           "fast",
+			"vf":               scale,
+			"b:v":              bv,
+			"maxrate":          bv,
+			"bufsize":          bufsize,
+			"force_key_frames": forceKey,
+			"sc_threshold":     "0",
+		}
+	}
 }
 
 func (m *Module) handleTranscodeWaitError(ctx context.Context, errCtx *transcodeErrorContext, waitErr error) error {
