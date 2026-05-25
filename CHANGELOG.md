@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.17.0] - 2026-05-25 (minor)
+
+- fix(player,build): extract JSON-LD escape to utils to unbreak Nuxt build
+- fix(frontend): guard async watch handlers against stale-response races
+- refactor: simplify if-return and indent-error-flow patterns (revive)
+- perf(smart-playlists): preallocate capacity for filtered output
+- chore: gofmt config + nolint nilnil in marshalJSONParam
+- chore: apply gofmt to three files with stray indentation drift
+- fix(upload): errors.Is(err, io.EOF) when sniffing magic bytes
+- chore(validator): nolint gosec G115 after Size() > 0 guard
+- chore: align saved_search nilnil pattern + rename copy var in validator
+- chore: add //nolint:errcheck comments to safe sync.Map assertions
+- fix: use errors.Is for sentinel checks and %w to wrap secondary errors
+- fix(stats): count Unknown media + Pending validation results
+- chore: errcheck on close/remove cleanup + drop wasted tempPath init
+- fix(hls): count canceled jobs in stats so total = sum of categories
+- fix: discard stderrPipe.Close error + guard int64→uint64 in space check
+- fix(test): remove empty if-err branch (SA9003)
+- fix(tests): t.Fatal on nil rec + drop trivially-true nil-guard tests
+- fix: use errors.New for static error strings (SA1006)
+- chore: remove dead code flagged by staticcheck U1000
+- fix(player,sec): escape '<' in JSON-LD to prevent script-break-out
+- fix(hls): release jobCancels on all transcode exit paths
+- fix(hls): cancel job context on successful completion
+- fix(storage): clean up temp file when WriteFile rename fails
+- fix(theme): validate stored theme against THEMES allowlist
+- fix(browse): clear preview-count timeout on unmount
+- fix(downloader): track scan goroutine via WaitGroup, bounded wait at Stop
+- Merge branch 'main' into development
+- deploy: regenerate npm lockfile on stale-pin vulnerabilities
+
+
 ## [1.16.0] - 2026-05-23 (minor)
 
 - chore(web): refresh lockfile, split admin tabs, silence intentional chunk warning
