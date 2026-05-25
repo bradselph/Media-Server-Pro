@@ -1,19 +1,15 @@
-# Publish multi-arch Docker images to GHCR. Manual trigger only -- the
-# image build is expensive (full Go + Nuxt rebuild across amd64 + arm64)
-# and the project mostly deploys natively via deploy.sh, so we don't want
-# this firing on every push. Run it when you actually want to ship a
-# container image.
+# Publish the Docker image to GHCR. Manual trigger only -- the image build
+# is expensive (full Go + Nuxt rebuild across amd64 + arm64) and the project
+# mostly deploys natively via deploy.sh, so we don't want this firing on
+# every push. Run it when you actually want to ship a container image.
 #
-# Trigger from the Actions tab → "Docker Publish" → Run workflow, picking
-# the branch (main / development) or a specific ref.
+# Trigger from the Actions tab -> "Docker Publish" -> Run workflow, picking
+# the branch (main / development) or a specific ref. Whatever you build is
+# always published as `:latest` -- there is no branch-specific tagging.
 #
 # Pull what gets published with:
-#   docker pull ghcr.io/bradselph/media-server-pro:main
-#   docker pull ghcr.io/bradselph/media-server-pro:1.14.16
-#   docker pull ghcr.io/bradselph/media-server-pro:sha-abc1234
-#
-# Tag scheme is the same regardless of which branch you trigger on; see
-# the "Compute image tags" step.
+#   docker pull ghcr.io/bradselph/media-server-pro            # = :latest
+#   docker pull ghcr.io/bradselph/media-server-pro:1.17.0     # pin a version
 
 name: Docker Publish
 
@@ -23,10 +19,6 @@ on:
     inputs:
       ref:
         description: "Branch, tag, or commit SHA to build (default: the branch this is triggered from)"
-        required: false
-        default: ""
-      extra_tag:
-        description: "Optional extra tag to push alongside the standard ones (e.g. 'rc1', 'hotfix')"
         required: false
         default: ""
 
@@ -50,7 +42,7 @@ jobs:
       - name: Check out the requested ref
         uses: actions/checkout@v4
         with:
-          # `inputs.ref` is empty by default → checkout uses github.ref
+          # `inputs.ref` is empty by default -> checkout uses github.ref
           # (the branch the workflow was dispatched from). When the
           # operator types a value into the input, that wins.
           ref: ${{ inputs.ref || github.ref }}
@@ -62,21 +54,6 @@ jobs:
           v=$(tr -d '[:space:]' < VERSION || true)
           if [ -z "$v" ]; then v="0.0.0"; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
-          # Strip the dev suffix for the "stable" tag; main always has a
-          # clean v1.2.3 here, development has e.g. 1.2.3-dev.abc123.
-          stable=$(printf '%s' "$v" | sed -E 's/-dev\..*$//')
-          echo "stable_version=$stable" >> "$GITHUB_OUTPUT"
-
-      - name: Compute branch
-        id: branch
-        run: |
-          # On workflow_dispatch with an explicit ref input, derive the
-          # branch label from that (`refs/heads/foo` → `foo`); otherwise
-          # use the branch the dispatch was triggered from.
-          ref="${{ inputs.ref || github.ref }}"
-          name="${ref#refs/heads/}"
-          name="${name#refs/tags/}"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU (for arm64 cross-build on x86 runners)
         uses: docker/setup-qemu-action@v3
@@ -91,41 +68,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute image tags
-        id: tags
-        run: |
-          # Lowercase repo because GHCR rejects uppercase image names.
-          repo=$(echo "${{ github.repository_owner }}/media-server-pro" | tr '[:upper:]' '[:lower:]')
-          image="ghcr.io/$repo"
-          branch="${{ steps.branch.outputs.name }}"
-          v="${{ steps.version.outputs.version }}"
-          stable="${{ steps.version.outputs.stable_version }}"
-          sha7=$(echo "${{ github.sha }}" | cut -c1-7)
-          extra="${{ inputs.extra_tag }}"
-
-          # Tag set:
-          #   - <branch>          → "main" or "development"
-          #   - <stable>          → "1.14.16" (only on main, dev gets "1.14.16-dev")
-          #   - latest            → only on main
-          #   - dev               → only on development
-          #   - sha-<short>       → always, so you can pin to a specific build
-          #   - <extra_tag>       → optional, if the operator supplied one
-          tags="$image:$branch"
-          if [ "$branch" = "main" ]; then
-            tags="$tags,$image:$stable,$image:latest"
-          fi
-          if [ "$branch" = "development" ]; then
-            tags="$tags,$image:dev"
-          fi
-          tags="$tags,$image:sha-$sha7"
-          if [ -n "$extra" ]; then
-            tags="$tags,$image:$extra"
-          fi
-
-          echo "tags=$tags" >> "$GITHUB_OUTPUT"
-          echo "image=$image" >> "$GITHUB_OUTPUT"
-          echo "Tags to publish:"
-          echo "$tags" | tr ',' '\n' | sed 's/^/  /'
+      - name: Compute Docker tags & labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # Lowercase owner because GHCR rejects uppercase image names.
+          images: ghcr.io/${{ github.repository_owner }}/media-server-pro
+          # Always publish `:latest` (regardless of branch) plus a version
+          # tag for traceability / pinning. `latest=false` in flavor disables
+          # metadata-action's branch-conditional auto-latest so OUR explicit
+          # raw `latest` is the single source of truth.
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ steps.version.outputs.version }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -134,17 +91,13 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.tags.outputs.tags }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ steps.version.outputs.version }}
-            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
-          # Use GHCR's own layer cache so subsequent builds reuse Go module
-          # download + Node deps + Nuxt build cache. Faster than the default
-          # registry mode for repeated builds.
-          cache-from: type=registry,ref=${{ steps.tags.outputs.image }}:buildcache
-          cache-to: type=registry,ref=${{ steps.tags.outputs.image }}:buildcache,mode=max
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GitHub Actions cache keeps Go module + Node deps + Nuxt build
+          # layers between runs without publishing a stray `buildcache` tag
+          # into the GHCR package listing.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             GO_VERSION=1.26
             NODE_VERSION=22
@@ -153,10 +106,10 @@ jobs:
         run: |
           echo "Published the following tags to GHCR:" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "${{ steps.tags.outputs.tags }}" | tr ',' '\n' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Pull with:" >> "$GITHUB_STEP_SUMMARY"
           echo '```sh' >> "$GITHUB_STEP_SUMMARY"
-          echo "docker pull ${{ steps.tags.outputs.image }}:${{ steps.branch.outputs.name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "docker pull ghcr.io/${{ github.repository_owner }}/media-server-pro" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
