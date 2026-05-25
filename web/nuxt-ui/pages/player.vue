@@ -2,6 +2,7 @@
 import type { MediaItem, MediaChapter, Suggestion, Playlist, PlaylistItem, MediaCollection } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration, formatBytes, formatBitrate, formatRelativeDate } from '~/utils/format'
+import { safeJsonLD } from '~/utils/jsonld'
 import { useQueueStore } from '~/stores/queue'
 import { useCollectionsApi } from '~/composables/useApiEndpoints'
 
@@ -152,12 +153,16 @@ useHead(computed(() => {
   }
   const thumb = absUrl(item.thumbnail_url ?? '')
   if (thumb) ld.thumbnailUrl = thumb
+  // safeJsonLD escapes raw less-than characters before they reach the
+  // browser, preventing a crafted media title from breaking out of the
+  // application/ld+json block. See utils/jsonld.ts for why the helper
+  // lives outside this file.
   return {
     script: [{
       type: 'application/ld+json',
-      children: JSON.stringify(ld),
-      // Tagging the script with a hid so a route change replaces it instead
-      // of stacking multiple LD blobs into <head>.
+      children: safeJsonLD(ld),
+      // hid lets a route change replace this LD blob in place rather
+      // than stack multiple copies into the document head.
       hid: 'media-jsonld',
     }],
     link: [{ rel: 'canonical', href: playerCanonicalUrl.value }],
@@ -934,17 +939,26 @@ function navigateToPrevItem() {
 function skipPrevItem() { navigateToPrevItem() }
 function skipNextItem() { navigateToNextItem() }
 
+// playlistSeq guards against rapid playlist switches: only the most recent
+// watch fire's response may overwrite playlistItems. Without this, a slow
+// response for the previous playlist arriving after a newer playlist load
+// would clobber the current playlist's items.
+let playlistSeq = 0
 watch(playlistIdParam, async id => {
+  const seq = ++playlistSeq
   if (!id) { playlistItems.value = []; return }
   try {
     const pl = await playlistApi.get(id)
+    if (seq !== playlistSeq) return
     playlistItems.value = pl?.items ?? []
     // Tell the Now Playing sidebar to pin this playlist so its Playlist tab
     // tracks the source the user is playing from.
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('msp:playlist-context', { detail: { id } }))
     }
-  } catch { playlistItems.value = [] }
+  } catch {
+    if (seq === playlistSeq) playlistItems.value = []
+  }
 }, { immediate: true })
 
 // Loop mode: 'off' | 'one' | 'all'

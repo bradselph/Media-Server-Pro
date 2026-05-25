@@ -181,8 +181,8 @@ func (m *Module) getCachedResult(path string) (*ValidationResult, bool) {
 	if !ok || time.Since(result.ValidatedAt) >= 7*24*time.Hour {
 		return nil, false
 	}
-	copy := *result
-	return &copy, true
+	cp := *result
+	return &cp, true
 }
 
 // setFinalStatus sets result.Status based on issues and codec support.
@@ -463,8 +463,10 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 
 	// Estimate required space as 2× input size (transcode can expand file; add headroom).
 	// Skip the block if disk usage is unavailable — don't abort a valid repair for a missing metric.
-	if inStat, err := os.Stat(path); err == nil {
-		required := uint64(inStat.Size()) * 2
+	// Guard against a negative os.Stat size (theoretical for special files) before the uint64
+	// conversion so we don't compute a bogus huge "required" value.
+	if inStat, err := os.Stat(path); err == nil && inStat.Size() > 0 {
+		required := uint64(inStat.Size()) * 2 //nolint:gosec // G115: size guarded > 0 above; *2 cannot overflow uint64 for any real file
 		if du, err := helpers.GetDiskUsage(filepath.Dir(outputPath)); err == nil && du.Available < required {
 			return nil, fmt.Errorf("insufficient disk space: need ~%d MB, have %d MB free",
 				required/1024/1024, du.Available/1024/1024)
@@ -536,8 +538,8 @@ func (m *Module) GetResult(path string) (*ValidationResult, bool) {
 	if !ok {
 		return nil, false
 	}
-	copy := *result
-	return &copy, true
+	cp := *result
+	return &cp, true
 }
 
 // GetStats returns validation statistics
@@ -559,6 +561,8 @@ func (m *Module) GetStats() Stats {
 			stats.Failed++
 		case StatusUnsupported:
 			stats.Unsupported++
+		case StatusPending:
+			stats.Pending++
 		}
 	}
 	return stats
@@ -572,6 +576,7 @@ type Stats struct {
 	Fixed       int `json:"fixed"`
 	Failed      int `json:"failed"`
 	Unsupported int `json:"unsupported"`
+	Pending     int `json:"pending"`
 }
 
 // ClearResult removes a validation result

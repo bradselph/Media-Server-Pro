@@ -25,30 +25,6 @@ func TestSaveProfile_FND0555_NilProfileReturnsError(t *testing.T) {
 	}
 }
 
-// TestSaveProfile_FND0555_ValidProfileStructureOk verifies that SaveProfile
-// accepts a non-nil profile (sanity check that nil guard doesn't break valid case).
-// Note: This only tests the nil guard logic path; DB interaction would require
-// a database or full GORM mock. That's covered by integration tests.
-func TestSaveProfile_FND0555_ValidProfileStructureOk(t *testing.T) {
-	// This test verifies the logic path without DB setup: we construct the expected
-	// error message path and ensure nil check doesn't panic on valid input.
-	profile := &repositories.SuggestionProfileRecord{
-		UserID:         "user-123",
-		CategoryScores: map[string]float64{"action": 0.8},
-		TypePreferences: map[string]float64{"video": 0.9},
-		TotalViews:     42,
-		TotalWatchTime: 3600.5,
-		LastUpdated:    time.Now(),
-	}
-
-	// Without a DB, we can't call SaveProfile directly, but we can verify
-	// the struct marshals correctly (the next step after nil guard).
-	// In integration tests, SaveProfile will actually persist this.
-	if profile == nil {
-		t.Fatal("test setup failed: profile is nil")
-	}
-}
-
 // TestSaveViewHistory_FND0556_NilEntryReturnsError verifies that SaveViewHistory
 // returns a non-nil error when passed a nil entry (FND-0556: nil guard added).
 func TestSaveViewHistory_FND0556_NilEntryReturnsError(t *testing.T) {
@@ -63,25 +39,6 @@ func TestSaveViewHistory_FND0556_NilEntryReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "entry cannot be nil") {
 		t.Errorf("error message = %q, want to contain 'entry cannot be nil'", err.Error())
-	}
-}
-
-// TestSaveViewHistory_FND0556_ValidEntryStructureOk verifies SaveViewHistory
-// accepts a non-nil entry (sanity check that nil guard doesn't break valid case).
-func TestSaveViewHistory_FND0556_ValidEntryStructureOk(t *testing.T) {
-	entry := &repositories.ViewHistoryRecord{
-		UserID:     "user-456",
-		MediaPath:  "/media/video.mp4",
-		Category:   "Action",
-		MediaType:  "video",
-		ViewCount:  5,
-		TotalTime:  125.0,
-		LastViewed: time.Now(),
-		Rating:     4.5,
-	}
-
-	if entry == nil {
-		t.Fatal("test setup failed: entry is nil")
 	}
 }
 

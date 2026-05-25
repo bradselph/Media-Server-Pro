@@ -215,7 +215,7 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 	// Validate content type via magic bytes to prevent uploading disguised files (e.g. HTML as .mp4).
 	sniffBuf := make([]byte, 512)
 	n, err := file.Read(sniffBuf)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("failed to sniff file content: %w", err)
 	}
 	if n > 0 {
@@ -258,13 +258,12 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 	} else {
 		// Local filesystem: use the existing temp-file-then-rename pattern.
 		var destFile *os.File
-		tempPath := ""
 		destPath, destFile, err = m.createUniqueUploadFile(prepared.DestDir, prepared.Filename)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create unique file: %w", err)
 		}
 		progress.DestPath = destPath
-		tempPath = destPath + ".tmp"
+		tempPath := destPath + ".tmp"
 		written, err = m.copyAndRenameUpload(reader, destFile, copyPaths{tempPath, destPath}, progress)
 	}
 

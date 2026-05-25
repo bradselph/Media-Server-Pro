@@ -23,7 +23,7 @@ func (m *Module) GenerateThumbnailRequest(req *ThumbnailRequest) (string, error)
 
 func (m *Module) generateThumbnailFromRequest(req *generateThumbnailRequest) (string, error) {
 	if m.ffmpegPath == "" {
-		return "", fmt.Errorf(errFFmpegNotAvailable)
+		return "", errors.New(errFFmpegNotAvailable)
 	}
 	if req.MediaID == "" {
 		return "", fmt.Errorf("mediaID cannot be empty")
@@ -101,7 +101,7 @@ func (m *Module) GeneratePreviewThumbnailsRequest(req *PreviewThumbnailsRequest)
 
 func (m *Module) generatePreviewThumbnailsFromRequest(req *generatePreviewThumbnailsRequest) (string, error) {
 	if m.ffmpegPath == "" {
-		return "", fmt.Errorf(errFFmpegNotAvailable)
+		return "", errors.New(errFFmpegNotAvailable)
 	}
 	if req.MediaID == "" {
 		return "", fmt.Errorf("mediaID cannot be empty")
@@ -183,17 +183,17 @@ func (m *Module) SaveCustomThumbnail(mediaID string, r io.Reader) error {
 		return fmt.Errorf("creating temp file: %w", err)
 	}
 	if _, err := io.Copy(f, r); err != nil {
-		f.Close()
-		os.Remove(tmp)
+		_ = f.Close()
+		_ = os.Remove(tmp)
 		return fmt.Errorf("writing thumbnail data: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("closing temp file: %w", err)
 	}
 	// Atomic replace
 	if err := os.Rename(tmp, destPath); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("replacing thumbnail: %w", err)
 	}
 	// Remove stale WebP and preview frames so browser gets fresh content
@@ -213,7 +213,7 @@ func (m *Module) SaveCustomThumbnail(mediaID string, r io.Reader) error {
 func (m *Module) generateThumbnailSyncFromRequest(req *ThumbnailSyncRequest) (string, error) {
 	if m.ffmpegPath == "" {
 		m.log.Error("Cannot generate thumbnail - FFmpeg not available")
-		return "", fmt.Errorf(errFFmpegNotAvailable)
+		return "", errors.New(errFFmpegNotAvailable)
 	}
 	if req.MediaID == "" {
 		return "", fmt.Errorf("mediaID cannot be empty")

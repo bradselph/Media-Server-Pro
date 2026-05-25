@@ -11,17 +11,17 @@ import (
 
 // Repository-level errors
 var (
-	ErrUserExists         = errors.New("user already exists")
-	ErrUserNotFound       = errors.New("user not found")
-	ErrSessionNotFound    = errors.New("session not found")
-	ErrPlaylistNotFound   = errors.New("playlist not found")
-	ErrScanResultNotFound = errors.New("scan result not found")
+	ErrUserExists                = errors.New("user already exists")
+	ErrUserNotFound              = errors.New("user not found")
+	ErrSessionNotFound           = errors.New("session not found")
+	ErrPlaylistNotFound          = errors.New("playlist not found")
+	ErrScanResultNotFound        = errors.New("scan result not found")
 	ErrAPITokenNotFound          = errors.New("api token not found")
-	ErrSuggestionProfileNotFound    = errors.New("suggestion profile not found")
-	ErrViewHistoryNotFound          = errors.New("view history not found")
-	ErrReceiverDuplicateNotFound    = errors.New("receiver duplicate not found")
-	ErrPathNotFound                 = errors.New("path not found")
-	ErrMetadataNotFound             = errors.New("media metadata not found")
+	ErrSuggestionProfileNotFound = errors.New("suggestion profile not found")
+	ErrViewHistoryNotFound       = errors.New("view history not found")
+	ErrReceiverDuplicateNotFound = errors.New("receiver duplicate not found")
+	ErrPathNotFound              = errors.New("path not found")
+	ErrMetadataNotFound          = errors.New("media metadata not found")
 )
 
 // UserRepository provides user data access methods
@@ -675,14 +675,14 @@ type MediaReportRepository interface {
 // MediaReportRecord captures one report. Status values: "open",
 // "resolved", "dismissed". ReporterID is empty for guests.
 type MediaReportRecord struct {
-	ID          string
-	MediaID     string
-	ReporterID  string
-	Reason      string
-	Notes       string
-	Status      string
-	CreatedAt   time.Time
-	ResolvedAt  *time.Time
-	ResolvedBy  string
-	IPAddress   string
+	ID         string
+	MediaID    string
+	ReporterID string
+	Reason     string
+	Notes      string
+	Status     string
+	CreatedAt  time.Time
+	ResolvedAt *time.Time
+	ResolvedBy string
+	IPAddress  string
 }

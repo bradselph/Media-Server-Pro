@@ -67,15 +67,15 @@ func defaultClaudeConfig() ClaudeConfig {
 
 func defaultServerConfig() ServerConfig {
 	return ServerConfig{
-		Host:            "0.0.0.0",
-		Port:            8080,
+		Host:              "0.0.0.0",
+		Port:              8080,
 		ReadHeaderTimeout: 15 * time.Second, // protect against slowloris; body has no limit
-		ReadTimeout:       0,                 // no limit; large file uploads must not be killed mid-transfer
-		WriteTimeout:      0,                 // no limit; long media streams would be cut off
+		ReadTimeout:       0,                // no limit; large file uploads must not be killed mid-transfer
+		WriteTimeout:      0,                // no limit; long media streams would be cut off
 		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:  1 << 20,
-		ShutdownTimeout: 30 * time.Second,
-		EnableHTTPS:     false,
+		MaxHeaderBytes:    1 << 20,
+		ShutdownTimeout:   30 * time.Second,
+		EnableHTTPS:       false,
 	}
 }
 
@@ -200,9 +200,9 @@ func defaultAuthConfig() AuthConfig {
 
 func defaultHLSConfig() HLSConfig {
 	return HLSConfig{
-		Enabled:                  true,
-		SegmentDuration:          6,
-		PlaylistLength:           6,
+		Enabled:         true,
+		SegmentDuration: 6,
+		PlaylistLength:  6,
 		// HLS cache cleanup defaults OFF — owner product rule says the cache
 		// must never be auto-deleted without an explicit admin action. Admins
 		// who want eviction can flip CleanupEnabled and tune the interval +

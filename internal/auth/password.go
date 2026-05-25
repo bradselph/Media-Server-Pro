@@ -4,6 +4,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"golang.org/x/crypto/bcrypt"
@@ -17,7 +18,7 @@ const errPasswordTooShort = "password must be at least 8 characters"
 // only updates the cache after successful DB persistence.
 func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newPassword string) error {
 	if len(newPassword) < 8 {
-		return fmt.Errorf(errPasswordTooShort)
+		return errors.New(errPasswordTooShort)
 	}
 
 	m.usersMu.RLock()
@@ -75,7 +76,7 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 // SetPassword sets a user's password (admin action, no old password required)
 func (m *Module) SetPassword(ctx context.Context, username, newPassword string) error {
 	if len(newPassword) < 8 {
-		return fmt.Errorf(errPasswordTooShort)
+		return errors.New(errPasswordTooShort)
 	}
 
 	var exists bool
@@ -129,7 +130,7 @@ func (m *Module) ChangeAdminPassword(ctx context.Context, currentPassword, newPa
 	}
 
 	if len(newPassword) < 8 {
-		return fmt.Errorf(errPasswordTooShort)
+		return errors.New(errPasswordTooShort)
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)

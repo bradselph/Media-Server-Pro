@@ -209,7 +209,7 @@ func (h *Handler) GetRegistrationToken(c *gin.Context) {
 	now := time.Now()
 	var count int
 	h.regTokens.Range(func(k, v any) bool {
-		if now.Sub(v.(time.Time)) > regTokenTTL {
+		if now.Sub(v.(time.Time)) > regTokenTTL { //nolint:errcheck // regTokens only ever Stores time.Time
 			h.regTokens.Delete(k)
 		} else {
 			count++
@@ -244,7 +244,7 @@ func (h *Handler) Register(c *gin.Context) {
 
 	// Validate the server-issued registration token (single-use, 15-min TTL).
 	issued, ok := h.regTokens.LoadAndDelete(req.Token)
-	if !ok || req.Token == "" || time.Since(issued.(time.Time)) > regTokenTTL {
+	if !ok || req.Token == "" || time.Since(issued.(time.Time)) > regTokenTTL { //nolint:errcheck // regTokens only ever Stores time.Time
 		writeError(c, http.StatusForbidden, "Invalid or expired registration token")
 		return
 	}

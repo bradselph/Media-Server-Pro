@@ -216,7 +216,7 @@ func (h *Handler) tryRecordView(userID, mediaID string) bool {
 	}
 	if prev, ok := h.viewCooldown.Load(key); ok {
 		// Type assertion is safe: viewCooldown is only ever Store'd with a time.Time below.
-		if now.Sub(prev.(time.Time)) < cooldown {
+		if now.Sub(prev.(time.Time)) < cooldown { //nolint:errcheck // viewCooldown only ever Stores time.Time
 			return false
 		}
 	}
@@ -747,32 +747,6 @@ func (h *Handler) logAdminAction(c *gin.Context, p *adminLogActionParams) {
 	h.trackServerEvent(c, "admin_action", map[string]any{
 		"action":   p.Action,
 		"resource": p.Target,
-	})
-}
-
-// adminLogResultParams groups arguments for logAdminActionResult to avoid excess parameters.
-type adminLogResultParams struct {
-	UserID   string
-	Username string
-	Action   string
-	Target   string
-	Details  map[string]any
-	Success  bool
-}
-
-// logAdminActionResult is like logAdminAction but lets the caller specify success/failure.
-func (h *Handler) logAdminActionResult(c *gin.Context, p *adminLogResultParams) {
-	if h.admin == nil {
-		return
-	}
-	userID, username := p.UserID, p.Username
-	if session := getSession(c); session != nil {
-		userID = session.UserID
-		username = session.Username
-	}
-	h.admin.LogAction(c.Request.Context(), &admin.AuditLogParams{
-		UserID: userID, Username: username, Action: p.Action, Resource: p.Target,
-		Details: p.Details, IPAddress: c.ClientIP(), Success: p.Success,
 	})
 }
 

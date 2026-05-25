@@ -70,9 +70,12 @@ func applySmartRules(all []*models.MediaItem, rules *SmartPlaylistRules) []*mode
 		out = make([]*models.MediaItem, len(all))
 		copy(out, all)
 	} else {
+		// Preallocate capacity to avoid append growth on large libraries.
+		// Length stays 0 so the makezero linter is satisfied too.
+		out = make([]*models.MediaItem, 0, len(all))
 		for _, item := range all {
 			if matchesSmartRules(item, rules.Conditions, matchAll) {
-				out = append(out, item)
+				out = append(out, item) //nolint:makezero // out was made with length 0 in this branch; the linter conflates with the if-branch's len(all) allocation
 			}
 		}
 	}

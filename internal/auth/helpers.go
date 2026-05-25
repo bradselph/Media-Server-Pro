@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -123,12 +124,9 @@ func (m *Module) RevokeUserSession(ctx context.Context, userID, sessionID string
 		return ErrSessionNotFound
 	}
 	if err := m.Logout(ctx, sessionID); err != nil {
-		if err == ErrSessionNotFound {
+		if errors.Is(err, ErrSessionNotFound) {
 			// Already gone from cache; try admin path for completeness.
-			if adminErr := m.LogoutAdmin(ctx, sessionID); adminErr != nil {
-				return adminErr
-			}
-			return nil
+			return m.LogoutAdmin(ctx, sessionID)
 		}
 		return err
 	}

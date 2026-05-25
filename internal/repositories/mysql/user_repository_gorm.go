@@ -108,14 +108,14 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 // pre-serialized to JSON strings. Returns nil (SQL NULL) if v is nil.
 func marshalJSONParam(v any) (any, error) {
 	if v == nil {
-		return nil, nil
+		return nil, nil //nolint:nilnil // intentional: nil input → SQL NULL with no error
 	}
 	b, err := json.Marshal(v)
 	if err != nil {
 		return nil, fmt.Errorf("marshal JSON param: %w", err)
 	}
 	if string(b) == "null" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // intentional: "null" payload → SQL NULL with no error
 	}
 	return string(b), nil
 }

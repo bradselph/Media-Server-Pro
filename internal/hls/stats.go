@@ -14,6 +14,7 @@ type Stats struct {
 	CompletedJobs int    `json:"completed_jobs"`
 	FailedJobs    int    `json:"failed_jobs"`
 	PendingJobs   int    `json:"pending_jobs"`
+	CanceledJobs  int    `json:"canceled_jobs"`
 	CacheSize     int64  `json:"cache_size_bytes"`
 	CacheDir      string `json:"-"`
 }
@@ -40,6 +41,8 @@ func (m *Module) GetStats() Stats {
 				s.FailedJobs++
 			case models.HLSStatusPending:
 				s.PendingJobs++
+			case models.HLSStatusCanceled:
+				s.CanceledJobs++
 			}
 		}
 		return s

@@ -157,11 +157,11 @@ func (h *Handler) tryServeReceiverThumbnail(c *gin.Context, id string) bool {
 		preferWebP := acceptsWebP(c.Request)
 		// Cache slave thumbnails the same as local ones — the unified library
 		// is the whole point of the federation.
-		if err := h.receiver.ProxyThumbnail(c.Writer, c.Request, id, preferWebP); err == nil {
+		err := h.receiver.ProxyThumbnail(c.Writer, c.Request, id, preferWebP)
+		if err == nil {
 			return true
-		} else {
-			h.log.Debug("Receiver thumbnail proxy failed for %s, serving placeholder: %v", id, err)
 		}
+		h.log.Debug("Receiver thumbnail proxy failed for %s, serving placeholder: %v", id, err)
 	}
 
 	placeholderType := "placeholder"
