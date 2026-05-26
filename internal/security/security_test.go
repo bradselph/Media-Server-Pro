@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"media-server-pro/pkg/helpers"
 )
 
 const (
@@ -204,7 +206,7 @@ func TestIPList_Clear(t *testing.T) {
 
 func TestIPList_CleanExpired(t *testing.T) {
 	list := &IPList{Entries: make([]IPEntry, 0)}
-	list.Add(testIP1, "expired", "admin", new(time.Now().Add(-1*time.Hour)))
+	list.Add(testIP1, "expired", "admin", helpers.Ptr(time.Now().Add(-1*time.Hour)))
 	list.Add(testIP2, "valid", "admin", nil)
 
 	cleaned := list.CleanExpired()

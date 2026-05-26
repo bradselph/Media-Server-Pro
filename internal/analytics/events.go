@@ -221,10 +221,13 @@ func (m *Module) TrackEvent(ctx context.Context, event models.AnalyticsEvent) {
 		m.log.Error("Failed to create analytics event: %v", err)
 	}
 
+	var delta float64
+	isNewMedia := true
+	var isFirstCompletion bool
 	if event.SessionID != "" {
-		m.updateSession(event)
+		delta, isNewMedia, isFirstCompletion = m.updateSession(event)
 	}
-	m.updateStats(event)
+	m.updateStats(event, delta, isNewMedia, isFirstCompletion)
 	// Invalidate the aggregation caches that this event could affect.
 	// Selective invalidation rather than a full flush — it's cheap, and a
 	// flush-everything would mean every event causes a 50k-event scan on
@@ -447,7 +450,7 @@ func (m *Module) DeleteEventsByMedia(ctx context.Context, mediaID string) {
 	if err := m.eventRepo.Create(ctx, &tombstone); err != nil {
 		m.log.Warn("Failed to write tombstone for deleted media %s: %v", mediaID, err)
 	}
-	m.updateStats(tombstone)
+	m.updateStats(tombstone, 0, false, false)
 
 	if err := m.eventRepo.DeleteByMediaID(ctx, mediaID); err != nil {
 		m.log.Warn("Failed to purge analytics events for deleted media %s: %v", mediaID, err)

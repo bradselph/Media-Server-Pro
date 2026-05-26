@@ -3,6 +3,8 @@ package scanner
 import (
 	"testing"
 	"time"
+
+	"media-server-pro/pkg/helpers"
 )
 
 // FND-0016: Regression test for SetMatureFlag ensuring ReviewedAt is non-nil and non-zero
@@ -19,7 +21,7 @@ func TestFND0016_SetMatureFlag_ReviewedAtNonNil(t *testing.T) {
 	// but we're focusing on the fix which is in the ResultDetail construction
 	// at the end of that method. We'll test the pattern directly here.
 
-	reviewedAtPtr := new(time.Now())
+	reviewedAtPtr := helpers.Ptr(time.Now())
 
 	// reviewedAtPtr is always non-nil (assigned above); verify it holds a non-zero time.
 
@@ -60,7 +62,7 @@ func TestFND0016_ReviewedAt_ResultStructure(t *testing.T) {
 	_ = reason
 
 	beforeSet := time.Now()
-	result.ReviewedAt = new(time.Now())
+	result.ReviewedAt = helpers.Ptr(time.Now())
 	afterSet := time.Now()
 
 	// FND-0016 regression: ReviewedAt must be non-nil

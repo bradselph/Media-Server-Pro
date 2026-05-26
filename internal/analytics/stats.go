@@ -95,13 +95,13 @@ func (m *Module) ensureMediaStatsLocked(mediaID string) *models.ViewStats {
 	return stats
 }
 
-func (m *Module) updateStats(event models.AnalyticsEvent) {
+func (m *Module) updateStats(event models.AnalyticsEvent, delta float64, isNewMedia bool, isFirstCompletion bool) {
 	m.statsMu.Lock()
 	// Use event.Timestamp so events with historical timestamps (e.g. replayed
 	// or bulk-imported) are bucketed to the correct day, not always "today".
 	today := event.Timestamp.Format(dateFormat)
-	m.updateDailyStatsLocked(event, today)
-	m.updateMediaStatsLocked(event)
+	m.updateDailyStatsLocked(event, today, delta)
+	m.updateMediaStatsLocked(event, delta, isNewMedia, isFirstCompletion)
 	m.statsMu.Unlock()
 	// Persistence happens out-of-band on the flush ticker; here we just record
 	// the date as dirty so the flush picks it up. Done outside statsMu because
@@ -110,13 +110,13 @@ func (m *Module) updateStats(event models.AnalyticsEvent) {
 	m.markDailyDirty(today)
 }
 
-func (m *Module) updateDailyStatsLocked(event models.AnalyticsEvent, today string) {
+func (m *Module) updateDailyStatsLocked(event models.AnalyticsEvent, today string, delta float64) {
 	daily := m.ensureDailyStatsLocked(today)
 	switch event.Type {
 	case "view":
 		m.applyViewToDailyStatsLocked(event, daily, today)
 	case "playback":
-		m.applyPlaybackToDailyStatsLocked(event, daily)
+		m.applyPlaybackToDailyStatsLocked(delta, daily)
 	case EventLogin:
 		daily.Logins++
 	case EventLoginFailed:
@@ -212,25 +212,17 @@ func (m *Module) applyViewToDailyStatsLocked(event models.AnalyticsEvent, daily 
 	}
 }
 
-func (m *Module) applyPlaybackToDailyStatsLocked(event models.AnalyticsEvent, daily *models.DailyStats) {
-	// Use the actual watched time (position), not the full media duration.
-	// Position represents how far the user watched; duration is the total length.
-	pos, _ := event.Data["position"].(float64)
-	dur, _ := event.Data["duration"].(float64)
-	watchTime := pos
-	if dur > 0 && watchTime > dur {
-		watchTime = dur
-	}
-	if watchTime > 0 {
-		daily.TotalWatchTime += watchTime
+func (m *Module) applyPlaybackToDailyStatsLocked(delta float64, daily *models.DailyStats) {
+	if delta > 0 {
+		daily.TotalWatchTime += delta
 	}
 }
 
-func (m *Module) updateMediaStatsLocked(event models.AnalyticsEvent) {
-	m.applyMediaEventLocked(event)
+func (m *Module) updateMediaStatsLocked(event models.AnalyticsEvent, delta float64, isNewMedia bool, isFirstCompletion bool) {
+	m.applyMediaEventLocked(event, delta, isNewMedia, isFirstCompletion)
 }
 
-func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent) {
+func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent, delta float64, isNewMedia bool, isFirstCompletion bool) {
 	if event.MediaID == "" {
 		return
 	}
@@ -239,7 +231,7 @@ func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent) {
 	case "view":
 		m.applyViewToMediaStatsLocked(event, stats)
 	case "playback":
-		m.applyPlaybackToMediaStatsLocked(event, stats)
+		m.applyPlaybackToMediaStatsLocked(event, stats, delta, isNewMedia, isFirstCompletion)
 	}
 }
 
@@ -253,11 +245,15 @@ func (m *Module) applyViewToMediaStatsLocked(event models.AnalyticsEvent, stats 
 	}
 }
 
-func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, stats *models.ViewStats) {
+func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, stats *models.ViewStats, delta float64, isNewMedia bool, isFirstCompletion bool) {
 	pos, _ := event.Data["position"].(float64)
 	dur, _ := event.Data["duration"].(float64)
 	if dur > 0 {
-		stats.TotalPlaybacks++
+		// Only increment playbacks on the first heartbeat of a session for this media.
+		if isNewMedia {
+			stats.TotalPlaybacks++
+		}
+
 		// AvgWatchDuration is the average time a viewer actually watched, not
 		// the average length of the media itself — feed the running average
 		// the watched seconds (clamped to total duration to defend against a
@@ -271,14 +267,11 @@ func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, st
 		}
 		m.updateAvgWatchDurationLocked(event.MediaID, stats, watched)
 	}
-	if progress, ok := event.Data["progress"].(float64); ok && progress >= 90 {
+	if isFirstCompletion {
 		stats.TotalCompletions++
 	}
 	// Always recalculate CompletionRate after any change to TotalPlaybacks or
-	// TotalCompletions. Previously this was inside the progress>=90 block, which
-	// meant partial-play events incremented TotalPlaybacks without updating the
-	// rate — causing the live stats to diverge (overstated) from reconstructStats,
-	// which always recalculates unconditionally.
+	// TotalCompletions.
 	stats.CompletionRate = completionRateFromCounts(stats.TotalCompletions, stats.TotalPlaybacks)
 }
 
@@ -2810,8 +2803,55 @@ func (m *Module) reconstructStats() {
 		m.dailyStats[date] = &models.DailyStats{Date: date}
 		delete(m.dailyUsers, date)
 	}
+
+	// Temporary session tracker for reconstruction to handle deltas and unique counts.
+	type reconSession struct {
+		positions   map[string]float64
+		completions map[string]struct{}
+		viewed      map[string]struct{}
+	}
+	reconSessions := make(map[string]*reconSession)
+
 	for _, ev := range events {
-		m.rebuildStatsFromEvent(*ev)
+		var delta float64
+		isNewMedia := true
+		isFirstCompletion := false
+
+		if ev.SessionID != "" {
+			rs, ok := reconSessions[ev.SessionID]
+			if !ok {
+				rs = &reconSession{
+					positions:   make(map[string]float64),
+					completions: make(map[string]struct{}),
+					viewed:      make(map[string]struct{}),
+				}
+				reconSessions[ev.SessionID] = rs
+			}
+
+			if ev.MediaID != "" {
+				_, seen := rs.viewed[ev.MediaID]
+				isNewMedia = !seen
+				rs.viewed[ev.MediaID] = struct{}{}
+
+				if ev.Type == "playback" {
+					if pos, ok := ev.Data["position"].(float64); ok {
+						prev := rs.positions[ev.MediaID]
+						if pos > prev {
+							delta = pos - prev
+						}
+						rs.positions[ev.MediaID] = pos
+					}
+					if progress, ok := ev.Data["progress"].(float64); ok && progress >= 90 {
+						if _, done := rs.completions[ev.MediaID]; !done {
+							isFirstCompletion = true
+							rs.completions[ev.MediaID] = struct{}{}
+						}
+					}
+				}
+			}
+		}
+
+		m.rebuildStatsFromEvent(*ev, delta, isNewMedia, isFirstCompletion)
 	}
 	m.statsMu.Unlock()
 
@@ -2838,7 +2878,7 @@ func (m *Module) reconstructStats() {
 
 // rebuildStatsFromEvent updates in-memory maps from a stored event.
 // Must be called with m.statsMu held for writing.
-func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
+func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent, delta float64, isNewMedia, isFirstCompletion bool) {
 	date := event.Timestamp.Format(dateFormat)
 	daily, exists := m.dailyStats[date]
 	if !exists {
@@ -2926,8 +2966,8 @@ func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 	case EventUserRoleChange:
 		daily.UserRoleChanges++
 	case "playback":
-		// Reconstruct TotalWatchTime in daily stats (mirrors live path in applyPlaybackToDailyStatsLocked).
-		m.applyPlaybackToDailyStatsLocked(event, daily)
+		// Reconstruct TotalWatchTime in daily stats using the calculated delta.
+		m.applyPlaybackToDailyStatsLocked(delta, daily)
 	}
 
 	if event.MediaID == "" {
@@ -2955,7 +2995,10 @@ func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 		pos, _ := event.Data["position"].(float64)
 		dur, _ := event.Data["duration"].(float64)
 		if dur > 0 {
-			stats.TotalPlaybacks++
+			// Use unique playbacks for reconstruction.
+			if isNewMedia {
+				stats.TotalPlaybacks++
+			}
 			watched := pos
 			if watched > dur {
 				watched = dur
@@ -2967,7 +3010,7 @@ func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent) {
 			// used by the live path so the values are consistent.
 			m.updateAvgWatchDurationLocked(event.MediaID, stats, watched)
 		}
-		if progress, ok := event.Data["progress"].(float64); ok && progress >= 90 {
+		if isFirstCompletion {
 			stats.TotalCompletions++
 		}
 		stats.CompletionRate = completionRateFromCounts(stats.TotalCompletions, stats.TotalPlaybacks)

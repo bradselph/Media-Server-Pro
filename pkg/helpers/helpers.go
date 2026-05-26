@@ -42,6 +42,12 @@ func FindBinary(name string) (string, error) {
 		name, strings.Join(candidates, ", "))
 }
 
+// Ptr returns a pointer to the given value. Useful for initializing struct
+// fields that are pointers to primitives or function return values (like time.Now()).
+func Ptr[T any](v T) *T {
+	return &v
+}
+
 // StatusString returns "healthy" or "unhealthy" based on the given boolean.
 // This is used by all modules to report their health status consistently.
 func StatusString(healthy bool) string {

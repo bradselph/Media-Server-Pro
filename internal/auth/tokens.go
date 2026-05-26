@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"media-server-pro/internal/repositories"
+	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
 
@@ -25,7 +26,7 @@ func (m *Module) CreateAPIToken(ctx context.Context, userID, name string, ttl ti
 		CreatedAt: time.Now(),
 	}
 	if ttl > 0 {
-		rec.ExpiresAt = new(time.Now().Add(ttl))
+		rec.ExpiresAt = helpers.Ptr(time.Now().Add(ttl))
 	}
 	if err = m.tokenRepo.Create(ctx, rec); err != nil {
 		return "", nil, fmt.Errorf("create api token: %w", err)
