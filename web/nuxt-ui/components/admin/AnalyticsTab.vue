@@ -1101,10 +1101,10 @@ const hasTrafficActivity = computed(() =>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <template v-for="cmp in [
-            { label: 'Views', cmp: cmpViews },
-            { label: 'Streams', cmp: cmpStreams },
+            { label: 'Views', cmp: cmpViews, isBytes: false },
+            { label: 'Streams', cmp: cmpStreams, isBytes: false },
             { label: 'Bandwidth', cmp: cmpBandwidth, isBytes: true },
-            { label: 'Logins', cmp: cmpLogins },
+            { label: 'Logins', cmp: cmpLogins, isBytes: false },
           ]" :key="cmp.label">
             <div v-if="cmp.cmp" class="flex flex-col">
               <p class="text-lg font-bold text-highlighted truncate">
@@ -1138,10 +1138,10 @@ const hasTrafficActivity = computed(() =>
       </template>
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <template v-for="f in [
-          { label: 'Views', cmp: forecastViews },
-          { label: 'Streams', cmp: forecastStreams },
-          { label: 'Bandwidth', cmp: forecastBandwidth, isBytes: true },
-          { label: 'Server Errors', cmp: forecastErrors, isError: true },
+          { label: 'Views', cmp: forecastViews, isBytes: false, isError: false },
+          { label: 'Streams', cmp: forecastStreams, isBytes: false, isError: false },
+          { label: 'Bandwidth', cmp: forecastBandwidth, isBytes: true, isError: false },
+          { label: 'Server Errors', cmp: forecastErrors, isBytes: false, isError: true },
         ]" :key="f.label">
           <div v-if="f.cmp">
             <div class="flex items-center gap-1 mb-0.5">
@@ -2049,22 +2049,22 @@ const hasTrafficActivity = computed(() =>
           <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
             <UCard
               v-for="m in [
-                { label: 'Views', value: userAggregate.total_views, icon: 'i-lucide-eye' },
-                { label: 'Playbacks', value: userAggregate.total_playbacks, icon: 'i-lucide-play' },
-                { label: 'Completions', value: userAggregate.total_completions, icon: 'i-lucide-check-circle' },
+                { label: 'Views', value: userAggregate.total_views, icon: 'i-lucide-eye', isTime: false },
+                { label: 'Playbacks', value: userAggregate.total_playbacks, icon: 'i-lucide-play', isTime: false },
+                { label: 'Completions', value: userAggregate.total_completions, icon: 'i-lucide-check-circle', isTime: false },
                 { label: 'Watch Time', value: userAggregate.total_watch_time, icon: 'i-lucide-clock', isTime: true },
-                { label: 'Downloads', value: userAggregate.total_downloads, icon: 'i-lucide-download' },
-                { label: 'Searches', value: userAggregate.total_searches, icon: 'i-lucide-search' },
-                { label: 'Favorites +', value: userAggregate.favorites_added, icon: 'i-lucide-heart' },
-                { label: 'Favorites −', value: userAggregate.favorites_removed, icon: 'i-lucide-heart-off' },
-                { label: 'Ratings', value: userAggregate.ratings_set, icon: 'i-lucide-star' },
-                { label: 'Playlists +', value: userAggregate.playlists_created, icon: 'i-lucide-list-plus' },
-                { label: 'Uploads OK', value: userAggregate.uploads_succeeded, icon: 'i-lucide-upload' },
-                { label: 'Uploads Fail', value: userAggregate.uploads_failed, icon: 'i-lucide-alert-triangle' },
-                { label: 'Logins', value: userAggregate.logins, icon: 'i-lucide-log-in' },
-                { label: 'Failed Logins', value: userAggregate.logins_failed, icon: 'i-lucide-shield-alert' },
-                { label: 'Logouts', value: userAggregate.logouts, icon: 'i-lucide-log-out' },
-                { label: 'Unique Media', value: userAggregate.unique_media, icon: 'i-lucide-clapperboard' },
+                { label: 'Downloads', value: userAggregate.total_downloads, icon: 'i-lucide-download', isTime: false },
+                { label: 'Searches', value: userAggregate.total_searches, icon: 'i-lucide-search', isTime: false },
+                { label: 'Favorites +', value: userAggregate.favorites_added, icon: 'i-lucide-heart', isTime: false },
+                { label: 'Favorites −', value: userAggregate.favorites_removed, icon: 'i-lucide-heart-off', isTime: false },
+                { label: 'Ratings', value: userAggregate.ratings_set, icon: 'i-lucide-star', isTime: false },
+                { label: 'Playlists +', value: userAggregate.playlists_created, icon: 'i-lucide-list-plus', isTime: false },
+                { label: 'Uploads OK', value: userAggregate.uploads_succeeded, icon: 'i-lucide-upload', isTime: false },
+                { label: 'Uploads Fail', value: userAggregate.uploads_failed, icon: 'i-lucide-alert-triangle', isTime: false },
+                { label: 'Logins', value: userAggregate.logins, icon: 'i-lucide-log-in', isTime: false },
+                { label: 'Failed Logins', value: userAggregate.logins_failed, icon: 'i-lucide-shield-alert', isTime: false },
+                { label: 'Logouts', value: userAggregate.logouts, icon: 'i-lucide-log-out', isTime: false },
+                { label: 'Unique Media', value: userAggregate.unique_media, icon: 'i-lucide-clapperboard', isTime: false },
               ]"
               :key="m.label"
               :ui="{ body: 'p-2' }"

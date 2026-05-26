@@ -114,14 +114,17 @@ func (b *Backend) Walk(_ context.Context, prefix string, fn storage.WalkFunc) er
 	if err != nil {
 		return err
 	}
-	return filepath.Walk(abs, func(path string, fi os.FileInfo, walkErr error) error {
+	return filepath.WalkDir(abs, func(path string, d os.DirEntry, walkErr error) error {
 		rel, relErr := filepath.Rel(b.root, path)
 		if relErr != nil {
 			rel = path
 		}
 		var info storage.FileInfo
-		if fi != nil {
-			info = toFileInfo(fi)
+		if d != nil {
+			fi, err := d.Info()
+			if err == nil {
+				info = toFileInfo(fi)
+			}
 		}
 		return fn(rel, info, walkErr)
 	})

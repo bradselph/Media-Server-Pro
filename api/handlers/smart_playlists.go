@@ -21,11 +21,11 @@ import (
 
 // SmartPlaylistRules is the parsed structure of a smart playlist's rules blob.
 type SmartPlaylistRules struct {
-	Match      string            `json:"match"`       // "all" or "any"
-	Conditions []SmartCondition  `json:"conditions"`
-	OrderBy    string            `json:"order_by"`    // date_added|name|duration|views
-	OrderDir   string            `json:"order_dir"`   // asc|desc
-	Limit      int               `json:"limit"`
+	Match      string           `json:"match"` // "all" or "any"
+	Conditions []SmartCondition `json:"conditions"`
+	OrderBy    string           `json:"order_by"`  // date_added|name|duration|views
+	OrderDir   string           `json:"order_dir"` // asc|desc
+	Limit      int              `json:"limit"`
 }
 
 type SmartCondition struct {

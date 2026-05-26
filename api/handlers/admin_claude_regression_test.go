@@ -14,11 +14,12 @@ import (
 // Now it writes {"type":"done"} on success, or {"type":"error","error":"..."} on failure.
 //
 // The writeEvent closure is called with these patterns:
-//   if err != nil {
-//       writeEvent(claude.Event{Type: "error", Error: err.Error()})
-//   } else {
-//       writeEvent(claude.Event{Type: "done"})
-//   }
+//
+//	if err != nil {
+//	    writeEvent(claude.Event{Type: "error", Error: err.Error()})
+//	} else {
+//	    writeEvent(claude.Event{Type: "done"})
+//	}
 //
 // This test verifies the closure logic by examining the writeEvent implementation.
 func TestFND0542_AdminClaudeChat_WriteEvent_Patterns(t *testing.T) {
@@ -145,11 +146,12 @@ func TestFND0547_AdminClaudeChat_MarshalErrorHandling(t *testing.T) {
 // Now it reads back the actual config: {"kill_switch": h.claude.PublicConfig().KillSwitch}
 //
 // The fixed code pattern:
-//   if err := h.claude.SetKillSwitch(body.On); err != nil {
-//       writeError(...)
-//       return
-//   }
-//   writeSuccess(c, map[string]any{"kill_switch": h.claude.PublicConfig().KillSwitch})
+//
+//	if err := h.claude.SetKillSwitch(body.On); err != nil {
+//	    writeError(...)
+//	    return
+//	}
+//	writeSuccess(c, map[string]any{"kill_switch": h.claude.PublicConfig().KillSwitch})
 //
 // This test verifies that the response will correctly reflect the actual
 // config state, not the request body.

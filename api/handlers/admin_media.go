@@ -478,8 +478,8 @@ func (h *Handler) processOneBulkMediaItem(c *gin.Context, id, action string, upd
 // AdminBulkMedia performs a bulk action (delete or update) on multiple media files.
 func (h *Handler) AdminBulkMedia(c *gin.Context) {
 	var req struct {
-		IDs    []string               `json:"ids"`
-		Action string                 `json:"action"`
+		IDs    []string       `json:"ids"`
+		Action string         `json:"action"`
 		Data   map[string]any `json:"data"`
 	}
 	if !BindJSON(c, &req, "") {

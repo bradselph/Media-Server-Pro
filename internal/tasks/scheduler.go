@@ -17,8 +17,8 @@ import (
 
 // Sentinel errors for typed error checking by callers.
 var (
-	ErrTaskNotFound    = errors.New("task not found")
-	ErrTaskNotRunning  = errors.New("task not currently running")
+	ErrTaskNotFound   = errors.New("task not found")
+	ErrTaskNotRunning = errors.New("task not currently running")
 )
 
 // TaskFunc is a function that performs a task

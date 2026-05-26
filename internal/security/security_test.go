@@ -318,7 +318,6 @@ func TestRateLimitConfig_Fields(t *testing.T) {
 	}
 }
 
-
 // TestRateLimiter_SetWindows locks in the new hot-reload path: SetWindows must
 // mutate the live config copy under the limiter's lock so window edits take
 // effect on the next CheckRequest without a server restart.

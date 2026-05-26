@@ -9,10 +9,10 @@ import (
 )
 
 const (
-	testContentType      = "Content-Type"
-	testAllowOriginHdr   = "Access-Control-Allow-Origin"
-	testAllowedOrigin    = "https://allowed.com"
-	testOriginA          = "https://a.com"
+	testContentType    = "Content-Type"
+	testAllowOriginHdr = "Access-Control-Allow-Origin"
+	testAllowedOrigin  = "https://allowed.com"
+	testOriginA        = "https://a.com"
 )
 
 func init() {

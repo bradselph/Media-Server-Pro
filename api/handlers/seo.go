@@ -19,18 +19,18 @@ import (
 // image-sitemap extension so Google can pick up thumbnails alongside the
 // player URL.
 type sitemapURLSet struct {
-	XMLName  xml.Name           `xml:"urlset"`
-	XMLNS    string             `xml:"xmlns,attr"`
-	XMLNSImg string             `xml:"xmlns:image,attr,omitempty"`
-	URLs     []sitemapURLEntry  `xml:"url"`
+	XMLName  xml.Name          `xml:"urlset"`
+	XMLNS    string            `xml:"xmlns,attr"`
+	XMLNSImg string            `xml:"xmlns:image,attr,omitempty"`
+	URLs     []sitemapURLEntry `xml:"url"`
 }
 
 type sitemapURLEntry struct {
-	Loc        string         `xml:"loc"`
-	LastMod    string         `xml:"lastmod,omitempty"`
-	ChangeFreq string         `xml:"changefreq,omitempty"`
-	Priority   string         `xml:"priority,omitempty"`
-	Image      *sitemapImage  `xml:"image:image,omitempty"`
+	Loc        string        `xml:"loc"`
+	LastMod    string        `xml:"lastmod,omitempty"`
+	ChangeFreq string        `xml:"changefreq,omitempty"`
+	Priority   string        `xml:"priority,omitempty"`
+	Image      *sitemapImage `xml:"image:image,omitempty"`
 }
 
 type sitemapImage struct {

@@ -640,7 +640,7 @@ func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType mode
 		return nil
 	}
 
-	return filepath.Walk(absDir, func(path string, info os.FileInfo, err error) error {
+	return filepath.WalkDir(absDir, func(path string, d os.DirEntry, err error) error {
 		// Check for cancellation periodically
 		select {
 		case <-ctx.Done():
@@ -653,10 +653,10 @@ func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType mode
 			return nil // Continue scanning
 		}
 
-		if info.IsDir() {
+		if d.IsDir() {
 			return nil
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
+		if d.Type()&os.ModeSymlink != 0 {
 			return nil // skip symlinks — they may point outside the media directory
 		}
 
@@ -678,6 +678,12 @@ func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType mode
 			mediaType = defaultType
 		default:
 			return nil // Not a media file
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			m.log.Warn("Failed to get info for %s: %v", path, err)
+			return nil
 		}
 
 		item := m.createMediaItem(path, info, mediaType)
@@ -917,13 +923,18 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		if meta.StableID != "" {
 			item.ID = meta.StableID
 		}
-		needsFingerprint := meta.ContentFingerprint == ""
+		needsFingerprint := meta.ContentFingerprint == "" || item.DateModified.After(meta.ProbeModTime)
 		m.mu.RUnlock()
 
-		// Compute fingerprint for existing files that predate fingerprint support
+		// Compute fingerprint for new files or existing files that have been modified
+		// (predate fingerprint support or have a fresh mtime).
 		if needsFingerprint {
 			if fp, err := computeContentFingerprint(path); err == nil && fp != "" {
 				m.mu.Lock()
+				// If the fingerprint changed, clean up the old index entry.
+				if meta.ContentFingerprint != "" && meta.ContentFingerprint != fp {
+					delete(m.fingerprintIndex, meta.ContentFingerprint)
+				}
 				meta.ContentFingerprint = fp
 				m.fingerprintIndex[fp] = path
 				m.mu.Unlock()

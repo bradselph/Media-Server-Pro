@@ -347,6 +347,13 @@ func (m *Module) GetDailyStats(days int) []*models.DailyStats {
 			// other returned days or the underlying media-stats map iteration.
 			d.TopMedia = append([]string(nil), topIDs...)
 			stats = append(stats, &d)
+		} else {
+			// Gap-fill missing days with zeroed stats so the frontend charts
+			// have a continuous timeline.
+			stats = append(stats, &models.DailyStats{
+				Date:     date,
+				TopMedia: append([]string(nil), topIDs...),
+			})
 		}
 	}
 
@@ -829,9 +836,9 @@ type MetricTimelineEntry struct {
 // in the last 24h, WAU = last 7 days, MAU = last 30 days. Computed from raw
 // events so any user-attributed event counts as activity.
 type CohortMetrics struct {
-	DAU       int     `json:"dau"`
-	WAU       int     `json:"wau"`
-	MAU       int     `json:"mau"`
+	DAU              int     `json:"dau"`
+	WAU              int     `json:"wau"`
+	MAU              int     `json:"mau"`
 	StickinessDAUWAU float64 `json:"stickiness_dau_wau"` // DAU/WAU, 0..1
 	StickinessDAUMAU float64 `json:"stickiness_dau_mau"` // DAU/MAU, 0..1
 }
@@ -951,9 +958,9 @@ func (m *Module) computeHourlyHeatmap(ctx context.Context, days int) []HourlyHea
 // QualityBucket captures stream count and bytes-served per quality tier.
 // Sourced from stream_start / stream_end events whose Data carries quality.
 type QualityBucket struct {
-	Quality    string `json:"quality"`
-	Streams    int    `json:"streams"`
-	BytesSent  int64  `json:"bytes_sent"`
+	Quality   string `json:"quality"`
+	Streams   int    `json:"streams"`
+	BytesSent int64  `json:"bytes_sent"`
 }
 
 // GetQualityBreakdown groups stream activity by reported quality tier so
@@ -1410,11 +1417,11 @@ type SearchClickthrough struct {
 // IPBucket pairs an IP address with traffic volume metrics. The dashboard
 // uses this for spotting abusive scrapers and rate-limit candidates.
 type IPBucket struct {
-	IPAddress  string `json:"ip_address"`
-	Events     int    `json:"events"`
-	UniqueUserIDs int `json:"unique_user_ids"`
-	BytesSent  int64  `json:"bytes_sent"` // from stream_end events
-	LastSeen   time.Time `json:"last_seen"`
+	IPAddress     string    `json:"ip_address"`
+	Events        int       `json:"events"`
+	UniqueUserIDs int       `json:"unique_user_ids"`
+	BytesSent     int64     `json:"bytes_sent"` // from stream_end events
+	LastSeen      time.Time `json:"last_seen"`
 }
 
 // IPSummary holds the per-IP report. UniqueIPs is the unique-IP count
@@ -1457,10 +1464,10 @@ func (m *Module) computeIPSummary(ctx context.Context, days, limit int) IPSummar
 		return out
 	}
 	type bucket struct {
-		events    int
-		users     map[string]struct{}
-		bytes     int64
-		lastSeen  time.Time
+		events   int
+		users    map[string]struct{}
+		bytes    int64
+		lastSeen time.Time
 	}
 	rows := make(map[string]*bucket)
 	for _, ev := range events {
@@ -1537,13 +1544,13 @@ func (m *Module) computeIPSummary(ctx context.Context, days, limit int) IPSummar
 // admins can debug "why is the dashboard slow / stale" without server log
 // access.
 type ModuleDiagnostics struct {
-	CacheEntries     int  `json:"cache_entries"`
-	DirtyDays        int  `json:"dirty_days"`
-	ActiveSubscribers int `json:"active_subscribers"`
-	SessionsTracked  int  `json:"sessions_tracked"`
-	MediaTracked     int  `json:"media_tracked"`
-	MaxReconstruct   int  `json:"max_reconstruct_events"`
-	Healthy          bool `json:"healthy"`
+	CacheEntries      int  `json:"cache_entries"`
+	DirtyDays         int  `json:"dirty_days"`
+	ActiveSubscribers int  `json:"active_subscribers"`
+	SessionsTracked   int  `json:"sessions_tracked"`
+	MediaTracked      int  `json:"media_tracked"`
+	MaxReconstruct    int  `json:"max_reconstruct_events"`
+	Healthy           bool `json:"healthy"`
 }
 
 // AnalyticsHealth is a compact health snapshot suitable for external uptime
@@ -1555,8 +1562,8 @@ type AnalyticsHealth struct {
 	CacheEntries      int       `json:"cache_entries"`
 	DirtyDays         int       `json:"dirty_days"`
 	ActiveSubscribers int       `json:"active_subscribers"`
-	LastFlush         time.Time `json:"last_flush"`         // zero if never flushed
-	FlushLagSeconds   float64   `json:"flush_lag_seconds"`  // seconds since last successful flush
+	LastFlush         time.Time `json:"last_flush"`        // zero if never flushed
+	FlushLagSeconds   float64   `json:"flush_lag_seconds"` // seconds since last successful flush
 	CheckedAt         time.Time `json:"checked_at"`
 }
 
@@ -1629,7 +1636,7 @@ type Anomaly struct {
 	Date      string  `json:"date"`
 	Metric    string  `json:"metric"`
 	Value     float64 `json:"value"`
-	Baseline  float64 `json:"baseline"`  // mean of the rolling window
+	Baseline  float64 `json:"baseline"` // mean of the rolling window
 	StdDev    float64 `json:"std_dev"`
 	ZScore    float64 `json:"z_score"`   // (value - baseline) / std_dev
 	Direction string  `json:"direction"` // "spike" | "dip"
@@ -1770,9 +1777,9 @@ type RetentionGrid struct {
 
 // RetentionCohort is one signup-week row in the retention grid.
 type RetentionCohort struct {
-	CohortStart string    `json:"cohort_start"`  // YYYY-MM-DD of the cohort week's Monday
-	CohortSize  int       `json:"cohort_size"`   // unique users who signed up that week
-	Retention   []float64 `json:"retention"`     // % retained per week-N (0..100); index 0 is the signup week
+	CohortStart string    `json:"cohort_start"` // YYYY-MM-DD of the cohort week's Monday
+	CohortSize  int       `json:"cohort_size"`  // unique users who signed up that week
+	Retention   []float64 `json:"retention"`    // % retained per week-N (0..100); index 0 is the signup week
 }
 
 // GetRetentionGrid builds the cohort retention table over the last
@@ -2409,11 +2416,11 @@ var comparedMetrics = []string{
 type MetricForecast struct {
 	Metric         string  `json:"metric"`
 	WindowDays     int     `json:"window_days"`
-	Slope          float64 `json:"slope"`            // Δvalue per day
+	Slope          float64 `json:"slope"` // Δvalue per day
 	Intercept      float64 `json:"intercept"`
-	Projection     float64 `json:"projection"`       // tomorrow's value on the trend line
-	ConfidenceBand float64 `json:"confidence_band"`  // 1σ of residuals
-	Direction      string  `json:"direction"`        // "up" | "down" | "flat"
+	Projection     float64 `json:"projection"`      // tomorrow's value on the trend line
+	ConfidenceBand float64 `json:"confidence_band"` // 1σ of residuals
+	Direction      string  `json:"direction"`       // "up" | "down" | "flat"
 }
 
 // GetMetricForecast fits a least-squares line to the last `windowDays` of

@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	testBypassCIDR     = "10.0.0.0/8"
-	testRemoteAddr     = "203.0.113.1:1234"
-	testPublicIP       = "203.0.113.1"
-	testLoopbackAddr   = "127.0.0.1:1234"
+	testBypassCIDR   = "10.0.0.0/8"
+	testRemoteAddr   = "203.0.113.1:1234"
+	testPublicIP     = "203.0.113.1"
+	testLoopbackAddr = "127.0.0.1:1234"
 )
 
 func newTestAgeGate(enabled bool) *AgeGate {

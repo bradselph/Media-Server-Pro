@@ -186,7 +186,8 @@ func (m *Module) getUserFromCacheByUsername(username string) *models.User {
 	if u == nil {
 		return nil
 	}
-	return new(*u)
+	cp := *u
+	return &cp
 }
 
 func (m *Module) getUserFromCacheByID(id string) *models.User {
@@ -196,7 +197,8 @@ func (m *Module) getUserFromCacheByID(id string) *models.User {
 	if u == nil {
 		return nil
 	}
-	return new(*u)
+	cp := *u
+	return &cp
 }
 
 // UpdateUser updates a user's information.
@@ -249,7 +251,8 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 	wasEnabled := user.Enabled
 	oldRole := user.Role
 
-	user = new(*user)
+	uCopy := *user
+	user = &uCopy
 
 	if err := m.applyUserUpdates(user, updates); err != nil {
 		return err

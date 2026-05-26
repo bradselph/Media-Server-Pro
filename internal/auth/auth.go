@@ -245,4 +245,3 @@ func (m *Module) Health() models.HealthStatus {
 		CheckedAt: time.Now(),
 	}
 }
-

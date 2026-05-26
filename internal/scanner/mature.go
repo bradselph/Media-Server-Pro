@@ -763,12 +763,12 @@ func (s *MatureScanner) applyThresholds(result *ScanResult) {
 func (s *MatureScanner) ScanDirectory(dir string) ([]*ScanResult, error) {
 	var results []*ScanResult
 
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			s.log.Warn("Failed to access %s during scan: %v", path, err)
 			return nil // Continue on error
 		}
-		if info.IsDir() {
+		if d.IsDir() {
 			return nil
 		}
 

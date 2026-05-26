@@ -301,10 +301,10 @@ func TestFND053_CallOrderingInContext(t *testing.T) {
 	// Lines 125-149 (approve branch) and reject branch
 
 	testCases := []struct {
-		name           string
-		action         string
-		mediaWillFail  bool
-		expectedCalls  []string
+		name          string
+		action        string
+		mediaWillFail bool
+		expectedCalls []string
 	}{
 		{
 			name:          "FND-0531_approve_flow_media_first",

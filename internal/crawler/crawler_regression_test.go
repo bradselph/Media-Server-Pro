@@ -10,11 +10,11 @@ import (
 func TestFND0016_Discovery_ReviewedAtNonNil(t *testing.T) {
 	// Simulate a discovery struct (would be repositories.DiscoveryRecord in real code)
 	type discoveryStub struct {
-		Title       string
-		StreamURL   string
-		ReviewedBy  string
-		ReviewedAt  *time.Time
-		Status      string
+		Title      string
+		StreamURL  string
+		ReviewedBy string
+		ReviewedAt *time.Time
+		Status     string
 	}
 
 	// Test the actual fix pattern

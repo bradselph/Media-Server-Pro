@@ -544,21 +544,21 @@ onMounted(() => {
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <UCard
               v-for="m in [
-                { label: 'Views', value: analyticsData.total_views },
-                { label: 'Playbacks', value: analyticsData.total_playbacks },
-                { label: 'Completions', value: analyticsData.total_completions },
+                { label: 'Views', value: analyticsData.total_views, isTime: false },
+                { label: 'Playbacks', value: analyticsData.total_playbacks, isTime: false },
+                { label: 'Completions', value: analyticsData.total_completions, isTime: false },
                 { label: 'Watch', value: analyticsData.total_watch_time, isTime: true },
-                { label: 'Downloads', value: analyticsData.total_downloads },
-                { label: 'Searches', value: analyticsData.total_searches },
-                { label: 'Favorites +', value: analyticsData.favorites_added },
-                { label: 'Ratings', value: analyticsData.ratings_set },
-                { label: 'Playlists +', value: analyticsData.playlists_created },
-                { label: 'Uploads OK', value: analyticsData.uploads_succeeded },
-                { label: 'Logins', value: analyticsData.logins },
-                { label: 'Failed Logins', value: analyticsData.logins_failed },
-                { label: 'Logouts', value: analyticsData.logouts },
-                { label: 'Unique Media', value: analyticsData.unique_media },
-                { label: 'Total Events', value: analyticsData.total_events },
+                { label: 'Downloads', value: analyticsData.total_downloads, isTime: false },
+                { label: 'Searches', value: analyticsData.total_searches, isTime: false },
+                { label: 'Favorites +', value: analyticsData.favorites_added, isTime: false },
+                { label: 'Ratings', value: analyticsData.ratings_set, isTime: false },
+                { label: 'Playlists +', value: analyticsData.playlists_created, isTime: false },
+                { label: 'Uploads OK', value: analyticsData.uploads_succeeded, isTime: false },
+                { label: 'Logins', value: analyticsData.logins, isTime: false },
+                { label: 'Failed Logins', value: analyticsData.logins_failed, isTime: false },
+                { label: 'Logouts', value: analyticsData.logouts, isTime: false },
+                { label: 'Unique Media', value: analyticsData.unique_media, isTime: false },
+                { label: 'Total Events', value: analyticsData.total_events, isTime: false },
               ]"
               :key="m.label"
               :ui="{ body: 'p-2' }"

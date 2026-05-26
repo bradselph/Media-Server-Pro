@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	testTmpConfigPath  = "/tmp/test-config.json"
-	testServerPortKey  = "server.port"
+	testTmpConfigPath = "/tmp/test-config.json"
+	testServerPortKey = "server.port"
 )
 
 // ---------------------------------------------------------------------------

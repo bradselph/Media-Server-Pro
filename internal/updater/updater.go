@@ -1140,7 +1140,8 @@ func (m *Module) GetActiveBuildStatus() *UpdateStatus {
 	if m.activeBuild == nil {
 		return nil
 	}
-	return new(*m.activeBuild)
+	cp := *m.activeBuild
+	return &cp
 }
 
 // IsBuildRunning reports whether a source build is currently in progress.

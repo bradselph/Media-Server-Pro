@@ -26,7 +26,7 @@ var validReportReasons = map[string]struct{}{
 }
 
 const (
-	maxReportNotesLen = 1000
+	maxReportNotesLen  = 1000
 	maxReportReasonLen = 64
 )
 

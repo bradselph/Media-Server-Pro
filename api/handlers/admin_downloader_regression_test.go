@@ -15,10 +15,10 @@ import (
 
 func TestFND0365_AdminDownloaderSessionIDExtraction(t *testing.T) {
 	tests := []struct {
-		name             string
-		session          *models.Session
+		name              string
+		session           *models.Session
 		expectedSessionID string
-		description      string
+		description       string
 	}{
 		{
 			name: "with_valid_session",
@@ -33,8 +33,8 @@ func TestFND0365_AdminDownloaderSessionIDExtraction(t *testing.T) {
 				"sessionID should be extracted from session.ID",
 		},
 		{
-			name:             "with_nil_session",
-			session:          nil,
+			name:              "with_nil_session",
+			session:           nil,
 			expectedSessionID: "",
 			description: "When getSession() returns nil (e.g., bearer token auth " +
 				"without session cookie), sessionID should default to empty string",
