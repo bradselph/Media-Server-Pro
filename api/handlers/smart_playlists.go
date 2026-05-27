@@ -144,6 +144,11 @@ func matchSmartCondition(item *models.MediaItem, cond SmartCondition) bool {
 			return item.Duration >= durVal
 		case "lte":
 			return item.Duration <= durVal
+		case "eq":
+			// Equality on a float is brittle; accept ±0.5s tolerance so the UI
+			// can offer "duration = 60" without users having to know the value
+			// is stored as a float. Without this, the rule silently matches nothing.
+			return item.Duration >= durVal-0.5 && item.Duration <= durVal+0.5
 		}
 	case "date_added_days":
 		if cond.Op != "lte" || cond.Value == "" {
@@ -161,6 +166,11 @@ func matchSmartCondition(item *models.MediaItem, cond SmartCondition) bool {
 			return int64(item.Views) >= viewVal
 		case "lte":
 			return int64(item.Views) <= viewVal
+		case "eq":
+			// The UI exposes "eq" for every numeric field; without this case the
+			// rule silently matches nothing and the user gets an empty playlist
+			// with no hint that the operator was unsupported.
+			return int64(item.Views) == viewVal
 		}
 	case "is_mature":
 		val := cond.Value == "true" || cond.Value == "1"
