@@ -110,11 +110,16 @@ Implementation notes:
 - **rclone, not davfs2.** rclone with `--vfs-cache-mode off` does true HTTP
   `Range` reads, so seeking streams byte ranges on demand. davfs2 downloads the
   whole file to a local cache before serving — unusable for large video.
-- The mount is **read-only** and lands directly at
-  `$VIDEOS_DIR/$HIDRIVE_LIBRARY_SUBDIR` (default `hidrive/`). A bind/symlink is
-  deliberately avoided — the scanner's `filepath.WalkDir` doesn't descend
-  symlinks, and the local storage backend rejects symlinks that resolve outside
-  the videos root.
+- The mount lands directly at `$VIDEOS_DIR/$HIDRIVE_LIBRARY_SUBDIR` (default
+  `hidrive/`). A bind/symlink is deliberately avoided — the scanner's
+  `filepath.WalkDir` doesn't descend symlinks, and the local storage backend
+  rejects symlinks that resolve outside the videos root.
+- **Read-only vs read-write** (`HIDRIVE_READONLY`, default `true`). Read-only is a
+  pull-only streaming source (no local cache). Set `HIDRIVE_READONLY=false` to
+  mount read-write (`rclone --vfs-cache-mode writes`) so the **downloader can
+  store imported media on HiDrive**: the admin Downloader tab's "Import to
+  library" prompt then lists HiDrive (shown as `videos/hidrive`) alongside
+  Videos/Music/Uploads, and choosing it uploads the file to your HiDrive share.
 - The WebDAV password is shipped to the VPS over `scp`, obscured with
   `rclone obscure`, and stored only in `/root/.config/rclone/rclone.conf`
   (mode `600`). It is **never** written to the app's `.env` — the `HIDRIVE_*`

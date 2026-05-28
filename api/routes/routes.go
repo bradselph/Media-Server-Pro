@@ -955,6 +955,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.DELETE("/downloader/downloads/:filename", h.AdminDownloaderDeleteDownload)
 	adminGrp.GET("/downloader/settings", h.AdminDownloaderSettings)
 	adminGrp.GET("/downloader/importable", h.AdminDownloaderImportable)
+	adminGrp.GET("/downloader/destinations", h.AdminDownloaderDestinations)
 	adminGrp.POST("/downloader/import", h.AdminDownloaderImport)
 
 	// Claude admin assistant routes

@@ -1493,6 +1493,13 @@ export interface ImportResult {
     sourceDeleted?: boolean
 }
 
+export interface ImportDestination {
+    key: string
+    label: string
+    path: string
+    isDefault: boolean
+}
+
 // ── Suggestion Stats ──────────────────────────────────────────────────────────
 
 export interface SuggestionStats {

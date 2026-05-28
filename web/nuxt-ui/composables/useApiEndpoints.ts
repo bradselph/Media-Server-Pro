@@ -43,6 +43,7 @@ import type {
     HLSStats,
     HLSValidationResult,
     ImportableFile,
+    ImportDestination,
     ImportResult,
     IPListEntry,
     LogEntry,
@@ -832,9 +833,11 @@ export function useAdminApi() {
             api.delete<void>(`${base}/downloader/downloads/${encodeURIComponent(filename)}`),
         getDownloaderSettings: () => api.get<DownloaderSettings>(`${base}/downloader/settings`),
         listImportable: () => api.get<ImportableFile[]>(`${base}/downloader/importable`),
-        importFile: (filename: string, deleteSource: boolean, triggerScan: boolean) =>
+        listImportDestinations: () => api.get<ImportDestination[]>(`${base}/downloader/destinations`),
+        importFile: (filename: string, deleteSource: boolean, triggerScan: boolean, destination?: string) =>
             api.post<ImportResult>(`${base}/downloader/import`, {
                 filename,
+                destination: destination ?? '',
                 delete_source: deleteSource,
                 trigger_scan: triggerScan
             }),

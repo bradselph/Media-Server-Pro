@@ -146,10 +146,36 @@ func (m *Module) ListImportable() ([]ImportableFile, error) {
 	return ListImportableFiles(cfg.Downloader.DownloadsDir)
 }
 
-// Import moves a file from the downloader's downloads directory to MSP's
-// import directory and optionally triggers a media library rescan.
-// Returns destination path and whether the source file was deleted.
-func (m *Module) Import(filename string, deleteSource, triggerScan bool) (destPath string, sourceDeleted bool, err error) {
+// defaultImportDir returns the destination used when the caller doesn't pick
+// one: the configured import dir, falling back to the uploads dir.
+func defaultImportDir(cfg *config.Config) string {
+	if cfg.Downloader.ImportDir != "" {
+		return cfg.Downloader.ImportDir
+	}
+	return cfg.Directories.Uploads
+}
+
+// ImportDestinations returns the library locations a download can be imported
+// into (library roots + their sub-directories), with the default flagged.
+func (m *Module) ImportDestinations() []ImportDestination {
+	cfg := m.config.Get()
+	if cfg == nil {
+		return nil
+	}
+	return ListDestinations(
+		cfg.Directories.Videos,
+		cfg.Directories.Music,
+		cfg.Directories.Uploads,
+		defaultImportDir(cfg),
+	)
+}
+
+// Import moves a file from the downloader's downloads directory into a library
+// destination and optionally triggers a media library rescan. An empty (or
+// "default") destination uses the configured import/uploads dir; any other value
+// must match a key from ImportDestinations. Returns the destination path and
+// whether the source file was deleted.
+func (m *Module) Import(filename, destination string, deleteSource, triggerScan bool) (destPath string, sourceDeleted bool, err error) {
 	cfg := m.config.Get()
 	if cfg == nil {
 		return "", false, fmt.Errorf("config not available")
@@ -158,9 +184,20 @@ func (m *Module) Import(filename string, deleteSource, triggerScan bool) (destPa
 		return "", false, fmt.Errorf("downloads_dir not configured")
 	}
 
-	destDir := cfg.Downloader.ImportDir
-	if destDir == "" {
-		destDir = cfg.Directories.Uploads
+	var destDir string
+	if destination == "" || destination == "default" {
+		destDir = defaultImportDir(cfg)
+	} else {
+		destDir, err = ResolveDestination(
+			destination,
+			cfg.Directories.Videos,
+			cfg.Directories.Music,
+			cfg.Directories.Uploads,
+			defaultImportDir(cfg),
+		)
+		if err != nil {
+			return "", false, err
+		}
 	}
 	if destDir == "" {
 		return "", false, fmt.Errorf("no import destination configured (set downloader.import_dir or directories.uploads)")

@@ -2,9 +2,99 @@ package downloader
 
 import (
 	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
+
+// ---------------------------------------------------------------------------
+// Import destinations
+// ---------------------------------------------------------------------------
+
+func TestListDestinations_RootsAndSubdirs(t *testing.T) {
+	base := t.TempDir()
+	videos := filepath.Join(base, "videos")
+	music := filepath.Join(base, "music")
+	uploads := filepath.Join(base, "uploads")
+	for _, d := range []string{videos, music, uploads} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A sub-directory under videos stands in for a grafted HiDrive mount.
+	hidrive := filepath.Join(videos, "hidrive")
+	if err := os.MkdirAll(hidrive, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A file (not a dir) under videos must NOT become a destination.
+	if err := os.WriteFile(filepath.Join(videos, "loose.mp4"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dests := ListDestinations(videos, music, uploads, uploads)
+
+	byKey := map[string]ImportDestination{}
+	for _, d := range dests {
+		byKey[d.Key] = d
+	}
+	for _, want := range []string{"videos", "music", "uploads", "videos/hidrive"} {
+		if _, ok := byKey[want]; !ok {
+			t.Errorf("expected destination key %q in %+v", want, dests)
+		}
+	}
+	if byKey["videos/hidrive"].Path != hidrive {
+		t.Errorf("videos/hidrive path = %q, want %q", byKey["videos/hidrive"].Path, hidrive)
+	}
+	if _, ok := byKey["videos/loose.mp4"]; ok {
+		t.Error("a regular file was wrongly listed as a destination")
+	}
+	if !byKey["uploads"].IsDefault {
+		t.Error("uploads should be flagged default when defaultDir == uploads")
+	}
+}
+
+func TestListDestinations_SkipsEmptyRoots(t *testing.T) {
+	base := t.TempDir()
+	videos := filepath.Join(base, "videos")
+	if err := os.MkdirAll(videos, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dests := ListDestinations(videos, "", "", "")
+	for _, d := range dests {
+		if d.Key == "music" || d.Key == "uploads" {
+			t.Errorf("empty root should be skipped, got %q", d.Key)
+		}
+	}
+}
+
+func TestResolveDestination(t *testing.T) {
+	base := t.TempDir()
+	videos := filepath.Join(base, "videos")
+	uploads := filepath.Join(base, "uploads")
+	hidrive := filepath.Join(videos, "hidrive")
+	for _, d := range []string{uploads, hidrive} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := ResolveDestination("videos/hidrive", videos, "", uploads, uploads)
+	if err != nil {
+		t.Fatalf("resolve videos/hidrive: %v", err)
+	}
+	if got != hidrive {
+		t.Errorf("resolved path = %q, want %q", got, hidrive)
+	}
+
+	// Unknown keys and path-traversal attempts must be rejected — only keys the
+	// enumerator produced are accepted, so these can never reach the filesystem.
+	for _, bad := range []string{"videos/../../etc", "nope", "../secrets", "videos/missing"} {
+		if _, err := ResolveDestination(bad, videos, "", uploads, uploads); err == nil {
+			t.Errorf("expected error resolving %q, got nil", bad)
+		}
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Module basics

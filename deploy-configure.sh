@@ -97,6 +97,18 @@ done
 
 # ── File helpers ──────────────────────────────────────────────────────
 
+# strip_control_chars VAL → echoes VAL with terminal escape sequences and other
+# control characters removed. A plain `read` (no readline) captures arrow keys
+# as raw bytes — e.g. pressing → while typing a URL stores https://…\x1b[C\x1b[D…
+# which downstream parsers (rclone, curl) reject with "invalid control
+# character". Strips ANSI CSI/SS3 sequences first (so the trailing [C/[D letters
+# go with their ESC), then any remaining control bytes.
+strip_control_chars() {
+  local esc
+  esc=$(printf '\033')
+  printf '%s' "$1" | sed -E "s/${esc}(\[|O)[0-9;?]*[A-Za-z~]//g" | tr -d '[:cntrl:]'
+}
+
 # read_env_value FILE KEY → echoes the current uncommented value (or
 # empty string). Considers only lines matching `^[[:space:]]*KEY=`;
 # strips surrounding double quotes.
@@ -279,6 +291,8 @@ prompt_knob() {
     read -r reply </dev/tty || true
   fi
   reply="${reply//$'\r'/}"
+  # Drop arrow-key/escape bytes a non-readline `read` captures during editing.
+  reply="$(strip_control_chars "$reply")"
 
   if [[ -z "$reply" ]]; then
     # SAFE-BY-DEFAULT: pressing Enter on a never-seen knob marks it as

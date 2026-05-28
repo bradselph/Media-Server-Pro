@@ -20,6 +20,108 @@ type ImportableFile struct {
 	IsAudio  bool   `json:"isAudio"`
 }
 
+// ImportDestination is a library location a downloaded file can be moved into.
+// Key is a stable identifier the import endpoint validates against this same
+// enumerated set, so a caller can never write to an arbitrary path.
+type ImportDestination struct {
+	Key       string `json:"key"`   // "videos" | "music" | "uploads" | "<root>/<subdir>"
+	Label     string `json:"label"` // human-friendly, e.g. "Videos / hidrive"
+	Path      string `json:"path"`  // absolute destination directory
+	IsDefault bool   `json:"isDefault"`
+}
+
+// rootLabels maps a root key to its display name.
+var rootLabels = map[string]string{
+	"videos":  "Videos",
+	"music":   "Music",
+	"uploads": "Uploads",
+}
+
+// ListDestinations enumerates valid import targets: each configured library root
+// (videos/music/uploads) plus its immediate sub-directories. Sub-dirs let an
+// operator drop a download into an existing folder — including a HiDrive WebDAV
+// mount grafted under the videos root (which appears as e.g. "videos/hidrive").
+// Roots with an empty configured path are skipped. defaultDir, when it matches a
+// listed path, flags that entry as the pre-selected default; if it is set but
+// matches nothing, it is prepended as an explicit "default" entry.
+func ListDestinations(videosDir, musicDir, uploadsDir, defaultDir string) []ImportDestination {
+	roots := []struct{ key, dir string }{
+		{"videos", videosDir},
+		{"music", musicDir},
+		{"uploads", uploadsDir},
+	}
+
+	var dests []ImportDestination
+	for _, r := range roots {
+		if r.dir == "" {
+			continue
+		}
+		dests = append(dests, ImportDestination{Key: r.key, Label: rootLabels[r.key], Path: r.dir})
+
+		entries, err := os.ReadDir(r.dir)
+		if err != nil {
+			continue // root not yet created or unreadable — just offer the root
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			dests = append(dests, ImportDestination{
+				Key:   r.key + "/" + name,
+				Label: rootLabels[r.key] + " / " + name,
+				Path:  filepath.Join(r.dir, name),
+			})
+		}
+	}
+
+	// Flag the default. defaultDir is an absolute path (Downloader.ImportDir or
+	// Directories.Uploads); match it against the enumerated paths.
+	if defaultDir != "" {
+		matched := false
+		for i := range dests {
+			if sameDir(dests[i].Path, defaultDir) {
+				dests[i].IsDefault = true
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			dests = append([]ImportDestination{{
+				Key: "default", Label: "Default", Path: defaultDir, IsDefault: true,
+			}}, dests...)
+		}
+	}
+
+	return dests
+}
+
+// ResolveDestination validates key against the enumerated destination set and
+// returns its absolute directory. Because the key must exactly match an entry
+// ListDestinations produced, no path-traversal input can reach the filesystem.
+func ResolveDestination(key, videosDir, musicDir, uploadsDir, defaultDir string) (string, error) {
+	for _, d := range ListDestinations(videosDir, musicDir, uploadsDir, defaultDir) {
+		if d.Key == key {
+			return d.Path, nil
+		}
+	}
+	return "", fmt.Errorf("unknown or unavailable destination %q", key)
+}
+
+// sameDir reports whether two directory paths refer to the same location after
+// cleaning. Best-effort: falls back to a cleaned-string compare when Abs fails.
+func sameDir(a, b string) bool {
+	ca, err := filepath.Abs(a)
+	if err != nil {
+		ca = filepath.Clean(a)
+	}
+	cb, err := filepath.Abs(b)
+	if err != nil {
+		cb = filepath.Clean(b)
+	}
+	return ca == cb
+}
+
 // ListImportableFiles scans the downloads directory and returns files that
 // are completed and ready for import. Applies the same skip logic as
 // dev-tools/download-move.sh.

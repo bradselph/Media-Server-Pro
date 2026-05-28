@@ -103,6 +103,7 @@ KNOB_ORDER=(
   HIDRIVE_PASS
   HIDRIVE_REMOTE_PATH
   HIDRIVE_LIBRARY_SUBDIR
+  HIDRIVE_READONLY
   # ── Claude assistant (admin-only) ────────────────────────────────
   FEATURE_CLAUDE
   ANTHROPIC_API_KEY
@@ -425,6 +426,11 @@ KNOB_DESCRIPTION[HIDRIVE_LIBRARY_SUBDIR]="Folder name under VIDEOS_DIR where the
 KNOB_DEFAULT[HIDRIVE_LIBRARY_SUBDIR]="hidrive"
 KNOB_SCOPE[HIDRIVE_LIBRARY_SUBDIR]="vps"
 KNOB_SECTION[HIDRIVE_LIBRARY_SUBDIR]="HiDrive mount"
+
+KNOB_DESCRIPTION[HIDRIVE_READONLY]="Mount HiDrive read-only (true | false). true = a pull-only source (safest, streaming via Range reads). false = read-write so the downloader can store imported media on HiDrive (rclone --vfs-cache-mode writes; uploads happen on import)."
+KNOB_DEFAULT[HIDRIVE_READONLY]="true"
+KNOB_SCOPE[HIDRIVE_READONLY]="vps"
+KNOB_SECTION[HIDRIVE_READONLY]="HiDrive mount"
 
 # ── Claude assistant (admin-only) ────────────────────────────────────
 KNOB_DESCRIPTION[FEATURE_CLAUDE]="Enable the Claude admin assistant module (true | false). Admin-only."

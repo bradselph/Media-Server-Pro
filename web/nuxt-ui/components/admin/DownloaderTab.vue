@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DownloaderJob, ImportableFile, DownloaderHealth, DownloaderSettings, DownloaderDetectResult, DownloaderProgress, DownloaderStreamInfo } from '~/types/api'
+import type { DownloaderJob, ImportableFile, ImportDestination, DownloaderHealth, DownloaderSettings, DownloaderDetectResult, DownloaderProgress, DownloaderStreamInfo } from '~/types/api'
 import { formatBytes, formatUptime } from '~/utils/format'
 import { asRecord } from '~/utils/typeGuards'
 
@@ -123,6 +123,7 @@ onMounted(() => {
   loadDownloadConfig()
   load()
   loadImportable()
+  loadDestinations()
   startAutoRefresh()
 })
 
@@ -261,6 +262,28 @@ const importingFile = ref<string | null>(null)
 const deleteSource = ref(true)
 const triggerScan = ref(true)
 
+// ── Import destination prompt ───────────────────────────────────────────────
+const destinations = ref<ImportDestination[]>([])
+const selectedDestKey = ref<string>('')
+const importModalOpen = ref(false)
+const pendingFile = ref<ImportableFile | null>(null)
+
+const destinationItems = computed(() =>
+  destinations.value.map(d => ({ label: d.label, value: d.key }))
+)
+
+async function loadDestinations() {
+  try {
+    const result = await adminApi.listImportDestinations()
+    destinations.value = result ?? []
+    // Pre-select the server-flagged default (falls back to the first entry).
+    const def = destinations.value.find(d => d.isDefault) ?? destinations.value[0]
+    if (def && !selectedDestKey.value) selectedDestKey.value = def.key
+  } catch {
+    destinations.value = []
+  }
+}
+
 async function loadImportable() {
   try {
     const result = await adminApi.listImportable()
@@ -271,10 +294,24 @@ async function loadImportable() {
   }
 }
 
-async function importFile(filename: string) {
-  importingFile.value = filename
+// Open the per-file prompt so the operator picks where the download is stored.
+function openImport(f: ImportableFile) {
+  pendingFile.value = f
+  if (!destinations.value.length) loadDestinations()
+  else if (!selectedDestKey.value) {
+    const def = destinations.value.find(d => d.isDefault) ?? destinations.value[0]
+    if (def) selectedDestKey.value = def.key
+  }
+  importModalOpen.value = true
+}
+
+async function confirmImport() {
+  const f = pendingFile.value
+  if (!f) return
+  importModalOpen.value = false
+  importingFile.value = f.name
   try {
-    const result = await adminApi.importFile(filename, deleteSource.value, triggerScan.value)
+    const result = await adminApi.importFile(f.name, deleteSource.value, triggerScan.value, selectedDestKey.value)
     const deleteNote = result?.sourceDeleted === false ? ' (source file could not be removed)' : ''
     toast.add({ title: `Imported to ${result?.destination ?? 'library'}${deleteNote}`, color: 'success', icon: 'i-lucide-check' })
     await Promise.allSettled([load(), loadImportable()])
@@ -282,6 +319,7 @@ async function importFile(filename: string) {
     toast.add({ title: e instanceof Error ? e.message : 'Import failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     importingFile.value = null
+    pendingFile.value = null
   }
 }
 
@@ -559,11 +597,60 @@ function progressBarColor(status: DownloaderProgress['status']) {
             color="primary"
             :loading="importingFile === f.name"
             :disabled="importingFile !== null"
-            @click="importFile(f.name)"
+            @click="openImport(f)"
           />
         </div>
       </div>
     </UCard>
+
+    <!-- Import destination prompt -->
+    <UModal v-model:open="importModalOpen" :ui="{ content: 'max-w-md' }">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="font-semibold flex items-center gap-2">
+              <UIcon name="i-lucide-import" class="size-4" />
+              Import to library
+            </div>
+          </template>
+          <div class="space-y-3">
+            <p v-if="pendingFile" class="text-sm truncate" :title="pendingFile.name">
+              <span class="text-muted">File:</span> {{ pendingFile.name }}
+            </p>
+            <UFormField label="Destination" hint="Where to store this file in the library">
+              <USelect
+                v-model="selectedDestKey"
+                :items="destinationItems"
+                placeholder="Select a destination"
+                class="w-full"
+              />
+            </UFormField>
+            <div class="flex items-center gap-4 text-sm">
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <UCheckbox v-model="deleteSource" />
+                <span>Delete source</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <UCheckbox v-model="triggerScan" />
+                <span>Scan library</span>
+              </label>
+            </div>
+          </div>
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" color="neutral" label="Cancel" @click="importModalOpen = false" />
+              <UButton
+                color="primary"
+                label="Import"
+                icon="i-lucide-check"
+                :disabled="!selectedDestKey"
+                @click="confirmImport"
+              />
+            </div>
+          </template>
+        </UCard>
+      </template>
+    </UModal>
 
     <!-- Downloaded files list (server files) -->
     <UCard>

@@ -344,6 +344,17 @@ run_or_dry() {
   fi
 }
 
+# strip_control_chars VAL — echo VAL with terminal escape sequences (ANSI
+# CSI/SS3, e.g. the arrow-key bytes \x1b[C a non-readline `read` captures during
+# editing) and any other control characters removed. Defends against a polluted
+# .deploy.env value (e.g. a URL stored as https://…\x1b[C\x1b[D…) producing a
+# broken rclone.conf — rclone rejects it with "invalid control character".
+strip_control_chars() {
+  local esc
+  esc=$(printf '\033')
+  printf '%s' "$1" | sed -E "s/${esc}(\[|O)[0-9;?]*[A-Za-z~]//g" | tr -d '[:cntrl:]'
+}
+
 # Persist a key=value into the local .deploy.env
 save_to_deploy_env() {
   local key="$1" val="$2"
@@ -726,9 +737,24 @@ fi
 # does true HTTP Range reads (--vfs-cache-mode off) rather than downloading whole
 # files to a local cache — that's what makes streaming/seeking off WebDAV viable.
 if $SETUP_HIDRIVE; then
-  HIDRIVE_URL="${HIDRIVE_WEBDAV_URL:-https://webdav.hidrive.ionos.com/}"
-  HIDRIVE_REMOTE="${HIDRIVE_REMOTE_PATH:-}"
-  HIDRIVE_SUBDIR="${HIDRIVE_LIBRARY_SUBDIR:-hidrive}"
+  # Sanitize every value — a .deploy.env written before the input-stripping fix
+  # may carry arrow-key escape bytes that would corrupt rclone.conf/the URL.
+  HIDRIVE_URL="$(strip_control_chars "${HIDRIVE_WEBDAV_URL:-https://webdav.hidrive.ionos.com/}")"
+  HIDRIVE_REMOTE="$(strip_control_chars "${HIDRIVE_REMOTE_PATH:-}")"
+  HIDRIVE_SUBDIR="$(strip_control_chars "${HIDRIVE_LIBRARY_SUBDIR:-hidrive}")"
+  HIDRIVE_USER="$(strip_control_chars "${HIDRIVE_USER:-}")"
+
+  # Mount mode: read-only (default — a pull-only streaming source, no local cache)
+  # vs read-write so the downloader can store imported media on HiDrive. Writes are
+  # staged in rclone's vfs cache then uploaded, so --vfs-cache-mode writes is
+  # required; "off" only supports read-only streaming.
+  if [[ "${HIDRIVE_READONLY:-true}" == "false" ]]; then
+    HIDRIVE_MOUNT_FLAGS="--vfs-cache-mode writes"
+    HIDRIVE_MODE_LABEL="read-write (downloader can store here)"
+  else
+    HIDRIVE_MOUNT_FLAGS="--read-only --vfs-cache-mode off"
+    HIDRIVE_MODE_LABEL="read-only (streaming source)"
+  fi
 
   if [[ "${HIDRIVE_ENABLED:-false}" != "true" ]]; then
     # Teardown path — HIDRIVE_ENABLED is off, so make the flag reversible:
@@ -755,13 +781,14 @@ if $SETUP_HIDRIVE; then
   info "  Endpoint : $HIDRIVE_URL"
   info "  Remote   : ${HIDRIVE_REMOTE:-/ (account root)}"
   info "  Graft    : \$VIDEOS_DIR/$HIDRIVE_SUBDIR"
+  info "  Mode     : $HIDRIVE_MODE_LABEL"
 
   # Ship the password as a temp file over scp (never on the command line, where
   # it would land in the remote shell's argv and journald). The remote side
   # obscures it with `rclone obscure` and shreds the temp file immediately.
   if ! $DRY_RUN; then
     HIDRIVE_PASS_FILE="$(mktemp)"
-    printf '%s' "$HIDRIVE_PASS" > "$HIDRIVE_PASS_FILE"
+    printf '%s' "$(strip_control_chars "$HIDRIVE_PASS")" > "$HIDRIVE_PASS_FILE"
     scp "${SCP_OPTS[@]}" "$HIDRIVE_PASS_FILE" "$REMOTE_USER@$REMOTE_HOST:/tmp/msp-hidrive-pass" >/dev/null
     rm -f "$HIDRIVE_PASS_FILE"
   fi
@@ -817,8 +844,9 @@ RCLONE_CONF
     sudo chown \"\$MS_UID:\$MS_GID\" \"\$MOUNT_DIR\" 2>/dev/null || true
 
     # 4. systemd unit — reboot-persistent, auto-restart. Single-line ExecStart
-    #    (no backslash continuations) to stay heredoc-safe. --vfs-cache-mode off
-    #    = pure Range streaming; --read-only because this is a media source.
+    #    (no backslash continuations) to stay heredoc-safe. Mount flags come from
+    #    HIDRIVE_MOUNT_FLAGS: read-only+cache off for a streaming source, or
+    #    --vfs-cache-mode writes when HiDrive is a writable download target.
     sudo tee /etc/systemd/system/hidrive-media.service >/dev/null <<UNIT
 [Unit]
 Description=rclone WebDAV mount (IONOS HiDrive) for Media Server Pro
@@ -827,7 +855,7 @@ Wants=network-online.target
 
 [Service]
 Type=notify
-ExecStart=/usr/bin/rclone mount hidrive:$HIDRIVE_REMOTE \"\$MOUNT_DIR\" --config /root/.config/rclone/rclone.conf --read-only --vfs-cache-mode off --dir-cache-time 12h --allow-other --uid \$MS_UID --gid \$MS_GID --umask 022 --log-level INFO
+ExecStart=/usr/bin/rclone mount hidrive:$HIDRIVE_REMOTE \"\$MOUNT_DIR\" --config /root/.config/rclone/rclone.conf $HIDRIVE_MOUNT_FLAGS --dir-cache-time 12h --allow-other --uid \$MS_UID --gid \$MS_GID --umask 022 --log-level INFO
 ExecStop=/bin/fusermount -uz \"\$MOUNT_DIR\"
 Restart=on-failure
 RestartSec=10
