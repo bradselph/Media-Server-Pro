@@ -96,6 +96,13 @@ KNOB_ORDER=(
   DOWNLOADER_URL
   DOWNLOADER_DOWNLOADS_DIR
   DOWNLOADER_INTERNAL_TOKEN
+  # ── HiDrive WebDAV cold-tier mount ───────────────────────────────
+  HIDRIVE_ENABLED
+  HIDRIVE_WEBDAV_URL
+  HIDRIVE_USER
+  HIDRIVE_PASS
+  HIDRIVE_REMOTE_PATH
+  HIDRIVE_LIBRARY_SUBDIR
   # ── Claude assistant (admin-only) ────────────────────────────────
   FEATURE_CLAUDE
   ANTHROPIC_API_KEY
@@ -379,6 +386,45 @@ KNOB_DEFAULT[DOWNLOADER_INTERNAL_TOKEN]=""
 KNOB_SCOPE[DOWNLOADER_INTERNAL_TOKEN]="runtime"
 KNOB_SECTION[DOWNLOADER_INTERNAL_TOKEN]="Downloader"
 KNOB_SENSITIVE[DOWNLOADER_INTERNAL_TOKEN]="true"
+
+# ── HiDrive WebDAV cold-tier mount ───────────────────────────────────
+# These knobs drive `./deploy.sh --setup-hidrive`, which mounts an IONOS
+# HiDrive WebDAV share read-only via rclone + a systemd unit and grafts it
+# into the video library as a subfolder. Scope is "vps": the values are
+# consumed by deploy.sh to perform the on-VPS mount and live only in the
+# local .deploy.env — they are NEVER forwarded into the app's $DEPLOY_DIR/.env
+# (the WebDAV password has no business in the server's runtime env; rclone
+# stores it obscured in /root/.config/rclone/rclone.conf instead).
+KNOB_DESCRIPTION[HIDRIVE_ENABLED]="Mount an IONOS HiDrive WebDAV share as a read-only video source via ./deploy.sh --setup-hidrive (true | false). When false, --setup-hidrive tears any existing mount down."
+KNOB_DEFAULT[HIDRIVE_ENABLED]="false"
+KNOB_SCOPE[HIDRIVE_ENABLED]="vps"
+KNOB_SECTION[HIDRIVE_ENABLED]="HiDrive mount"
+
+KNOB_DESCRIPTION[HIDRIVE_WEBDAV_URL]="HiDrive WebDAV endpoint (SSL). For IONOS HiDrive this is https://webdav.hidrive.ionos.com/."
+KNOB_DEFAULT[HIDRIVE_WEBDAV_URL]="https://webdav.hidrive.ionos.com/"
+KNOB_SCOPE[HIDRIVE_WEBDAV_URL]="vps"
+KNOB_SECTION[HIDRIVE_WEBDAV_URL]="HiDrive mount"
+
+KNOB_DESCRIPTION[HIDRIVE_USER]="HiDrive account/protocol username for WebDAV basic auth."
+KNOB_DEFAULT[HIDRIVE_USER]=""
+KNOB_SCOPE[HIDRIVE_USER]="vps"
+KNOB_SECTION[HIDRIVE_USER]="HiDrive mount"
+
+KNOB_DESCRIPTION[HIDRIVE_PASS]="HiDrive WebDAV password (or per-protocol password if you use HiDrive 2FA). Shipped to the VPS over scp, obscured with 'rclone obscure', and stored only in rclone.conf — never in the app .env."
+KNOB_DEFAULT[HIDRIVE_PASS]=""
+KNOB_SCOPE[HIDRIVE_PASS]="vps"
+KNOB_SECTION[HIDRIVE_PASS]="HiDrive mount"
+KNOB_SENSITIVE[HIDRIVE_PASS]="true"
+
+KNOB_DESCRIPTION[HIDRIVE_REMOTE_PATH]="Sub-path inside the HiDrive share to expose (e.g. /users/me/media). Empty = the whole account root."
+KNOB_DEFAULT[HIDRIVE_REMOTE_PATH]=""
+KNOB_SCOPE[HIDRIVE_REMOTE_PATH]="vps"
+KNOB_SECTION[HIDRIVE_REMOTE_PATH]="HiDrive mount"
+
+KNOB_DESCRIPTION[HIDRIVE_LIBRARY_SUBDIR]="Folder name under VIDEOS_DIR where the mount is grafted; the scanner indexes it as a subfolder. rclone mounts straight here (no symlink — the scanner's WalkDir does not follow symlinks, and the storage backend rejects symlinks leaving the videos root)."
+KNOB_DEFAULT[HIDRIVE_LIBRARY_SUBDIR]="hidrive"
+KNOB_SCOPE[HIDRIVE_LIBRARY_SUBDIR]="vps"
+KNOB_SECTION[HIDRIVE_LIBRARY_SUBDIR]="HiDrive mount"
 
 # ── Claude assistant (admin-only) ────────────────────────────────────
 KNOB_DESCRIPTION[FEATURE_CLAUDE]="Enable the Claude admin assistant module (true | false). Admin-only."
