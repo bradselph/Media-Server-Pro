@@ -108,6 +108,30 @@ func ResolveDestination(key, videosDir, musicDir, uploadsDir, defaultDir string)
 	return "", fmt.Errorf("unknown or unavailable destination %q", key)
 }
 
+// sanitizeSubfolder validates an optional new sub-folder name for an import. It
+// must be a single path segment — no separators, no "."/".."/control bytes — so
+// it can never escape the chosen destination root. An empty/whitespace input
+// returns ("", nil), meaning "no sub-folder". The cleaned name is returned for
+// the caller to join onto the destination directory.
+func sanitizeSubfolder(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", nil
+	}
+	if strings.ContainsAny(name, `/\`) || name != filepath.Base(name) {
+		return "", fmt.Errorf("sub-folder must be a single name, not a path")
+	}
+	if name == "." || name == ".." {
+		return "", fmt.Errorf("invalid sub-folder name")
+	}
+	for _, r := range name {
+		if r < 0x20 {
+			return "", fmt.Errorf("sub-folder name contains control characters")
+		}
+	}
+	return name, nil
+}
+
 // sameDir reports whether two directory paths refer to the same location after
 // cleaning. Best-effort: falls back to a cleaned-string compare when Abs fails.
 func sameDir(a, b string) bool {

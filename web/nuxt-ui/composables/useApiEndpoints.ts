@@ -834,10 +834,11 @@ export function useAdminApi() {
         getDownloaderSettings: () => api.get<DownloaderSettings>(`${base}/downloader/settings`),
         listImportable: () => api.get<ImportableFile[]>(`${base}/downloader/importable`),
         listImportDestinations: () => api.get<ImportDestination[]>(`${base}/downloader/destinations`),
-        importFile: (filename: string, deleteSource: boolean, triggerScan: boolean, destination?: string) =>
+        importFile: (filename: string, deleteSource: boolean, triggerScan: boolean, destination?: string, subfolder?: string) =>
             api.post<ImportResult>(`${base}/downloader/import`, {
                 filename,
                 destination: destination ?? '',
+                subfolder: subfolder ?? '',
                 delete_source: deleteSource,
                 trigger_scan: triggerScan
             }),

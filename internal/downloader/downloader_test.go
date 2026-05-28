@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -92,6 +93,35 @@ func TestResolveDestination(t *testing.T) {
 	for _, bad := range []string{"videos/../../etc", "nope", "../secrets", "videos/missing"} {
 		if _, err := ResolveDestination(bad, videos, "", uploads, uploads); err == nil {
 			t.Errorf("expected error resolving %q, got nil", bad)
+		}
+	}
+}
+
+func TestSanitizeSubfolder(t *testing.T) {
+	// Empty / whitespace → no sub-folder, no error.
+	for _, empty := range []string{"", "   ", "\t"} {
+		got, err := sanitizeSubfolder(empty)
+		if err != nil || got != "" {
+			t.Errorf("sanitizeSubfolder(%q) = (%q, %v), want (\"\", nil)", empty, got, err)
+		}
+	}
+
+	// Valid single names are trimmed and returned unchanged.
+	for _, ok := range []string{"New Series", "2024", "season_1", " trimmed "} {
+		got, err := sanitizeSubfolder(ok)
+		if err != nil {
+			t.Errorf("sanitizeSubfolder(%q) unexpected error: %v", ok, err)
+		}
+		if want := filepath.Base(strings.TrimSpace(ok)); got != want {
+			t.Errorf("sanitizeSubfolder(%q) = %q, want %q", ok, got, want)
+		}
+	}
+
+	// Anything with separators, traversal, or control bytes must be rejected so
+	// the name can never escape the chosen destination root.
+	for _, bad := range []string{"a/b", `a\b`, "..", ".", "../etc", "sub/../..", "bad\x00name", "line\nbreak"} {
+		if _, err := sanitizeSubfolder(bad); err == nil {
+			t.Errorf("sanitizeSubfolder(%q) = nil error, want rejection", bad)
 		}
 	}
 }

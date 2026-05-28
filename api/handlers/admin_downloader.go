@@ -332,6 +332,7 @@ func (h *Handler) AdminDownloaderImport(c *gin.Context) {
 	var req struct {
 		Filename     string `json:"filename" binding:"required"`
 		Destination  string `json:"destination"`
+		Subfolder    string `json:"subfolder"`
 		DeleteSource bool   `json:"delete_source"`
 		TriggerScan  bool   `json:"trigger_scan"`
 	}
@@ -339,7 +340,7 @@ func (h *Handler) AdminDownloaderImport(c *gin.Context) {
 		return
 	}
 
-	destPath, sourceDeleted, err := h.downloader.Import(req.Filename, req.Destination, req.DeleteSource, req.TriggerScan)
+	destPath, sourceDeleted, err := h.downloader.Import(req.Filename, req.Destination, req.Subfolder, req.DeleteSource, req.TriggerScan)
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, "Import failed: "+err.Error())
 		return

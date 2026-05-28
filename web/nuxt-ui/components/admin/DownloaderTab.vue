@@ -265,6 +265,7 @@ const triggerScan = ref(true)
 // ── Import destination prompt ───────────────────────────────────────────────
 const destinations = ref<ImportDestination[]>([])
 const selectedDestKey = ref<string>('')
+const newSubfolder = ref<string>('')
 const importModalOpen = ref(false)
 const pendingFile = ref<ImportableFile | null>(null)
 
@@ -311,9 +312,10 @@ async function confirmImport() {
   importModalOpen.value = false
   importingFile.value = f.name
   try {
-    const result = await adminApi.importFile(f.name, deleteSource.value, triggerScan.value, selectedDestKey.value)
+    const result = await adminApi.importFile(f.name, deleteSource.value, triggerScan.value, selectedDestKey.value, newSubfolder.value.trim())
     const deleteNote = result?.sourceDeleted === false ? ' (source file could not be removed)' : ''
     toast.add({ title: `Imported to ${result?.destination ?? 'library'}${deleteNote}`, color: 'success', icon: 'i-lucide-check' })
+    newSubfolder.value = ''
     await Promise.allSettled([load(), loadImportable()])
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Import failed', color: 'error', icon: 'i-lucide-x' })
@@ -622,6 +624,13 @@ function progressBarColor(status: DownloaderProgress['status']) {
                 v-model="selectedDestKey"
                 :items="destinationItems"
                 placeholder="Select a destination"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="New sub-folder" hint="Optional — creates a folder under the destination">
+              <UInput
+                v-model="newSubfolder"
+                placeholder="e.g. New Series"
                 class="w-full"
               />
             </UFormField>

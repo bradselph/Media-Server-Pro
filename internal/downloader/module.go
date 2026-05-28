@@ -7,6 +7,7 @@ package downloader
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -173,9 +174,10 @@ func (m *Module) ImportDestinations() []ImportDestination {
 // Import moves a file from the downloader's downloads directory into a library
 // destination and optionally triggers a media library rescan. An empty (or
 // "default") destination uses the configured import/uploads dir; any other value
-// must match a key from ImportDestinations. Returns the destination path and
-// whether the source file was deleted.
-func (m *Module) Import(filename, destination string, deleteSource, triggerScan bool) (destPath string, sourceDeleted bool, err error) {
+// must match a key from ImportDestinations. An optional subfolder (a single safe
+// name) creates/uses a new directory under the chosen destination. Returns the
+// destination path and whether the source file was deleted.
+func (m *Module) Import(filename, destination, subfolder string, deleteSource, triggerScan bool) (destPath string, sourceDeleted bool, err error) {
 	cfg := m.config.Get()
 	if cfg == nil {
 		return "", false, fmt.Errorf("config not available")
@@ -201,6 +203,16 @@ func (m *Module) Import(filename, destination string, deleteSource, triggerScan 
 	}
 	if destDir == "" {
 		return "", false, fmt.Errorf("no import destination configured (set downloader.import_dir or directories.uploads)")
+	}
+
+	// Optional new sub-folder under the chosen destination. ImportFile MkdirAlls
+	// the final dir, so a not-yet-existing sub-folder is created on import.
+	cleanSub, err := sanitizeSubfolder(subfolder)
+	if err != nil {
+		return "", false, err
+	}
+	if cleanSub != "" {
+		destDir = filepath.Join(destDir, cleanSub)
 	}
 
 	destPath, sourceDeleted, err = ImportFile(cfg.Downloader.DownloadsDir, destDir, filename, deleteSource)
