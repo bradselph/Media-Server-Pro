@@ -493,7 +493,9 @@ if $SETUP; then
     fi
 
     # ── Set ownership ────────────────────────────────────────────────────────
-    sudo chown -R mediaserver:mediaserver '$DEPLOY_DIR'
+    # -xdev keeps chown on the deploy filesystem; never descend into rclone/FUSE
+    # mounts (HiDrive), which reject chown with EROFS even in read-write mode.
+    sudo find '$DEPLOY_DIR' -xdev -exec chown -h mediaserver:mediaserver {} + 2>/dev/null || true
 
     # ── Install systemd service ──────────────────────────────────────────────
     if [ -f '$DEPLOY_DIR/systemd/media-server.service' ]; then
@@ -1211,7 +1213,14 @@ run_or_dry remote "
   # Secure .env file permissions
   [ -f '$DEPLOY_DIR/.env' ] && sudo chmod 600 '$DEPLOY_DIR/.env'
 
-  sudo chown -R mediaserver:mediaserver '$DEPLOY_DIR'
+  # Own the deploy tree — but stay on this filesystem (-xdev) so we never
+  # descend into the rclone/FUSE media mounts (e.g. HiDrive grafted under
+  # videos/). Those reject chown with EROFS (\"Read-only file system\") even in
+  # read-write VFS mode: WebDAV has no POSIX ownership and rclone already
+  # presents files as the --uid/--gid owner. A blanket 'chown -R' would both
+  # abort the deploy (last cmd, non-zero exit + outer set -e) and crawl every
+  # remote file. The EROFS on the mount-point dir node itself is harmless.
+  sudo find '$DEPLOY_DIR' -xdev -exec chown -h mediaserver:mediaserver {} + 2>/dev/null || true
 "
 
 # ── Start & health check ─────────────────────────────────────────────────────
