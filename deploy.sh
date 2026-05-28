@@ -8,6 +8,12 @@
 #   ./deploy.sh --dev                   # shorthand for --branch development
 #   ./deploy.sh --setup                 # first-time VPS provisioning
 #   ./deploy.sh --setup-receiver        # configure receiver API keys for federated peers
+#   ./deploy.sh --setup-hidrive         # mount an IONOS HiDrive WebDAV share as
+#                                       # a read-only video source (rclone +
+#                                       # systemd unit). Reads the HIDRIVE_*
+#                                       # knobs from .deploy.env. Re-run after
+#                                       # toggling HIDRIVE_ENABLED to add or
+#                                       # tear down the mount.
 #   ./deploy.sh --fix-env               # patch .env on VPS (incl. optional: receiver, Hugging Face)
 #   ./deploy.sh --rollback              # restore server.bak on VPS
 #   ./deploy.sh --dry-run               # preview commands without executing
@@ -134,6 +140,7 @@ FIX_ENV=false
 ROLLBACK=false
 SETUP=false
 SETUP_RECEIVER=false
+SETUP_HIDRIVE=false
 CONFIGURE_ONLY=false
 REVIEW_ONLY=false
 # DOCKER_MODE swaps the build+systemd backend for `docker compose up` against
@@ -164,6 +171,7 @@ while [[ $# -gt 0 ]]; do
     --rollback)        ROLLBACK=true         ; shift ;;
     --setup)           SETUP=true            ; shift ;;
     --setup-receiver)  SETUP_RECEIVER=true   ; shift ;;
+    --setup-hidrive)   SETUP_HIDRIVE=true    ; shift ;;
     --branch)          BRANCH="$2"           ; shift 2 ;;
     --dev)             BRANCH="development"  ; shift ;;
     --configure)       CONFIGURE_ONLY=true   ; shift ;;
@@ -711,6 +719,145 @@ if $SETUP_RECEIVER; then
   exit 0
 fi
 
+# ── HiDrive WebDAV mount setup ───────────────────────────────────────────────
+# Mounts an IONOS HiDrive WebDAV share read-only via rclone + a systemd unit,
+# straight into the video library at $VIDEOS_DIR/<HIDRIVE_LIBRARY_SUBDIR> so the
+# scanner indexes it as a subfolder. rclone is used instead of davfs2 because it
+# does true HTTP Range reads (--vfs-cache-mode off) rather than downloading whole
+# files to a local cache — that's what makes streaming/seeking off WebDAV viable.
+if $SETUP_HIDRIVE; then
+  HIDRIVE_URL="${HIDRIVE_WEBDAV_URL:-https://webdav.hidrive.ionos.com/}"
+  HIDRIVE_REMOTE="${HIDRIVE_REMOTE_PATH:-}"
+  HIDRIVE_SUBDIR="${HIDRIVE_LIBRARY_SUBDIR:-hidrive}"
+
+  if [[ "${HIDRIVE_ENABLED:-false}" != "true" ]]; then
+    # Teardown path — HIDRIVE_ENABLED is off, so make the flag reversible:
+    # unmount and remove the unit instead of mounting.
+    info "HIDRIVE_ENABLED is not 'true' — tearing down any existing HiDrive mount."
+    run_or_dry remote "
+      set -euo pipefail
+      if [ -f /etc/systemd/system/hidrive-media.service ]; then
+        sudo systemctl disable --now hidrive-media.service 2>/dev/null || true
+        sudo rm -f /etc/systemd/system/hidrive-media.service
+        sudo systemctl daemon-reload
+        echo '[hidrive] Unmounted and removed hidrive-media.service'
+      else
+        echo '[hidrive] No hidrive-media.service installed — nothing to tear down'
+      fi
+    "
+    exit 0
+  fi
+
+  [[ -n "${HIDRIVE_USER:-}" ]] || die "HIDRIVE_USER is empty. Run ./deploy.sh --configure (HiDrive mount section)."
+  [[ -n "${HIDRIVE_PASS:-}" ]] || die "HIDRIVE_PASS is empty. Run ./deploy.sh --configure (HiDrive mount section)."
+
+  info "Setting up HiDrive WebDAV mount on the VPS (rclone + systemd)..."
+  info "  Endpoint : $HIDRIVE_URL"
+  info "  Remote   : ${HIDRIVE_REMOTE:-/ (account root)}"
+  info "  Graft    : \$VIDEOS_DIR/$HIDRIVE_SUBDIR"
+
+  # Ship the password as a temp file over scp (never on the command line, where
+  # it would land in the remote shell's argv and journald). The remote side
+  # obscures it with `rclone obscure` and shreds the temp file immediately.
+  if ! $DRY_RUN; then
+    HIDRIVE_PASS_FILE="$(mktemp)"
+    printf '%s' "$HIDRIVE_PASS" > "$HIDRIVE_PASS_FILE"
+    scp "${SCP_OPTS[@]}" "$HIDRIVE_PASS_FILE" "$REMOTE_USER@$REMOTE_HOST:/tmp/msp-hidrive-pass" >/dev/null
+    rm -f "$HIDRIVE_PASS_FILE"
+  fi
+
+  run_or_dry remote "
+    set -euo pipefail
+
+    # 1. rclone + FUSE userspace tooling
+    if ! command -v rclone &>/dev/null; then
+      echo '[hidrive] Installing rclone...'
+      curl -fsSL https://rclone.org/install.sh | sudo bash
+    else
+      echo \"[hidrive] rclone present: \$(rclone version 2>/dev/null | head -1)\"
+    fi
+    sudo apt-get install -y fuse3 2>/dev/null || sudo apt-get install -y fuse 2>/dev/null || true
+    # --allow-other requires user_allow_other so the mediaserver service user
+    # can read a FUSE mount established by root.
+    if ! grep -q '^user_allow_other' /etc/fuse.conf 2>/dev/null; then
+      echo 'user_allow_other' | sudo tee -a /etc/fuse.conf >/dev/null
+    fi
+
+    # 2. rclone remote config — obscure the password from the shipped temp file
+    if [ ! -f /tmp/msp-hidrive-pass ]; then
+      echo '[hidrive] ERROR: password file not received'; exit 1
+    fi
+    OBSCURED=\$(rclone obscure \"\$(cat /tmp/msp-hidrive-pass)\")
+    shred -u /tmp/msp-hidrive-pass 2>/dev/null || rm -f /tmp/msp-hidrive-pass
+    sudo mkdir -p /root/.config/rclone
+    sudo tee /root/.config/rclone/rclone.conf >/dev/null <<RCLONE_CONF
+[hidrive]
+type = webdav
+url = $HIDRIVE_URL
+vendor = other
+user = $HIDRIVE_USER
+pass = \$OBSCURED
+RCLONE_CONF
+    sudo chmod 600 /root/.config/rclone/rclone.conf
+    echo '[hidrive] Wrote /root/.config/rclone/rclone.conf'
+
+    # 3. Resolve VIDEOS_DIR (the Go default './videos' is relative to \$DEPLOY_DIR)
+    #    and the mediaserver uid/gid so mounted files appear owned by the service.
+    VID_DIR=\$(grep -oP '(?<=^VIDEOS_DIR=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null || echo '')
+    case \"\$VID_DIR\" in
+      '')  VID_DIR='$DEPLOY_DIR/videos' ;;
+      /*)  ;;                                      # already absolute
+      ./*) VID_DIR=\"$DEPLOY_DIR/\${VID_DIR#./}\" ;;  # './videos' → \$DEPLOY_DIR/videos
+      *)   VID_DIR=\"$DEPLOY_DIR/\$VID_DIR\" ;;     # bare relative
+    esac
+    MOUNT_DIR=\"\$VID_DIR/$HIDRIVE_SUBDIR\"
+    MS_UID=\$(id -u mediaserver 2>/dev/null || echo 0)
+    MS_GID=\$(id -g mediaserver 2>/dev/null || echo 0)
+    sudo mkdir -p \"\$MOUNT_DIR\"
+    sudo chown \"\$MS_UID:\$MS_GID\" \"\$MOUNT_DIR\" 2>/dev/null || true
+
+    # 4. systemd unit — reboot-persistent, auto-restart. Single-line ExecStart
+    #    (no backslash continuations) to stay heredoc-safe. --vfs-cache-mode off
+    #    = pure Range streaming; --read-only because this is a media source.
+    sudo tee /etc/systemd/system/hidrive-media.service >/dev/null <<UNIT
+[Unit]
+Description=rclone WebDAV mount (IONOS HiDrive) for Media Server Pro
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/rclone mount hidrive:$HIDRIVE_REMOTE \"\$MOUNT_DIR\" --config /root/.config/rclone/rclone.conf --read-only --vfs-cache-mode off --dir-cache-time 12h --allow-other --uid \$MS_UID --gid \$MS_GID --umask 022 --log-level INFO
+ExecStop=/bin/fusermount -uz \"\$MOUNT_DIR\"
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now hidrive-media.service
+
+    # 5. Verify the mount actually came up before declaring success
+    OK=false
+    for i in 1 2 3 4 5; do
+      if mountpoint -q \"\$MOUNT_DIR\"; then
+        echo \"[hidrive] Mounted OK -> \$MOUNT_DIR\"
+        ls -la \"\$MOUNT_DIR\" 2>/dev/null | head -5 || true
+        OK=true
+        break
+      fi
+      sleep 2
+    done
+    if ! \$OK; then
+      echo '[hidrive] ERROR: mount did not come up — check: journalctl -u hidrive-media.service -n 40'
+      exit 1
+    fi
+    echo '[hidrive] Done. Trigger a library rescan from the admin UI (or restart $SERVICE) to index the files.'
+  "
+  exit 0
+fi
+
 # ── Pull latest code ─────────────────────────────────────────────────────────
 info "Pulling latest code on VPS (branch: $BRANCH)..."
 run_or_dry remote "
@@ -1163,6 +1310,15 @@ run_or_dry remote "
 "
 
 fi  # end DOCKER_MODE branch
+
+# ── HiDrive mount reminder ────────────────────────────────────────────────────
+# Cheap, opt-in: only pings the VPS when the operator has turned HiDrive on.
+if ! $DRY_RUN && [[ "${HIDRIVE_ENABLED:-false}" == "true" ]]; then
+  if ! remote "systemctl is-active hidrive-media.service" >/dev/null 2>&1; then
+    warn "HIDRIVE_ENABLED=true but the HiDrive WebDAV mount is not active on the VPS."
+    warn "Run: ./deploy.sh --setup-hidrive   to install and start it."
+  fi
+fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
