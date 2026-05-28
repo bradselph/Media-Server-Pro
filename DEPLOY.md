@@ -83,6 +83,50 @@ Build-time (baked into the Nuxt bundle by `deploy.sh`):
 env-file parser, which is the most common cause of "admin login fails"
 reports.
 
+## HiDrive (WebDAV) cold-tier mount
+
+An IONOS HiDrive WebDAV share can back part of the video library as a cheap
+cold/overflow tier. HiDrive is **not** S3-compatible, so it doesn't plug into
+the `s3` storage backend — instead it's mounted on the VPS and grafted into the
+library as a subfolder under `VIDEOS_DIR`, which the scanner indexes normally.
+
+Configure the `HIDRIVE_*` knobs, then run the setup flow:
+
+```bash
+./deploy.sh --configure        # fill in the HiDrive mount section:
+                               #   HIDRIVE_ENABLED=true
+                               #   HIDRIVE_USER / HIDRIVE_PASS
+                               #   HIDRIVE_REMOTE_PATH (optional sub-path)
+./deploy.sh --setup-hidrive    # install rclone, write rclone.conf, install +
+                               # start the hidrive-media.service systemd unit
+# → trigger a library rescan from the admin UI (or restart the service)
+```
+
+`--setup-hidrive` is reversible: set `HIDRIVE_ENABLED=false` and re-run it to
+unmount and remove the unit.
+
+Implementation notes:
+
+- **rclone, not davfs2.** rclone with `--vfs-cache-mode off` does true HTTP
+  `Range` reads, so seeking streams byte ranges on demand. davfs2 downloads the
+  whole file to a local cache before serving — unusable for large video.
+- The mount is **read-only** and lands directly at
+  `$VIDEOS_DIR/$HIDRIVE_LIBRARY_SUBDIR` (default `hidrive/`). A bind/symlink is
+  deliberately avoided — the scanner's `filepath.WalkDir` doesn't descend
+  symlinks, and the local storage backend rejects symlinks that resolve outside
+  the videos root.
+- The WebDAV password is shipped to the VPS over `scp`, obscured with
+  `rclone obscure`, and stored only in `/root/.config/rclone/rclone.conf`
+  (mode `600`). It is **never** written to the app's `.env` — the `HIDRIVE_*`
+  knobs are scope `vps` and stay in the local `.deploy.env`.
+- **Latency caveat.** HiDrive has no CDN and no presigned-URL story like B2.
+  Every seek and every HLS transcode pulls bytes from IONOS through the server.
+  Direct play is usually fine; transcoded 4K will start slowly. Treat HiDrive as
+  a cold tier, not the hot-path store.
+
+Mount diagnostics on the VPS: `systemctl status hidrive-media.service` and
+`journalctl -u hidrive-media.service -n 40`.
+
 ## Reverse proxy / TLS
 
 The Go binary listens on plain HTTP on `${SERVER_PORT}`. Production
