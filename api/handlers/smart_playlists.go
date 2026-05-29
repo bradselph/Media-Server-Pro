@@ -216,6 +216,18 @@ func (h *Handler) CreateSmartPlaylist(c *gin.Context) {
 	if session == nil {
 		return
 	}
+	// Smart playlists are playlists too: enforce the same CanCreatePlaylists
+	// permission that CreatePlaylist requires, so disabling playlist creation for
+	// a user blocks both kinds instead of leaving smart playlists as a bypass.
+	user, err := h.auth.GetUser(c.Request.Context(), session.Username)
+	if err != nil || user == nil {
+		writeError(c, http.StatusInternalServerError, "Failed to retrieve user permissions")
+		return
+	}
+	if !user.Permissions.CanCreatePlaylists {
+		writeError(c, http.StatusForbidden, "Playlist creation not allowed for your user type")
+		return
+	}
 	var req struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
