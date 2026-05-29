@@ -229,7 +229,7 @@ type generateMasterPlaylistParams struct {
 }
 
 // generateMasterPlaylist creates the master HLS playlist in outputDir for the given variants.
-func (m *Module) generateMasterPlaylist(p *generateMasterPlaylistParams) error {
+func (m *Module) generateMasterPlaylist(p *generateMasterPlaylistParams) (retErr error) {
 	if p == nil {
 		return fmt.Errorf("generateMasterPlaylistParams cannot be nil")
 	}
@@ -239,11 +239,14 @@ func (m *Module) generateMasterPlaylist(p *generateMasterPlaylistParams) error {
 		return err
 	}
 	defer func() {
-		if err := file.Sync(); err != nil {
-			m.log.Warn("Failed to sync master playlist file: %v", err)
+		// Sync + Close finalize the playlist; a failure here means the file may be
+		// incomplete on disk, so surface it (unless a write error already occurred)
+		// instead of reporting a successful generation.
+		if syncErr := file.Sync(); syncErr != nil && retErr == nil {
+			retErr = fmt.Errorf("failed to sync master playlist file: %w", syncErr)
 		}
-		if err := file.Close(); err != nil {
-			m.log.Warn("Failed to close master playlist file: %v", err)
+		if closeErr := file.Close(); closeErr != nil && retErr == nil {
+			retErr = fmt.Errorf("failed to close master playlist file: %w", closeErr)
 		}
 	}()
 
