@@ -103,11 +103,15 @@ async function ignoreDiscovery(id: string) {
 }
 
 async function deleteDiscovery(id: string) {
+  if (inFlightIds.value.has(id)) return
+  inFlightIds.value.add(id)
   try {
     await adminApi.deleteCrawlerDiscovery(id)
     crawlerDiscoveries.value = crawlerDiscoveries.value.filter(d => d.id !== id)
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    inFlightIds.value.delete(id)
   }
 }
 
