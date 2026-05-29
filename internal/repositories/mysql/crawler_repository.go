@@ -235,11 +235,14 @@ func (r *CrawlerDiscoveryRepository) ListPending(ctx context.Context) ([]*reposi
 }
 
 func (r *CrawlerDiscoveryRepository) UpdateStatus(ctx context.Context, id, status, reviewedBy string) error {
-	// Validate status is one of the allowed values
+	// Validate status is one of the allowed values. These must match the
+	// Discovery.Status values the crawler module actually writes
+	// ("pending", "added", "ignored"); using approved/rejected here silently
+	// broke ApproveDiscovery and IgnoreDiscovery, which always failed validation.
 	allowedStatuses := map[string]bool{
-		"pending":  true,
-		"approved": true,
-		"rejected": true,
+		"pending": true,
+		"added":   true,
+		"ignored": true,
 	}
 	if !allowedStatuses[status] {
 		return fmt.Errorf("invalid crawler discovery status: %s", status)
