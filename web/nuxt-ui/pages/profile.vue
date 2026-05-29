@@ -427,6 +427,7 @@ watch(revealedToken, (val) => {
 
 onUnmounted(() => {
   profileMounted = false
+  if (accentHueCommitTimer) clearTimeout(accentHueCommitTimer)
   if (revealedTokenTimer) clearTimeout(revealedTokenTimer)
   revealedToken.value = null
   revealedTokenId.value = null
