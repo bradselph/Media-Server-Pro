@@ -652,7 +652,7 @@ func (m *Module) downloadWithGhCLI(version, assetName string) (string, error) {
 
 // downloadUpdate downloads a release asset via direct HTTP, adding GitHub auth
 // from admin settings when configured.
-func (m *Module) downloadUpdate(url string) (string, error) {
+func (m *Module) downloadUpdate(url string) (filename string, retErr error) {
 	req, err := http.NewRequest(http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return "", err
@@ -682,8 +682,11 @@ func (m *Module) downloadUpdate(url string) (string, error) {
 		return "", err
 	}
 	defer func() {
-		if closeErr := tmpFile.Close(); closeErr != nil {
-			m.log.Warn("Failed to close temporary file: %v", closeErr)
+		// A Close failure after the copy means the downloaded binary may be
+		// incomplete on disk; surface it so the caller does not install a
+		// corrupt update. Mirrors the copyFile pattern below.
+		if closeErr := tmpFile.Close(); closeErr != nil && retErr == nil {
+			retErr = fmt.Errorf("failed to close downloaded update file: %w", closeErr)
 		}
 	}()
 
