@@ -234,17 +234,23 @@ func (r *CrawlerDiscoveryRepository) ListPending(ctx context.Context) ([]*reposi
 	return records, nil
 }
 
+// validCrawlerDiscoveryStatuses are the statuses the crawler module writes for a
+// discovery (crawler.Discovery.Status). They MUST stay in sync with
+// ApproveDiscovery ("added") and IgnoreDiscovery ("ignored"); an earlier
+// allow-list of approved/rejected silently broke both operations.
+var validCrawlerDiscoveryStatuses = map[string]bool{
+	"pending": true,
+	"added":   true,
+	"ignored": true,
+}
+
+// isValidCrawlerDiscoveryStatus reports whether status is a writable discovery status.
+func isValidCrawlerDiscoveryStatus(status string) bool {
+	return validCrawlerDiscoveryStatuses[status]
+}
+
 func (r *CrawlerDiscoveryRepository) UpdateStatus(ctx context.Context, id, status, reviewedBy string) error {
-	// Validate status is one of the allowed values. These must match the
-	// Discovery.Status values the crawler module actually writes
-	// ("pending", "added", "ignored"); using approved/rejected here silently
-	// broke ApproveDiscovery and IgnoreDiscovery, which always failed validation.
-	allowedStatuses := map[string]bool{
-		"pending": true,
-		"added":   true,
-		"ignored": true,
-	}
-	if !allowedStatuses[status] {
+	if !isValidCrawlerDiscoveryStatus(status) {
 		return fmt.Errorf("invalid crawler discovery status: %s", status)
 	}
 
