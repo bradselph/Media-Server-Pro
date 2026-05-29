@@ -1745,7 +1745,9 @@ func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string)
 // Called when a media item is permanently deleted so orphaned rows do not accumulate.
 func (m *Module) DeletePlaybackPositionsByPath(ctx context.Context, path string) {
 	if m.metadataRepo != nil {
-		if err := m.metadataRepo.DeletePlaybackPositionsByPath(ctx, path); err != nil {
+		// A media item with no saved resume positions yields ErrMetadataNotFound,
+		// which is a normal outcome for this cleanup-on-delete call, not a failure.
+		if err := m.metadataRepo.DeletePlaybackPositionsByPath(ctx, path); err != nil && !errors.Is(err, repositories.ErrMetadataNotFound) {
 			m.log.Warn("Failed to purge playback positions for deleted media %s: %v", path, err)
 		}
 	}
