@@ -91,6 +91,14 @@ func (h *Handler) UpdateFollowerSettings(c *gin.Context) {
 			writeError(c, http.StatusBadRequest, "master_url must be a valid http(s) URL")
 			return
 		}
+		// Block loopback/private/link-local hosts so the persisted MasterURL can't
+		// be used for SSRF when the follower loop dials it. Mirrors the check in
+		// TestFollowerPairing; without it the validation could be bypassed by
+		// saving directly instead of testing first.
+		if err := helpers.ValidateURLForSSRF(masterURL); err != nil {
+			writeError(c, http.StatusBadRequest, "master_url rejected: "+err.Error())
+			return
+		}
 	}
 
 	if err := h.config.Update(func(cfg *config.Config) {
