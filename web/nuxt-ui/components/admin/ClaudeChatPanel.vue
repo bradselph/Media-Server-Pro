@@ -31,9 +31,15 @@ async function openConversation(id: string) {
   pendingToolIds.value = []
   try {
     const data = await adminApi.getClaudeConversation(id)
+    // A newer openConversation may have superseded this load while it was in
+    // flight; only apply the result if this conversation is still the active one,
+    // otherwise a slow response would clobber the newer selection's messages.
+    if (activeConvId.value !== id) return
     // Reconstruct display messages from stored history
     chatMessages.value = data.messages.map(m => storedMessageToDisplay(m))
   } catch (e: unknown) {
+    // Same guard: don't restore stale state over a newer selection.
+    if (activeConvId.value !== id) return
     activeConvId.value = prevId
     chatMessages.value = prevMessages
     pendingToolIds.value = prevPending
