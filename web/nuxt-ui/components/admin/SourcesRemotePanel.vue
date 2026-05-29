@@ -64,23 +64,35 @@ async function addRemoteSource() {
   } finally { addingRemote.value = false }
 }
 
+// Tracks per-source actions in flight so a rapid double-click can't fire a
+// duplicate (potentially expensive) sync or a redundant delete.
+const remoteBusy = ref(new Set<string>())
+
 async function syncRemote(name: string) {
+  if (remoteBusy.value.has(name)) return
+  remoteBusy.value.add(name)
   try {
     await adminApi.syncRemoteSource(name)
     toast.add({ title: 'Sync started', color: 'success', icon: 'i-lucide-check' })
     await loadRemote()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    remoteBusy.value.delete(name)
   }
 }
 
 async function deleteRemote(name: string) {
+  if (remoteBusy.value.has(name)) return
+  remoteBusy.value.add(name)
   try {
     await adminApi.deleteRemoteSource(name)
     toast.add({ title: 'Source removed', color: 'success', icon: 'i-lucide-check' })
     await loadRemote()
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+  } finally {
+    remoteBusy.value.delete(name)
   }
 }
 
