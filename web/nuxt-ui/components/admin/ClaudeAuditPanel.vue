@@ -41,10 +41,10 @@ function loadMore() {
   load()
 }
 
-function actionColor(action: string): 'info' | 'success' | 'error' | 'warning' {
+function actionColor(action: string): 'info' | 'success' | 'error' | 'warning' | 'neutral' {
   if (action === 'claude.kill_switch') return 'warning'
   if (action.startsWith('claude.tool.')) return 'info'
-  if (action.startsWith('claude.conversation.')) return 'neutral' as 'info'
+  if (action.startsWith('claude.conversation.')) return 'neutral'
   return 'info'
 }
 
