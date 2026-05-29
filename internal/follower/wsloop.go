@@ -218,7 +218,11 @@ func (m *Module) connectAndRun(ctx context.Context) error {
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		<-ctx.Done()
+		// Wait on streamCtx (a child of ctx) rather than ctx: every exit path calls
+		// streamCancel() before wg.Wait(), and streamCtx is also cancelled when ctx
+		// is. Waiting on ctx alone would leave this goroutine blocked after a
+		// streamCancel()-only error path, deadlocking wg.Wait().
+		<-streamCtx.Done()
 		_ = conn.Close()
 	})
 
