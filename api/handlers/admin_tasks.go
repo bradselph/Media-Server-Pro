@@ -96,7 +96,9 @@ func (h *Handler) AdminEnableTask(c *gin.Context) {
 		enabled := true
 		o.Enabled = &enabled
 	}); err != nil {
-		h.log.Warn("Failed to persist enabled override for task %s: %v", taskID, err)
+		h.log.Error("Failed to persist enabled override for task %s: %v", taskID, err)
+		writeError(c, http.StatusInternalServerError, "Task enabled but failed to persist configuration")
+		return
 	}
 
 	h.trackServerEvent(c, analytics.EventAdminTaskEnable, map[string]any{"task_id": taskID})
@@ -127,7 +129,9 @@ func (h *Handler) AdminDisableTask(c *gin.Context) {
 		disabled := false
 		o.Enabled = &disabled
 	}); err != nil {
-		h.log.Warn("Failed to persist disabled override for task %s: %v", taskID, err)
+		h.log.Error("Failed to persist disabled override for task %s: %v", taskID, err)
+		writeError(c, http.StatusInternalServerError, "Task disabled but failed to persist configuration")
+		return
 	}
 
 	h.trackServerEvent(c, analytics.EventAdminTaskDisable, map[string]any{"task_id": taskID})
@@ -176,7 +180,9 @@ func (h *Handler) AdminUpdateTaskSchedule(c *gin.Context) {
 		secs := req.ScheduleSecs
 		o.ScheduleSecs = &secs
 	}); err != nil {
-		h.log.Warn("Failed to persist schedule override for task %s: %v", taskID, err)
+		h.log.Error("Failed to persist schedule override for task %s: %v", taskID, err)
+		writeError(c, http.StatusInternalServerError, "Task schedule updated but failed to persist configuration")
+		return
 	}
 
 	h.trackServerEvent(c, analytics.EventAdminTaskSchedule, map[string]any{
