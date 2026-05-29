@@ -1568,6 +1568,15 @@ type Stats struct {
 
 // IncrementViews increments view count for a media item (DB and in-memory updated separately; not atomic).
 func (m *Module) IncrementViews(ctx context.Context, path string) error {
+	// Reject unknown media up-front so a path deleted between resolution and this
+	// call cannot create an orphaned metadata entry with no backing media item.
+	m.mu.RLock()
+	_, known := m.media[path]
+	m.mu.RUnlock()
+	if !known {
+		return fmt.Errorf("media not found: %s", path)
+	}
+
 	// Update DB first; only mirror to in-memory on success so the cache does not
 	// diverge from the persistent store.
 	if m.metadataRepo != nil {
@@ -1601,6 +1610,16 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 // UpdatePlaybackPosition updates playback position, total duration, and progress
 // fraction for a user. duration and progress may be 0 when the values are unknown.
 func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string, position, duration, progress float64) error {
+	// Reject unknown media up-front so a path deleted between resolution and this
+	// call cannot leave an orphaned playback_positions row (the repo upserts) or
+	// an orphaned in-memory metadata entry.
+	m.mu.RLock()
+	_, known := m.media[path]
+	m.mu.RUnlock()
+	if !known {
+		return fmt.Errorf("media not found: %s", path)
+	}
+
 	// Update DB first; only mirror to in-memory on success so the cache does not
 	// diverge from the persistent store.
 	if m.metadataRepo != nil {
@@ -1757,6 +1776,13 @@ func (m *Module) ClearAllPlaybackPositions(userID string) {
 // SetMatureFlag sets the mature content flag for a media item
 func (m *Module) SetMatureFlag(path string, isMature bool, score float64, reasons []string) error {
 	m.mu.Lock()
+
+	// Don't create an orphaned metadata entry for media that was deleted between
+	// the scan that produced this result and this call.
+	if _, ok := m.media[path]; !ok {
+		m.mu.Unlock()
+		return fmt.Errorf("media not found: %s", path)
+	}
 
 	meta, exists := m.metadata[path]
 	if !exists {
