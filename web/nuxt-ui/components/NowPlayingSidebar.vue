@@ -92,8 +92,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
 // ── Derived ─────────────────────────────────────────────────────
 const progressPct = computed(() => {
     const dur = playback.mediaInfo?.duration ?? playback.duration
-    if (!dur) return 0
-    return Math.min(1, playback.position / dur) * 100
+    const pos = playback.position
+    if (!dur || !Number.isFinite(dur) || !Number.isFinite(pos)) return 0
+    return Math.min(100, Math.max(0, (pos / dur) * 100))
 })
 
 const queueTotalDuration = computed(() =>
@@ -116,13 +117,18 @@ function openPlayer() {
     router.push(resumeUrl.value)
 }
 
+const advancing = ref(false)
 function playNext() {
+    // Guard against a rapid double-click dequeuing two items but only navigating
+    // to the second — which silently drops the first from the queue.
+    if (advancing.value) return
     const next = queue.shift()
     if (!next) {
         toast.add({ title: 'Queue is empty', color: 'neutral', icon: 'i-lucide-list' })
         return
     }
-    router.push(`/player?id=${encodeURIComponent(next.id)}`)
+    advancing.value = true
+    void router.push(`/player?id=${encodeURIComponent(next.id)}`).finally(() => { advancing.value = false })
 }
 
 function playFromQueue(id: string) {
