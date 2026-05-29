@@ -491,6 +491,12 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 	// or SSRF when the master uses the path in downstream HTTP/proxy requests.
 	records := make([]*repositories.ReceiverMediaRecord, 0, len(req.Items))
 	for i, item := range req.Items {
+		// A slave can send {"items":[null]}; encoding/json decodes JSON null into a
+		// nil *CatalogItem, so guard before dereferencing any field below.
+		if item == nil {
+			m.log.Warn("Slave %s: rejected nil catalog item %d", req.SlaveID, i)
+			continue
+		}
 		// Reject paths containing ".." segments or absolute paths that could be
 		// used to escape the slave's media directory in proxy requests.
 		if strings.Contains(item.Path, "..") || strings.HasPrefix(item.Path, "/") || strings.HasPrefix(item.Path, "\\") {
