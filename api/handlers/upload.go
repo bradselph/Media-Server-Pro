@@ -271,5 +271,17 @@ func (h *Handler) GetUploadProgress(c *gin.Context) {
 		return
 	}
 
+	// Owned uploads are visible only to the user who started them — otherwise any
+	// caller could enumerate upload IDs and read another user's upload metadata.
+	// Anonymous uploads (no owner) have no identity to match, so stay pollable.
+	// Use 404 (not 403) so a mismatched caller cannot confirm the ID exists.
+	if progress.UserID != "" {
+		session := getSession(c)
+		if session == nil || session.UserID != progress.UserID {
+			writeError(c, http.StatusNotFound, "Upload not found")
+			return
+		}
+	}
+
 	writeSuccess(c, progress)
 }
