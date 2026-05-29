@@ -510,12 +510,17 @@ type copyPaths struct {
 // copyAndRenameUpload copies src to destFile with progress, closes destFile, then renames paths.tempPath to paths.destPath.
 func (m *Module) copyAndRenameUpload(src io.Reader, destFile *os.File, paths copyPaths, progress *Progress) (int64, error) {
 	written, err := m.copyWithProgress(destFile, src, progress)
-	if closeErr := destFile.Close(); closeErr != nil {
-		m.log.Warn("Failed to close temporary file %s: %v", paths.tempPath, closeErr)
-	}
+	// Close flushes buffered data and fsyncs; a Close failure after an otherwise
+	// successful copy means the file may be truncated or unflushed on disk, so
+	// treat it as a write failure and never promote the temp file to its final path.
+	closeErr := destFile.Close()
 	if err != nil {
 		_ = os.Remove(paths.tempPath)
 		return 0, err
+	}
+	if closeErr != nil {
+		_ = os.Remove(paths.tempPath)
+		return 0, fmt.Errorf("failed to finalize upload file %s: %w", paths.tempPath, closeErr)
 	}
 	if err := os.Rename(paths.tempPath, paths.destPath); err != nil {
 		_ = os.Remove(paths.tempPath)
