@@ -212,7 +212,11 @@ func (m *Module) evictStaleProfiles(ctx context.Context) {
 			var toEvict []*UserProfile
 			for _, profile := range m.profiles {
 				if profile.LastUpdated.Before(cutoff) {
-					toEvict = append(toEvict, profile)
+					// Snapshot under the lock: saveOneProfile reads the profile's maps
+					// and slices without locking, so it must operate on a copy rather
+					// than the live profile that concurrent RecordView/RecordRating
+					// callers mutate. Mirrors the snapshot pattern in saveProfiles.
+					toEvict = append(toEvict, m.snapshotProfile(profile))
 				}
 			}
 			m.mu.Unlock()
