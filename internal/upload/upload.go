@@ -262,14 +262,18 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 		if err != nil {
 			return nil, fmt.Errorf("failed to create unique file: %w", err)
 		}
+		progress.mu.Lock()
 		progress.DestPath = destPath
+		progress.mu.Unlock()
 		tempPath := destPath + ".tmp"
 		written, err = m.copyAndRenameUpload(reader, destFile, copyPaths{tempPath, destPath}, progress)
 	}
 
 	if err != nil {
+		progress.mu.Lock()
 		progress.Status = UploadStatusFailed
 		progress.Error = err.Error()
+		progress.mu.Unlock()
 		return nil, fmt.Errorf("upload failed: %w", err)
 	}
 
@@ -288,14 +292,18 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 				m.log.Warn("Failed to remove oversized upload (%s): %v", destPath, rmErr)
 			}
 		}
+		progress.mu.Lock()
 		progress.Status = UploadStatusFailed
 		progress.Error = "file exceeds size limit"
+		progress.mu.Unlock()
 		return nil, fmt.Errorf("file size exceeds maximum of %d bytes", maxFileSize)
 	}
 
+	progress.mu.Lock()
 	progress.Status = UploadStatusCompleted
 	progress.CompletedAt = helpers.Ptr(time.Now())
 	progress.Progress = 100
+	progress.mu.Unlock()
 	m.log.Info("Upload complete: %s (%d bytes) by user %s", prepared.Filename, written, scope.UserID)
 
 	return &Result{
@@ -332,7 +340,9 @@ func (m *Module) uploadToRemoteStore(ctx context.Context, file io.Reader, prepar
 
 	// Find a unique key within the backend.
 	relPath := m.uniqueRemoteKey(ctx, relDir, prepared.Filename)
+	progress.mu.Lock()
 	progress.DestPath = m.store.AbsPath(relPath)
+	progress.mu.Unlock()
 
 	// Wrap the reader with a progress counter that uses its own dedicated mutex
 	// so that it does not contend with the module's global RWMutex on every
@@ -380,25 +390,23 @@ func (m *Module) uniqueRemoteKey(ctx context.Context, dir, filename string) stri
 
 // progressReader wraps an io.Reader and updates an upload Progress as bytes
 // are consumed.  Used for remote backend uploads where we never touch an
-// os.File.  It uses a dedicated per-reader mutex so that progress updates do
-// not contend with the module's global RWMutex on every chunk read.  Readers
-// of Progress (GetProgress, GetActiveUploads) may observe a value lagging by
-// at most one chunk, which is acceptable for a progress indicator.
+// os.File.  Progress fields are guarded by the per-upload progress.mu (not the
+// module's global RWMutex), so updates don't contend on every chunk read while
+// staying safe against concurrent GetProgress/GetActiveUploads snapshots.
 type progressReader struct {
 	src      io.Reader
 	progress *Progress
-	mu       sync.Mutex // per-reader lock, not the module's global RWMutex
 }
 
 func (pr *progressReader) Read(p []byte) (int, error) {
 	n, err := pr.src.Read(p)
 	if n > 0 {
-		pr.mu.Lock()
+		pr.progress.mu.Lock()
 		pr.progress.Uploaded += int64(n)
 		if pr.progress.Size > 0 {
 			pr.progress.Progress = float64(pr.progress.Uploaded) / float64(pr.progress.Size) * 100
 		}
-		pr.mu.Unlock()
+		pr.progress.mu.Unlock()
 	}
 	return n, err
 }
@@ -743,9 +751,14 @@ func (m *Module) generateUploadID() UploadID {
 // GetProgress returns progress for an upload
 func (m *Module) GetProgress(uploadID UploadID) (*Progress, bool) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
 	progress, ok := m.activeUploads[uploadID]
-	return progress, ok
+	m.mu.RUnlock()
+	if !ok {
+		return nil, false
+	}
+	// Return a snapshot so callers (e.g. JSON serialization in the handler) read a
+	// consistent copy instead of racing with the upload goroutine's field writes.
+	return progress.snapshot(), true
 }
 
 // GetActiveUploads returns all active uploads
@@ -755,9 +768,30 @@ func (m *Module) GetActiveUploads() []*Progress {
 
 	uploads := make([]*Progress, 0, len(m.activeUploads))
 	for _, u := range m.activeUploads {
-		uploads = append(uploads, u)
+		uploads = append(uploads, u.snapshot())
 	}
 	return uploads
+}
+
+// snapshot returns a lock-protected copy of the progress fields, safe to read
+// (e.g. JSON-encode) without holding the per-upload mutex. The returned copy
+// has a fresh zero mutex and is detached from the live tracker.
+func (p *Progress) snapshot() *Progress {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return &Progress{
+		ID:          p.ID,
+		Filename:    p.Filename,
+		Size:        p.Size,
+		Uploaded:    p.Uploaded,
+		Progress:    p.Progress,
+		Status:      p.Status,
+		StartedAt:   p.StartedAt,
+		CompletedAt: p.CompletedAt,
+		Error:       p.Error,
+		UserID:      p.UserID,
+		DestPath:    p.DestPath,
+	}
 }
 
 // GetUserStorageUsed calculates storage used by a specific user by walking
