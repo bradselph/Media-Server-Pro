@@ -149,7 +149,10 @@ func (m *Module) tryGeneratePreview(opts *tryGeneratePreviewOpts) string {
 		return opts.PreviewURL
 	}
 
-	m.inFlight.Delete(opts.PreviewPath)
+	// Queue is full — generate synchronously. Keep the inFlight claim set until
+	// generateThumbnail returns so a concurrent request for the same preview path
+	// can't start a duplicate generation that races on the same output file.
+	defer m.inFlight.Delete(opts.PreviewPath)
 	m.statsMu.Lock()
 	m.stats.Pending--
 	m.statsMu.Unlock()
