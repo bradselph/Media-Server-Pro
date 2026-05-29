@@ -306,11 +306,15 @@ func (r *ReceiverMediaRepository) rowToMediaRecord(row *receiverMediaRow) *repos
 	if row.DateAdded != nil {
 		if t, err := parseTime(*row.DateAdded); err == nil {
 			rec.DateAdded = t
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: rowToMediaRecord: invalid date_added for media %s: %v\n", row.ID, err)
 		}
 	}
 	if row.DateModified != nil {
 		if t, err := parseTime(*row.DateModified); err == nil {
 			rec.DateModified = t
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: rowToMediaRecord: invalid date_modified for media %s: %v\n", row.ID, err)
 		}
 	}
 	if t, err := parseTime(row.UpdatedAt); err == nil {
