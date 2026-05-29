@@ -23,9 +23,10 @@ import (
 
 var (
 	// ErrUserNotFound Re-export repository errors for backward compatibility
-	ErrUserNotFound    = repositories.ErrUserNotFound
-	ErrUserExists      = repositories.ErrUserExists
-	ErrSessionNotFound = repositories.ErrSessionNotFound
+	ErrUserNotFound     = repositories.ErrUserNotFound
+	ErrUserExists       = repositories.ErrUserExists
+	ErrSessionNotFound  = repositories.ErrSessionNotFound
+	ErrAPITokenNotFound = repositories.ErrAPITokenNotFound
 
 	// ErrInvalidCredentials Auth-specific errors
 	ErrInvalidCredentials    = errors.New("invalid credentials")

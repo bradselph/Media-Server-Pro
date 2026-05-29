@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/auth"
 	"media-server-pro/pkg/models"
 )
 
@@ -129,6 +132,10 @@ func (h *Handler) DeleteAPIToken(c *gin.Context) {
 		return
 	}
 	if err := h.auth.DeleteAPIToken(c.Request.Context(), tokenID, session.UserID); err != nil {
+		if errors.Is(err, auth.ErrAPITokenNotFound) {
+			writeError(c, http.StatusNotFound, "Token not found")
+			return
+		}
 		h.log.Error("DeleteAPIToken: %v", err)
 		writeError(c, http.StatusInternalServerError, "Failed to delete API token")
 		return
