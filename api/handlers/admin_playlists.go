@@ -215,7 +215,12 @@ func (h *Handler) AdminDeletePlaylist(c *gin.Context) {
 		return
 	}
 	if err := h.playlist.AdminDeletePlaylist(c.Request.Context(), playlist.PlaylistID(playlistID)); err != nil {
-		writeError(c, http.StatusNotFound, msgPlaylistNotFound)
+		if errors.Is(err, playlist.ErrPlaylistNotFound) {
+			writeError(c, http.StatusNotFound, msgPlaylistNotFound)
+		} else {
+			h.log.Error("AdminDeletePlaylist %s: %v", playlistID, err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+		}
 		return
 	}
 
