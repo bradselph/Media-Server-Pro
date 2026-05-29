@@ -416,9 +416,14 @@ func (s *MatureScanner) scanFileInternal(path string) *ScanResult {
 								repoResult.ReviewedBy != "", repoResult.ReviewDecision != "", repoResult.IsMature)
 							return s.convertRepoToScanner(repoResult)
 						}
-						// For unreviewed content, still use cache to avoid redundant scans
-						s.log.Debug("  Using repository cached scan result (scanned: %v)", scannedAt.Format("2006-01-02 15:04"))
-						return s.convertRepoToScanner(repoResult)
+						// For unreviewed content, use the cache only while it is fresh
+						// (matching the in-memory cache's 24h TTL) so config/keyword
+						// changes are eventually re-evaluated instead of being masked by
+						// a persistent repo entry that never expires.
+						if time.Since(scannedAt) < 24*time.Hour {
+							s.log.Debug("  Using repository cached scan result (scanned: %v)", scannedAt.Format("2006-01-02 15:04"))
+							return s.convertRepoToScanner(repoResult)
+						}
 					}
 				}
 			}
