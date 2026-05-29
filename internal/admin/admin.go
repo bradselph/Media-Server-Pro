@@ -406,6 +406,8 @@ func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]any {
 		"enable_duplicate_detection": cfg.Features.EnableDuplicateDetection,
 		"enable_downloader":          cfg.Features.EnableDownloader,
 		"enable_claude":              cfg.Features.EnableClaude,
+		"enable_user_auth":           cfg.Features.EnableUserAuth,
+		"enable_admin_panel":         cfg.Features.EnableAdminPanel,
 	}
 }
 
@@ -628,6 +630,28 @@ func buildConfigDownloaderMap(cfg *config.Config, _ []string) map[string]any {
 		"import_dir":      cfg.Downloader.ImportDir,
 		"health_interval": cfg.Downloader.HealthInterval,
 		"request_timeout": cfg.Downloader.RequestTimeout,
+		// Shared secret with the downloader service — surface presence only, never
+		// the value (mirrors the *_set pattern used for tokens/keys elsewhere).
+		"internal_token_set": cfg.Downloader.InternalToken != "",
+	}
+}
+
+// buildConfigDirectoriesMap exposes the configured library/runtime paths so the
+// admin's read-only Directories panel can show where media actually lives. These
+// are infra settings (changed via env/config file, not the UI), so they are
+// surfaced for visibility only — there is no write path for them.
+func buildConfigDirectoriesMap(cfg *config.Config, _ []string) map[string]any {
+	return map[string]any{
+		"videos":     cfg.Directories.Videos,
+		"music":      cfg.Directories.Music,
+		"thumbnails": cfg.Directories.Thumbnails,
+		"playlists":  cfg.Directories.Playlists,
+		"uploads":    cfg.Directories.Uploads,
+		"analytics":  cfg.Directories.Analytics,
+		"hls_cache":  cfg.Directories.HLSCache,
+		"data":       cfg.Directories.Data,
+		"logs":       cfg.Directories.Logs,
+		"temp":       cfg.Directories.Temp,
 	}
 }
 
@@ -744,9 +768,9 @@ func (m *Module) GetConfigMap() map[string]any {
 		{"crawler", buildConfigCrawlerMap},
 		{"extractor", buildConfigExtractorMap},
 		{"claude", buildConfigClaudeMap},
+		{"directories", buildConfigDirectoriesMap},
 	}
-	out := make(map[string]any, len(sections)+1)
-	out["directories"] = map[string]any{"configured": true}
+	out := make(map[string]any, len(sections))
 	for _, s := range sections {
 		out[s.key] = s.fn(cfg, nil)
 	}

@@ -1498,6 +1498,7 @@ export interface ImportDestination {
     label: string
     path: string
     isDefault: boolean
+    writable: boolean
 }
 
 // ── Suggestion Stats ──────────────────────────────────────────────────────────

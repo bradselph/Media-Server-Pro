@@ -6,8 +6,10 @@ package downloader
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +18,26 @@ import (
 	"media-server-pro/internal/media"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
+)
+
+// Configuration/usage errors the HTTP layer maps to 4xx instead of 500 — these
+// mean "the admin's setup or request is incomplete", not "the server broke".
+var (
+	// ErrDownloadsDirNotConfigured: downloader.downloads_dir is empty, so there
+	// is nothing to list or import from.
+	ErrDownloadsDirNotConfigured = errors.New("downloads_dir not configured")
+	// ErrNoImportDestination: neither downloader.import_dir nor directories.uploads
+	// is set, so there is no place to import to.
+	ErrNoImportDestination = errors.New("no import destination configured (set downloader.import_dir or directories.uploads)")
+	// ErrDestinationReadOnly: the chosen destination is on a read-only mount
+	// (e.g. a HiDrive WebDAV share mounted --read-only). Surfaced before the copy
+	// is attempted so the admin gets a clear reason, not a raw EROFS.
+	ErrDestinationReadOnly = errors.New("destination is read-only; pick a writable location or remount it read-write")
+	// ErrUnknownDestination: the destination key didn't match any enumerated
+	// target (stale UI, or a crafted request).
+	ErrUnknownDestination = errors.New("unknown or unavailable destination")
+	// ErrInvalidSubfolder: the optional new sub-folder name failed validation.
+	ErrInvalidSubfolder = errors.New("invalid sub-folder name")
 )
 
 const defaultDownloaderTimeout = 30 * time.Second
@@ -84,6 +106,9 @@ func (m *Module) Start(_ context.Context) error {
 	if cfg.Downloader.DownloadsDir == "" {
 		m.log.Warn("Downloader downloads_dir not configured — file import will be unavailable")
 	}
+	if !importDirUnderRoot(cfg) {
+		m.log.Warn("Downloader import_dir %q is not under any configured library root (videos/music/uploads); imported files will land there but the media scanner will not discover them", cfg.Downloader.ImportDir)
+	}
 
 	// Start background health checker
 	ctx, cancel := context.WithCancel(context.Background())
@@ -142,7 +167,7 @@ func (m *Module) ListImportable() ([]ImportableFile, error) {
 		return nil, fmt.Errorf("config not available")
 	}
 	if cfg.Downloader.DownloadsDir == "" {
-		return nil, fmt.Errorf("downloads_dir not configured")
+		return nil, ErrDownloadsDirNotConfigured
 	}
 	return ListImportableFiles(cfg.Downloader.DownloadsDir)
 }
@@ -154,6 +179,35 @@ func defaultImportDir(cfg *config.Config) string {
 		return cfg.Downloader.ImportDir
 	}
 	return cfg.Directories.Uploads
+}
+
+// importDirUnderRoot reports whether a configured downloader.import_dir is empty
+// (falls back to uploads — always fine) or nested under a configured library
+// root. The media scanner only walks videos/music/uploads, so files imported
+// outside every root land on disk but never appear in the library; this drives a
+// startup warning so a mis-set import_dir is diagnosable.
+func importDirUnderRoot(cfg *config.Config) bool {
+	importDir := cfg.Downloader.ImportDir
+	if importDir == "" {
+		return true
+	}
+	abs, err := filepath.Abs(importDir)
+	if err != nil {
+		abs = filepath.Clean(importDir)
+	}
+	for _, root := range []string{cfg.Directories.Videos, cfg.Directories.Music, cfg.Directories.Uploads} {
+		if root == "" {
+			continue
+		}
+		rabs, rerr := filepath.Abs(root)
+		if rerr != nil {
+			rabs = filepath.Clean(root)
+		}
+		if abs == rabs || strings.HasPrefix(abs, rabs+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // ImportDestinations returns the library locations a download can be imported
@@ -183,7 +237,7 @@ func (m *Module) Import(filename, destination, subfolder string, deleteSource, t
 		return "", false, fmt.Errorf("config not available")
 	}
 	if cfg.Downloader.DownloadsDir == "" {
-		return "", false, fmt.Errorf("downloads_dir not configured")
+		return "", false, ErrDownloadsDirNotConfigured
 	}
 
 	var destDir string
@@ -202,7 +256,7 @@ func (m *Module) Import(filename, destination, subfolder string, deleteSource, t
 		}
 	}
 	if destDir == "" {
-		return "", false, fmt.Errorf("no import destination configured (set downloader.import_dir or directories.uploads)")
+		return "", false, ErrNoImportDestination
 	}
 
 	// Optional new sub-folder under the chosen destination. ImportFile MkdirAlls
@@ -213,6 +267,13 @@ func (m *Module) Import(filename, destination, subfolder string, deleteSource, t
 	}
 	if cleanSub != "" {
 		destDir = filepath.Join(destDir, cleanSub)
+	}
+
+	// Pre-flight writability check: catch a read-only destination (e.g. a HiDrive
+	// mount mounted --read-only) here, with a clear message, instead of letting
+	// the admin discover it as a raw EROFS after the copy is attempted.
+	if !destinationWritable(destDir) {
+		return "", false, ErrDestinationReadOnly
 	}
 
 	destPath, sourceDeleted, err = ImportFile(cfg.Downloader.DownloadsDir, destDir, filename, deleteSource)

@@ -268,18 +268,37 @@ const selectedDestKey = ref<string>('')
 const newSubfolder = ref<string>('')
 const importModalOpen = ref(false)
 const pendingFile = ref<ImportableFile | null>(null)
+const loadingDestinations = ref(false)
 
+// Read-only destinations (e.g. a HiDrive share mounted --read-only) are shown but
+// disabled — importing there would fail, so the picker surfaces that up-front.
 const destinationItems = computed(() =>
-  destinations.value.map(d => ({ label: d.label, value: d.key }))
+  destinations.value.map(d => ({
+    label: d.writable ? d.label : `${d.label} (read-only)`,
+    value: d.key,
+    disabled: !d.writable,
+  }))
 )
+
+// The selected destination is importable only if it exists and is writable.
+const selectedDestWritable = computed(() =>
+  destinations.value.find(d => d.key === selectedDestKey.value)?.writable === true
+)
+
+// Prefer the server-flagged default when it's writable, else the first writable
+// destination, else fall back so the select is never left blank.
+function pickDefaultDestination(): ImportDestination | undefined {
+  const d = destinations.value
+  return d.find(x => x.isDefault && x.writable)
+    ?? d.find(x => x.writable)
+    ?? d.find(x => x.isDefault)
+    ?? d[0]
+}
 
 async function loadDestinations() {
   try {
     const result = await adminApi.listImportDestinations()
     destinations.value = result ?? []
-    // Pre-select the server-flagged default (falls back to the first entry).
-    const def = destinations.value.find(d => d.isDefault) ?? destinations.value[0]
-    if (def && !selectedDestKey.value) selectedDestKey.value = def.key
   } catch {
     destinations.value = []
   }
@@ -296,32 +315,57 @@ async function loadImportable() {
 }
 
 // Open the per-file prompt so the operator picks where the download is stored.
-function openImport(f: ImportableFile) {
+// Always starts from a clean subfolder field and a freshly-chosen default so a
+// previous import's choices never leak into the next one.
+async function openImport(f: ImportableFile) {
   pendingFile.value = f
-  if (!destinations.value.length) loadDestinations()
-  else if (!selectedDestKey.value) {
-    const def = destinations.value.find(d => d.isDefault) ?? destinations.value[0]
-    if (def) selectedDestKey.value = def.key
+  newSubfolder.value = ''
+  if (!destinations.value.length) {
+    loadingDestinations.value = true
+    try {
+      await loadDestinations()
+    } finally {
+      loadingDestinations.value = false
+    }
   }
+  if (!destinations.value.length) {
+    toast.add({
+      title: 'No import destinations available',
+      description: 'The downloader may be disabled, or no library folders are configured.',
+      color: 'warning',
+      icon: 'i-lucide-alert-triangle',
+    })
+    pendingFile.value = null
+    return
+  }
+  const def = pickDefaultDestination()
+  if (def) selectedDestKey.value = def.key
   importModalOpen.value = true
+}
+
+// Reset all per-import modal state so the next open starts fresh.
+function closeImportModal() {
+  importModalOpen.value = false
+  newSubfolder.value = ''
+  pendingFile.value = null
 }
 
 async function confirmImport() {
   const f = pendingFile.value
   if (!f) return
-  importModalOpen.value = false
   importingFile.value = f.name
   try {
     const result = await adminApi.importFile(f.name, deleteSource.value, triggerScan.value, selectedDestKey.value, newSubfolder.value.trim())
     const deleteNote = result?.sourceDeleted === false ? ' (source file could not be removed)' : ''
     toast.add({ title: `Imported to ${result?.destination ?? 'library'}${deleteNote}`, color: 'success', icon: 'i-lucide-check' })
-    newSubfolder.value = ''
+    // Close only on success — on error the modal stays open so the admin sees the
+    // failure in context and can retry or change the destination.
+    closeImportModal()
     await Promise.allSettled([load(), loadImportable()])
   } catch (e: unknown) {
     toast.add({ title: e instanceof Error ? e.message : 'Import failed', color: 'error', icon: 'i-lucide-x' })
   } finally {
     importingFile.value = null
-    pendingFile.value = null
   }
 }
 
@@ -623,10 +667,15 @@ function progressBarColor(status: DownloaderProgress['status']) {
               <USelect
                 v-model="selectedDestKey"
                 :items="destinationItems"
+                :loading="loadingDestinations"
                 placeholder="Select a destination"
                 class="w-full"
               />
             </UFormField>
+            <p v-if="selectedDestKey && !selectedDestWritable" class="text-xs text-error flex items-center gap-1">
+              <UIcon name="i-lucide-lock" class="size-3.5 shrink-0" />
+              This destination is read-only. Pick a writable location or remount it read-write.
+            </p>
             <UFormField label="New sub-folder" hint="Optional — creates a folder under the destination">
               <UInput
                 v-model="newSubfolder"
@@ -647,12 +696,13 @@ function progressBarColor(status: DownloaderProgress['status']) {
           </div>
           <template #footer>
             <div class="flex justify-end gap-2">
-              <UButton variant="ghost" color="neutral" label="Cancel" @click="importModalOpen = false" />
+              <UButton variant="ghost" color="neutral" label="Cancel" @click="closeImportModal" />
               <UButton
                 color="primary"
                 label="Import"
                 icon="i-lucide-check"
-                :disabled="!selectedDestKey"
+                :loading="importingFile !== null"
+                :disabled="!selectedDestKey || !selectedDestWritable || importingFile !== null"
                 @click="confirmImport"
               />
             </div>

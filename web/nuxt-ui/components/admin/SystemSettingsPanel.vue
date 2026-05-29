@@ -244,6 +244,10 @@ onMounted(loadConfig)
               <span class="text-sm">Downloader</span>
               <USwitch :model-value="get('features', 'enable_downloader')" @update:model-value="set('features', 'enable_downloader', $event)" />
             </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm">Claude Code</span>
+              <USwitch :model-value="get('features', 'enable_claude')" @update:model-value="set('features', 'enable_claude', $event)" />
+            </div>
           </div>
           <p class="text-xs text-neutral-500 mt-3">Some toggles require a server restart to take effect.</p>
         </UCard>
