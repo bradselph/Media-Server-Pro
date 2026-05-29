@@ -118,6 +118,7 @@ async function refreshPreview() {
     try {
         const res = await mediaApi.list({
             tags: [...selected.value],
+            tag_mode: mode.value,
             limit: 1,
             page: 1,
         })
