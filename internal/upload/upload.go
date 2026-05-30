@@ -629,16 +629,20 @@ func (m *Module) isAllowedExtension(ext string) bool {
 // isContentTypeAllowed checks that the detected MIME type is compatible with the expected media type.
 // This prevents uploading disguised files (e.g. an HTML file renamed to .mp4).
 func (m *Module) isContentTypeAllowed(detected string, expected MediaType) bool {
-	// mimeOctetStream is the fallback for unknown binary — always allow since
-	// many media formats aren't recognized by http.DetectContentType.
-	if detected == mimeOctetStream {
+	// Ambiguous binary: many legitimate media containers (raw AAC/ADTS, ALAC,
+	// .opus, and some MOV/MP4 variants) are not recognized by
+	// http.DetectContentType and come back as application/octet-stream or
+	// "text/plain; charset=utf-8". Allow both — the dangerous disguises
+	// (HTML/JS/XML) are detected as their own specific MIME types
+	// (text/html, text/xml, application/javascript), which we still reject below.
+	if detected == mimeOctetStream || strings.HasPrefix(detected, "text/plain") {
 		return true
 	}
 	switch expected {
 	case MediaTypeVideo:
-		return strings.HasPrefix(detected, "video/") || strings.HasPrefix(detected, "audio/") || detected == mimeOctetStream
+		return strings.HasPrefix(detected, "video/") || strings.HasPrefix(detected, "audio/")
 	case MediaTypeAudio:
-		return strings.HasPrefix(detected, "audio/") || detected == "application/ogg" || detected == mimeOctetStream
+		return strings.HasPrefix(detected, "audio/") || detected == "application/ogg"
 	default:
 		// Unknown media type — reject HTML/JS/XML which are the dangerous ones.
 		return !strings.HasPrefix(detected, "text/html") && !strings.HasPrefix(detected, "text/xml") &&
