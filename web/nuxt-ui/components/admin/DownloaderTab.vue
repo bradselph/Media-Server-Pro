@@ -2,9 +2,11 @@
 import type { DownloaderJob, ImportableFile, ImportDestination, DownloaderHealth, DownloaderSettings, DownloaderDetectResult, DownloaderProgress, DownloaderStreamInfo } from '~/types/api'
 import { formatBytes, formatUptime } from '~/utils/format'
 import { asRecord } from '~/utils/typeGuards'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const toast = useToast()
+const { notifyError, notifySuccess, notifyInfo } = useAdminFeedback()
 
 // ── Download server config ─────────────────────────────────────────────────────
 
@@ -36,9 +38,9 @@ async function saveDownloadConfig(key: 'enabled' | 'require_auth', value: boolea
     fullConfig.value = updated
     if (key === 'enabled') downloadEnabled.value = value
     else downloadRequireAuth.value = value
-    toast.add({ title: 'Download settings saved', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Download settings saved')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to save')
     // Reload config from server to revert UI to actual state
     loadDownloadConfig()
   } finally {
@@ -164,7 +166,7 @@ async function load() {
     if (loading.value) loading.value = false
   } catch (e: unknown) {
     if (loading.value) {
-      toast.add({ title: e instanceof Error ? e.message : 'Failed to load downloads', color: 'error', icon: 'i-lucide-alert-circle' })
+      notifyError(e, 'Failed to load downloads', 'i-lucide-alert-circle')
       loading.value = false
     }
   }
@@ -173,10 +175,10 @@ async function load() {
 async function cancelDownload(id: string) {
   try {
     await adminApi.cancelDownloaderJob(id)
-    toast.add({ title: 'Download cancelled', color: 'info', icon: 'i-lucide-info' })
+    notifyInfo('Download cancelled')
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -185,7 +187,7 @@ async function deleteDownload(filename: string) {
     await adminApi.deleteDownloaderJob(filename)
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -211,11 +213,11 @@ async function detect() {
   try {
     const u = new URL(urlStr)
     if (!['http:', 'https:'].includes(u.protocol)) {
-      toast.add({ title: 'URL must use http or https', color: 'error', icon: 'i-lucide-x' })
+      notifyError('URL must use http or https')
       return
     }
   } catch {
-    toast.add({ title: 'Invalid URL', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Invalid URL')
     return
   }
   detecting.value = true
@@ -223,7 +225,7 @@ async function detect() {
   try {
     detected.value = await adminApi.detectDownload(urlStr)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Detection failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Detection failed')
   } finally { detecting.value = false }
 }
 
@@ -240,7 +242,7 @@ async function startDownload(streamUrl?: string) {
       isYouTubeMusic: detected.value.isYouTubeMusic,
       relayId: detected.value.relayId,
     })
-    toast.add({ title: 'Download started', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Download started')
     if (result?.downloadId) {
       const next = new Map(activeProgress.value)
       next.set(result.downloadId, { downloadId: result.downloadId, status: 'queued', title: detected.value.title })
@@ -250,7 +252,7 @@ async function startDownload(streamUrl?: string) {
     newUrl.value = ''
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Download failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Download failed')
   } finally { downloading.value = false }
 }
 
@@ -357,13 +359,13 @@ async function confirmImport() {
   try {
     const result = await adminApi.importFile(f.name, deleteSource.value, triggerScan.value, selectedDestKey.value, newSubfolder.value.trim())
     const deleteNote = result?.sourceDeleted === false ? ' (source file could not be removed)' : ''
-    toast.add({ title: `Imported to ${result?.destination ?? 'library'}${deleteNote}`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Imported to ${result?.destination ?? 'library'}${deleteNote}`)
     // Close only on success — on error the modal stays open so the admin sees the
     // failure in context and can retry or change the destination.
     closeImportModal()
     await Promise.allSettled([load(), loadImportable()])
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Import failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Import failed')
   } finally {
     importingFile.value = null
   }

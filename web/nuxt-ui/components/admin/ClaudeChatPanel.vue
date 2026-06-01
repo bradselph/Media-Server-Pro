@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { ClaudeConversation, ClaudeMessage, ClaudeEvent, ClaudeToolCall, ClaudeChatRequest } from '~/composables/useApiEndpoints'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 // ── Conversations sidebar ──────────────────────────────────────────────────
 const conversations = ref<ClaudeConversation[]>([])
@@ -15,7 +16,7 @@ async function loadConversations() {
     conversations.value = await adminApi.listClaudeConversations(50)
   } catch (e: unknown) {
     console.warn('[claude] loadConversations failed:', e)
-    toast.add({ title: 'Failed to load conversations', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Failed to load conversations')
   } finally {
     convsLoading.value = false
   }
@@ -43,7 +44,7 @@ async function openConversation(id: string) {
     activeConvId.value = prevId
     chatMessages.value = prevMessages
     pendingToolIds.value = prevPending
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load conversation', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load conversation')
   }
 }
 
@@ -56,9 +57,9 @@ async function deleteConversation(id: string) {
       chatMessages.value = []
       pendingToolIds.value = []
     }
-    toast.add({ title: 'Conversation deleted', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Conversation deleted')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to delete', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to delete')
   }
 }
 

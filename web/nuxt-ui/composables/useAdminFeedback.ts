@@ -14,13 +14,17 @@ export function useAdminFeedback() {
      * Show an error toast. Accepts either:
      *  - a caught exception plus a fallback message (typical `catch (e)` pattern), or
      *  - a plain string for literal error messages (e.g. validation errors).
+     *
+     * `icon` defaults to the action-failure glyph (`i-lucide-x`); pass
+     * `i-lucide-alert-circle` for load/fetch failures to match the existing
+     * convention used across the admin tabs.
      */
-    function notifyError(errOrMsg: unknown, fallback = 'Error') {
+    function notifyError(errOrMsg: unknown, fallback = 'Error', icon = 'i-lucide-x') {
         const title =
             typeof errOrMsg === 'string' ? errOrMsg
             : errOrMsg instanceof Error ? errOrMsg.message
             : fallback
-        toast.add({ title, color: 'error', icon: 'i-lucide-x' })
+        toast.add({ title, color: 'error', icon })
     }
 
     /** Show a success toast. */

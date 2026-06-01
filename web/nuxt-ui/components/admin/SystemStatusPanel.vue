@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { ServerStatus, ModuleHealth } from '~/types/api'
-import { moduleStatusColor } from '~/composables/useAdminFeedback'
+import { moduleStatusColor, useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError } = useAdminFeedback()
 
 const serverStatus = ref<ServerStatus | null>(null)
 const moduleStatuses = ref<ModuleHealth[]>([])
@@ -26,7 +26,7 @@ async function loadStatus() {
     if (srv.status === 'fulfilled') serverStatus.value = srv.value
     if (mods.status === 'fulfilled') moduleStatuses.value = mods.value ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load server status', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load server status', 'i-lucide-alert-circle')
   } finally { if (mounted) statusLoading.value = false }
 }
 
@@ -38,7 +38,7 @@ async function showModuleDetail(name: string) {
     if (!mounted) return
     moduleDetail.value = detail
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load module health', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load module health')
   } finally { if (mounted) moduleDetailLoading.value = false }
 }
 

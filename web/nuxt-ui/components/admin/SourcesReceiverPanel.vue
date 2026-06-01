@@ -9,9 +9,10 @@ import type {
   FollowerStatus,
 } from '~/types/api'
 import { formatBytes } from '~/utils/format'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess, notifyWarning } = useAdminFeedback()
 
 const receiverStats = ref<ReceiverStats | null>(null)
 const receiverSettings = ref<ReceiverAdminSettings | null>(null)
@@ -50,9 +51,9 @@ function toggleKeyReveal(idx: number) {
 async function copyKey(key: string) {
   try {
     await navigator.clipboard.writeText(key)
-    toast.add({ title: 'API key copied', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('API key copied')
   } catch {
-    toast.add({ title: 'Copy failed — select manually', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    notifyWarning('Copy failed — select manually')
   }
 }
 
@@ -87,7 +88,7 @@ async function openSlaveMediaDetail(id: string) {
     }
   } catch (e: unknown) {
     if (!destroyed && activeDetailRequestId.value === myId) {
-      toast.add({ title: e instanceof Error ? e.message : 'Failed to load media detail', color: 'error', icon: 'i-lucide-x' })
+      notifyError(e, 'Failed to load media detail')
     }
   } finally {
     if (!destroyed && activeDetailRequestId.value === myId) {
@@ -113,7 +114,7 @@ async function loadReceiver() {
     }
   } catch (e: unknown) {
     if (!destroyed) {
-      toast.add({ title: e instanceof Error ? e.message : 'Failed to load receiver', color: 'error', icon: 'i-lucide-alert-circle' })
+      notifyError(e, 'Failed to load receiver', 'i-lucide-alert-circle')
     }
   } finally {
     if (!destroyed) receiverLoading.value = false
@@ -131,7 +132,7 @@ async function loadSlaveMedia() {
     }
   } catch (e: unknown) {
     if (!destroyed) {
-      toast.add({ title: e instanceof Error ? e.message : 'Failed to load slave media', color: 'error', icon: 'i-lucide-x' })
+      notifyError(e, 'Failed to load slave media')
     }
   } finally {
     if (!destroyed) slaveMediaLoading.value = false
@@ -142,12 +143,12 @@ async function removeSlave(id: string) {
   try {
     await adminApi.removeReceiverSlave(id)
     if (!destroyed) {
-      toast.add({ title: 'Slave removed', color: 'success', icon: 'i-lucide-check' })
+      notifySuccess('Slave removed')
       await loadReceiver()
     }
   } catch (e: unknown) {
     if (!destroyed) {
-      toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+      notifyError(e, 'Failed')
     }
   }
 }
@@ -157,11 +158,11 @@ async function resolveDuplicate(id: string, action: string) {
     await adminApi.resolveDuplicate(id, action)
     if (!destroyed) {
       duplicates.value = duplicates.value.filter(d => d.id !== id)
-      toast.add({ title: `Duplicate ${action}d`, color: 'success', icon: 'i-lucide-check' })
+      notifySuccess(`Duplicate ${action}d`)
     }
   } catch (e: unknown) {
     if (!destroyed) {
-      toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+      notifyError(e, 'Failed')
     }
   }
 }
@@ -184,7 +185,7 @@ async function loadFollower() {
     followerForm.api_key = ''
   } catch (e: unknown) {
     if (!destroyed) {
-      toast.add({ title: e instanceof Error ? e.message : 'Failed to load follower', color: 'error', icon: 'i-lucide-alert-circle' })
+      notifyError(e, 'Failed to load follower', 'i-lucide-alert-circle')
     }
   } finally {
     if (!destroyed) followerLoading.value = false
@@ -217,15 +218,15 @@ async function saveFollower() {
     if (destroyed) return
     if (result.reload_status) followerStatus.value = result.reload_status
     if (result.reload_error) {
-      toast.add({ title: `Saved, but reload failed: ${result.reload_error}`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+      notifyWarning(`Saved, but reload failed: ${result.reload_error}`)
     } else {
-      toast.add({ title: 'Follower settings saved', color: 'success', icon: 'i-lucide-check' })
+      notifySuccess('Follower settings saved')
     }
     // Re-fetch settings so api_key_configured reflects the new state.
     await loadFollower()
   } catch (e: unknown) {
     if (!destroyed) {
-      toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+      notifyError(e, 'Failed to save')
     }
   } finally {
     if (!destroyed) followerSaving.value = false
@@ -235,7 +236,7 @@ async function saveFollower() {
 async function testFollower() {
   if (followerTesting.value) return
   if (!followerForm.master_url.trim() || !followerForm.api_key.trim()) {
-    toast.add({ title: 'Enter master URL and API key first', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    notifyWarning('Enter master URL and API key first')
     return
   }
   followerTesting.value = true
@@ -243,14 +244,14 @@ async function testFollower() {
     const result = await adminApi.testFollowerPairing(followerForm.master_url.trim(), followerForm.api_key.trim())
     if (destroyed) return
     if (result.ok) {
-      toast.add({ title: 'Connection successful', color: 'success', icon: 'i-lucide-check' })
+      notifySuccess('Connection successful')
     } else {
       const detail = result.http_status ? ` (HTTP ${result.http_status})` : ''
-      toast.add({ title: `Connection failed: ${result.error ?? 'unknown'}${detail}`, color: 'error', icon: 'i-lucide-x' })
+      notifyError(`Connection failed: ${result.error ?? 'unknown'}${detail}`)
     }
   } catch (e: unknown) {
     if (!destroyed) {
-      toast.add({ title: e instanceof Error ? e.message : 'Test failed', color: 'error', icon: 'i-lucide-x' })
+      notifyError(e, 'Test failed')
     }
   } finally {
     if (!destroyed) followerTesting.value = false

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { UpdateInfo, UpdateStatus } from '~/types/api'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess, notifyInfo } = useAdminFeedback()
 
 // ── Update config ─────────────────────────────────────────────────────────────
 const updateMethod = ref<'source' | 'binary'>('binary')
@@ -17,7 +18,7 @@ async function loadUpdateConfig() {
     updateMethod.value = cfg.update_method
     updateBranch.value = cfg.branch
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load config', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load config')
   }
   finally { configLoading.value = false }
 }
@@ -28,9 +29,9 @@ async function saveUpdateConfig() {
     const cfg = await adminApi.setUpdateConfig({ update_method: updateMethod.value, branch: updateBranch.value })
     updateMethod.value = cfg.update_method
     updateBranch.value = cfg.branch
-    toast.add({ title: 'Update config saved', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Update config saved')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to save config', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to save config')
   } finally { configSaving.value = false }
 }
 
@@ -67,7 +68,7 @@ async function checkForUpdates() {
   try {
     info.value = await adminApi.checkForUpdates()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Check failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Check failed')
   } finally {
     checking.value = false
   }
@@ -79,11 +80,11 @@ async function applyUpdate() {
   try {
     const res = await adminApi.applyUpdate()
     if (!res) {
-      toast.add({ title: 'Update request failed (no response)', color: 'error', icon: 'i-lucide-x' })
+      notifyError('Update request failed (no response)')
       applying.value = false
       return
     }
-    toast.add({ title: 'Update applying — server will restart shortly', color: 'info', icon: 'i-lucide-info' })
+    notifyInfo('Update applying — server will restart shortly')
     status.value = res
     if (status.value?.in_progress) {
       stopPolling()
@@ -94,7 +95,7 @@ async function applyUpdate() {
           status.value = s
           if (!s.in_progress) { stopPolling(); applying.value = false }
         } catch (e: unknown) {
-          toast.add({ title: e instanceof Error ? e.message : 'Status polling failed', color: 'error', icon: 'i-lucide-x' })
+          notifyError(e, 'Status polling failed')
           stopPolling(); applying.value = false
         }
       }, 3000)
@@ -102,7 +103,7 @@ async function applyUpdate() {
       applying.value = false
     }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Update failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Update failed')
     applying.value = false
   }
 }
@@ -118,7 +119,7 @@ async function checkSourceUpdates() {
   try {
     sourceInfo.value = await adminApi.checkSourceUpdates()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Source check failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Source check failed')
   } finally { sourceChecking.value = false }
 }
 
@@ -128,11 +129,11 @@ async function applySourceUpdate() {
   try {
     const res = await adminApi.applySourceUpdate()
     if (!res) {
-      toast.add({ title: 'Source update request failed (no response)', color: 'error', icon: 'i-lucide-x' })
+      notifyError('Source update request failed (no response)')
       sourceApplying.value = false
       return
     }
-    toast.add({ title: 'Source update started — server will restart', color: 'info', icon: 'i-lucide-info' })
+    notifyInfo('Source update started — server will restart')
     status.value = res
     if (status.value?.in_progress) {
       stopSourcePolling()
@@ -143,7 +144,7 @@ async function applySourceUpdate() {
           status.value = s
           if (!s.in_progress) { stopSourcePolling(); sourceApplying.value = false }
         } catch (e: unknown) {
-          toast.add({ title: e instanceof Error ? e.message : 'Progress polling failed', color: 'error', icon: 'i-lucide-x' })
+          notifyError(e, 'Progress polling failed')
           stopSourcePolling(); sourceApplying.value = false
         }
       }, 3000)
@@ -151,7 +152,7 @@ async function applySourceUpdate() {
       sourceApplying.value = false
     }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Source update failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Source update failed')
     sourceApplying.value = false
   }
 }

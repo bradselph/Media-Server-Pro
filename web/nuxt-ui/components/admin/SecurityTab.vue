@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { AuditLogEntry, IPListEntry, BannedIP, SecurityStats } from '~/types/api'
 import { asRecord } from '~/utils/typeGuards'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 const subTab = ref('audit')
 const subTabs = [
@@ -41,7 +43,7 @@ async function loadSecurityConfig() {
       }
     }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load config', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load config', 'i-lucide-alert-circle')
   } finally {
     configLoading.value = false
   }
@@ -72,9 +74,9 @@ async function saveSecurityToggle(
     if (srv) {
       httpsEnabled.value = srv.enable_https === true
     }
-    toast.add({ title: 'Security settings saved', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Security settings saved')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to save')
     // Reload from server. If the reload itself fails, refs were never mutated
     // (we only update them in the success path above) so USwitch will continue
     // to render the pre-toggle state via :model-value.
@@ -102,7 +104,7 @@ async function loadAudit() {
     // Use actual total count from server instead of inferring from response size
     auditTotal.value = res?.total ?? 0
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load audit log', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load audit log', 'i-lucide-alert-circle')
   } finally { auditLoading.value = false }
 }
 
@@ -120,7 +122,7 @@ async function exportAuditLog() {
     a.click()
     URL.revokeObjectURL(url)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Export failed', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Export failed', 'i-lucide-alert-circle')
   } finally { exportingAudit.value = false }
 }
 
@@ -154,19 +156,19 @@ function isValidIPCIDR(ip: string): boolean {
 async function loadWhitelist() {
   whitelistLoading.value = true
   try { whitelist.value = (await adminApi.getWhitelist()) ?? [] }
-  catch (e: unknown) { toast.add({ title: e instanceof Error ? e.message : 'Failed to load whitelist', color: 'error', icon: 'i-lucide-alert-circle' }) }
+  catch (e: unknown) { notifyError(e, 'Failed to load whitelist', 'i-lucide-alert-circle') }
   finally { whitelistLoading.value = false }
 }
 async function loadBlacklist() {
   blacklistLoading.value = true
   try { blacklist.value = (await adminApi.getBlacklist()) ?? [] }
-  catch (e: unknown) { toast.add({ title: e instanceof Error ? e.message : 'Failed to load blacklist', color: 'error', icon: 'i-lucide-alert-circle' }) }
+  catch (e: unknown) { notifyError(e, 'Failed to load blacklist', 'i-lucide-alert-circle') }
   finally { blacklistLoading.value = false }
 }
 async function loadBanned() {
   bannedLoading.value = true
   try { banned.value = (await adminApi.getBannedIPs()) ?? [] }
-  catch (e: unknown) { toast.add({ title: e instanceof Error ? e.message : 'Failed to load banned IPs', color: 'error', icon: 'i-lucide-alert-circle' }) }
+  catch (e: unknown) { notifyError(e, 'Failed to load banned IPs', 'i-lucide-alert-circle') }
   finally { bannedLoading.value = false }
 }
 
@@ -182,11 +184,11 @@ async function addToList(type: 'whitelist' | 'blacklist') {
   try {
     if (type === 'whitelist') await adminApi.addToWhitelist(newIP.value, newComment.value || undefined)
     else await adminApi.addToBlacklist(newIP.value, newComment.value || undefined)
-    toast.add({ title: `IP added to ${type}`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`IP added to ${type}`)
     newIP.value = ''; newComment.value = ''
     if (type === 'whitelist') await loadWhitelist(); else await loadBlacklist()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     ipLoading.value = false
   }
@@ -196,20 +198,20 @@ async function removeFromList(type: 'whitelist' | 'blacklist', ip: string) {
   try {
     if (type === 'whitelist') await adminApi.removeFromWhitelist(ip)
     else await adminApi.removeFromBlacklist(ip)
-    toast.add({ title: 'IP removed', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('IP removed')
     if (type === 'whitelist') await loadWhitelist(); else await loadBlacklist()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
 async function unban(ip: string) {
   try {
     await adminApi.unbanIP(ip)
-    toast.add({ title: 'IP unbanned', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('IP unbanned')
     await loadBanned()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -220,19 +222,19 @@ const banning = ref(false)
 async function banIPAddress() {
   if (!newBanIP.value) return
   if (!isValidIPCIDR(newBanIP.value.trim())) {
-    toast.add({ title: 'Invalid IP address or CIDR format', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Invalid IP address or CIDR format')
     return
   }
   banning.value = true
   try {
     const dur = Number.parseInt(newBanDuration.value, 10)
     await adminApi.banIP(newBanIP.value, !Number.isNaN(dur) && dur > 0 ? dur : undefined)
-    toast.add({ title: 'IP banned', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('IP banned')
     newBanIP.value = ''
     newBanDuration.value = ''
     await loadBanned()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     banning.value = false
   }

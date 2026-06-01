@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { Playlist, AdminPlaylistStats } from '~/types/api'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 const playlists = ref<Playlist[]>([])
 const loading = ref(true)
@@ -114,7 +116,7 @@ async function executeBulkDelete() {
     confirmBulkDelete.value = false
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Bulk delete failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Bulk delete failed')
   } finally { bulkDeleting.value = false }
 }
 
@@ -130,7 +132,7 @@ async function load() {
     }
     if (s.status === 'fulfilled') stats.value = s.value
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load playlists', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load playlists', 'i-lucide-alert-circle')
   } finally { loading.value = false }
 }
 
@@ -139,11 +141,11 @@ async function handleDelete() {
   deleting.value = true
   try {
     await adminApi.deletePlaylist(deleteTarget.value.id)
-    toast.add({ title: 'Playlist deleted', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Playlist deleted')
     deleteTarget.value = null
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     deleting.value = false
   }
@@ -160,7 +162,7 @@ async function handleEdit() {
   if (!editTarget.value || editSaving.value) return
   const name = editName.value.trim()
   if (!name) {
-    toast.add({ title: 'Name is required', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Name is required')
     return
   }
   editSaving.value = true
@@ -170,11 +172,11 @@ async function handleEdit() {
       description: editDescription.value,
       is_public: editIsPublic.value,
     })
-    toast.add({ title: 'Playlist updated', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Playlist updated')
     editTarget.value = null
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     editSaving.value = false
   }

@@ -10,10 +10,12 @@ import type {
 } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime, formatBytes } from '~/utils/format'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const analyticsApi = useAnalyticsApi()
 const adminApi = useAdminApi()
 const toast = useToast()
+const { notifyError, notifySuccess, notifyWarning } = useAdminFeedback()
 
 // ── Filtering & view-state ──────────────────────────────────────────────────
 // Most filters live in URL-style refs so the user can tweak the dashboard
@@ -72,12 +74,12 @@ async function backfillDate(date: string) {
   backfilling.value = date
   try {
     await analyticsApi.backfillDailyStats(date)
-    toast.add({ title: `Recomputed ${date} from raw events`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Recomputed ${date} from raw events`)
     // Reload everything so the daily breakdown + dependent panels
     // (period comparison, timeline, etc.) all reflect the new totals.
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Backfill failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Backfill failed')
   } finally {
     backfilling.value = null
   }
@@ -99,7 +101,7 @@ async function copyEventJson() {
     await navigator.clipboard.writeText(JSON.stringify(eventDetail.value, null, 2))
     toast.add({ title: 'Event JSON copied', color: 'success', icon: 'i-lucide-clipboard-check' })
   } catch {
-    toast.add({ title: 'Clipboard unavailable', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    notifyWarning('Clipboard unavailable')
   }
 }
 
@@ -135,7 +137,7 @@ async function evaluateAlerts() {
 }
 function addOrUpdateAlertRule() {
   if (!alertEdit.value.name || !alertEdit.value.metric) {
-    toast.add({ title: 'Name and metric required', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    notifyWarning('Name and metric required')
     return
   }
   if (alertEdit.value.id) {
@@ -195,7 +197,7 @@ async function loadAdminActions() {
     const resp = await adminApi.getAuditLog({ limit: 100, offset: 0 })
     adminActions.value = resp?.items ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load admin actions', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load admin actions')
   } finally {
     adminActionsLoading.value = false
   }
@@ -219,7 +221,7 @@ const rangeResult = ref<RangeComparison | null>(null)
 const rangeLoading = ref(false)
 async function runRangeCompare() {
   if (!rangeAStart.value || !rangeAEnd.value || !rangeBStart.value || !rangeBEnd.value) {
-    toast.add({ title: 'All four dates required', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    notifyWarning('All four dates required')
     return
   }
   rangeLoading.value = true
@@ -229,7 +231,7 @@ async function runRangeCompare() {
       rangeBStart.value, rangeBEnd.value,
     )
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Comparison failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Comparison failed')
   } finally {
     rangeLoading.value = false
   }
@@ -335,7 +337,7 @@ function startLiveTail() {
       }
     })
   } catch (e: unknown) {
-    toast.add({ title: 'Failed to open live tail', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Failed to open live tail')
   }
 }
 
@@ -363,7 +365,7 @@ async function openMediaDetail(mediaId: string, title: string) {
   try {
     mediaDetail.value = await analyticsApi.getMediaAnalytics(mediaId, 30)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load media analytics', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load media analytics')
   } finally {
     mediaDetailLoading.value = false
   }
@@ -418,7 +420,7 @@ async function drillByType() {
   try {
     drillEvents.value = (await analyticsApi.getEventsByType(drillType.value.trim(), 50)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { drillLoading.value = false }
 }
 
@@ -428,7 +430,7 @@ async function drillByMedia() {
   try {
     drillEvents.value = (await analyticsApi.getEventsByMedia(drillMediaId.value.trim(), 50)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { drillLoading.value = false }
 }
 
@@ -444,7 +446,7 @@ async function drillByUser() {
     drillEvents.value = (await analyticsApi.getEventsByUser(drillUserId.value.trim(), 50)) ?? []
     void loadUserAggregate(drillUserId.value.trim())
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { drillLoading.value = false }
 }
 
@@ -574,7 +576,7 @@ async function load() {
     if (r(34) !== null) forecastErrors.value = r(34) as MetricForecast
 
     const failed = results.filter(x => x.status === 'rejected')
-    if (failed.length) toast.add({ title: `${failed.length} analytics endpoint(s) failed`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+    if (failed.length) notifyWarning(`${failed.length} analytics endpoint(s) failed`)
     // Admin actions feed pulls from a different endpoint (audit-log table,
     // not analytics_events) so it can't ride the Promise.allSettled batch
     // above. Fire it alongside but don't block the dashboard render on it.
@@ -591,7 +593,7 @@ async function reloadTopUsers() {
   try {
     topUsers.value = (await analyticsApi.getTopUsers(topUserMetric.value, 10)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load top users', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load top users')
   } finally {
     topUsersLoading.value = false
   }

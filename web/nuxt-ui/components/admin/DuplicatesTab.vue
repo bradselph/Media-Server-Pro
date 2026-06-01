@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { ReceiverDuplicate } from '~/types/api'
 import { formatRelativeDate } from '~/utils/format'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const mediaApi = useMediaApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 const duplicates = ref<ReceiverDuplicate[]>([])
 const loading = ref(false)
@@ -17,7 +18,7 @@ async function load() {
   try {
     duplicates.value = (await adminApi.listDuplicates(statusFilter.value)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load duplicates', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load duplicates', 'i-lucide-alert-circle')
   } finally {
     loading.value = false
   }
@@ -27,10 +28,10 @@ async function scan() {
   scanning.value = true
   try {
     await adminApi.scanDuplicates()
-    toast.add({ title: 'Scan complete', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Scan complete')
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Scan failed', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Scan failed', 'i-lucide-alert-circle')
   } finally {
     scanning.value = false
   }
@@ -40,7 +41,7 @@ async function resolve(id: string, action: 'remove_a' | 'remove_b' | 'keep_both'
   resolvingId.value = id
   try {
     await adminApi.resolveDuplicate(id, action)
-    toast.add({ title: 'Resolved', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Resolved')
     // Remove from list if status was pending and we're filtering pending
     if (statusFilter.value === 'pending') {
       duplicates.value = duplicates.value.filter(d => d.id !== id)
@@ -48,7 +49,7 @@ async function resolve(id: string, action: 'remove_a' | 'remove_b' | 'keep_both'
       await load()
     }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to resolve', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to resolve', 'i-lucide-alert-circle')
   } finally {
     resolvingId.value = null
   }

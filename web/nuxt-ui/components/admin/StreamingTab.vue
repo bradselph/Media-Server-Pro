@@ -2,10 +2,12 @@
 import type { HLSJob, HLSStats, HLSCapabilities, HLSValidationResult } from '~/types/api'
 import { formatBytes } from '~/utils/format'
 import { asRecord } from '~/utils/typeGuards'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
 const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 const jobs = ref<HLSJob[]>([])
 const stats = ref<HLSStats | null>(null)
@@ -76,10 +78,10 @@ async function saveHLSConfig() {
     await adminApi.updateConfig(updated)
     if (destroyed) return
     fullConfig.value = updated
-    toast.add({ title: 'HLS settings saved', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('HLS settings saved')
   } catch (e: unknown) {
     if (destroyed) return
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to save')
     // Reload config from server to revert UI to actual state
     await load()
   } finally {
@@ -89,14 +91,14 @@ async function saveHLSConfig() {
 
 async function copyJobId(id: string) {
   if (!id) {
-    toast.add({ title: 'ID not available', color: 'error', icon: 'i-lucide-x' })
+    notifyError('ID not available')
     return
   }
   try {
     await navigator.clipboard.writeText(id)
-    toast.add({ title: 'ID copied', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('ID copied')
   } catch (e: unknown) {
-    toast.add({ title: 'Failed to copy ID', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Failed to copy ID')
   }
 }
 
@@ -104,11 +106,11 @@ async function deleteJob(id: string) {
   try {
     await adminApi.deleteHLSJob(id)
     if (destroyed) return
-    toast.add({ title: 'Job deleted', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Job deleted')
     await load()
   } catch (e: unknown) {
     if (destroyed) return
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -116,11 +118,11 @@ async function cleanInactive() {
   try {
     await adminApi.cleanHLSInactive()
     if (destroyed) return
-    toast.add({ title: 'Cleaned inactive HLS jobs', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Cleaned inactive HLS jobs')
     await load()
   } catch (e: unknown) {
     if (destroyed) return
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -133,10 +135,10 @@ function statusColor(status: HLSJob['status']): 'neutral' | 'info' | 'success' |
 async function cleanStaleLocks() {
   try {
     await adminApi.cleanHLSStaleLocks()
-    toast.add({ title: 'Stale locks cleaned', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Stale locks cleaned')
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -148,7 +150,7 @@ async function refreshJobStatus(id: string) {
     const idx = jobs.value.findIndex(j => j.id === id)
     if (idx !== -1) jobs.value = jobs.value.map((j, i) => i === idx ? updated : j)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to refresh status', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to refresh status')
   } finally { if (!destroyed) jobRefreshing.value = null }
 }
 
@@ -160,7 +162,7 @@ async function validateJob(id: string) {
     const ok = validationResult.value.valid
     toast.add({ title: ok ? 'HLS output is valid' : 'HLS validation failed', color: ok ? 'success' : 'warning', icon: ok ? 'i-lucide-check' : 'i-lucide-alert-triangle' })
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Validation failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Validation failed')
   } finally { if (!destroyed) validating.value = null }
 }
 

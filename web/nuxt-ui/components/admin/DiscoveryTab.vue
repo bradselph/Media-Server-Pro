@@ -5,9 +5,10 @@ import type {
 } from '~/types/api'
 import { formatWatchTime } from '~/utils/format'
 import { asRecord } from '~/utils/typeGuards'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 const subTab = ref('categorizer')
 const subTabs = [
@@ -30,7 +31,7 @@ async function loadCategorizer() {
   try {
     categoryStats.value = await adminApi.getCategoryStats()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load categorizer', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load categorizer', 'i-lucide-alert-circle')
   } finally { categorizerLoading.value = false }
 }
 
@@ -39,10 +40,10 @@ async function categorizeFile() {
   categorizing.value = true
   try {
     categorizeResult.value = await adminApi.categorizeFile(categorizePath.value.trim())
-    toast.add({ title: 'File categorized', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('File categorized')
     await loadCategorizer()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { categorizing.value = false }
 }
 
@@ -52,10 +53,10 @@ async function categorizeDirectory() {
   try {
     const results = await adminApi.categorizeDirectory(categorizePath.value.trim())
     categorizeResult.value = results
-    toast.add({ title: `Categorized ${Array.isArray(results) ? results.length : 0} files`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Categorized ${Array.isArray(results) ? results.length : 0} files`)
     await loadCategorizer()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { categorizing.value = false }
 }
 
@@ -64,10 +65,10 @@ async function setCategory() {
   categorizing.value = true
   try {
     await adminApi.setMediaCategory(categorizePath.value.trim(), categorizeCategory.value.trim())
-    toast.add({ title: 'Category set', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Category set')
     await loadCategorizer()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { categorizing.value = false }
 }
 
@@ -81,7 +82,7 @@ async function browseByCategory() {
   try {
     categoryItems.value = (await adminApi.getByCategory(browseCategory.value.trim())) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { categoryItemsLoading.value = false }
 }
 
@@ -93,10 +94,10 @@ async function cleanStaleCategories() {
   try {
     const res = await adminApi.cleanStaleCategories()
     const removed = asRecord(res)?.removed
-    toast.add({ title: `Cleaned ${typeof removed === 'number' ? removed : 0} stale entries`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Cleaned ${typeof removed === 'number' ? removed : 0} stale entries`)
     await loadCategorizer()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     cleaningStale.value = false
   }
@@ -113,7 +114,7 @@ async function loadDiscovery() {
   try {
     discoverySuggestions.value = (await adminApi.getDiscoverySuggestions()) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load discovery', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load discovery', 'i-lucide-alert-circle')
   } finally { discoveryLoading.value = false }
 }
 
@@ -123,9 +124,9 @@ async function runDiscoveryScan() {
   try {
     const results = await adminApi.discoveryScan(scanDirectory.value.trim())
     discoverySuggestions.value = results ?? []
-    toast.add({ title: `Found ${discoverySuggestions.value.length} suggestions`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Found ${discoverySuggestions.value.length} suggestions`)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { scanning.value = false }
 }
 
@@ -137,9 +138,9 @@ async function applyDiscovery(path: string) {
   try {
     await adminApi.applyDiscoverySuggestion(path)
     discoverySuggestions.value = discoverySuggestions.value.filter(s => s.original_path !== path)
-    toast.add({ title: 'Suggestion applied', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Suggestion applied')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     const cleared = new Set(processingPaths.value); cleared.delete(path); processingPaths.value = cleared
   }
@@ -151,9 +152,9 @@ async function dismissDiscovery(path: string) {
   try {
     await adminApi.dismissDiscoverySuggestion(path)
     discoverySuggestions.value = discoverySuggestions.value.filter(s => s.original_path !== path)
-    toast.add({ title: 'Suggestion dismissed', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Suggestion dismissed')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     const cleared = new Set(processingPaths.value); cleared.delete(path); processingPaths.value = cleared
   }
@@ -168,7 +169,7 @@ async function loadSuggestions() {
   try {
     suggestionStats.value = await adminApi.getSuggestionStats()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load suggestions', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load suggestions', 'i-lucide-alert-circle')
   } finally { suggestionsLoading.value = false }
 }
 
@@ -194,7 +195,7 @@ async function loadClassify() {
     classifyStatus.value = status
     classifyStats.value = stats
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load classification', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load classification', 'i-lucide-alert-circle')
   } finally { classifyLoading.value = false }
 }
 
@@ -204,9 +205,9 @@ async function classifyFile() {
   classifyResult.value = null
   try {
     classifyResult.value = await adminApi.classifyFile(classifyPath.value.trim())
-    toast.add({ title: 'Classification complete', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Classification complete')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { classifying.value = false }
 }
 
@@ -216,9 +217,9 @@ async function classifyDirectory() {
   classifyResult.value = null
   try {
     classifyResult.value = await adminApi.classifyDirectory(classifyPath.value.trim())
-    toast.add({ title: 'Directory classification queued', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Directory classification queued')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { classifying.value = false }
 }
 
@@ -227,18 +228,18 @@ async function classifyAllPending() {
   try {
     const res = await adminApi.classifyAllPending()
     const count = asRecord(res)?.count
-    toast.add({ title: `Queued ${typeof count === 'number' ? count : 0} items for classification`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Queued ${typeof count === 'number' ? count : 0} items for classification`)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { classifying.value = false }
 }
 
 async function runClassifyTask() {
   try {
     await adminApi.classifyRunTask()
-    toast.add({ title: 'Classification task triggered', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Classification task triggered')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -247,11 +248,11 @@ async function clearClassificationTags() {
   clearingTags.value = true
   try {
     await adminApi.classifyClearTags(clearTagsId.value.trim())
-    toast.add({ title: 'Tags cleared', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Tags cleared')
     clearTagsId.value = ''
     await loadClassify()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { clearingTags.value = false }
 }
 

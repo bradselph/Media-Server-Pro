@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
+
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 // Known top-level config sections — matches the Go config struct sections.
 // Adding a new section here (and in Go) keeps both sides in sync.
@@ -69,7 +71,7 @@ async function loadConfig() {
     rawJsonText.value = JSON.stringify(cfg, null, 2)
     dirty.value = false
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load config', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load config', 'i-lucide-alert-circle')
   } finally {
     loading.value = false
   }
@@ -91,7 +93,7 @@ async function saveConfig() {
     const payload = showRawJson.value ? JSON.parse(rawJsonText.value) : config.value
     await adminApi.updateConfig(payload)
     if (!mounted) return
-    toast.add({ title: 'Configuration saved', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Configuration saved')
     dirty.value = false
     if (showRawJson.value) {
       // Reload structured view from saved data
@@ -99,7 +101,7 @@ async function saveConfig() {
     }
   } catch (e: unknown) {
     if (!mounted) return
-    toast.add({ title: e instanceof Error ? e.message : 'Save failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Save failed')
   } finally {
     if (mounted) saving.value = false
   }
@@ -107,26 +109,26 @@ async function saveConfig() {
 
 async function changeAdminPassword() {
   if (!pwCurrent.value) {
-    toast.add({ title: 'Current password is required', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Current password is required')
     return
   }
   if (pwNew.value.length < 8) {
-    toast.add({ title: 'New password must be at least 8 characters', color: 'error', icon: 'i-lucide-x' })
+    notifyError('New password must be at least 8 characters')
     return
   }
   if (pwNew.value !== pwConfirm.value) {
-    toast.add({ title: 'Passwords do not match', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Passwords do not match')
     return
   }
   pwLoading.value = true
   try {
     await adminApi.changeOwnPassword(pwCurrent.value, pwNew.value)
     if (!mounted) return
-    toast.add({ title: 'Password changed', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Password changed')
     pwCurrent.value = ''; pwNew.value = ''; pwConfirm.value = ''
   } catch (e: unknown) {
     if (!mounted) return
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     if (mounted) pwLoading.value = false
   }

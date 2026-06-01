@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { AuditLogEntry } from '~/types/api'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError } = useAdminFeedback()
 
 const entries = ref<AuditLogEntry[]>([])
 const loading = ref(false)
@@ -30,7 +31,7 @@ async function load(reset = false) {
     }
   } catch (e: unknown) {
     if (!mounted) return
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load audit log', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load audit log')
   } finally {
     if (mounted) loading.value = false
   }
