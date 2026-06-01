@@ -25,13 +25,15 @@ func TestIsAuthPath(t *testing.T) {
 	}{
 		{"/api/auth/login", true},
 		{"/api/auth/register", true},
-		{"/api/auth/admin-login", true},
-		{"/api/admin/login", true},
 		{"/api/auth/change-password", true},
 		{"/api/auth/delete-account", true},
 		{"/api/media", false},
 		{"/api/auth/logout", false},
 		{"/", false},
+		// These paths are not registered routes; they must not gain the
+		// stricter auth rate limit (regression guard for removed dead entries).
+		{"/api/auth/admin-login", false},
+		{"/api/admin/login", false},
 	}
 	for _, tc := range tests {
 		got := isAuthPath(tc.path)

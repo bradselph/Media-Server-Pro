@@ -69,8 +69,6 @@ func init() {
 var authPaths = map[string]struct{}{
 	"/api/auth/login":           {},
 	"/api/auth/register":        {},
-	"/api/auth/admin-login":     {},
-	"/api/admin/login":          {},
 	"/api/auth/change-password": {},
 	"/api/auth/delete-account":  {},
 }

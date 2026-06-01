@@ -736,7 +736,14 @@ func buildConfigClaudeMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-// GetConfigMap returns config as a map for JSON serialization
+// GetConfigMap returns config as a map for JSON serialization.
+//
+// The Follower and Receiver sections are intentionally excluded: they carry
+// federation secrets (Follower.APIKey, Receiver.APIKeys) and are managed via
+// dedicated, redaction-aware endpoints (/api/admin/follower/*, /api/admin/
+// receiver/*) that reload the follower module in-place. Surfacing them through
+// the unified config map would either leak those secrets or require duplicating
+// the redaction + hot-reload logic here, so they are deliberately omitted.
 func (m *Module) GetConfigMap() map[string]any {
 	cfg := m.config.Get()
 	sections := []struct {
