@@ -298,6 +298,11 @@ func (m *Module) resumeInterruptedJobs() int {
 			m.log.Warn("Skipping resume of HLS job %s: media file no longer exists at %s", job.ID, job.MediaPath)
 			job.Status = models.HLSStatusFailed
 			job.Error = "Media file not found on startup resume"
+			// Persist the terminal Failed state immediately. Without this the row
+			// is only written at graceful shutdown, so a crash beforehand reloads
+			// the job as Running and re-resumes it into the same failure on every
+			// restart. saveJob is mutex-free, so it is safe under the held jobsMu.
+			m.saveJob(job)
 			continue
 		}
 		m.log.Info("Resuming interrupted HLS job %s for %s", job.ID, job.MediaPath)

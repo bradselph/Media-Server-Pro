@@ -1183,7 +1183,7 @@ const hasTrafficActivity = computed(() =>
           Engagement Timeline ({{ timelineDays }} days)
         </div>
       </template>
-      <MetricLineChart
+      <AdminMetricLineChart
         :series="[
           { label: 'Views', color: 'stroke-primary text-primary', values: tlViews },
           { label: 'Streams', color: 'stroke-emerald-500 text-emerald-500', values: tlStreams },
@@ -1204,7 +1204,7 @@ const hasTrafficActivity = computed(() =>
             Bandwidth Served ({{ timelineDays }} days)
           </div>
         </template>
-        <MetricLineChart
+        <AdminMetricLineChart
           :series="[
             { label: 'Bytes', color: 'stroke-cyan-500 text-cyan-500', values: tlBandwidth, format: (v: number) => formatBytes(v) },
           ]"
@@ -1219,7 +1219,7 @@ const hasTrafficActivity = computed(() =>
             5xx Server Errors ({{ timelineDays }} days)
           </div>
         </template>
-        <MetricLineChart
+        <AdminMetricLineChart
           :series="[
             { label: 'Errors', color: 'stroke-red-500 text-red-500', values: tlServerErrors },
           ]"
@@ -2202,7 +2202,7 @@ const hasTrafficActivity = computed(() =>
                 </UCard>
               </div>
               <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-1">Activity (last 30 days)</p>
-              <MetricLineChart
+              <AdminMetricLineChart
                 :series="[
                   { label: 'Views', color: 'stroke-primary text-primary', values: mediaDetail.view_timeline },
                   { label: 'Playbacks', color: 'stroke-emerald-500 text-emerald-500', values: mediaDetail.playback_timeline },

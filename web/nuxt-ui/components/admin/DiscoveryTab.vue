@@ -494,7 +494,7 @@ watch(subTab, (tab) => {
                   <div class="flex gap-2 flex-wrap">
                     <UButton :loading="classifying" icon="i-lucide-folder-open" label="Classify Directory" :disabled="!classifyPath.trim()" color="neutral" variant="outline" @click="classifyDirectory" />
                     <UButton :loading="classifying" icon="i-lucide-list-checks" label="Classify All Pending" color="warning" variant="outline" @click="classifyAllPending" />
-                    <UButton icon="i-lucide-play" label="Run Task Now" color="neutral" variant="outline" @click="runClassifyTask" />
+                    <UButton icon="i-lucide-play" label="Run Task Now" color="neutral" variant="outline" :disabled="!classifyStatus?.configured" @click="runClassifyTask" />
                     <UButton icon="i-lucide-refresh-cw" aria-label="Refresh classification" variant="ghost" color="neutral" @click="loadClassify" />
                   </div>
                   <pre v-if="classifyResult" class="p-2 rounded bg-muted text-xs overflow-x-auto">{{ JSON.stringify(classifyResult, null, 2) }}</pre>

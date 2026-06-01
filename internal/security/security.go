@@ -1086,6 +1086,7 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 		if strings.HasPrefix(cleaned, "/web/static/") ||
 			strings.HasPrefix(cleaned, "/stream") ||
 			strings.HasPrefix(cleaned, "/hls/") ||
+			strings.HasPrefix(cleaned, "/extractor/hls/") ||
 			strings.HasPrefix(cleaned, "/download") ||
 			strings.HasPrefix(cleaned, "/thumbnail") ||
 			mediaExempt ||

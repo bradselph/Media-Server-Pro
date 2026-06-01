@@ -197,6 +197,21 @@ func (h *Handler) AdminClaudeChat(c *gin.Context) {
 		}
 	}
 
+	// Record analytics for the prompt submission (and any tool approvals carried
+	// with it) while the request context is still live. The SSE turn below runs on
+	// a context.WithoutCancel, so emitting here ensures the events land even if the
+	// client disconnects mid-stream. Both types are registered in
+	// auditableEventTypes, so they also mirror into the admin audit log.
+	h.trackServerEvent(c, analytics.EventClaudePromptSend, map[string]any{
+		"bytes":         len(req.Message),
+		"mode_override": req.ModeOverride,
+	})
+	if len(req.ApprovedToolCalls) > 0 {
+		h.trackServerEvent(c, analytics.EventClaudeApprovalAct, map[string]any{
+			"count": len(req.ApprovedToolCalls),
+		})
+	}
+
 	// Prepare SSE headers. Nginx buffering is disabled so events flush promptly.
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set(headerCacheControl, "no-cache, no-transform")
