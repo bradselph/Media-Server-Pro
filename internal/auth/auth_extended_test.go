@@ -178,9 +178,6 @@ func TestDefaultUserPreferences(t *testing.T) {
 	if !prefs.ResumePlayback {
 		t.Error("ResumePlayback should be true")
 	}
-	if prefs.Language != "en" {
-		t.Errorf("Language = %q, want en", prefs.Language)
-	}
 }
 
 // ---------------------------------------------------------------------------

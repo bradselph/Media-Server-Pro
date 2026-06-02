@@ -255,7 +255,6 @@ func TestUserPreferences_Validate_TruncatesLongStrings(t *testing.T) {
 	long := strings.Repeat("x", 200)
 	p := UserPreferences{
 		DefaultQuality:  long,
-		Language:        long,
 		EqualizerPreset: long,
 		SortBy:          long,
 		FilterCategory:  long,
@@ -268,9 +267,6 @@ func TestUserPreferences_Validate_TruncatesLongStrings(t *testing.T) {
 
 	if len(p.DefaultQuality) > 50 {
 		t.Errorf("DefaultQuality not truncated to 50, got %d", len(p.DefaultQuality))
-	}
-	if len(p.Language) > 10 {
-		t.Errorf("Language not truncated to 10, got %d", len(p.Language))
 	}
 	if len(p.EqualizerPreset) > 100 {
 		t.Errorf("EqualizerPreset not truncated to 100, got %d", len(p.EqualizerPreset))

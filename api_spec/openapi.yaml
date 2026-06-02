@@ -217,8 +217,6 @@ components:
           type: string
         resume_playback:
           type: boolean
-        show_analytics:
-          type: boolean
         items_per_page:
           type: integer
         view_mode:
@@ -227,8 +225,6 @@ components:
           type: number
         volume:
           type: number
-        language:
-          type: string
         sort_by:
           type: string
         sort_order:
@@ -237,9 +233,6 @@ components:
           type: string
         filter_media_type:
           type: string
-        custom_eq_presets:
-          type: object
-          additionalProperties: true
         show_continue_watching:
           type: boolean
         show_recommended:

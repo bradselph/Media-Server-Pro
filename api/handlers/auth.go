@@ -480,22 +480,17 @@ func applyPreferencesPatch(prefs *models.UserPreferences, m map[string]any) {
 		prefs.ShowMature = v
 		prefs.MaturePreferenceSet = true
 	}
-	setStringPref(m, "language", &prefs.Language)
 	if v, ok := m["equalizer_preset"].(string); ok {
 		prefs.EqualizerPreset = v
 	} else if v, ok := m["equalizer_bands"].(string); ok {
 		prefs.EqualizerPreset = v
 	}
 	setBoolPref(m, "resume_playback", &prefs.ResumePlayback)
-	setBoolPref(m, "show_analytics", &prefs.ShowAnalytics)
 	setClampedIntPref(m, "items_per_page", &prefs.ItemsPerPage, 1, 200)
 	setStringPref(m, "sort_by", &prefs.SortBy)
 	setStringPref(m, "sort_order", &prefs.SortOrder)
 	setStringPref(m, "filter_category", &prefs.FilterCategory)
 	setStringPref(m, "filter_media_type", &prefs.FilterMediaType)
-	if v, ok := m["custom_eq_presets"].(map[string]any); ok {
-		prefs.CustomEQPresets = v
-	}
 	setBoolPref(m, "show_continue_watching", &prefs.ShowContinueWatching)
 	setBoolPref(m, "show_recommended", &prefs.ShowRecommended)
 	setBoolPref(m, "show_trending", &prefs.ShowTrending)

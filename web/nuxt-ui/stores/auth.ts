@@ -24,10 +24,8 @@ function defaultPreferences(): UserPreferences {
         volume: 1,
         show_mature: false,
         mature_preference_set: false,
-        language: 'en',
         equalizer_preset: '',
         resume_playback: true,
-        show_analytics: true,
         items_per_page: 20,
         sort_by: 'date_added',
         sort_order: 'desc',
@@ -42,9 +40,6 @@ function defaultPreferences(): UserPreferences {
         download_prompt: true,
         autoplay_similar: true,
         accent_hue: 220,
-        // FND-0046: Include custom_eq_presets field (even if undefined) for type consistency
-        // between default and server-normalized preferences.
-        custom_eq_presets: undefined,
     }
 }
 

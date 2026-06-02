@@ -165,17 +165,18 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 			return err
 		}
 
-		// Upsert preferences: same pattern. GORM's serializer:json tag handles
-		// CustomEQPresets automatically when using Create.
+		// Upsert preferences: same pattern. The assignment columns must match the
+		// UserPreferences struct fields so ON DUPLICATE KEY UPDATE doesn't
+		// reference columns absent from the INSERT.
 		user.Preferences.UserID = user.ID
 		return tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "user_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
 				"theme", "view_mode", "default_quality", "auto_play",
 				"playback_speed", "volume", "show_mature", "mature_preference_set",
-				"language", "equalizer_preset", "resume_playback", "show_analytics",
+				"equalizer_preset", "resume_playback",
 				"items_per_page", "sort_by", "sort_order", "filter_category",
-				"filter_media_type", "custom_eq_presets",
+				"filter_media_type",
 				"show_continue_watching", "show_recommended", "show_trending",
 				"skip_interval", "shuffle_enabled", "show_buffer_bar", "download_prompt",
 				"autoplay_similar",
