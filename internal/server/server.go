@@ -533,11 +533,6 @@ func (s *Server) saveConfigWithRetry() {
 	}
 }
 
-// Wait blocks until the server is shut down
-func (s *Server) Wait() {
-	<-s.shutdownCh
-}
-
 // HandleStatus returns server status. Used by routes.Setup with adminAuth.
 func (s *Server) HandleStatus(c *gin.Context) {
 	s.mu.RLock()

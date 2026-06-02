@@ -207,9 +207,8 @@ func GinSecurityHeaders(getCfg func() (csp string, hstsMaxAge int)) gin.HandlerF
 
 // originSet holds the parsed CORS origin allowlist.
 //
-// Factored out from corsConfig so both the static GinCORS (whose origins list
-// is fixed at construction) and the dynamic GinCORSDynamic (which re-reads it
-// on every request) can share the same matching logic.
+// Factored out from corsConfig so GinCORSDynamic (which re-reads the allowlist
+// on every request) and the parsed corsConfig share the same matching logic.
 type originSet struct {
 	allowAll       bool
 	allowedOrigins map[string]bool
@@ -257,7 +256,7 @@ func parseCORSConfig(origins, methods, headers []string) corsConfig {
 }
 
 // writeCORSHeaders writes the per-response CORS headers when the request's
-// Origin is in the allowed set. Shared by GinCORS and GinCORSDynamic.
+// Origin is in the allowed set. Used by GinCORSDynamic.
 func writeCORSHeaders(c *gin.Context, set *originSet, methodsStr, headersStr string) {
 	origin := c.GetHeader("Origin")
 	value, allowed := set.allowOrigin(origin)
@@ -274,28 +273,7 @@ func writeCORSHeaders(c *gin.Context, set *originSet, methodsStr, headersStr str
 	}
 }
 
-// GinCORS adds CORS headers to Gin responses with a fixed origin allowlist
-// captured at construction time. Prefer GinCORSDynamic when the allowlist
-// needs to track config changes without a server restart.
-//
-// When allowAll is true and a specific Origin is present, Access-Control-Allow-Credentials
-// is set so cookie-based session auth works for cross-origin credentialed requests.
-func GinCORS(origins, methods, headers []string) gin.HandlerFunc {
-	cfg := parseCORSConfig(origins, methods, headers)
-
-	return func(c *gin.Context) {
-		writeCORSHeaders(c, &cfg.originSet, cfg.methodsStr, cfg.headersStr)
-
-		if c.Request.Method == http.MethodOptions {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-
-		c.Next()
-	}
-}
-
-// GinCORSDynamic is like GinCORS but reads the allowed origins list on every
+// GinCORSDynamic reads the allowed origins list on every
 // request via getOrigins, so edits to cors_origins take effect immediately
 // without a server restart. Methods and headers are fixed at construction time
 // since those rarely change at runtime.

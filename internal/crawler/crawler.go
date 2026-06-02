@@ -229,23 +229,6 @@ func (m *Module) GetTargets() ([]*CrawlTarget, error) {
 	return targets, nil
 }
 
-// ToggleTarget enables/disables a target.
-func (m *Module) ToggleTarget(id string, enabled bool) error {
-	if m.targetRepo == nil {
-		return errDisabled
-	}
-	rec, err := m.targetRepo.Get(context.Background(), id)
-	if err != nil {
-		return err
-	}
-	if rec == nil {
-		return fmt.Errorf("target not found: %s", id)
-	}
-	rec.Enabled = enabled
-	rec.UpdatedAt = time.Now()
-	return m.targetRepo.Upsert(context.Background(), rec)
-}
-
 // --- Crawling ---
 
 // Regex patterns for extracting links and M3U8 URLs from HTML
