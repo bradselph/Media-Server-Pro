@@ -1,5 +1,80 @@
 # Changelog
 
+## [1.18.0] - 2026-06-02 (minor)
+
+- refactor(middleware): remove dead static-CORS cluster
+- chore: remove stale .slave.env
+- chore: remove leftover Claude admin assistant remnants
+- refactor: remove unused exported methods
+- refactor(repos): remove unused repository methods
+- refactor(prefs): remove vestigial language/show_analytics/custom_eq_presets
+- feat(admin)!: remove the Claude admin assistant integration
+- docs(analytics): correct stale 'not yet covered' comment on pipeline events
+- fix(wiring): surface live scan state in admin Media tab
+- refactor(consent): drop dead useConsent() wrapper and hasDecided export
+- fix(wiring): honor account default_quality preference in HLS player
+- fix(wiring): wire admin Connect-a-Peer UI to /api/admin/peer/connect
+- refactor(admin): adopt useAdminFeedback toast helpers across admin tabs
+- fix(wiring): remove dead code paths, document config exclusion
+- fix(wiring): repair 6 missing/broken wiring gaps from audit
+- fix(upload): surface real per-file errors, drop unsupported image affordance, stop magic-byte false-rejects
+- fix(admin): distinguish not-found from internal error in AdminDeletePlaylist
+- fix(collections): bound AddCollectionItems batch size
+- fix(extractor): gate HLS streaming on the extractor feature flag
+- fix(playlists): enforce CanCreatePlaylists for smart playlists
+- fix(auth): return 404 (not 500) when deleting a missing API token
+- test(crawler): regression-guard discovery status allow-list
+- fix(admin): guard syncRemote/deleteRemote against double-submit
+- fix(admin): ignore superseded conversation loads in ClaudeChatPanel
+- fix(admin): add in-flight guard to deleteDiscovery
+- fix(sidebar): guard playNext double-click and clamp progressPct
+- fix(format): don't treat 0 as missing in duration/watch-time/uptime
+- fix(scanner): apply 24h TTL to repo cache for unreviewed content
+- fix(seo): invalidate sitemap and feed caches on media rescan
+- fix(upload): guard all Progress field access with the per-upload mutex
+- fix(hls): persist FailCount on transcode failure
+- fix(tasks): read task schedule under lock in executeTask
+- fix(crawler): accept added/ignored discovery statuses
+- fix(suggestions): snapshot profiles before saving in evictStaleProfiles
+- fix(playlist): strip CR/LF from M3U export fields
+- fix(follower): validate MasterURL against SSRF on save
+- fix(thumbnails): block path traversal in SaveCustomThumbnail
+- fix(thumbnails): prevent formatBytes panic on >=1TB sizes
+- fix(repos): log federated date parse failures in rowToMediaRecord
+- fix(media): treat empty playback-position delete as success
+- fix(upload): restrict GetUploadProgress to the upload owner
+- fix(validator): persist correct status when fix races with ClearResult
+- fix(follower): avoid wg.Wait deadlock on websocket write error
+- fix(receiver): guard against nil catalog item in PushCatalog
+- fix(analytics): avoid accumulating consent-changed listeners
+- fix(admin): correct actionColor return type for neutral badge
+- fix(browse): include tag_mode in live preview count
+- fix(profile): clear accent-hue debounce timer on unmount
+- fix(hls): propagate master playlist Sync/Close errors
+- fix(thumbnails): hold inFlight claim through synchronous preview generation
+- fix(media-reports): log discarded CountByStatus error
+- fix(admin): surface task-override persistence failures
+- fix(media): don't create orphan metadata for deleted media
+- fix(updater): propagate downloaded-update file Close error
+- fix(upload): treat file Close failure as upload error
+- fix(downloader,admin): writable destinations, robust import UX, config visibility
+- feat(downloader): import into an optional new sub-folder
+- fix(deploy): skip rclone/FUSE mounts in recursive chown
+- feat(downloader): select import destination, incl. writable HiDrive
+- Update deploy.sh
+- Update DEPLOY.md
+- Update deploy-knobs.sh
+- Update deploy-configure.sh
+- fix(smart-playlists): support eq operator on duration and views
+- fix: resolve analytics double-counting and refactor non-idiomatic pointer logic
+- fix: address overlooked bugs and improve performance in media and auth modules
+- Update .gitignore
+- Delete .sonarcloud.properties
+- fix(library): Play All now populates the play queue
+- feat(config,hls): make config.json/UI authoritative over env; add HW-accel encoding + RAM tuning
+- ci(docker-publish): always tag :latest via docker/metadata-action
+
+
 ## [Unreleased] - 2026-05-29
 
 Zero-trust bug hunt — 5 adversarially-verified passes (correctness, logic/nil/auth,
