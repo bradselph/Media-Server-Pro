@@ -148,6 +148,9 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 		"items":       items,
 		"total_items": totalItems,
 		"total_pages": totalPages,
+		// Mirror the public ListMedia response so the admin Media tab can show
+		// a live "scanning" indicator and auto-refresh until the scan finishes.
+		"scanning": h.media.IsScanning(),
 	})
 }
 

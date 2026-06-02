@@ -227,6 +227,7 @@ export interface AdminMediaListResponse {
     items: MediaItem[]
     total_items: number
     total_pages: number
+    scanning?: boolean
 }
 
 export interface AdminMediaListParams {

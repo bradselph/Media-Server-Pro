@@ -229,7 +229,11 @@ function onSearchInput() {
   searchTimer = setTimeout(() => { params.page = 1; load() }, 300)
 }
 
-async function load() {
+// load() is bound directly to event handlers, so it stays param-less.
+// loadInternal carries the silent flag the scan poll uses to avoid spamming an
+// error toast every few seconds on a transient fetch failure mid-scan.
+function load() { return loadInternal(false) }
+async function loadInternal(silent: boolean) {
   const seq = ++loadSeq
   selectedIds.value = new Set()
   loading.value = true
@@ -244,23 +248,42 @@ async function load() {
     items.value = res.items ?? []
     totalItems.value = res.total_items ?? 0
     totalPages.value = res.total_pages ?? 1
+    // Reflect the real scan state reported by the backend so the indicator is
+    // accurate even when a scan was started elsewhere or is still running.
+    scanning.value = res.scanning ?? false
   } catch (e: unknown) {
     if (seq !== loadSeq) return
-    notifyError(e, 'Failed to load media')
+    if (!silent) notifyError(e, 'Failed to load media')
   } finally {
     if (seq === loadSeq) loading.value = false
   }
+}
+
+let scanPollTimer: ReturnType<typeof setInterval> | null = null
+let scanPolls = 0
+const MAX_SCAN_POLLS = 100 // ~5 min at 3s — safety bound so the poll can't run forever
+function stopScanPoll() {
+  if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null }
 }
 
 async function handleScan() {
   scanning.value = true
   try {
     await adminApi.scanMedia()
-    notifySuccess('Media scan triggered')
+    notifySuccess('Media scan started')
+    // The scan runs in the background; poll the list so the indicator reflects
+    // real progress and auto-clears (newly-scanned items appear) when it ends.
+    // Bounded + silent so a transient error can't spin forever or spam toasts.
+    stopScanPoll()
+    scanPolls = 0
+    scanPollTimer = setInterval(async () => {
+      scanPolls++
+      await loadInternal(true)
+      if (!scanning.value || scanPolls >= MAX_SCAN_POLLS) stopScanPoll()
+    }, 3000)
   } catch (e: unknown) {
-    notifyError(e, 'Scan failed')
-  } finally {
     scanning.value = false
+    notifyError(e, 'Scan failed')
   }
 }
 
@@ -357,7 +380,7 @@ onMounted(async () => {
     }
   }
 })
-onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
+onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() })
 </script>
 
 <template>
