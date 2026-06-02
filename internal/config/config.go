@@ -5,6 +5,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"sync"
@@ -169,24 +170,21 @@ func (m *Manager) validate() error {
 //   - EnableAutoDiscovery
 //   - EnableDuplicateDetection
 func (m *Manager) syncFeatureToggles() {
-	syncToggle := func(enabled bool, target *bool) {
-		*target = enabled
-	}
 	f := &m.config.Features
 	cfg := m.config
-	syncToggle(f.EnableHLS, &cfg.HLS.Enabled)
-	syncToggle(f.EnableAnalytics, &cfg.Analytics.Enabled)
-	syncToggle(f.EnableRemoteMedia, &cfg.RemoteMedia.Enabled)
-	syncToggle(f.EnableReceiver, &cfg.Receiver.Enabled)
-	syncToggle(f.EnableExtractor, &cfg.Extractor.Enabled)
-	syncToggle(f.EnableCrawler, &cfg.Crawler.Enabled)
-	syncToggle(f.EnableMatureScanner, &cfg.MatureScanner.Enabled)
-	syncToggle(f.EnableHuggingFace, &cfg.HuggingFace.Enabled)
-	syncToggle(f.EnableThumbnails, &cfg.Thumbnails.Enabled)
-	syncToggle(f.EnableUploads, &cfg.Uploads.Enabled)
-	syncToggle(f.EnableUserAuth, &cfg.Auth.Enabled)
-	syncToggle(f.EnableAdminPanel, &cfg.Admin.Enabled)
-	syncToggle(f.EnableDownloader, &cfg.Downloader.Enabled)
+	cfg.HLS.Enabled = f.EnableHLS
+	cfg.Analytics.Enabled = f.EnableAnalytics
+	cfg.RemoteMedia.Enabled = f.EnableRemoteMedia
+	cfg.Receiver.Enabled = f.EnableReceiver
+	cfg.Extractor.Enabled = f.EnableExtractor
+	cfg.Crawler.Enabled = f.EnableCrawler
+	cfg.MatureScanner.Enabled = f.EnableMatureScanner
+	cfg.HuggingFace.Enabled = f.EnableHuggingFace
+	cfg.Thumbnails.Enabled = f.EnableThumbnails
+	cfg.Uploads.Enabled = f.EnableUploads
+	cfg.Auth.Enabled = f.EnableUserAuth
+	cfg.Admin.Enabled = f.EnableAdminPanel
+	cfg.Downloader.Enabled = f.EnableDownloader
 }
 
 // migrateHLSQualityEnabled sets Enabled=true for HLS quality profiles that
@@ -410,10 +408,7 @@ func (m *Manager) getCopy() *Config {
 	cp.Receiver.APIKeys = append([]string(nil), m.config.Receiver.APIKeys...)
 	cp.Security.TrustedProxyCIDRs = append([]string(nil), m.config.Security.TrustedProxyCIDRs...)
 	if m.config.Storage.S3.Prefixes != nil {
-		cp.Storage.S3.Prefixes = make(map[string]string, len(m.config.Storage.S3.Prefixes))
-		for k, v := range m.config.Storage.S3.Prefixes {
-			cp.Storage.S3.Prefixes[k] = v
-		}
+		cp.Storage.S3.Prefixes = maps.Clone(m.config.Storage.S3.Prefixes)
 	}
 	return &cp
 }
