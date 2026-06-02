@@ -142,47 +142,44 @@ func TestGinSecurityHeaders_NoHSTS_NotHTTPS(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// CORS config helpers
+// CORS origin matching
 // ---------------------------------------------------------------------------
 
-func TestParseCORSConfig(t *testing.T) {
-	cfg := parseCORSConfig([]string{testOriginA, "https://b.com"}, []string{"GET"}, []string{"X-Custom"})
-	if cfg.allowAll {
+func TestParseOriginSet(t *testing.T) {
+	set := parseOriginSet([]string{testOriginA, "https://b.com"})
+	if set.allowAll {
 		t.Error("allowAll should be false for specific origins")
 	}
-	if !cfg.allowedOrigins[testOriginA] {
+	if !set.allowedOrigins[testOriginA] {
 		t.Error("a.com should be allowed")
 	}
-	if !cfg.allowedOrigins["https://b.com"] {
+	if !set.allowedOrigins["https://b.com"] {
 		t.Error("b.com should be allowed")
-	}
-	if cfg.methodsStr != "GET" {
-		t.Errorf("methods = %q", cfg.methodsStr)
 	}
 }
 
-func TestParseCORSConfig_Wildcard(t *testing.T) {
-	cfg := parseCORSConfig([]string{"*"}, nil, nil)
-	if !cfg.allowAll {
+func TestParseOriginSet_Wildcard(t *testing.T) {
+	set := parseOriginSet([]string{"*"})
+	if !set.allowAll {
 		t.Error("allowAll should be true for wildcard")
 	}
 }
 
 func TestAllowOrigin(t *testing.T) {
 	// Wildcard — always returns literal "*" regardless of origin
-	cfg := parseCORSConfig([]string{"*"}, nil, nil)
-	val, ok := cfg.allowOrigin("https://any.com")
+	set := parseOriginSet([]string{"*"})
+	val, ok := set.allowOrigin("https://any.com")
 	if !ok || val != "*" {
 		t.Errorf("wildcard: value=%q, ok=%v", val, ok)
 	}
 
 	// Specific
-	cfg2 := parseCORSConfig([]string{testOriginA}, nil, nil)
-	val, ok = cfg2.allowOrigin(testOriginA)
+	set2 := parseOriginSet([]string{testOriginA})
+	val, ok = set2.allowOrigin(testOriginA)
 	if !ok || val != testOriginA {
 		t.Errorf("allowed: value=%q, ok=%v", val, ok)
 	}
-	val, ok = cfg2.allowOrigin("https://evil.com")
+	val, ok = set2.allowOrigin("https://evil.com")
 	if ok {
 		t.Errorf("disallowed should not be ok, got value=%q", val)
 	}

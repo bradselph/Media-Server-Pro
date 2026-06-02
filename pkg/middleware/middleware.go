@@ -205,10 +205,8 @@ func GinSecurityHeaders(getCfg func() (csp string, hstsMaxAge int)) gin.HandlerF
 	}
 }
 
-// originSet holds the parsed CORS origin allowlist.
-//
-// Factored out from corsConfig so GinCORSDynamic (which re-reads the allowlist
-// on every request) and the parsed corsConfig share the same matching logic.
+// originSet holds the parsed CORS origin allowlist. GinCORSDynamic rebuilds it
+// (via parseOriginSet) whenever the configured origins change.
 type originSet struct {
 	allowAll       bool
 	allowedOrigins map[string]bool
@@ -238,21 +236,6 @@ func (s *originSet) allowOrigin(origin string) (value string, allowed bool) {
 		return origin, true
 	}
 	return "", false
-}
-
-// corsConfig holds parsed CORS settings for the handler.
-type corsConfig struct {
-	originSet
-	methodsStr string
-	headersStr string
-}
-
-func parseCORSConfig(origins, methods, headers []string) corsConfig {
-	return corsConfig{
-		originSet:  parseOriginSet(origins),
-		methodsStr: strings.Join(methods, ", "),
-		headersStr: strings.Join(headers, ", "),
-	}
 }
 
 // writeCORSHeaders writes the per-response CORS headers when the request's
