@@ -154,7 +154,8 @@ const (
 	EventUpdaterApply             = "updater_apply"
 	EventUpdaterConfigUpdate      = "updater_config_update"
 
-	// Classification + scanner-pipeline events not yet covered.
+	// Classification + scanner-pipeline events, emitted by their respective
+	// admin handlers (classify/categorizer/validator/discovery/downloader/etc.).
 	EventClassifyRun          = "classify_run"
 	EventCategorizerRun       = "categorizer_run"
 	EventValidatorRun         = "validator_run"
