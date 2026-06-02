@@ -130,16 +130,13 @@ type UserPreferences struct {
 	Volume              float64        `json:"volume" db:"volume" gorm:"default:1.0"`
 	ShowMature          bool           `json:"show_mature" db:"show_mature" gorm:"default:false"`
 	MaturePreferenceSet bool           `json:"mature_preference_set" db:"mature_preference_set" gorm:"default:false"`
-	Language            string         `json:"language" db:"language" gorm:"size:10;default:en"`
 	EqualizerPreset     string         `json:"equalizer_preset" db:"equalizer_preset" gorm:"size:100"`
 	ResumePlayback      bool           `json:"resume_playback" db:"resume_playback" gorm:"not null"`
-	ShowAnalytics       bool           `json:"show_analytics" db:"show_analytics" gorm:"not null"`
 	ItemsPerPage        int            `json:"items_per_page" db:"items_per_page" gorm:"default:20"`
 	SortBy              string         `json:"sort_by" db:"sort_by" gorm:"size:50;default:date_added"`
 	SortOrder           string         `json:"sort_order" db:"sort_order" gorm:"size:10;default:desc"`
 	FilterCategory      string         `json:"filter_category" db:"filter_category" gorm:"size:100"`
 	FilterMediaType     string         `json:"filter_media_type" db:"filter_media_type" gorm:"size:50"`
-	CustomEQPresets     map[string]any `json:"custom_eq_presets,omitempty" db:"custom_eq_presets" gorm:"type:json;serializer:json"`
 	// Home section visibility — default true (show all sections)
 	ShowContinueWatching bool `json:"show_continue_watching" db:"show_continue_watching" gorm:"not null"`
 	ShowRecommended      bool `json:"show_recommended" db:"show_recommended" gorm:"not null"`
@@ -369,7 +366,6 @@ func (p *UserPreferences) Validate() {
 	p.SortOrder = stringInSetOrDefault(p.SortOrder, map[string]bool{"asc": true, "desc": true, "": true}, "asc")
 
 	p.DefaultQuality = truncateString(p.DefaultQuality, 50)
-	p.Language = truncateString(p.Language, 10)
 	p.EqualizerPreset = truncateString(p.EqualizerPreset, 100)
 	p.SortBy = truncateString(p.SortBy, 50)
 	p.FilterCategory = truncateString(p.FilterCategory, 100)

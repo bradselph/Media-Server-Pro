@@ -416,9 +416,14 @@ func (s *MatureScanner) scanFileInternal(path string) *ScanResult {
 								repoResult.ReviewedBy != "", repoResult.ReviewDecision != "", repoResult.IsMature)
 							return s.convertRepoToScanner(repoResult)
 						}
-						// For unreviewed content, still use cache to avoid redundant scans
-						s.log.Debug("  Using repository cached scan result (scanned: %v)", scannedAt.Format("2006-01-02 15:04"))
-						return s.convertRepoToScanner(repoResult)
+						// For unreviewed content, use the cache only while it is fresh
+						// (matching the in-memory cache's 24h TTL) so config/keyword
+						// changes are eventually re-evaluated instead of being masked by
+						// a persistent repo entry that never expires.
+						if time.Since(scannedAt) < 24*time.Hour {
+							s.log.Debug("  Using repository cached scan result (scanned: %v)", scannedAt.Format("2006-01-02 15:04"))
+							return s.convertRepoToScanner(repoResult)
+						}
 					}
 				}
 			}
@@ -763,12 +768,12 @@ func (s *MatureScanner) applyThresholds(result *ScanResult) {
 func (s *MatureScanner) ScanDirectory(dir string) ([]*ScanResult, error) {
 	var results []*ScanResult
 
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			s.log.Warn("Failed to access %s during scan: %v", path, err)
 			return nil // Continue on error
 		}
-		if info.IsDir() {
+		if d.IsDir() {
 			return nil
 		}
 
@@ -946,7 +951,7 @@ func (s *MatureScanner) SetMatureFlag(ctx context.Context, path string, isMature
 		result.Reasons = append(result.Reasons, "Manual: "+reason)
 	}
 	result.ReviewDecision = "manual"
-	result.ReviewedAt = new(time.Now())
+	result.ReviewedAt = helpers.Ptr(time.Now())
 
 	s.log.Info("Manually set mature flag for %s: %v", path, isMature)
 	repoResult := s.convertScannerToRepo(result)

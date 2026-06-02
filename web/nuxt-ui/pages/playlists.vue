@@ -2,7 +2,7 @@
 import type { MediaItem, Playlist, SmartPlaylist, SmartPlaylistRules, SmartCondition } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 
-definePageMeta({ layout: 'default', title: 'Playlists' })
+definePageMeta({ layout: 'default', title: 'Playlists', middleware: 'auth' })
 
 const playlistApi = usePlaylistApi()
 const smartPlaylistsApi = useSmartPlaylistsApi()

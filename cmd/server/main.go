@@ -16,7 +16,6 @@ import (
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
 	"media-server-pro/internal/categorizer"
-	"media-server-pro/internal/claude"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
@@ -30,6 +29,7 @@ import (
 	"media-server-pro/internal/playlist"
 	"media-server-pro/internal/receiver"
 	"media-server-pro/internal/remote"
+	"media-server-pro/internal/runtimeenv"
 	"media-server-pro/internal/scanner"
 	"media-server-pro/internal/security"
 	"media-server-pro/internal/server"
@@ -55,7 +55,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.16.12"
+	Version   = "1.16.32"
 	BuildDate = "dev"
 )
 
@@ -89,6 +89,14 @@ func main() {
 
 	cfg := srv.Config()
 	log := logger.New("main")
+
+	// ── Runtime memory tuning ──────────────────────────────────────────────
+	// Let a large host use its RAM as GC headroom instead of collecting at ~2x
+	// a tiny live heap. Re-applied live when the admin changes the knob.
+	runtimeenv.TuneMemoryLimit(cfg.Get().Server.MemoryLimitPercent, log)
+	cfg.OnChange(func(c *config.Config) {
+		runtimeenv.TuneMemoryLimit(c.Server.MemoryLimitPercent, log)
+	})
 
 	// ── Storage backends ───────────────────────────────────────────────────
 	stores := initStorage(cfg, log)
@@ -255,7 +263,6 @@ type modules struct {
 	downloader    *downloader.Module
 	extractor     *extractor.Module
 	crawler       *crawler.Module
-	claude        *claude.Module
 }
 
 func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, stores storageBackends) modules {
@@ -453,14 +460,6 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	m.crawler = crawler.NewModule(cfg, m.database, m.extractor)
 	mustRegister(srv, m.crawler)
 
-	// Claude admin assistant (non-critical — gated by config; requires admin module for audit).
-	if cm, err := claude.NewModule(claude.Deps{Config: cfg, DB: m.database, Admin: m.admin}); err != nil {
-		log.Warn("Claude admin assistant unavailable: %v", err)
-	} else {
-		m.claude = cm
-		mustRegister(srv, m.claude)
-	}
-
 	return m
 }
 
@@ -550,7 +549,6 @@ func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate 
 			Analytics:     mods.analytics,
 			Playlist:      mods.playlist,
 			Downloader:    mods.downloader,
-			Claude:        mods.claude,
 		},
 		ShutdownFunc: srv.Shutdown, // P1-9: drain connections and stop modules before exit
 	})

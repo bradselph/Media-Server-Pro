@@ -373,38 +373,40 @@ type configMapSection func(cfg *config.Config, qualityNames []string) map[string
 
 func buildConfigServerMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"port":                cfg.Server.Port,
-		"host":                cfg.Server.Host,
-		"enable_https":        cfg.Server.EnableHTTPS,
-		"cert_file":           cfg.Server.CertFile,
-		"key_file":            cfg.Server.KeyFile,
-		"read_header_timeout": cfg.Server.ReadHeaderTimeout,
-		"read_timeout":        cfg.Server.ReadTimeout,
-		"write_timeout":       cfg.Server.WriteTimeout,
-		"idle_timeout":        cfg.Server.IdleTimeout,
-		"max_header_bytes":    cfg.Server.MaxHeaderBytes,
-		"shutdown_timeout":    cfg.Server.ShutdownTimeout,
+		"port":                 cfg.Server.Port,
+		"host":                 cfg.Server.Host,
+		"enable_https":         cfg.Server.EnableHTTPS,
+		"cert_file":            cfg.Server.CertFile,
+		"key_file":             cfg.Server.KeyFile,
+		"read_header_timeout":  cfg.Server.ReadHeaderTimeout,
+		"read_timeout":         cfg.Server.ReadTimeout,
+		"write_timeout":        cfg.Server.WriteTimeout,
+		"idle_timeout":         cfg.Server.IdleTimeout,
+		"max_header_bytes":     cfg.Server.MaxHeaderBytes,
+		"shutdown_timeout":     cfg.Server.ShutdownTimeout,
+		"memory_limit_percent": cfg.Server.MemoryLimitPercent,
 	}
 }
 
 func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"enable_thumbnails":         cfg.Features.EnableThumbnails,
-		"enable_hls":                cfg.Features.EnableHLS,
-		"enable_analytics":          cfg.Features.EnableAnalytics,
-		"enable_uploads":            cfg.Features.EnableUploads,
-		"enable_huggingface":        cfg.Features.EnableHuggingFace,
-		"enable_playlists":          cfg.Features.EnablePlaylists,
-		"enable_suggestions":        cfg.Features.EnableSuggestions,
-		"enable_auto_discovery":     cfg.Features.EnableAutoDiscovery,
-		"enable_mature_scanner":     cfg.Features.EnableMatureScanner,
-		"enable_remote_media":       cfg.Features.EnableRemoteMedia,
-		"enable_receiver":           cfg.Features.EnableReceiver,
-		"enable_extractor":          cfg.Features.EnableExtractor,
-		"enable_crawler":            cfg.Features.EnableCrawler,
+		"enable_thumbnails":          cfg.Features.EnableThumbnails,
+		"enable_hls":                 cfg.Features.EnableHLS,
+		"enable_analytics":           cfg.Features.EnableAnalytics,
+		"enable_uploads":             cfg.Features.EnableUploads,
+		"enable_huggingface":         cfg.Features.EnableHuggingFace,
+		"enable_playlists":           cfg.Features.EnablePlaylists,
+		"enable_suggestions":         cfg.Features.EnableSuggestions,
+		"enable_auto_discovery":      cfg.Features.EnableAutoDiscovery,
+		"enable_mature_scanner":      cfg.Features.EnableMatureScanner,
+		"enable_remote_media":        cfg.Features.EnableRemoteMedia,
+		"enable_receiver":            cfg.Features.EnableReceiver,
+		"enable_extractor":           cfg.Features.EnableExtractor,
+		"enable_crawler":             cfg.Features.EnableCrawler,
 		"enable_duplicate_detection": cfg.Features.EnableDuplicateDetection,
-		"enable_downloader":         cfg.Features.EnableDownloader,
-		"enable_claude":             cfg.Features.EnableClaude,
+		"enable_downloader":          cfg.Features.EnableDownloader,
+		"enable_user_auth":           cfg.Features.EnableUserAuth,
+		"enable_admin_panel":         cfg.Features.EnableAdminPanel,
 	}
 }
 
@@ -450,6 +452,7 @@ func buildConfigHLSMap(cfg *config.Config, _ []string) map[string]any {
 		"enabled":                     cfg.HLS.Enabled,
 		"auto_generate":               cfg.HLS.AutoGenerate,
 		"concurrent_limit":            cfg.HLS.ConcurrentLimit,
+		"hardware_accel":              cfg.HLS.HardwareAccel,
 		"segment_duration":            cfg.HLS.SegmentDuration,
 		"playlist_length":             cfg.HLS.PlaylistLength,
 		"cleanup_enabled":             cfg.HLS.CleanupEnabled,
@@ -568,13 +571,13 @@ func buildConfigDownloadMap(cfg *config.Config, _ []string) map[string]any {
 
 func buildConfigLoggingMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"level":          cfg.Logging.Level,
-		"format":         cfg.Logging.Format,
-		"file_enabled":   cfg.Logging.FileEnabled,
-		"file_rotation":  cfg.Logging.FileRotation,
-		"max_file_size":  cfg.Logging.MaxFileSize,
-		"max_backups":    cfg.Logging.MaxBackups,
-		"color_enabled":  cfg.Logging.ColorEnabled,
+		"level":         cfg.Logging.Level,
+		"format":        cfg.Logging.Format,
+		"file_enabled":  cfg.Logging.FileEnabled,
+		"file_rotation": cfg.Logging.FileRotation,
+		"max_file_size": cfg.Logging.MaxFileSize,
+		"max_backups":   cfg.Logging.MaxBackups,
+		"color_enabled": cfg.Logging.ColorEnabled,
 	}
 }
 
@@ -626,6 +629,28 @@ func buildConfigDownloaderMap(cfg *config.Config, _ []string) map[string]any {
 		"import_dir":      cfg.Downloader.ImportDir,
 		"health_interval": cfg.Downloader.HealthInterval,
 		"request_timeout": cfg.Downloader.RequestTimeout,
+		// Shared secret with the downloader service — surface presence only, never
+		// the value (mirrors the *_set pattern used for tokens/keys elsewhere).
+		"internal_token_set": cfg.Downloader.InternalToken != "",
+	}
+}
+
+// buildConfigDirectoriesMap exposes the configured library/runtime paths so the
+// admin's read-only Directories panel can show where media actually lives. These
+// are infra settings (changed via env/config file, not the UI), so they are
+// surfaced for visibility only — there is no write path for them.
+func buildConfigDirectoriesMap(cfg *config.Config, _ []string) map[string]any {
+	return map[string]any{
+		"videos":     cfg.Directories.Videos,
+		"music":      cfg.Directories.Music,
+		"thumbnails": cfg.Directories.Thumbnails,
+		"playlists":  cfg.Directories.Playlists,
+		"uploads":    cfg.Directories.Uploads,
+		"analytics":  cfg.Directories.Analytics,
+		"hls_cache":  cfg.Directories.HLSCache,
+		"data":       cfg.Directories.Data,
+		"logs":       cfg.Directories.Logs,
+		"temp":       cfg.Directories.Temp,
 	}
 }
 
@@ -651,10 +676,10 @@ func buildConfigBackupMap(cfg *config.Config, _ []string) map[string]any {
 
 func buildConfigUpdaterMap(cfg *config.Config, _ []string) map[string]any {
 	return map[string]any{
-		"update_method":       cfg.Updater.UpdateMethod,
-		"branch":              cfg.Updater.Branch,
-		"app_dir":             cfg.Updater.AppDir,
-		"github_username":     cfg.Updater.GitHubUsername,
+		"update_method":   cfg.Updater.UpdateMethod,
+		"branch":          cfg.Updater.Branch,
+		"app_dir":         cfg.Updater.AppDir,
+		"github_username": cfg.Updater.GitHubUsername,
 		// Secrets surface as "*_set" flags so the admin UI can show whether they
 		// are populated without exposing the value itself.
 		"github_token_set":    cfg.Updater.GitHubToken != "",
@@ -691,26 +716,14 @@ func buildConfigExtractorMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigClaudeMap(cfg *config.Config, _ []string) map[string]any {
-	c := cfg.Claude
-	return map[string]any{
-		"enabled":                    c.Enabled,
-		"binary_path":                c.BinaryPath,
-		"workdir":                    c.Workdir,
-		"model":                      c.Model,
-		"mode":                       c.Mode,
-		"max_tokens":                 c.MaxTokens,
-		"system_prompt":              c.SystemPrompt,
-		"require_confirm_for_writes": c.RequireConfirmForWrites,
-		"max_tool_calls_per_turn":    c.MaxToolCallsPerTurn,
-		"rate_limit_per_minute":      c.RateLimitPerMinute,
-		"kill_switch":                c.KillSwitch,
-		"request_timeout":            c.RequestTimeout,
-		"history_retention_days":     c.HistoryRetentionDays,
-	}
-}
-
-// GetConfigMap returns config as a map for JSON serialization
+// GetConfigMap returns config as a map for JSON serialization.
+//
+// The Follower and Receiver sections are intentionally excluded: they carry
+// federation secrets (Follower.APIKey, Receiver.APIKeys) and are managed via
+// dedicated, redaction-aware endpoints (/api/admin/follower/*, /api/admin/
+// receiver/*) that reload the follower module in-place. Surfacing them through
+// the unified config map would either leak those secrets or require duplicating
+// the redaction + hot-reload logic here, so they are deliberately omitted.
 func (m *Module) GetConfigMap() map[string]any {
 	cfg := m.config.Get()
 	sections := []struct {
@@ -741,10 +754,9 @@ func (m *Module) GetConfigMap() map[string]any {
 		{"remote_media", buildConfigRemoteMediaMap},
 		{"crawler", buildConfigCrawlerMap},
 		{"extractor", buildConfigExtractorMap},
-		{"claude", buildConfigClaudeMap},
+		{"directories", buildConfigDirectoriesMap},
 	}
-	out := make(map[string]any, len(sections)+1)
-	out["directories"] = map[string]any{"configured": true}
+	out := make(map[string]any, len(sections))
 	for _, s := range sections {
 		out[s.key] = s.fn(cfg, nil)
 	}

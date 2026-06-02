@@ -29,7 +29,6 @@ export function normalizePermissions(input: unknown): UserPermissions {
 export function normalizePreferences(input: unknown): UserPreferences {
     const src = asRecord(input) ?? {}
     const showMature = src.show_mature ?? src.show_mature_content
-    const showAnalytics = src.show_analytics ?? src.collect_analytics
     const showContinue = src.show_continue_watching ?? src.show_home_continue_watching
     const showRecommended = src.show_recommended ?? src.show_home_suggestions
     const showTrending = src.show_trending ?? src.show_home_recently_added
@@ -43,16 +42,13 @@ export function normalizePreferences(input: unknown): UserPreferences {
         volume: asNumber(src.volume, 1),
         show_mature: asBoolean(showMature, false),
         mature_preference_set: asBoolean(src.mature_preference_set, false),
-        language: asString(src.language, 'en'),
         equalizer_preset: asString(src.equalizer_preset, ''),
         resume_playback: asBoolean(src.resume_playback, true),
-        show_analytics: asBoolean(showAnalytics, true),
         items_per_page: asNumber(src.items_per_page, 20),
         sort_by: asString(src.sort_by, 'date_added'),
         sort_order: asString(src.sort_order, 'desc'),
         filter_category: asString(src.filter_category, ''),
         filter_media_type: asString(src.filter_media_type, ''),
-        custom_eq_presets: (asRecord(src.custom_eq_presets) ?? undefined) as UserPreferences['custom_eq_presets'],
         show_continue_watching: asBoolean(showContinue, true),
         show_recommended: asBoolean(showRecommended, true),
         show_trending: asBoolean(showTrending, true),
@@ -76,9 +72,9 @@ function clampHue(n: number): number {
 // Only send user-settable preference fields to prevent sending internal flags
 const PREF_PATCH_KEYS: (keyof UserPreferences)[] = [
     'theme', 'view_mode', 'default_quality', 'auto_play', 'playback_speed',
-    'volume', 'show_mature', 'language', 'equalizer_preset', 'resume_playback',
-    'show_analytics', 'items_per_page', 'sort_by', 'sort_order',
-    'filter_category', 'filter_media_type', 'custom_eq_presets',
+    'volume', 'show_mature', 'equalizer_preset', 'resume_playback',
+    'items_per_page', 'sort_by', 'sort_order',
+    'filter_category', 'filter_media_type',
     'show_continue_watching', 'show_recommended', 'show_trending',
     'skip_interval', 'shuffle_enabled', 'show_buffer_bar', 'download_prompt',
     'autoplay_similar', 'accent_hue',

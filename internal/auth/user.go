@@ -90,9 +90,7 @@ func defaultUserPreferences() models.UserPreferences {
 		AutoPlay:             false,
 		PlaybackSpeed:        1.0,
 		Volume:               1.0,
-		Language:             "en",
 		ResumePlayback:       true,
-		ShowAnalytics:        true,
 		ShowContinueWatching: true,
 		ShowRecommended:      true,
 		ShowTrending:         true,
@@ -186,7 +184,8 @@ func (m *Module) getUserFromCacheByUsername(username string) *models.User {
 	if u == nil {
 		return nil
 	}
-	return new(*u)
+	cp := *u
+	return &cp
 }
 
 func (m *Module) getUserFromCacheByID(id string) *models.User {
@@ -196,7 +195,8 @@ func (m *Module) getUserFromCacheByID(id string) *models.User {
 	if u == nil {
 		return nil
 	}
-	return new(*u)
+	cp := *u
+	return &cp
 }
 
 // UpdateUser updates a user's information.
@@ -249,7 +249,8 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 	wasEnabled := user.Enabled
 	oldRole := user.Role
 
-	user = new(*user)
+	uCopy := *user
+	user = &uCopy
 
 	if err := m.applyUserUpdates(user, updates); err != nil {
 		return err
@@ -495,29 +496,8 @@ func (m *Module) DeleteUser(ctx context.Context, username string) error {
 
 	m.evictSessionsForUser(ctx, username, "user deleted")
 
-	// claude_conversations has no FK on user_id, so the chat transcript would
-	// otherwise persist after the user is gone. claude_messages cascades from
-	// claude_conversations.id, so deleting conversations clears messages too.
-	m.purgeClaudeConversations(ctx, user.ID)
-
 	m.log.Info("Deleted user: %s", username)
 	return nil
-}
-
-// purgeClaudeConversations removes claude_conversations rows for the given
-// user. Best-effort: a failure leaves stale chat transcripts but does not
-// block the user delete.
-func (m *Module) purgeClaudeConversations(ctx context.Context, userID string) {
-	if m.dbModule == nil {
-		return
-	}
-	gdb := m.dbModule.GORM()
-	if gdb == nil {
-		return
-	}
-	if err := gdb.WithContext(ctx).Exec("DELETE FROM claude_conversations WHERE user_id = ?", userID).Error; err != nil {
-		m.log.Warn("Failed to purge claude_conversations for deleted user %s: %v", userID, err)
-	}
 }
 
 // ListUsers returns all users (without sensitive data)

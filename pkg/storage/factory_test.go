@@ -8,10 +8,10 @@ import (
 )
 
 const (
-	testLocalRoot      = "/data/videos"
-	testIgnoredPath    = "/ignored"
-	testS3Endpoint     = "s3.example.com"
-	testAlreadySlash   = "already-slash/"
+	testLocalRoot    = "/data/videos"
+	testIgnoredPath  = "/ignored"
+	testS3Endpoint   = "s3.example.com"
+	testAlreadySlash = "already-slash/"
 )
 
 func TestNewBackend_LocalDefault(t *testing.T) {

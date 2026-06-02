@@ -456,10 +456,17 @@ function onSearchInput() {
   searchTimer = setTimeout(() => { params.page = 1; load() }, 300)
 }
 
-// Play All — navigate to player with the first item from the current grid
+// Play All — queue the current grid and start playing the first item. The
+// remaining items become the "Up Next" queue so the player advances through the
+// actual library items instead of falling back to autoplay-similar suggestions.
 function playAll() {
   if (items.value.length === 0) return
-  const first = items.value[0]
+  const [first, ...rest] = items.value
+  queueStore.clear()
+  for (const it of rest) {
+    queueStore.addToQueue({ id: it.id, name: it.name, type: it.type, duration: it.duration, thumbnail_url: it.thumbnail_url })
+  }
+  toast.add({ title: `Playing all ${items.value.length} items`, color: 'success', icon: 'i-lucide-list-video' })
   router.push(`/player?id=${encodeURIComponent(first.id)}`)
 }
 

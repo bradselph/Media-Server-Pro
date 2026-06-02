@@ -33,9 +33,9 @@ func TestUpsertBatch_FND0467_ConsistentTimestamp(t *testing.T) {
 	rows := make([]receiverMediaRow, len(items))
 	for i, item := range items {
 		rows[i] = receiverMediaRow{
-			ID:       item.ID,
-			SlaveID:  "slave-1",
-			Name:     item.Name,
+			ID:        item.ID,
+			SlaveID:   "slave-1",
+			Name:      item.Name,
 			UpdatedAt: now,
 		}
 	}
@@ -63,9 +63,9 @@ func TestReplaceSlaveMedia_FND0468_ConsistentTimestamp(t *testing.T) {
 	rows := make([]receiverMediaRow, len(items))
 	for i, item := range items {
 		rows[i] = receiverMediaRow{
-			ID:       item.ID,
-			SlaveID:  "slave-1",
-			Name:     item.Name,
+			ID:        item.ID,
+			SlaveID:   "slave-1",
+			Name:      item.Name,
 			UpdatedAt: now,
 		}
 	}
@@ -89,13 +89,13 @@ func TestRowToSlaveRecord_FND0465_StderrWarningOnParseError(t *testing.T) {
 
 	repo := &ReceiverSlaveRepository{db: nil}
 	row := &receiverSlaveRow{
-		ID:        "slave-1",
-		Name:      "Test Slave",
-		BaseURL:   "http://example.com",
-		Status:    "online",
+		ID:         "slave-1",
+		Name:       "Test Slave",
+		BaseURL:    "http://example.com",
+		Status:     "online",
 		MediaCount: 0,
-		LastSeen:  "invalid-timestamp", // This will fail to parse
-		CreatedAt: "2026-01-01 12:00:00",
+		LastSeen:   "invalid-timestamp", // This will fail to parse
+		CreatedAt:  "2026-01-01 12:00:00",
 	}
 
 	rec := repo.rowToSlaveRecord(row)

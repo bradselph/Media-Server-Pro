@@ -74,6 +74,9 @@ func (m *Manager) applyHLSOptionsOverrides() {
 	if val := envGetStr("HLS_CDN_BASE_URL"); val != "" {
 		m.config.HLS.CDNBaseURL = strings.TrimRight(val, "/")
 	}
+	if val := envGetStr("HLS_HARDWARE_ACCEL"); val != "" {
+		m.config.HLS.HardwareAccel = strings.ToLower(strings.TrimSpace(val))
+	}
 	if val, ok := envGetBool("HLS_LAZY_TRANSCODE"); ok {
 		m.config.HLS.LazyTranscode = val
 	}

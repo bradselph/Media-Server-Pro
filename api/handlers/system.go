@@ -372,6 +372,15 @@ func (h *Handler) ClearMediaCache(c *gin.Context) {
 		if err := h.media.Scan(); err != nil {
 			h.log.Error("Background media rescan failed: %v", err)
 		}
+		// The media set just changed, so the SEO sitemap and RSS feed caches are
+		// stale. Drop them here so an explicit "clear cache" reflects new/removed
+		// items immediately instead of waiting out their TTLs.
+		sitemapCacheMu.Lock()
+		sitemapCache = nil
+		sitemapCacheMu.Unlock()
+		h.feedCacheMu.Lock()
+		h.feedCache = nil
+		h.feedCacheMu.Unlock()
 	}()
 
 	c.JSON(http.StatusAccepted, models.APIResponse{

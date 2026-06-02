@@ -129,7 +129,6 @@ func (r *fnd0041UserRepo) IncrementStorageUsed(ctx context.Context, userID strin
 	return nil
 }
 
-
 // TestFND0041_ConcurrentCreationRecovery verifies that when Create() fails with
 // ErrUserExists (due to a concurrent insertion), GetByUsername() is retried.
 // This test directly exercises the fix in ensureAdminUserRecord() lines 122-133.

@@ -148,6 +148,9 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 		"items":       items,
 		"total_items": totalItems,
 		"total_pages": totalPages,
+		// Mirror the public ListMedia response so the admin Media tab can show
+		// a live "scanning" indicator and auto-refresh until the scan finishes.
+		"scanning": h.media.IsScanning(),
 	})
 }
 
@@ -478,8 +481,8 @@ func (h *Handler) processOneBulkMediaItem(c *gin.Context, id, action string, upd
 // AdminBulkMedia performs a bulk action (delete or update) on multiple media files.
 func (h *Handler) AdminBulkMedia(c *gin.Context) {
 	var req struct {
-		IDs    []string               `json:"ids"`
-		Action string                 `json:"action"`
+		IDs    []string       `json:"ids"`
+		Action string         `json:"action"`
 		Data   map[string]any `json:"data"`
 	}
 	if !BindJSON(c, &req, "") {

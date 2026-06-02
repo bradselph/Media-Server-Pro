@@ -117,8 +117,8 @@ func (h *Handler) tryServePlaceholderByType(c *gin.Context, thumbnailType string
 		c.Status(http.StatusOK)
 		return true
 	}
-	c.Header(headerCacheControl,"public, max-age=2592000, immutable")
-	c.Header(headerContentType,mimeJPEG)
+	c.Header(headerCacheControl, "public, max-age=2592000, immutable")
+	c.Header(headerContentType, mimeJPEG)
 	http.ServeFile(c.Writer, c.Request, placeholderPath)
 	return true
 }
@@ -194,8 +194,8 @@ func (h *Handler) serveCensoredPlaceholderOrForbidden(c *gin.Context) {
 		writeError(c, http.StatusForbidden, "Mature content")
 		return
 	}
-	c.Header(headerCacheControl,"no-store")
-	c.Header(headerContentType,mimeJPEG)
+	c.Header(headerCacheControl, "no-store")
+	c.Header(headerContentType, mimeJPEG)
 	http.ServeFile(c.Writer, c.Request, censoredPath)
 }
 
@@ -245,8 +245,8 @@ func (h *Handler) serveThumbnailFileResponse(c *gin.Context, thumbFilePath, cont
 		// private: browser may cache for the current user only; CDNs/proxies must not share it.
 		cacheControl = "private, max-age=604800"
 	}
-	c.Header(headerCacheControl,cacheControl)
-	c.Header(headerContentType,contentType)
+	c.Header(headerCacheControl, cacheControl)
+	c.Header(headerContentType, contentType)
 	http.ServeFile(c.Writer, c.Request, thumbFilePath)
 	return true
 }
@@ -335,8 +335,8 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 			if censoredPath, cErr := h.thumbnails.GetPlaceholderPath("censored"); cErr == nil {
 				// no-store prevents browser caching the censored image under the real thumbnail URL,
 				// which would cause authenticated users to see the red placeholder after a guest visit.
-				c.Header(headerCacheControl,"no-store")
-				c.Header(headerContentType,mimeJPEG)
+				c.Header(headerCacheControl, "no-store")
+				c.Header(headerContentType, mimeJPEG)
 				http.ServeFile(c.Writer, c.Request, censoredPath)
 				return
 			}
@@ -367,8 +367,8 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 	if isMature {
 		cacheControl = "private, max-age=604800"
 	}
-	c.Header(headerCacheControl,cacheControl)
-	c.Header(headerContentType,contentType)
+	c.Header(headerCacheControl, cacheControl)
+	c.Header(headerContentType, contentType)
 	http.ServeFile(c.Writer, c.Request, filePath)
 }
 

@@ -17,8 +17,8 @@ import (
 
 // Sentinel errors for typed error checking by callers.
 var (
-	ErrTaskNotFound    = errors.New("task not found")
-	ErrTaskNotRunning  = errors.New("task not currently running")
+	ErrTaskNotFound   = errors.New("task not found")
+	ErrTaskNotRunning = errors.New("task not currently running")
 )
 
 // TaskFunc is a function that performs a task
@@ -344,7 +344,12 @@ func (m *Module) executeTask(ctx context.Context, task *Task) {
 
 	m.log.Debug("Executing task: %s", task.Name)
 	start := time.Now()
+	// task.Schedule/Timeout are guarded by m.mu (UpdateSchedule writes them under
+	// the lock), so read them under the lock here to avoid racing with a concurrent
+	// schedule change. computeTaskTimeout is a pure function and takes no locks.
+	m.mu.Lock()
 	timeout := computeTaskTimeout(task)
+	m.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 
 	task.stopMu.Lock()

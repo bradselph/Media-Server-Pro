@@ -121,8 +121,8 @@ func TestPlaylistCRUD_Unauthenticated(t *testing.T) {
 	}{
 		{"list", "GET", apiPlaylists},
 		{"create", "POST", apiPlaylists},
-		{"get", "GET", apiPlaylistsSlash+"fake-id"},
-		{"delete", "DELETE", apiPlaylistsSlash+"fake-id"},
+		{"get", "GET", apiPlaylistsSlash + "fake-id"},
+		{"delete", "DELETE", apiPlaylistsSlash + "fake-id"},
 	}
 
 	for _, tc := range tests {

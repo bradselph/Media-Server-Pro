@@ -55,54 +55,54 @@ const (
 	// that perform the action, NOT submitted by clients — accepting them from
 	// the browser would let any caller forge dashboard counts. Each one maps
 	// to a column on daily_stats in updateDailyStatsLocked.
-	EventFavoriteAdd      = "favorite_add"
-	EventFavoriteRemove   = "favorite_remove"
-	EventRatingSet        = "rating_set"
-	EventPlaylistCreate   = "playlist_create"
-	EventPlaylistDelete   = "playlist_delete"
-	EventPlaylistItemAdd  = "playlist_item_add"
-	EventUploadSuccess    = "upload_success"
-	EventUploadFailed     = "upload_failed"
-	EventPasswordChange   = "password_change"
-	EventAccountDelete    = "account_delete"
-	EventHLSStart         = "hls_start"
-	EventHLSError         = "hls_error"
-	EventMediaDeleted     = "media_deleted" // tombstone — see DeleteEventsByMedia
-	EventAPITokenCreate   = "api_token_create"
-	EventAPITokenRevoke   = "api_token_revoke"
-	EventAdminAction      = "admin_action"
-	EventServerError      = "server_error"
+	EventFavoriteAdd     = "favorite_add"
+	EventFavoriteRemove  = "favorite_remove"
+	EventRatingSet       = "rating_set"
+	EventPlaylistCreate  = "playlist_create"
+	EventPlaylistDelete  = "playlist_delete"
+	EventPlaylistItemAdd = "playlist_item_add"
+	EventUploadSuccess   = "upload_success"
+	EventUploadFailed    = "upload_failed"
+	EventPasswordChange  = "password_change"
+	EventAccountDelete   = "account_delete"
+	EventHLSStart        = "hls_start"
+	EventHLSError        = "hls_error"
+	EventMediaDeleted    = "media_deleted" // tombstone — see DeleteEventsByMedia
+	EventAPITokenCreate  = "api_token_create"
+	EventAPITokenRevoke  = "api_token_revoke"
+	EventAdminAction     = "admin_action"
+	EventServerError     = "server_error"
 
 	// Engagement / access-control / admin-bulk events. Each one corresponds to
 	// a column on daily_stats and a today_<x> field on the summary.
-	EventStreamStart        = "stream_start"
-	EventStreamEnd          = "stream_end"
-	EventMatureBlocked      = "mature_blocked"
-	EventPermissionDenied   = "permission_denied"
-	EventPreferencesChange  = "preferences_change"
-	EventBulkDelete         = "bulk_delete"
-	EventBulkUpdate         = "bulk_update"
-	EventUserRoleChange     = "user_role_change"
+	EventStreamStart       = "stream_start"
+	EventStreamEnd         = "stream_end"
+	EventMatureBlocked     = "mature_blocked"
+	EventPermissionDenied  = "permission_denied"
+	EventPreferencesChange = "preferences_change"
+	EventBulkDelete        = "bulk_delete"
+	EventBulkUpdate        = "bulk_update"
+	EventUserRoleChange    = "user_role_change"
 
 	// Library curation events — recorded as raw events so they appear in the
 	// admin actions panel and audit log, but intentionally NOT mapped to a
 	// daily_stats column. Adding a column for every micro-action would balloon
 	// the schema; counts come from event-by-type queries on demand.
-	EventCollectionCreate      = "collection_create"
-	EventCollectionUpdate      = "collection_update"
-	EventCollectionDelete      = "collection_delete"
-	EventCollectionItemsAdd    = "collection_items_add"
-	EventCollectionItemRemove  = "collection_item_remove"
-	EventSmartPlaylistCreate   = "smart_playlist_create"
-	EventSmartPlaylistUpdate   = "smart_playlist_update"
-	EventSmartPlaylistDelete   = "smart_playlist_delete"
-	EventChapterCreate         = "chapter_create"
-	EventChapterUpdate         = "chapter_update"
-	EventChapterDelete         = "chapter_delete"
-	EventAutoTagRuleCreate     = "auto_tag_rule_create"
-	EventAutoTagRuleUpdate     = "auto_tag_rule_update"
-	EventAutoTagRuleDelete     = "auto_tag_rule_delete"
-	EventAutoTagRulesApply     = "auto_tag_rules_apply"
+	EventCollectionCreate     = "collection_create"
+	EventCollectionUpdate     = "collection_update"
+	EventCollectionDelete     = "collection_delete"
+	EventCollectionItemsAdd   = "collection_items_add"
+	EventCollectionItemRemove = "collection_item_remove"
+	EventSmartPlaylistCreate  = "smart_playlist_create"
+	EventSmartPlaylistUpdate  = "smart_playlist_update"
+	EventSmartPlaylistDelete  = "smart_playlist_delete"
+	EventChapterCreate        = "chapter_create"
+	EventChapterUpdate        = "chapter_update"
+	EventChapterDelete        = "chapter_delete"
+	EventAutoTagRuleCreate    = "auto_tag_rule_create"
+	EventAutoTagRuleUpdate    = "auto_tag_rule_update"
+	EventAutoTagRuleDelete    = "auto_tag_rule_delete"
+	EventAutoTagRulesApply    = "auto_tag_rules_apply"
 
 	// Account governance events — surface user-driven deletion requests in the
 	// admin review UI without polling the deletion_requests table directly.
@@ -132,41 +132,39 @@ const (
 	// User management events. Account creation/update/deletion is a sensitive
 	// operation; these flow through analytics so the dashboard's "today's
 	// admin activity" panel reflects the real change rate.
-	EventUserCreate          = "user_create"
-	EventUserUpdate          = "user_update"
-	EventUserDelete          = "user_delete"
-	EventUserPasswordChange  = "user_password_change"
-	EventBulkUserDelete      = "bulk_user_delete"
-	EventBulkUserEnable      = "bulk_user_enable"
-	EventBulkUserDisable     = "bulk_user_disable"
+	EventUserCreate         = "user_create"
+	EventUserUpdate         = "user_update"
+	EventUserDelete         = "user_delete"
+	EventUserPasswordChange = "user_password_change"
+	EventBulkUserDelete     = "bulk_user_delete"
+	EventBulkUserEnable     = "bulk_user_enable"
+	EventBulkUserDisable    = "bulk_user_disable"
 
 	// Media + lifecycle + auxiliary admin events.
-	EventMediaUpdate         = "media_update"
-	EventMediaDelete         = "media_delete"
-	EventServerRestart       = "server_restart"
-	EventServerShutdown      = "server_shutdown"
-	EventPlaylistUpdate      = "playlist_update"
-	EventPlaylistImport      = "playlist_import"
+	EventMediaUpdate              = "media_update"
+	EventMediaDelete              = "media_delete"
+	EventServerRestart            = "server_restart"
+	EventServerShutdown           = "server_shutdown"
+	EventPlaylistUpdate           = "playlist_update"
+	EventPlaylistImport           = "playlist_import"
 	EventReceiverDuplicateResolve = "receiver_duplicate_resolve"
-	EventClaudeApprovalAct   = "claude_approval_act"
-	EventClaudeConfigUpdate  = "claude_config_update"
-	EventClaudePromptSend    = "claude_prompt_send"
-	EventUpdaterApply        = "updater_apply"
-	EventUpdaterConfigUpdate = "updater_config_update"
+	EventUpdaterApply             = "updater_apply"
+	EventUpdaterConfigUpdate      = "updater_config_update"
 
-	// Classification + scanner-pipeline events not yet covered.
-	EventClassifyRun         = "classify_run"
-	EventCategorizerRun      = "categorizer_run"
-	EventValidatorRun        = "validator_run"
-	EventDiscoveryRun        = "discovery_run"
-	EventDownloaderJobCreate = "downloader_job_create"
-	EventDownloaderJobCancel = "downloader_job_cancel"
-	EventCrawlerRun          = "crawler_run"
-	EventExtractorRun        = "extractor_run"
+	// Classification + scanner-pipeline events, emitted by their respective
+	// admin handlers (classify/categorizer/validator/discovery/downloader/etc.).
+	EventClassifyRun          = "classify_run"
+	EventCategorizerRun       = "categorizer_run"
+	EventValidatorRun         = "validator_run"
+	EventDiscoveryRun         = "discovery_run"
+	EventDownloaderJobCreate  = "downloader_job_create"
+	EventDownloaderJobCancel  = "downloader_job_cancel"
+	EventCrawlerRun           = "crawler_run"
+	EventExtractorRun         = "extractor_run"
 	EventSecurityIPListMutate = "security_ip_list_mutate"
-	EventReceiverPair        = "receiver_pair"
-	EventReceiverUnpair      = "receiver_unpair"
-	EventRemoteStoreUpdate   = "remote_store_update"
+	EventReceiverPair         = "receiver_pair"
+	EventReceiverUnpair       = "receiver_unpair"
+	EventRemoteStoreUpdate    = "remote_store_update"
 )
 
 // ClientEventInput holds parameters for SubmitClientEvent.
@@ -221,10 +219,13 @@ func (m *Module) TrackEvent(ctx context.Context, event models.AnalyticsEvent) {
 		m.log.Error("Failed to create analytics event: %v", err)
 	}
 
+	var delta float64
+	isNewMedia := true
+	var isFirstCompletion bool
 	if event.SessionID != "" {
-		m.updateSession(event)
+		delta, isNewMedia, isFirstCompletion = m.updateSession(event)
 	}
-	m.updateStats(event)
+	m.updateStats(event, delta, isNewMedia, isFirstCompletion)
 	// Invalidate the aggregation caches that this event could affect.
 	// Selective invalidation rather than a full flush — it's cheap, and a
 	// flush-everything would mean every event causes a 50k-event scan on
@@ -447,7 +448,7 @@ func (m *Module) DeleteEventsByMedia(ctx context.Context, mediaID string) {
 	if err := m.eventRepo.Create(ctx, &tombstone); err != nil {
 		m.log.Warn("Failed to write tombstone for deleted media %s: %v", mediaID, err)
 	}
-	m.updateStats(tombstone)
+	m.updateStats(tombstone, 0, false, false)
 
 	if err := m.eventRepo.DeleteByMediaID(ctx, mediaID); err != nil {
 		m.log.Warn("Failed to purge analytics events for deleted media %s: %v", mediaID, err)

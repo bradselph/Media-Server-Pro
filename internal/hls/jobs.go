@@ -205,6 +205,14 @@ func (m *Module) updateJobStatus(params *updateJobStatusParams) {
 		job.Error = params.ErrorMsg
 	}
 	job.Progress = params.Progress
+
+	// Persist terminal failures so the incremented FailCount survives a restart.
+	// Otherwise a crash right after a failure reloads the old FailCount and the
+	// job is retried indefinitely instead of stopping at maxFailures. saveJob does
+	// not take jobsMu, so calling it while holding the lock is safe.
+	if params.Status == models.HLSStatusFailed {
+		m.saveJob(job)
+	}
 }
 
 // GetJobStatus returns a copy of the job status to avoid data races with the transcode goroutine.

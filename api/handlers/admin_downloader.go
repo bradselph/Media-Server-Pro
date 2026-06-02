@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"path/filepath"
 
@@ -10,6 +11,26 @@ import (
 	"media-server-pro/internal/downloader"
 	"media-server-pro/pkg/helpers"
 )
+
+// downloaderUserErrors are configuration/usage problems the admin can fix, so
+// the handler maps them to 400 (Bad Request) rather than 500 — a 500 reads as
+// "the server broke" and sends the admin chasing the wrong thing.
+var downloaderUserErrors = []error{
+	downloader.ErrDownloadsDirNotConfigured,
+	downloader.ErrNoImportDestination,
+	downloader.ErrDestinationReadOnly,
+	downloader.ErrUnknownDestination,
+	downloader.ErrInvalidSubfolder,
+}
+
+func isDownloaderUserError(err error) bool {
+	for _, target := range downloaderUserErrors {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
+}
 
 const (
 	msgDownloaderOffline = "Downloader service is offline"
@@ -306,11 +327,25 @@ func (h *Handler) AdminDownloaderImportable(c *gin.Context) {
 
 	files, err := h.downloader.ListImportable()
 	if err != nil {
+		if isDownloaderUserError(err) {
+			writeError(c, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(c, http.StatusInternalServerError, "Failed to list importable files: "+err.Error())
 		return
 	}
 
 	writeSuccess(c, files)
+}
+
+// AdminDownloaderDestinations lists the library locations a download can be
+// imported into (library roots + their sub-directories, including a HiDrive
+// mount grafted under videos). The frontend uses this to prompt for a target.
+func (h *Handler) AdminDownloaderDestinations(c *gin.Context) {
+	if !h.checkDownloaderEnabled(c) {
+		return
+	}
+	writeSuccess(c, h.downloader.ImportDestinations())
 }
 
 // AdminDownloaderImport moves a completed download into MSP's media library.
@@ -321,6 +356,8 @@ func (h *Handler) AdminDownloaderImport(c *gin.Context) {
 
 	var req struct {
 		Filename     string `json:"filename" binding:"required"`
+		Destination  string `json:"destination"`
+		Subfolder    string `json:"subfolder"`
 		DeleteSource bool   `json:"delete_source"`
 		TriggerScan  bool   `json:"trigger_scan"`
 	}
@@ -328,8 +365,12 @@ func (h *Handler) AdminDownloaderImport(c *gin.Context) {
 		return
 	}
 
-	destPath, sourceDeleted, err := h.downloader.Import(req.Filename, req.DeleteSource, req.TriggerScan)
+	destPath, sourceDeleted, err := h.downloader.Import(req.Filename, req.Destination, req.Subfolder, req.DeleteSource, req.TriggerScan)
 	if err != nil {
+		if isDownloaderUserError(err) {
+			writeError(c, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(c, http.StatusInternalServerError, "Import failed: "+err.Error())
 		return
 	}

@@ -26,7 +26,7 @@ var validReportReasons = map[string]struct{}{
 }
 
 const (
-	maxReportNotesLen = 1000
+	maxReportNotesLen  = 1000
 	maxReportReasonLen = 64
 )
 
@@ -144,7 +144,10 @@ func (h *Handler) ListMediaReports(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Failed to list reports")
 		return
 	}
-	openCount, _ := h.mediaReports.CountByStatus(c.Request.Context(), "open")
+	openCount, err := h.mediaReports.CountByStatus(c.Request.Context(), "open")
+	if err != nil {
+		h.log.Warn("Failed to count open media reports: %v", err)
+	}
 	out := make([]map[string]any, len(recs))
 	for i, r := range recs {
 		v := map[string]any{

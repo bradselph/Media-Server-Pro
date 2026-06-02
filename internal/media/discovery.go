@@ -640,7 +640,7 @@ func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType mode
 		return nil
 	}
 
-	return filepath.Walk(absDir, func(path string, info os.FileInfo, err error) error {
+	return filepath.WalkDir(absDir, func(path string, d os.DirEntry, err error) error {
 		// Check for cancellation periodically
 		select {
 		case <-ctx.Done():
@@ -653,10 +653,10 @@ func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType mode
 			return nil // Continue scanning
 		}
 
-		if info.IsDir() {
+		if d.IsDir() {
 			return nil
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
+		if d.Type()&os.ModeSymlink != 0 {
 			return nil // skip symlinks — they may point outside the media directory
 		}
 
@@ -678,6 +678,12 @@ func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType mode
 			mediaType = defaultType
 		default:
 			return nil // Not a media file
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			m.log.Warn("Failed to get info for %s: %v", path, err)
+			return nil
 		}
 
 		item := m.createMediaItem(path, info, mediaType)
@@ -917,13 +923,18 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		if meta.StableID != "" {
 			item.ID = meta.StableID
 		}
-		needsFingerprint := meta.ContentFingerprint == ""
+		needsFingerprint := meta.ContentFingerprint == "" || item.DateModified.After(meta.ProbeModTime)
 		m.mu.RUnlock()
 
-		// Compute fingerprint for existing files that predate fingerprint support
+		// Compute fingerprint for new files or existing files that have been modified
+		// (predate fingerprint support or have a fresh mtime).
 		if needsFingerprint {
 			if fp, err := computeContentFingerprint(path); err == nil && fp != "" {
 				m.mu.Lock()
+				// If the fingerprint changed, clean up the old index entry.
+				if meta.ContentFingerprint != "" && meta.ContentFingerprint != fp {
+					delete(m.fingerprintIndex, meta.ContentFingerprint)
+				}
 				meta.ContentFingerprint = fp
 				m.fingerprintIndex[fp] = path
 				m.mu.Unlock()
@@ -1557,6 +1568,15 @@ type Stats struct {
 
 // IncrementViews increments view count for a media item (DB and in-memory updated separately; not atomic).
 func (m *Module) IncrementViews(ctx context.Context, path string) error {
+	// Reject unknown media up-front so a path deleted between resolution and this
+	// call cannot create an orphaned metadata entry with no backing media item.
+	m.mu.RLock()
+	_, known := m.media[path]
+	m.mu.RUnlock()
+	if !known {
+		return fmt.Errorf("media not found: %s", path)
+	}
+
 	// Update DB first; only mirror to in-memory on success so the cache does not
 	// diverge from the persistent store.
 	if m.metadataRepo != nil {
@@ -1577,7 +1597,7 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 		m.metadata[path] = meta
 	}
 	meta.Views++
-	meta.LastPlayed = new(time.Now())
+	meta.LastPlayed = helpers.Ptr(time.Now())
 	if item, exists := m.media[path]; exists {
 		item.Views = meta.Views
 		item.LastPlayed = meta.LastPlayed
@@ -1590,6 +1610,16 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 // UpdatePlaybackPosition updates playback position, total duration, and progress
 // fraction for a user. duration and progress may be 0 when the values are unknown.
 func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string, position, duration, progress float64) error {
+	// Reject unknown media up-front so a path deleted between resolution and this
+	// call cannot leave an orphaned playback_positions row (the repo upserts) or
+	// an orphaned in-memory metadata entry.
+	m.mu.RLock()
+	_, known := m.media[path]
+	m.mu.RUnlock()
+	if !known {
+		return fmt.Errorf("media not found: %s", path)
+	}
+
 	// Update DB first; only mirror to in-memory on success so the cache does not
 	// diverge from the persistent store.
 	if m.metadataRepo != nil {
@@ -1715,7 +1745,9 @@ func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string)
 // Called when a media item is permanently deleted so orphaned rows do not accumulate.
 func (m *Module) DeletePlaybackPositionsByPath(ctx context.Context, path string) {
 	if m.metadataRepo != nil {
-		if err := m.metadataRepo.DeletePlaybackPositionsByPath(ctx, path); err != nil {
+		// A media item with no saved resume positions yields ErrMetadataNotFound,
+		// which is a normal outcome for this cleanup-on-delete call, not a failure.
+		if err := m.metadataRepo.DeletePlaybackPositionsByPath(ctx, path); err != nil && !errors.Is(err, repositories.ErrMetadataNotFound) {
 			m.log.Warn("Failed to purge playback positions for deleted media %s: %v", path, err)
 		}
 	}
@@ -1746,6 +1778,13 @@ func (m *Module) ClearAllPlaybackPositions(userID string) {
 // SetMatureFlag sets the mature content flag for a media item
 func (m *Module) SetMatureFlag(path string, isMature bool, score float64, reasons []string) error {
 	m.mu.Lock()
+
+	// Don't create an orphaned metadata entry for media that was deleted between
+	// the scan that produced this result and this call.
+	if _, ok := m.media[path]; !ok {
+		m.mu.Unlock()
+		return fmt.Errorf("media not found: %s", path)
+	}
 
 	meta, exists := m.metadata[path]
 	if !exists {

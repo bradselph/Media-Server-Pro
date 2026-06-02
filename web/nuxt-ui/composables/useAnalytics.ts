@@ -22,6 +22,7 @@ declare global {
 }
 
 let initialized = false
+let awaitingConsent = false
 
 function isProductionHost(): boolean {
     if (typeof window === 'undefined') return false
@@ -44,9 +45,15 @@ export function initGA(): void {
 
     if (!consentFor('analytics')) {
         // Wait for consent — re-attempt when the banner reports a change.
-        onConsentChanged(() => {
-            if (consentFor('analytics')) initGA()
-        })
+        // Register the listener only once: onConsentChanged adds a new (never
+        // removed) window listener on every call, so re-entrant initGA() calls
+        // while consent is still withheld would otherwise accumulate listeners.
+        if (!awaitingConsent) {
+            awaitingConsent = true
+            onConsentChanged(() => {
+                if (consentFor('analytics')) initGA()
+            })
+        }
         return
     }
     initialized = true

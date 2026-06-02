@@ -2,11 +2,12 @@
 import type { MediaItem, AdminMediaListParams, ThumbnailStats, MediaChapter } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatBytes, formatDuration } from '~/utils/format'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
 const chaptersApi = useChaptersApi()
-const toast = useToast()
+const { notifyError, notifySuccess, notifyInfo } = useAdminFeedback()
 
 const thumbStats = ref<ThumbnailStats | null>(null)
 async function loadThumbStats() {
@@ -60,11 +61,11 @@ async function executeBulk(action: 'delete' | 'update', data?: { category?: stri
   try {
     const res = await adminApi.bulkMedia(ids, action, data)
     const msg = action === 'delete' ? `Deleted ${res?.success ?? ids.length} items` : `Updated ${res?.success ?? ids.length} items`
-    toast.add({ title: msg, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(msg)
     selectedIds.value = new Set()
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Bulk action failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Bulk action failed')
   } finally {
     bulkRunning.value = false
   }
@@ -110,12 +111,12 @@ async function uploadThumbnail() {
   thumbUploading.value = true
   try {
     await adminApi.uploadCustomThumbnail(editTarget.value.id, thumbFile.value)
-    toast.add({ title: 'Thumbnail updated', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Thumbnail updated')
     thumbFile.value = null
     thumbPreviewUrl.value = null
     if (thumbFileInput.value) thumbFileInput.value.value = ''
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Upload failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Upload failed')
   } finally {
     thumbUploading.value = false
   }
@@ -132,11 +133,11 @@ async function saveEdit() {
       tags: editForm.tags.split(',').map((t: string) => t.trim()).filter(Boolean),
       metadata: { ...editTarget.value.metadata, description: editForm.description },
     })
-    toast.add({ title: 'Media updated', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Media updated')
     editTarget.value = null
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Update failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Update failed')
   } finally {
     editSaving.value = false
   }
@@ -163,7 +164,7 @@ async function openChapters(item: MediaItem) {
   try {
     chapters.value = (await chaptersApi.list(item.id)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load chapters', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load chapters')
   } finally {
     chaptersLoading.value = false
   }
@@ -171,14 +172,14 @@ async function openChapters(item: MediaItem) {
 
 async function addChapter() {
   if (!chaptersTarget.value || !newChapter.label) {
-    toast.add({ title: 'Label is required', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Label is required')
     return
   }
   chaptersSaving.value = true
   try {
     const endTimeParsed = newChapter.end_time ? parseFloat(newChapter.end_time) : undefined
     if (endTimeParsed !== undefined && isNaN(endTimeParsed)) {
-      toast.add({ title: 'End time must be a valid number', color: 'error', icon: 'i-lucide-x' })
+      notifyError('End time must be a valid number')
       return
     }
     const endTime = endTimeParsed
@@ -188,13 +189,13 @@ async function addChapter() {
       end_time: endTime,
       label: newChapter.label,
     })
-    toast.add({ title: 'Chapter added', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Chapter added')
     newChapter.start_time = 0
     newChapter.end_time = ''
     newChapter.label = ''
     await openChapters(chaptersTarget.value)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to add chapter', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to add chapter')
   } finally {
     chaptersSaving.value = false
   }
@@ -204,12 +205,12 @@ async function deleteChapter(id: string) {
   chaptersSaving.value = true
   try {
     await chaptersApi.delete(id)
-    toast.add({ title: 'Chapter deleted', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Chapter deleted')
     if (chaptersTarget.value) {
       await openChapters(chaptersTarget.value)
     }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to delete chapter', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to delete chapter')
   } finally {
     chaptersSaving.value = false
   }
@@ -228,7 +229,11 @@ function onSearchInput() {
   searchTimer = setTimeout(() => { params.page = 1; load() }, 300)
 }
 
-async function load() {
+// load() is bound directly to event handlers, so it stays param-less.
+// loadInternal carries the silent flag the scan poll uses to avoid spamming an
+// error toast every few seconds on a transient fetch failure mid-scan.
+function load() { return loadInternal(false) }
+async function loadInternal(silent: boolean) {
   const seq = ++loadSeq
   selectedIds.value = new Set()
   loading.value = true
@@ -243,23 +248,42 @@ async function load() {
     items.value = res.items ?? []
     totalItems.value = res.total_items ?? 0
     totalPages.value = res.total_pages ?? 1
+    // Reflect the real scan state reported by the backend so the indicator is
+    // accurate even when a scan was started elsewhere or is still running.
+    scanning.value = res.scanning ?? false
   } catch (e: unknown) {
     if (seq !== loadSeq) return
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load media', color: 'error', icon: 'i-lucide-x' })
+    if (!silent) notifyError(e, 'Failed to load media')
   } finally {
     if (seq === loadSeq) loading.value = false
   }
+}
+
+let scanPollTimer: ReturnType<typeof setInterval> | null = null
+let scanPolls = 0
+const MAX_SCAN_POLLS = 100 // ~5 min at 3s — safety bound so the poll can't run forever
+function stopScanPoll() {
+  if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null }
 }
 
 async function handleScan() {
   scanning.value = true
   try {
     await adminApi.scanMedia()
-    toast.add({ title: 'Media scan triggered', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Media scan started')
+    // The scan runs in the background; poll the list so the indicator reflects
+    // real progress and auto-clears (newly-scanned items appear) when it ends.
+    // Bounded + silent so a transient error can't spin forever or spam toasts.
+    stopScanPoll()
+    scanPolls = 0
+    scanPollTimer = setInterval(async () => {
+      scanPolls++
+      await loadInternal(true)
+      if (!scanning.value || scanPolls >= MAX_SCAN_POLLS) stopScanPoll()
+    }, 3000)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Scan failed', color: 'error', icon: 'i-lucide-x' })
-  } finally {
     scanning.value = false
+    notifyError(e, 'Scan failed')
   }
 }
 
@@ -271,9 +295,9 @@ async function generateThumbnail(id: string) {
   const next = new Set(rowBusy.value); next.add(`thumb-${id}`); rowBusy.value = next
   try {
     await adminApi.generateThumbnail(id)
-    toast.add({ title: 'Thumbnail queued', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Thumbnail queued')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Thumbnail failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Thumbnail failed')
   } finally {
     const cleared = new Set(rowBusy.value); cleared.delete(`thumb-${id}`); rowBusy.value = cleared
   }
@@ -284,9 +308,9 @@ async function generateHLS(id: string) {
   const next = new Set(rowBusy.value); next.add(`hls-${id}`); rowBusy.value = next
   try {
     await hlsApi.generate(id)
-    toast.add({ title: 'HLS generation started', color: 'info', icon: 'i-lucide-info' })
+    notifyInfo('HLS generation started')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'HLS generation failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'HLS generation failed')
   } finally {
     const cleared = new Set(rowBusy.value); cleared.delete(`hls-${id}`); rowBusy.value = cleared
   }
@@ -308,7 +332,7 @@ async function deleteMediaItem(id: string) {
     await adminApi.deleteMedia(id)
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Delete failed')
   } finally {
     const cleared = new Set(rowBusy.value); cleared.delete(`del-${id}`); rowBusy.value = cleared
   }
@@ -356,7 +380,7 @@ onMounted(async () => {
     }
   }
 })
-onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer) })
+onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() })
 </script>
 
 <template>

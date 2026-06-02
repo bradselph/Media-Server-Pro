@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"media-server-pro/internal/auth"
 	"media-server-pro/pkg/models"
 )
 
@@ -100,8 +103,8 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 		"name":         rec.Name,
 		"token":        raw,
 		"created_at":   rec.CreatedAt.Format(timeFormatRFC3339Ext),
-		"last_used_at": nil,  // always null on creation
-		"expires_at":   nil,  // null when no expiry (consistent with list response)
+		"last_used_at": nil, // always null on creation
+		"expires_at":   nil, // null when no expiry (consistent with list response)
 	}
 	if rec.ExpiresAt != nil {
 		resp["expires_at"] = rec.ExpiresAt.Format(timeFormatRFC3339Ext)
@@ -129,6 +132,10 @@ func (h *Handler) DeleteAPIToken(c *gin.Context) {
 		return
 	}
 	if err := h.auth.DeleteAPIToken(c.Request.Context(), tokenID, session.UserID); err != nil {
+		if errors.Is(err, auth.ErrAPITokenNotFound) {
+			writeError(c, http.StatusNotFound, "Token not found")
+			return
+		}
 		h.log.Error("DeleteAPIToken: %v", err)
 		writeError(c, http.StatusInternalServerError, "Failed to delete API token")
 		return

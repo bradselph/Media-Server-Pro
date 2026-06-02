@@ -21,11 +21,11 @@ import (
 
 // SmartPlaylistRules is the parsed structure of a smart playlist's rules blob.
 type SmartPlaylistRules struct {
-	Match      string            `json:"match"`       // "all" or "any"
-	Conditions []SmartCondition  `json:"conditions"`
-	OrderBy    string            `json:"order_by"`    // date_added|name|duration|views
-	OrderDir   string            `json:"order_dir"`   // asc|desc
-	Limit      int               `json:"limit"`
+	Match      string           `json:"match"` // "all" or "any"
+	Conditions []SmartCondition `json:"conditions"`
+	OrderBy    string           `json:"order_by"`  // date_added|name|duration|views
+	OrderDir   string           `json:"order_dir"` // asc|desc
+	Limit      int              `json:"limit"`
 }
 
 type SmartCondition struct {
@@ -144,6 +144,11 @@ func matchSmartCondition(item *models.MediaItem, cond SmartCondition) bool {
 			return item.Duration >= durVal
 		case "lte":
 			return item.Duration <= durVal
+		case "eq":
+			// Equality on a float is brittle; accept ±0.5s tolerance so the UI
+			// can offer "duration = 60" without users having to know the value
+			// is stored as a float. Without this, the rule silently matches nothing.
+			return item.Duration >= durVal-0.5 && item.Duration <= durVal+0.5
 		}
 	case "date_added_days":
 		if cond.Op != "lte" || cond.Value == "" {
@@ -161,6 +166,11 @@ func matchSmartCondition(item *models.MediaItem, cond SmartCondition) bool {
 			return int64(item.Views) >= viewVal
 		case "lte":
 			return int64(item.Views) <= viewVal
+		case "eq":
+			// The UI exposes "eq" for every numeric field; without this case the
+			// rule silently matches nothing and the user gets an empty playlist
+			// with no hint that the operator was unsupported.
+			return int64(item.Views) == viewVal
 		}
 	case "is_mature":
 		val := cond.Value == "true" || cond.Value == "1"
@@ -204,6 +214,18 @@ func (h *Handler) ListSmartPlaylists(c *gin.Context) {
 func (h *Handler) CreateSmartPlaylist(c *gin.Context) {
 	session := RequireSession(c)
 	if session == nil {
+		return
+	}
+	// Smart playlists are playlists too: enforce the same CanCreatePlaylists
+	// permission that CreatePlaylist requires, so disabling playlist creation for
+	// a user blocks both kinds instead of leaving smart playlists as a bypass.
+	user, err := h.auth.GetUser(c.Request.Context(), session.Username)
+	if err != nil || user == nil {
+		writeError(c, http.StatusInternalServerError, "Failed to retrieve user permissions")
+		return
+	}
+	if !user.Permissions.CanCreatePlaylists {
+		writeError(c, http.StatusForbidden, "Playlist creation not allowed for your user type")
 		return
 	}
 	var req struct {

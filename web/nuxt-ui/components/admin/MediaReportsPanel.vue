@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { MediaReport, MediaReportStatus } from '~/types/api'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 let destroyed = false
 onUnmounted(() => { destroyed = true })
@@ -31,7 +32,7 @@ async function load(reset = true) {
     if (list.length < PAGE_SIZE) reachedEnd.value = true
   }
   catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load reports', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load reports')
   }
   finally {
     if (!destroyed) loading.value = false
@@ -49,7 +50,7 @@ async function setStatus(report: MediaReport, status: MediaReportStatus) {
   updatingId.value = report.id
   try {
     await adminApi.updateMediaReportStatus(report.id, status)
-    toast.add({ title: `Report ${status}`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Report ${status}`)
     // Remove from current view if it no longer matches the active filter.
     if (statusFilter.value && statusFilter.value !== status) {
       reports.value = reports.value.filter(r => r.id !== report.id)
@@ -62,7 +63,7 @@ async function setStatus(report: MediaReport, status: MediaReportStatus) {
     if (!destroyed) openCount.value = res?.open_count ?? 0
   }
   catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to update report', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to update report')
   }
   finally {
     if (!destroyed) updatingId.value = null

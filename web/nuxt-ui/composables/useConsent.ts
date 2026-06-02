@@ -20,7 +20,7 @@ export interface ConsentRecord {
 const KEY = 'msp-consent'
 const TTL_MS = 12 * 30 * 24 * 60 * 60 * 1000 // ~12 months
 
-export function getConsent(): ConsentRecord | null {
+function getConsent(): ConsentRecord | null {
     if (typeof window === 'undefined') return null
     try {
         const raw = window.localStorage.getItem(KEY)
@@ -34,10 +34,6 @@ export function getConsent(): ConsentRecord | null {
     } catch {
         return null
     }
-}
-
-export function hasDecided(): boolean {
-    return getConsent() != null
 }
 
 export function setConsent(opts: { analytics?: boolean; advertising?: boolean }): ConsentRecord {
@@ -72,14 +68,4 @@ export function consentFor(category: 'strict' | 'analytics' | 'advertising'): bo
     if (!c) return false
     if (category === 'strict') return true
     return !!c[category]
-}
-
-export function useConsent() {
-    return {
-        getConsent,
-        hasDecided,
-        setConsent,
-        onConsentChanged,
-        consentFor,
-    }
 }

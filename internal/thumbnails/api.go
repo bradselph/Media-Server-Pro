@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -174,6 +175,13 @@ func (m *Module) SaveCustomThumbnail(mediaID string, r io.Reader) error {
 		return fmt.Errorf("reader cannot be nil")
 	}
 	destPath := m.getThumbnailPath(MediaID(mediaID))
+	// Defense-in-depth: mediaID is used as a filename base, so the resolved path
+	// must land directly inside thumbnailDir. Reject any mediaID that would
+	// traverse elsewhere (e.g. "../../tmp/x"). Real media IDs are UUIDs / hex
+	// with no path separators, so this never rejects a legitimate value.
+	if filepath.Dir(destPath) != filepath.Clean(m.thumbnailDir) {
+		return fmt.Errorf("invalid mediaID %q", mediaID)
+	}
 	if err := os.MkdirAll(m.thumbnailDir, 0o755); err != nil { //nolint:gosec // G301
 		return fmt.Errorf("creating thumbnail dir: %w", err)
 	}

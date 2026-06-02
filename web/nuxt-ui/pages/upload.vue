@@ -91,7 +91,10 @@ function onFileInput(e: Event) {
   input.value = ''
 }
 
-const EXTENSION_ALLOWLIST = new Set(['.mp4', '.mkv', '.avi', '.flac', '.ogg', '.webm', '.m4a', '.aac', '.wav', '.wmv', '.mov', '.ts', '.m4v', '.mpg', '.mpeg', '.3gp', '.opus', '.wma', '.vob', '.ogv'])
+// Mirrors the backend's accepted set (video + audio) so an empty-MIME file is
+// judged the same on both ends. Backend source of truth: internal/upload/upload.go
+// videoExtensions + pkg/helpers mediaExtTypes (audio).
+const EXTENSION_ALLOWLIST = new Set(['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.mpg', '.mpeg', '.3gp', '.ts', '.m2ts', '.vob', '.ogv', '.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.opus', '.wma', '.alac', '.ape', '.aiff', '.mka'])
 
 function getExtension(name: string): string {
   const idx = name.lastIndexOf('.')
@@ -100,13 +103,14 @@ function getExtension(name: string): string {
 
 function addFiles(files: File[]) {
   const allowed = files.filter(f => {
-    if (f.type.startsWith('video/') || f.type.startsWith('audio/') || f.type.startsWith('image/')) return true
+    if (f.type.startsWith('video/') || f.type.startsWith('audio/')) return true
+    // Some OSes/browsers report an empty MIME type — fall back to the extension.
     if (f.type === '' && EXTENSION_ALLOWLIST.has(getExtension(f.name))) return true
     return false
   })
   const rejected = files.length - allowed.length
   if (rejected > 0) {
-    toast.add({ title: `${rejected} file(s) skipped — only video, audio, and image files are accepted`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+    toast.add({ title: `${rejected} file(s) skipped — only video and audio files are accepted`, color: 'warning', icon: 'i-lucide-alert-triangle' })
   }
   const existingNames = new Set(selectedFiles.value.map(f => f.name))
   const deduped = allowed.filter(f => !existingNames.has(f.name))
@@ -167,7 +171,7 @@ async function handleUpload() {
   <UContainer class="py-8 max-w-2xl space-y-6">
     <div>
       <h1 class="text-2xl font-bold text-highlighted">Upload Media</h1>
-      <p class="text-sm text-muted mt-1">Upload video, audio, or image files to the media library.</p>
+      <p class="text-sm text-muted mt-1">Upload video or audio files to the media library.</p>
     </div>
 
     <!-- Access check -->
@@ -193,8 +197,8 @@ async function handleUpload() {
       >
         <UIcon name="i-lucide-upload-cloud" class="size-12 mx-auto text-muted mb-3" />
         <p class="text-sm font-medium">Drag and drop files here, or <span class="text-primary underline">browse</span></p>
-        <p class="text-xs text-muted mt-1">Video, audio, and image files accepted</p>
-        <input ref="fileInputRef" type="file" multiple accept="video/*,audio/*,image/*" class="hidden" @change="onFileInput" />
+        <p class="text-xs text-muted mt-1">Video and audio files accepted</p>
+        <input ref="fileInputRef" type="file" multiple accept="video/*,audio/*" class="hidden" @change="onFileInput" />
       </div>
 
       <!-- Category -->
@@ -214,7 +218,7 @@ async function handleUpload() {
             >
               <div class="flex items-center gap-2 min-w-0">
                 <UIcon
-                  :name="file.type.startsWith('video/') ? 'i-lucide-film' : file.type.startsWith('audio/') ? 'i-lucide-music' : 'i-lucide-image'"
+                  :name="file.type.startsWith('video/') ? 'i-lucide-film' : file.type.startsWith('audio/') ? 'i-lucide-music' : 'i-lucide-file'"
                   class="size-4 text-muted shrink-0"
                 />
                 <span class="text-sm truncate">{{ file.name }}</span>

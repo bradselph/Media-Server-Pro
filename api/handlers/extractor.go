@@ -101,8 +101,7 @@ func (h *Handler) GetExtractorStats(c *gin.Context) {
 // ExtractorHLSMaster proxies the HLS master playlist for a proxied stream.
 // GET /extractor/hls/:id/master.m3u8
 func (h *Handler) ExtractorHLSMaster(c *gin.Context) {
-	if h.extractor == nil {
-		writeError(c, http.StatusNotFound, "extractor module not enabled")
+	if !h.checkExtractorEnabled(c) {
 		return
 	}
 
@@ -118,8 +117,7 @@ func (h *Handler) ExtractorHLSMaster(c *gin.Context) {
 // ExtractorHLSVariant proxies an HLS variant playlist for a proxied stream.
 // GET /extractor/hls/:id/:quality/playlist.m3u8
 func (h *Handler) ExtractorHLSVariant(c *gin.Context) {
-	if h.extractor == nil {
-		writeError(c, http.StatusNotFound, "extractor module not enabled")
+	if !h.checkExtractorEnabled(c) {
 		return
 	}
 
@@ -142,8 +140,7 @@ func (h *Handler) ExtractorHLSVariant(c *gin.Context) {
 // ExtractorHLSSegment proxies an HLS segment for a proxied stream.
 // GET /extractor/hls/:id/:quality/:segment
 func (h *Handler) ExtractorHLSSegment(c *gin.Context) {
-	if h.extractor == nil {
-		writeError(c, http.StatusNotFound, "extractor module not enabled")
+	if !h.checkExtractorEnabled(c) {
 		return
 	}
 

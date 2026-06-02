@@ -138,10 +138,10 @@ func (h *Handler) AdminUpdateUser(c *gin.Context) {
 	username := c.Param("username")
 
 	var req struct {
-		Role        string                 `json:"role"`
-		Enabled     *bool                  `json:"enabled"`
-		Email       string                 `json:"email"`
-		Type        string                 `json:"type"`
+		Role        string         `json:"role"`
+		Enabled     *bool          `json:"enabled"`
+		Email       string         `json:"email"`
+		Type        string         `json:"type"`
 		Permissions map[string]any `json:"permissions"`
 	}
 	if !BindJSON(c, &req, "") {

@@ -47,15 +47,6 @@ export const usePlaybackStore = defineStore('playback', () => {
         }
     }
 
-    async function loadPosition(mediaId: string): Promise<number> {
-        try {
-            const res = await playbackApi.getPosition(mediaId)
-            return res.position ?? 0
-        } catch {
-            return 0
-        }
-    }
-
     function startAutoSave() {
         stopAutoSave()
         saveInterval = setInterval(savePosition, 15_000)
@@ -70,7 +61,7 @@ export const usePlaybackStore = defineStore('playback', () => {
 
     return {
         currentMediaId, position, duration, isPlaying, mediaInfo,
-        setMedia, updatePosition, savePosition, loadPosition,
+        setMedia, updatePosition, savePosition,
         startAutoSave, stopAutoSave,
     }
 })

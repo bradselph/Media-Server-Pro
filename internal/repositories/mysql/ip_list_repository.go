@@ -160,14 +160,3 @@ func (r *IPListRepository) RemoveEntry(ctx context.Context, listType, ipValue st
 	}
 	return nil
 }
-
-func (r *IPListRepository) SetEnabled(ctx context.Context, listType string, enabled bool) error {
-	result := r.db.WithContext(ctx).Model(&ipListConfigRow{}).Where(sqlListTypeEq, listType).Update("enabled", enabled)
-	if result.Error != nil {
-		return fmt.Errorf("failed to set IP list enabled: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("ip list config not found for list_type %q", listType)
-	}
-	return nil
-}

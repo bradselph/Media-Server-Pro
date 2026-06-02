@@ -32,8 +32,18 @@ type Config struct {
 	UI            UIConfig            `json:"ui"`
 	Downloader    DownloaderConfig    `json:"downloader"`
 	Storage       StorageConfig       `json:"storage"`
-	Claude        ClaudeConfig        `json:"claude"`
 	Tasks         TasksConfig         `json:"tasks"`
+
+	// EnvSeedMigrated guards the one-shot transition to "config.json is
+	// authoritative; env vars seed only". Before this flag existed, every
+	// environment variable re-overrode the saved config on each load, so any
+	// value an admin changed in the UI silently reverted on the next restart.
+	// On the first load after the upgrade (flag false), the current env-driven
+	// tunable values are baked into config.json so effective behaviour does not
+	// change; thereafter tunable env vars no longer override saved settings.
+	// Infrastructure/secret env vars (paths, bind, DB/storage creds, log level,
+	// updater branch, admin bootstrap) continue to apply on every load.
+	EnvSeedMigrated bool `json:"env_seed_migrated"`
 }
 
 // TasksConfig holds per-task admin overrides for the background scheduler.
@@ -200,6 +210,13 @@ type ServerConfig struct {
 	EnableHTTPS       bool          `json:"enable_https"`
 	CertFile          string        `json:"cert_file"`
 	KeyFile           string        `json:"key_file"`
+
+	// MemoryLimitPercent sets the Go runtime soft memory limit as a percentage
+	// of total system RAM (see internal/runtimeenv). 0 = auto (75%). It lets a
+	// large host use its RAM as GC headroom instead of collecting at ~2x a tiny
+	// live heap. Ignored when GOMEMLIMIT is set in the environment. Valid range
+	// when non-zero: 10–95.
+	MemoryLimitPercent int `json:"memory_limit_percent"`
 }
 
 // DirectoriesConfig holds directory paths
@@ -358,6 +375,19 @@ type HLSConfig struct {
 	ConcurrentLimit          int           `json:"concurrent_limit"`
 	CDNBaseURL               string        `json:"cdn_base_url"`
 	LazyTranscode            bool          `json:"lazy_transcode"`
+
+	// HardwareAccel selects the ffmpeg video encoder backend:
+	//   "auto"          — probe for a working hardware encoder at startup,
+	//                     preferring nvenc > qsv > vaapi > videotoolbox, and
+	//                     fall back to software libx264 when none works.
+	//   "none"          — always use software libx264.
+	//   "nvenc"|"qsv"|"vaapi"|"videotoolbox" — force a specific backend (still
+	//                     verified at startup; falls back to software if the
+	//                     encoder is unavailable on this host).
+	// Hardware encoding only helps when the host actually has a supported GPU
+	// (NVIDIA for nvenc, Intel iGPU for qsv, a /dev/dri render node for vaapi,
+	// macOS for videotoolbox). On a CPU-only VPS, "auto" resolves to software.
+	HardwareAccel string `json:"hardware_accel"`
 
 	// Reliability and probe tuning.
 	MaxConsecutiveFailures int           `json:"max_consecutive_failures"` // retries before a job is abandoned; default 3
@@ -528,7 +558,6 @@ type FeaturesConfig struct {
 	EnableDuplicateDetection bool `json:"enable_duplicate_detection"`
 	EnableHuggingFace        bool `json:"enable_huggingface"`
 	EnableDownloader         bool `json:"enable_downloader"`
-	EnableClaude             bool `json:"enable_claude"`
 }
 
 // DatabaseConfig holds database connection settings

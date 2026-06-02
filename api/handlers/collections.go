@@ -229,6 +229,12 @@ func (h *Handler) AddCollectionItems(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
+	// Bound the batch so a single request can't trigger an unbounded per-item DB
+	// loop. (binding:"required" already rejects an empty array.)
+	if len(body.MediaIDs) > 500 {
+		writeError(c, http.StatusBadRequest, "too many media_ids (max 500)")
+		return
+	}
 	for i, mediaID := range body.MediaIDs {
 		item := models.MediaCollectionItem{
 			CollectionID: collectionID,

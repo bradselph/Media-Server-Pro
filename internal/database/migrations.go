@@ -583,35 +583,6 @@ var tableDefs = []struct {
 				INDEX idx_collection_items_media (media_id),
 				INDEX idx_collection_items_position (collection_id, position)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-	{"claude_conversations", `
-			CREATE TABLE IF NOT EXISTS claude_conversations (
-				id              VARCHAR(64)  PRIMARY KEY,
-				user_id         VARCHAR(255) NOT NULL,
-				username        VARCHAR(255) NOT NULL,
-				title           VARCHAR(255) NOT NULL DEFAULT '',
-				mode            VARCHAR(32)  NOT NULL DEFAULT 'autonomous',
-				model           VARCHAR(128) NOT NULL DEFAULT '',
-				cli_session_id  VARCHAR(64)  NOT NULL DEFAULT '',
-				created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-				updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-				INDEX idx_claude_conv_user (user_id),
-				INDEX idx_claude_conv_updated (updated_at)
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-	{"claude_messages", `
-			CREATE TABLE IF NOT EXISTS claude_messages (
-				id              VARCHAR(64)  PRIMARY KEY,
-				conversation_id VARCHAR(64)  NOT NULL,
-				seq             BIGINT       NOT NULL DEFAULT 0,
-				role            VARCHAR(32)  NOT NULL,
-				content         MEDIUMTEXT,
-				tool_calls      JSON,
-				tool_result     JSON,
-				created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-				INDEX idx_claude_msg_conv (conversation_id),
-				INDEX idx_claude_msg_seq (conversation_id, seq),
-				INDEX idx_claude_msg_created (created_at),
-				FOREIGN KEY (conversation_id) REFERENCES claude_conversations(id) ON DELETE CASCADE
-			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 }
 
 // ensureSchema idempotently creates all required tables and columns.
@@ -730,12 +701,6 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		// PlaylistItem schema alignment: GORM model expects id and media_id columns
 		{"playlist_items", "id", "VARCHAR(255) NOT NULL DEFAULT '' FIRST"},
 		{"playlist_items", "media_id", "VARCHAR(255) NOT NULL DEFAULT '' AFTER playlist_id"},
-		// claude_messages: seq column for stable insertion-order sorting
-		// (created_at has second-level granularity which is too coarse)
-		{"claude_messages", "seq", "BIGINT NOT NULL DEFAULT 0 AFTER conversation_id"},
-		// claude_conversations: cli_session_id is captured from the `claude`
-		// CLI init event so subsequent turns can resume with --resume.
-		{"claude_conversations", "cli_session_id", "VARCHAR(64) NOT NULL DEFAULT '' AFTER model"},
 		// daily_stats expansion: existing deployments need these columns added
 		// when the server upgrades. The CREATE TABLE above carries them too,
 		// so a fresh install gets them in one shot.
@@ -781,9 +746,6 @@ func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 		// "get all positions for user X" avoid a full table scan.
 		{"playback_positions", "idx_positions_user",
 			"ALTER TABLE playback_positions ADD INDEX idx_positions_user (user_id)"},
-		// claude_messages: compound index for efficient ORDER BY seq ASC per conversation
-		{"claude_messages", "idx_claude_msg_seq",
-			"ALTER TABLE claude_messages ADD INDEX idx_claude_msg_seq (conversation_id, seq)"},
 		// validation_results is filtered by status in health-check and backfill queries.
 		{"validation_results", "idx_validation_status",
 			"ALTER TABLE validation_results ADD INDEX idx_validation_status (status)"},

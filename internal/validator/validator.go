@@ -510,13 +510,16 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 		return nil, fmt.Errorf("fix output exceeded %d GB limit", maxFixOutputBytes/(1024*1024*1024))
 	}
 
-	// Re-fetch under write lock (result from earlier RLock may be stale)
+	// Re-fetch under write lock (result from earlier RLock may be stale). If
+	// ClearResult removed the entry mid-fix, r is nil; still stamp the local
+	// result so the completed fix is persisted/returned with the correct status
+	// instead of the stale pre-fix one.
 	m.mu.Lock()
 	if r := m.results[path]; r != nil {
-		r.Status = StatusFixed
-		r.FixedPath = outputPath
 		result = r
 	}
+	result.Status = StatusFixed
+	result.FixedPath = outputPath
 	m.mu.Unlock()
 
 	// Persist the updated status so it survives server restarts

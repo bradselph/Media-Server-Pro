@@ -3,9 +3,10 @@ import type {
   CrawlerTarget, CrawlerDiscovery, CrawlerStats,
   ExtractorItem, ExtractorStats,
 } from '~/types/api'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 // ── Crawler ────────────────────────────────────────────────────────────────────
 const crawlerStats = ref<CrawlerStats | null>(null)
@@ -29,7 +30,7 @@ async function loadCrawler() {
     crawlerTargets.value = targets ?? []
     crawlerDiscoveries.value = discoveries ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load crawler', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load crawler', 'i-lucide-alert-circle')
   } finally { crawlerLoading.value = false }
 }
 
@@ -39,10 +40,10 @@ async function addCrawlTarget() {
   try {
     await adminApi.addCrawlerTarget(newCrawlUrl.value.trim(), newCrawlName.value.trim() || undefined)
     newCrawlUrl.value = ''; newCrawlName.value = ''
-    toast.add({ title: 'Crawler target added', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Crawler target added')
     await loadCrawler()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { addingCrawl.value = false }
 }
 
@@ -51,10 +52,10 @@ async function startCrawl(targetId: string) {
   inFlightIds.value.add(targetId)
   try {
     await adminApi.startCrawl(targetId)
-    toast.add({ title: 'Crawl started', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Crawl started')
     await loadCrawler()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     inFlightIds.value.delete(targetId)
   }
@@ -65,10 +66,10 @@ async function deleteCrawlTarget(id: string) {
   inFlightIds.value.add(id)
   try {
     await adminApi.deleteCrawlerTarget(id)
-    toast.add({ title: 'Target deleted', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Target deleted')
     await loadCrawler()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     inFlightIds.value.delete(id)
   }
@@ -79,10 +80,10 @@ async function approveDiscovery(id: string) {
   inFlightIds.value.add(id)
   try {
     await adminApi.approveCrawlerDiscovery(id)
-    toast.add({ title: 'Discovery approved', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Discovery approved')
     await loadCrawler()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     inFlightIds.value.delete(id)
   }
@@ -93,21 +94,25 @@ async function ignoreDiscovery(id: string) {
   inFlightIds.value.add(id)
   try {
     await adminApi.ignoreCrawlerDiscovery(id)
-    toast.add({ title: 'Discovery ignored', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Discovery ignored')
     await loadCrawler()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     inFlightIds.value.delete(id)
   }
 }
 
 async function deleteDiscovery(id: string) {
+  if (inFlightIds.value.has(id)) return
+  inFlightIds.value.add(id)
   try {
     await adminApi.deleteCrawlerDiscovery(id)
     crawlerDiscoveries.value = crawlerDiscoveries.value.filter(d => d.id !== id)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
+  } finally {
+    inFlightIds.value.delete(id)
   }
 }
 
@@ -128,7 +133,7 @@ async function loadExtractor() {
     extractorStats.value = stats
     extractorItems.value = items ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load extractor', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load extractor', 'i-lucide-alert-circle')
   } finally { extractorLoading.value = false }
 }
 
@@ -138,10 +143,10 @@ async function addExtractorUrl() {
   try {
     await adminApi.addExtractorUrl(newExtractUrl.value.trim())
     newExtractUrl.value = ''
-    toast.add({ title: 'URL added to extractor', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('URL added to extractor')
     await loadExtractor()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { addingExtract.value = false }
 }
 
@@ -150,10 +155,10 @@ async function deleteExtractorItem(id: string) {
   inFlightIds.value.add(id)
   try {
     await adminApi.deleteExtractorItem(id)
-    toast.add({ title: 'Item removed', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Item removed')
     await loadExtractor()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     inFlightIds.value.delete(id)
   }
@@ -168,7 +173,7 @@ function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral
 
 onMounted(() => {
   Promise.all([loadCrawler(), loadExtractor()]).catch(err => {
-    toast.add({ title: err instanceof Error ? err.message : 'Failed to load panel', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(err, 'Failed to load panel', 'i-lucide-alert-circle')
   })
 })
 </script>

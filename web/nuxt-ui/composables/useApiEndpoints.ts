@@ -43,6 +43,7 @@ import type {
     HLSStats,
     HLSValidationResult,
     ImportableFile,
+    ImportDestination,
     ImportResult,
     IPListEntry,
     LogEntry,
@@ -745,6 +746,18 @@ export function useAdminApi() {
         scanDuplicates: () =>
             api.post<{ message: string }>(`${base}/duplicates/scan`, {}),
 
+        // Peer connect — tell a remote peer to push its catalog to this server
+        // (the receiver-side complement to follower pairing). Admin supplies the
+        // peer's URL + one of the peer's Receiver API keys; this server reaches
+        // out to the peer's /api/receiver/pair so neither admin has to log into
+        // both servers. our_url is optional (derived from the request if blank).
+        connectPeer: (peerUrl: string, peerApiKey: string, ourUrl?: string) =>
+            api.post<{ paired: boolean; peer_url: string; our_url: string }>(`${base}/peer/connect`, {
+                peer_url: peerUrl,
+                peer_api_key: peerApiKey,
+                ...(ourUrl ? { our_url: ourUrl } : {}),
+            }),
+
         // Follower (this server pairing as a slave to another master)
         getFollowerSettings: () => api.get<FollowerSettings>(`${base}/follower/settings`),
         updateFollowerSettings: (body: FollowerSettingsUpdate) =>
@@ -832,9 +845,12 @@ export function useAdminApi() {
             api.delete<void>(`${base}/downloader/downloads/${encodeURIComponent(filename)}`),
         getDownloaderSettings: () => api.get<DownloaderSettings>(`${base}/downloader/settings`),
         listImportable: () => api.get<ImportableFile[]>(`${base}/downloader/importable`),
-        importFile: (filename: string, deleteSource: boolean, triggerScan: boolean) =>
+        listImportDestinations: () => api.get<ImportDestination[]>(`${base}/downloader/destinations`),
+        importFile: (filename: string, deleteSource: boolean, triggerScan: boolean, destination?: string, subfolder?: string) =>
             api.post<ImportResult>(`${base}/downloader/import`, {
                 filename,
+                destination: destination ?? '',
+                subfolder: subfolder ?? '',
                 delete_source: deleteSource,
                 trigger_scan: triggerScan
             }),
@@ -868,108 +884,7 @@ export function useAdminApi() {
         },
         updateMediaReportStatus: (id: string, status: 'open' | 'resolved' | 'dismissed') =>
             api.patch<{ id: string; status: string }>(`${base}/media/reports/${encodeURIComponent(id)}`, { status }),
-
-        // Claude admin assistant
-        getClaudeConfig: () => api.get<ClaudePublicConfig>(`${base}/claude/config`),
-        updateClaudeConfig: (data: Partial<ClaudeConfigUpdate>) =>
-            api.put<ClaudePublicConfig>(`${base}/claude/config`, data),
-        setClaudeKillSwitch: (on: boolean) =>
-            api.post<{ kill_switch: boolean }>(`${base}/claude/kill-switch`, { on }),
-        getClaudeAuthStatus: () => api.get<ClaudeAuthStatus>(`${base}/claude/auth-status`),
-        listClaudeConversations: (limit = 50) =>
-            api.get<ClaudeConversation[]>(`${base}/claude/conversations?limit=${limit}`),
-        getClaudeConversation: (id: string) =>
-            api.get<{ conversation: ClaudeConversation; messages: ClaudeMessage[] }>(`${base}/claude/conversations/${encodeURIComponent(id)}`),
-        deleteClaudeConversation: (id: string) =>
-            api.delete<{ deleted: string }>(`${base}/claude/conversations/${encodeURIComponent(id)}`),
     }
-}
-
-// ── Claude types ──────────────────────────────────────────────────────────────
-
-export interface ClaudePublicConfig {
-    enabled: boolean
-    binary_path: string
-    workdir: string
-    model: string
-    mode: string
-    max_tokens: number
-    system_prompt: string
-    require_confirm_for_writes: boolean
-    max_tool_calls_per_turn: number
-    rate_limit_per_minute: number
-    kill_switch: boolean
-    history_retention_days: number
-}
-
-export interface ClaudeConfigUpdate {
-    enabled?: boolean
-    binary_path?: string
-    workdir?: string
-    model?: string
-    mode?: string
-    max_tokens?: number
-    system_prompt?: string
-    require_confirm_for_writes?: boolean
-    max_tool_calls_per_turn?: number
-    rate_limit_per_minute?: number
-    kill_switch?: boolean
-    history_retention_days?: number
-}
-
-export interface ClaudeAuthStatus {
-    installed: boolean
-    binary_path?: string
-    version?: string
-    authenticated: boolean
-    message?: string
-}
-
-export interface ClaudeConversation {
-    id: string
-    user_id: string
-    username: string
-    title: string
-    mode: string
-    model: string
-    created_at: string
-    updated_at: string
-}
-
-export interface ClaudeToolCall {
-    id: string
-    name: string
-    input: unknown
-    output?: string
-    error?: string
-    requires_confirm?: boolean
-}
-
-export interface ClaudeMessage {
-    id: string
-    conversation_id: string
-    role: 'user' | 'assistant' | 'tool'
-    content: string
-    tool_calls?: ClaudeToolCall[]
-    tool_result?: ClaudeToolCall
-    created_at: string
-}
-
-export interface ClaudeEvent {
-    type: 'delta' | 'tool_call' | 'tool_result' | 'tool_pending' | 'final' | 'error' | 'info'
-    text?: string
-    tool_call?: ClaudeToolCall
-    conversation_id?: string
-    mode?: string
-    stop_reason?: string
-    error?: string
-}
-
-export interface ClaudeChatRequest {
-    conversation_id?: string
-    message: string
-    mode_override?: string
-    approved_tool_calls?: string[]
 }
 
 // ── Analytics (admin) ─────────────────────────────────────────────────────────

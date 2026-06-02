@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"media-server-pro/pkg/helpers"
 )
 
 const (
@@ -23,13 +25,15 @@ func TestIsAuthPath(t *testing.T) {
 	}{
 		{"/api/auth/login", true},
 		{"/api/auth/register", true},
-		{"/api/auth/admin-login", true},
-		{"/api/admin/login", true},
 		{"/api/auth/change-password", true},
 		{"/api/auth/delete-account", true},
 		{"/api/media", false},
 		{"/api/auth/logout", false},
 		{"/", false},
+		// These paths are not registered routes; they must not gain the
+		// stricter auth rate limit (regression guard for removed dead entries).
+		{"/api/auth/admin-login", false},
+		{"/api/admin/login", false},
 	}
 	for _, tc := range tests {
 		got := isAuthPath(tc.path)
@@ -204,7 +208,7 @@ func TestIPList_Clear(t *testing.T) {
 
 func TestIPList_CleanExpired(t *testing.T) {
 	list := &IPList{Entries: make([]IPEntry, 0)}
-	list.Add(testIP1, "expired", "admin", new(time.Now().Add(-1*time.Hour)))
+	list.Add(testIP1, "expired", "admin", helpers.Ptr(time.Now().Add(-1*time.Hour)))
 	list.Add(testIP2, "valid", "admin", nil)
 
 	cleaned := list.CleanExpired()
@@ -317,7 +321,6 @@ func TestRateLimitConfig_Fields(t *testing.T) {
 		t.Errorf("ViolationsForBan = %d", cfg.ViolationsForBan)
 	}
 }
-
 
 // TestRateLimiter_SetWindows locks in the new hot-reload path: SetWindows must
 // mutate the live config copy under the limiter's lock so window edits take

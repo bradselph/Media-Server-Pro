@@ -61,10 +61,10 @@ func TestRelativizeUnderRoot(t *testing.T) {
 	roots := []string{root}
 
 	tests := []struct {
-		name    string
-		input   string
-		want    string
-		wantOK  bool
+		name   string
+		input  string
+		want   string
+		wantOK bool
 	}{
 		{
 			name:   "relative under root",
@@ -128,7 +128,7 @@ func TestIsValidToken(t *testing.T) {
 func TestParseRange_AllForms(t *testing.T) {
 	const size int64 = 1000
 	cases := []struct {
-		header   string
+		header       string
 		wantS, wantE int64
 	}{
 		{"bytes=0-99", 0, 99},

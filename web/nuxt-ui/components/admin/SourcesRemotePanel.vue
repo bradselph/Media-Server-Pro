@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { RemoteSourceState, RemoteStats, RemoteMediaItem } from '~/types/api'
 import { formatBytes } from '~/utils/format'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const mediaApi = useMediaApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 let destroyed = false
 onUnmounted(() => { destroyed = true })
@@ -41,7 +42,7 @@ async function loadRemote() {
     remoteStats.value = stats
     remoteSources.value = sources ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load remote sources', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load remote sources', 'i-lucide-alert-circle')
   } finally { remoteLoading.value = false }
 }
 
@@ -57,40 +58,52 @@ async function addRemoteSource() {
     })
     if (destroyed) return
     newRemoteName.value = ''; newRemoteUrl.value = ''; newRemoteUser.value = ''; newRemotePass.value = ''
-    toast.add({ title: 'Remote source added', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Remote source added')
     await loadRemote()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { addingRemote.value = false }
 }
 
+// Tracks per-source actions in flight so a rapid double-click can't fire a
+// duplicate (potentially expensive) sync or a redundant delete.
+const remoteBusy = ref(new Set<string>())
+
 async function syncRemote(name: string) {
+  if (remoteBusy.value.has(name)) return
+  remoteBusy.value.add(name)
   try {
     await adminApi.syncRemoteSource(name)
-    toast.add({ title: 'Sync started', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Sync started')
     await loadRemote()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
+  } finally {
+    remoteBusy.value.delete(name)
   }
 }
 
 async function deleteRemote(name: string) {
+  if (remoteBusy.value.has(name)) return
+  remoteBusy.value.add(name)
   try {
     await adminApi.deleteRemoteSource(name)
-    toast.add({ title: 'Source removed', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Source removed')
     await loadRemote()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
+  } finally {
+    remoteBusy.value.delete(name)
   }
 }
 
 async function cleanRemoteCache() {
   try {
     const res = await adminApi.cleanRemoteCache()
-    toast.add({ title: `Cleaned ${(res as { removed: number }).removed ?? 0} cached items`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Cleaned ${(res as { removed: number }).removed ?? 0} cached items`)
     await loadRemote()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -103,7 +116,7 @@ async function loadAllRemoteMedia() {
     if (destroyed) return
     remoteMedia.value = media ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load remote media', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load remote media')
   } finally { remoteMediaLoading.value = false }
 }
 
@@ -116,16 +129,16 @@ async function loadSourceMedia(name: string) {
     if (destroyed) return
     remoteMedia.value = media ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load source media', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load source media')
   } finally { remoteMediaLoading.value = false }
 }
 
 async function cacheRemoteItem(url: string, sourceName: string) {
   try {
     await adminApi.cacheRemoteMedia(url, sourceName)
-    toast.add({ title: 'Item cached locally', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Item cached locally')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Cache failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Cache failed')
   }
 }
 

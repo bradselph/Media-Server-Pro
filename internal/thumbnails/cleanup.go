@@ -133,5 +133,7 @@ func formatBytes(b int64) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMG"[exp])
+	// "KMGTPE" covers every exponent reachable for an int64 byte count (max ~8 EB),
+	// so the index can never run past the end of the unit string.
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }

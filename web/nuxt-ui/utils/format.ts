@@ -23,7 +23,7 @@ export function formatBytes(bytes?: number, fallback = '—'): string {
  * @param fallback  String to return when secs is falsy (default '')
  */
 export function formatDuration(secs?: number, fallback = ''): string {
-    if (!secs) return fallback
+    if (secs == null || !Number.isFinite(secs) || secs < 0) return fallback
     const h = Math.floor(secs / 3600)
     const m = Math.floor((secs % 3600) / 60)
     const s = Math.floor(secs % 60)
@@ -39,7 +39,7 @@ export function formatDuration(secs?: number, fallback = ''): string {
  * @param fallback  String to return when secs is falsy (default '—')
  */
 export function formatWatchTime(secs?: number, fallback = '—'): string {
-    if (!secs) return fallback
+    if (secs == null || !Number.isFinite(secs) || secs < 0) return fallback
     if (secs < 60) return `${Math.round(secs)}s`
     if (secs < 3600) return `${Math.floor(secs / 60)}m`
     const h = Math.floor(secs / 3600)
@@ -100,7 +100,7 @@ export function formatBitrate(bps?: number): string {
  * @param fallback  String to return when secs is falsy (default '—')
  */
 export function formatUptime(secs?: number, fallback = '—'): string {
-    if (!secs) return fallback
+    if (secs == null || !Number.isFinite(secs) || secs < 0) return fallback
     const d = Math.floor(secs / 86400)
     const h = Math.floor((secs % 86400) / 3600)
     const m = Math.floor((secs % 3600) / 60)

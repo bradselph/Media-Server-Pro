@@ -97,6 +97,18 @@ done
 
 # ── File helpers ──────────────────────────────────────────────────────
 
+# strip_control_chars VAL → echoes VAL with terminal escape sequences and other
+# control characters removed. A plain `read` (no readline) captures arrow keys
+# as raw bytes — e.g. pressing → while typing a URL stores https://…\x1b[C\x1b[D…
+# which downstream parsers (rclone, curl) reject with "invalid control
+# character". Strips ANSI CSI/SS3 sequences first (so the trailing [C/[D letters
+# go with their ESC), then any remaining control bytes.
+strip_control_chars() {
+  local esc
+  esc=$(printf '\033')
+  printf '%s' "$1" | sed -E "s/${esc}(\[|O)[0-9;?]*[A-Za-z~]//g" | tr -d '[:cntrl:]'
+}
+
 # read_env_value FILE KEY → echoes the current uncommented value (or
 # empty string). Considers only lines matching `^[[:space:]]*KEY=`;
 # strips surrounding double quotes.
@@ -106,9 +118,28 @@ read_env_value() {
   # Last uncommented assignment wins (matches bash sourcing semantics).
   local val
   val=$(grep -E "^[[:space:]]*${key}=" "$file" 2>/dev/null | tail -n 1 | cut -d= -f2-)
-  # Strip optional surrounding double quotes.
+  # Strip one layer of surrounding quotes (sensitive values are written
+  # single-quoted by upsert_env_var so they survive bash sourcing). This is
+  # display-only — the load-bearing value comes from deploy.sh sourcing the
+  # file, where bash handles the quoting correctly.
   val="${val%\"}"; val="${val#\"}"
+  val="${val%\'}"; val="${val#\'}"
   printf '%s' "$val"
+}
+
+# quote_if_sensitive KEY VAL — single-quote the value (escaping any embedded
+# single quotes via the close-escape-reopen idiom '\'') when the knob is marked
+# sensitive in deploy-knobs.sh. deploy.sh `source`s .deploy.env, so an unquoted
+# secret containing $, #, whitespace, or quotes would be mangled or trigger an
+# unbound-variable error under `set -u`. Non-sensitive knobs are written verbatim
+# so values like KEY_FILE=$HOME/.ssh/id_ed25519 keep their intended expansion.
+quote_if_sensitive() {
+  local key="$1" val="$2"
+  if [[ "${KNOB_SENSITIVE[$key]:-}" == "true" ]] && [[ -n "$val" ]]; then
+    printf "'%s'" "${val//\'/\'\\\'\'}"
+  else
+    printf '%s' "$val"
+  fi
 }
 
 # is_new_knob FILE KEY — true when the env file makes no mention of
@@ -167,12 +198,14 @@ upsert_env_var() {
   if [[ ! -f "$file" ]]; then
     : > "$file"
   fi
+  local out
+  out="$(quote_if_sensitive "$key" "$val")"
   local tmp
   tmp="$(mktemp)"
   local found=0
   while IFS= read -r line || [[ -n "$line" ]]; do
     if [[ "$line" =~ ^[[:space:]]*${key}= ]]; then
-      printf '%s=%s\n' "$key" "$val" >> "$tmp"
+      printf '%s=%s\n' "$key" "$out" >> "$tmp"
       found=1
     else
       printf '%s\n' "$line" >> "$tmp"
@@ -184,7 +217,7 @@ upsert_env_var() {
     if [[ -s "$tmp" ]] && [[ "$(tail -c 1 "$tmp" | wc -l)" -eq 0 ]]; then
       printf '\n' >> "$tmp"
     fi
-    printf '%s=%s\n' "$key" "$val" >> "$tmp"
+    printf '%s=%s\n' "$key" "$out" >> "$tmp"
   fi
   mv "$tmp" "$file"
 }
@@ -258,6 +291,8 @@ prompt_knob() {
     read -r reply </dev/tty || true
   fi
   reply="${reply//$'\r'/}"
+  # Drop arrow-key/escape bytes a non-readline `read` captures during editing.
+  reply="$(strip_control_chars "$reply")"
 
   if [[ -z "$reply" ]]; then
     # SAFE-BY-DEFAULT: pressing Enter on a never-seen knob marks it as

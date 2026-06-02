@@ -736,10 +736,13 @@ func (m *Module) ExportPlaylist(playlistID PlaylistID, userID UserID, format str
 	// Generate M3U content if requested
 	if format == "m3u" || format == "m3u8" {
 		var b strings.Builder
+		// M3U is line-delimited; strip CR/LF from user-supplied fields so a crafted
+		// playlist name or item title can't inject extra #EXTINF directives or URLs.
+		m3uSafe := strings.NewReplacer("\n", " ", "\r", " ")
 		b.WriteString("#EXTM3U\n")
-		fmt.Fprintf(&b, "#PLAYLIST:%s\n", snapshot.Name)
+		fmt.Fprintf(&b, "#PLAYLIST:%s\n", m3uSafe.Replace(snapshot.Name))
 		for _, item := range snapshot.Items {
-			fmt.Fprintf(&b, "#EXTINF:-1,%s\n", item.Title)
+			fmt.Fprintf(&b, "#EXTINF:-1,%s\n", m3uSafe.Replace(item.Title))
 			// Use the API stream path instead of the filesystem path to avoid
 			// leaking server-side directory structure.
 			fmt.Fprintf(&b, "/api/stream/%s\n", item.MediaID)

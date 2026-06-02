@@ -217,8 +217,6 @@ components:
           type: string
         resume_playback:
           type: boolean
-        show_analytics:
-          type: boolean
         items_per_page:
           type: integer
         view_mode:
@@ -227,8 +225,6 @@ components:
           type: number
         volume:
           type: number
-        language:
-          type: string
         sort_by:
           type: string
         sort_order:
@@ -237,9 +233,6 @@ components:
           type: string
         filter_media_type:
           type: string
-        custom_eq_presets:
-          type: object
-          additionalProperties: true
         show_continue_watching:
           type: boolean
         show_recommended:
@@ -7615,102 +7608,6 @@ paths:
       responses:
         '200':
           description: Rule applied
-
-  /api/admin/claude/config:
-    get:
-      tags: [ admin-claude ]
-      summary: Get Claude module configuration
-      security:
-        - sessionCookie: []
-      responses:
-        '200':
-          description: Claude configuration
-    put:
-      tags: [ admin-claude ]
-      summary: Update Claude module configuration
-      security:
-        - sessionCookie: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        '200':
-          description: Configuration updated
-
-  /api/admin/claude/audit-log:
-    get:
-      tags: [ admin-claude ]
-      summary: Get Claude module audit log
-      security:
-        - sessionCookie: []
-      responses:
-        '200':
-          description: Audit log entries
-
-  /api/admin/claude/chat:
-    post:
-      tags: [ admin-claude ]
-      summary: Send message to Claude (SSE stream)
-      security:
-        - sessionCookie: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [ message ]
-              properties:
-                message:
-                  type: string
-      responses:
-        '200':
-          description: Claude response stream
-
-  /api/admin/claude/pending:
-    get:
-      tags: [ admin-claude ]
-      summary: Get pending Claude tool approvals
-      security:
-        - sessionCookie: []
-      responses:
-        '200':
-          description: Pending approvals
-
-  /api/admin/claude/approve/{id}:
-    post:
-      tags: [ admin-claude ]
-      summary: Approve pending Claude tool call
-      security:
-        - sessionCookie: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Tool call approved
-
-  /api/admin/claude/reject/{id}:
-    post:
-      tags: [ admin-claude ]
-      summary: Reject pending Claude tool call
-      security:
-        - sessionCookie: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Tool call rejected
 
   /api/admin/media/{id}/thumbnail:
     post:

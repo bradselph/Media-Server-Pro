@@ -1,12 +1,14 @@
 <script setup lang="ts">
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
+
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 // Known top-level config sections — matches the Go config struct sections.
 // Adding a new section here (and in Go) keeps both sides in sync.
 type ConfigSection =
   | 'admin' | 'age_gate' | 'analytics' | 'auth' | 'backup'
-  | 'claude' | 'cookie_consent' | 'crawler' | 'database' | 'directories'
+  | 'cookie_consent' | 'crawler' | 'database' | 'directories'
   | 'download' | 'downloader' | 'extractor' | 'features' | 'hls'
   | 'huggingface' | 'logging' | 'mature_scanner' | 'receiver'
   | 'remote_media' | 'security' | 'server' | 'storage' | 'streaming'
@@ -69,7 +71,7 @@ async function loadConfig() {
     rawJsonText.value = JSON.stringify(cfg, null, 2)
     dirty.value = false
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load config', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load config', 'i-lucide-alert-circle')
   } finally {
     loading.value = false
   }
@@ -91,7 +93,7 @@ async function saveConfig() {
     const payload = showRawJson.value ? JSON.parse(rawJsonText.value) : config.value
     await adminApi.updateConfig(payload)
     if (!mounted) return
-    toast.add({ title: 'Configuration saved', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Configuration saved')
     dirty.value = false
     if (showRawJson.value) {
       // Reload structured view from saved data
@@ -99,7 +101,7 @@ async function saveConfig() {
     }
   } catch (e: unknown) {
     if (!mounted) return
-    toast.add({ title: e instanceof Error ? e.message : 'Save failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Save failed')
   } finally {
     if (mounted) saving.value = false
   }
@@ -107,26 +109,26 @@ async function saveConfig() {
 
 async function changeAdminPassword() {
   if (!pwCurrent.value) {
-    toast.add({ title: 'Current password is required', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Current password is required')
     return
   }
   if (pwNew.value.length < 8) {
-    toast.add({ title: 'New password must be at least 8 characters', color: 'error', icon: 'i-lucide-x' })
+    notifyError('New password must be at least 8 characters')
     return
   }
   if (pwNew.value !== pwConfirm.value) {
-    toast.add({ title: 'Passwords do not match', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Passwords do not match')
     return
   }
   pwLoading.value = true
   try {
     await adminApi.changeOwnPassword(pwCurrent.value, pwNew.value)
     if (!mounted) return
-    toast.add({ title: 'Password changed', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Password changed')
     pwCurrent.value = ''; pwNew.value = ''; pwConfirm.value = ''
   } catch (e: unknown) {
     if (!mounted) return
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     if (mounted) pwLoading.value = false
   }
@@ -278,6 +280,9 @@ onMounted(loadConfig)
             </template>
             <UFormField label="Max Header Bytes">
               <UInput type="number" :model-value="get('server', 'max_header_bytes')" @update:model-value="set('server', 'max_header_bytes', Number($event))" />
+            </UFormField>
+            <UFormField label="Memory Limit (% of RAM)" help="Go soft memory limit as a % of total RAM. 0 = auto (75%). Lets a large server use its RAM as GC headroom. Applies live; ignored if GOMEMLIMIT is set.">
+              <UInput type="number" min="0" max="95" :model-value="get('server', 'memory_limit_percent')" @update:model-value="set('server', 'memory_limit_percent', Number($event))" />
             </UFormField>
           </div>
           <p class="text-xs text-neutral-500 mt-3">Server address/port and HTTP timeouts (read/write/idle/shutdown) require a restart and live in raw JSON.</p>
@@ -611,8 +616,15 @@ onMounted(loadConfig)
               <span class="text-sm">Lazy Transcode</span>
               <USwitch :model-value="get('hls', 'lazy_transcode')" @update:model-value="set('hls', 'lazy_transcode', $event)" />
             </div>
-            <UFormField label="Concurrent Limit">
+            <UFormField label="Concurrent Limit" help="How many transcodes run at once. Raising this only helps throughput if the CPU/GPU has spare capacity — a single video's speed is set by the encoder below.">
               <UInput type="number" :model-value="get('hls', 'concurrent_limit')" @update:model-value="set('hls', 'concurrent_limit', Number($event))" />
+            </UFormField>
+            <UFormField label="Hardware Acceleration" help="auto probes for a GPU encoder (NVENC/QSV/VAAPI) and falls back to software libx264. On a CPU-only server this stays software.">
+              <USelect
+                :model-value="get('hls', 'hardware_accel') || 'auto'"
+                :items="[{label:'Auto (detect GPU, else software)',value:'auto'},{label:'Software only (libx264)',value:'none'},{label:'NVIDIA NVENC',value:'nvenc'},{label:'Intel QuickSync (QSV)',value:'qsv'},{label:'VAAPI (Linux /dev/dri)',value:'vaapi'},{label:'Apple VideoToolbox',value:'videotoolbox'}]"
+                @update:model-value="set('hls', 'hardware_accel', $event)"
+              />
             </UFormField>
             <UFormField label="Segment Duration (s)">
               <UInput type="number" :model-value="get('hls', 'segment_duration')" @update:model-value="set('hls', 'segment_duration', Number($event))" />

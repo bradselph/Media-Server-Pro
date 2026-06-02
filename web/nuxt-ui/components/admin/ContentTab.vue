@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { ReviewQueueItem, ScannerStats, ValidatorStats, AutoTagRule } from '~/types/api'
 import { asRecord } from '~/utils/typeGuards'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 const subTab = ref('scanner')
 let scanRefreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -31,24 +32,24 @@ async function loadScanner() {
     scannerStats.value = stats
     reviewQueue.value = queue ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load scanner', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load scanner', 'i-lucide-alert-circle')
   } finally { scannerLoading.value = false }
 }
 
 async function startScan() {
   const path = scanPath.value.trim()
   if (path && (path.includes('..') || /^[a-zA-Z]:/.test(path) || path.startsWith('/'))) {
-    toast.add({ title: 'Invalid scan path', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Invalid scan path')
     return
   }
   scanning.value = true
   try {
     await adminApi.runScan(path || undefined)
-    toast.add({ title: 'Scan started', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Scan started')
     if (scanRefreshTimer) clearTimeout(scanRefreshTimer)
     scanRefreshTimer = setTimeout(loadScanner, 2000)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Scan failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Scan failed')
   } finally { scanning.value = false }
 }
 
@@ -56,11 +57,11 @@ async function batchAction(action: 'approve' | 'reject') {
   if (selected.value.length === 0) return
   try {
     const res = await adminApi.batchReview(action, selected.value)
-    toast.add({ title: `${action === 'approve' ? 'Approved' : 'Rejected'} ${res.updated} item(s)`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`${action === 'approve' ? 'Approved' : 'Rejected'} ${res.updated} item(s)`)
     selected.value = []
     await loadScanner()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -74,7 +75,7 @@ async function quickReview(id: string, action: 'approve' | 'reject') {
     else await adminApi.rejectContent(id)
     await loadScanner()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : `Failed to ${action}`, color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, `Failed to ${action}`)
   } finally {
     reviewingId.value = null
   }
@@ -84,9 +85,9 @@ async function clearQueue() {
   try {
     await adminApi.clearReviewQueue()
     reviewQueue.value = []
-    toast.add({ title: 'Review queue cleared', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Review queue cleared')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -111,7 +112,7 @@ const validateResult = ref<unknown>(null)
 async function loadValidator() {
   validatorLoading.value = true
   try { validatorStats.value = await adminApi.getValidatorStats() }
-  catch (e: unknown) { toast.add({ title: e instanceof Error ? e.message : 'Failed to load validator stats', color: 'error', icon: 'i-lucide-x' }) }
+  catch (e: unknown) { notifyError(e, 'Failed to load validator stats') }
   finally { validatorLoading.value = false }
 }
 
@@ -121,7 +122,7 @@ async function runValidate() {
   try {
     validateResult.value = await adminApi.validateMedia(validateId.value.trim())
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Validation failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Validation failed')
   } finally { validating.value = false }
 }
 
@@ -130,9 +131,9 @@ async function runFix() {
   validating.value = true
   try {
     validateResult.value = await adminApi.fixMedia(validateId.value.trim())
-    toast.add({ title: 'Media fixed', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Media fixed')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Fix failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Fix failed')
   } finally { validating.value = false }
 }
 
@@ -167,9 +168,9 @@ async function saveScannerThresholds() {
     }
     await adminApi.updateConfig(updated)
     scannerFullConfig.value = updated
-    toast.add({ title: 'Scanner thresholds saved', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Scanner thresholds saved')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to save')
   } finally {
     scannerConfigSaving.value = false
   }
@@ -190,7 +191,7 @@ async function loadAutoTagRules() {
   try {
     autoTagRules.value = (await adminApi.listAutoTagRules()) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load rules', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load rules')
   } finally {
     autoTagLoading.value = false
   }
@@ -218,22 +219,22 @@ function openEditRule(rule: AutoTagRule) {
 
 async function saveAutoTagRule() {
   if (!autoTagRuleForm.name || !autoTagRuleForm.pattern || !autoTagRuleForm.tags) {
-    toast.add({ title: 'Name, pattern, and tags are required', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Name, pattern, and tags are required')
     return
   }
   autoTagSaving.value = true
   try {
     if (autoTagEditTarget.value) {
       await adminApi.updateAutoTagRule(autoTagEditTarget.value.id, { ...autoTagRuleForm })
-      toast.add({ title: 'Rule updated', color: 'success', icon: 'i-lucide-check' })
+      notifySuccess('Rule updated')
     } else {
       await adminApi.createAutoTagRule({ ...autoTagRuleForm })
-      toast.add({ title: 'Rule created', color: 'success', icon: 'i-lucide-check' })
+      notifySuccess('Rule created')
     }
     autoTagFormOpen.value = false
     await loadAutoTagRules()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Save failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Save failed')
   } finally {
     autoTagSaving.value = false
   }
@@ -245,9 +246,9 @@ async function deleteAutoTagRule(id: string) {
   try {
     await adminApi.deleteAutoTagRule(id)
     autoTagRules.value = autoTagRules.value.filter(r => r.id !== id)
-    toast.add({ title: 'Rule deleted', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Rule deleted')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Delete failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Delete failed')
   } finally {
     autoTagDeletingId.value = null
   }
@@ -257,9 +258,9 @@ async function applyAutoTagRules() {
   autoTagApplying.value = true
   try {
     const result = await adminApi.applyAutoTagRules()
-    toast.add({ title: `Applied ${result.applied} rule(s) to ${result.items_affected} item(s)`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Applied ${result.applied} rule(s) to ${result.items_affected} item(s)`)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Apply failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Apply failed')
   } finally {
     autoTagApplying.value = false
   }

@@ -24,7 +24,6 @@ import (
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
 	"media-server-pro/internal/categorizer"
-	"media-server-pro/internal/claude"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
@@ -54,14 +53,14 @@ import (
 
 // Error message constants to avoid duplication.
 const (
-	errIDRequired        = "Media ID required"
-	errFileNotFound      = "File not found"
-	errInvalidRequest    = "Invalid request"
-	errNotAuthenticated  = "Not authenticated"
-	errUserNotFound      = "User not found"
-	errMediaNotFound     = "Media not found"
-	errPathParamRequired = "path parameter required" // admin route params only
-	errInternalServer    = "Internal server error"
+	errIDRequired         = "Media ID required"
+	errFileNotFound       = "File not found"
+	errInvalidRequest     = "Invalid request"
+	errNotAuthenticated   = "Not authenticated"
+	errUserNotFound       = "User not found"
+	errMediaNotFound      = "Media not found"
+	errPathParamRequired  = "path parameter required" // admin route params only
+	errInternalServer     = "Internal server error"
 	errInvalidCredentials = "Invalid credentials"
 )
 
@@ -75,12 +74,12 @@ const (
 
 // User-facing message constants to avoid duplication.
 const (
-	msgFailedExport        = "Failed to generate export"
-	msgInitializing        = "Server is initializing — media library scan in progress, please try again shortly"
-	msgMaxStreams          = "Maximum concurrent streams limit reached"
-	msgMaxStreamsConn      = "Maximum concurrent streams limit reached for this connection"
-	msgMatureContent       = "This content is marked as mature (18+). Please log in and enable mature content to access it."
-	msgMatureAccessDenied  = "Access denied: This content is marked as mature (18+). "
+	msgFailedExport       = "Failed to generate export"
+	msgInitializing       = "Server is initializing — media library scan in progress, please try again shortly"
+	msgMaxStreams         = "Maximum concurrent streams limit reached"
+	msgMaxStreamsConn     = "Maximum concurrent streams limit reached for this connection"
+	msgMatureContent      = "This content is marked as mature (18+). Please log in and enable mature content to access it."
+	msgMatureAccessDenied = "Access denied: This content is marked as mature (18+). "
 )
 
 // BuildInfo holds version and build metadata (avoids passing raw strings).
@@ -131,7 +130,6 @@ type HandlerOptionalDeps struct {
 	Analytics     *analytics.Module
 	Playlist      *playlist.Module
 	Downloader    *downloader.Module
-	Claude        *claude.Module
 }
 
 // HandlerDeps holds all module dependencies needed to create a Handler.
@@ -150,50 +148,49 @@ const viewCooldownDuration = 5 * time.Minute
 
 // Handler holds dependencies for HTTP handlers
 type Handler struct {
-	log              *logger.Logger
-	buildInfo        BuildInfo
-	media            *media.Module
-	streaming        *streaming.Module
-	hls              *hls.Module
-	auth             *auth.Module
-	analytics        *analytics.Module
-	playlist         *playlist.Module
-	admin            *admin.Module
-	database         *database.Module
-	tasks            *tasks.Module
-	upload           *upload.Module
-	scanner          *scanner.Module
-	thumbnails       *thumbnails.Module
-	validator        *validator.Module
-	backup           *backup.Module
-	autodiscovery    *autodiscovery.Module
-	suggestions      *suggestions.Module
-	security         *security.Module
-	categorizer      *categorizer.Module
-	updater          *updater.Module
-	remote           *remote.Module
-	receiver         *receiver.Module
-	follower         *follower.Module
-	extractor        *extractor.Module
-	crawler          *crawler.Module
-	duplicates       *duplicates.Module
-	downloader       *downloader.Module
-	claude           *claude.Module
-	config           *config.Manager
+	log                 *logger.Logger
+	buildInfo           BuildInfo
+	media               *media.Module
+	streaming           *streaming.Module
+	hls                 *hls.Module
+	auth                *auth.Module
+	analytics           *analytics.Module
+	playlist            *playlist.Module
+	admin               *admin.Module
+	database            *database.Module
+	tasks               *tasks.Module
+	upload              *upload.Module
+	scanner             *scanner.Module
+	thumbnails          *thumbnails.Module
+	validator           *validator.Module
+	backup              *backup.Module
+	autodiscovery       *autodiscovery.Module
+	suggestions         *suggestions.Module
+	security            *security.Module
+	categorizer         *categorizer.Module
+	updater             *updater.Module
+	remote              *remote.Module
+	receiver            *receiver.Module
+	follower            *follower.Module
+	extractor           *extractor.Module
+	crawler             *crawler.Module
+	duplicates          *duplicates.Module
+	downloader          *downloader.Module
+	config              *config.Manager
 	shutdownFunc        func()
 	deletionRequests    repositories.DataDeletionRequestRepository
 	deletionRequestsMu  sync.Mutex // guards lazy init of deletionRequests
 	mediaReports        repositories.MediaReportRepository
-	mediaReportsMu      sync.Mutex // guards lazy init of mediaReports
+	mediaReportsMu      sync.Mutex    // guards lazy init of mediaReports
 	viewCooldown        sync.Map      // key: "userID|mediaID" → value: time.Time of last counted view
-	viewCooldownStop    chan struct{}  // closed to stop the background sweeper goroutine
+	viewCooldownStop    chan struct{} // closed to stop the background sweeper goroutine
 	regTokens           sync.Map      // key: token string → value: time.Time issued; single-use, 15-min TTL
-	classifyDirRunning  atomic.Bool // true while a ClassifyDirectory background job is active
-	classifyAllRunning  atomic.Bool // true while a ClassifyAllPending background job is active
-	lifecycleInProgress atomic.Bool // true once a shutdown/restart has been initiated
-	feedCacheMu        sync.Mutex
-	feedCache          map[string]feedCacheEntry // key: "cacheKey" → cached XML + expiry
-	feedCacheStop      chan struct{}              // closed to stop the feed cache sweeper goroutine
+	classifyDirRunning  atomic.Bool   // true while a ClassifyDirectory background job is active
+	classifyAllRunning  atomic.Bool   // true while a ClassifyAllPending background job is active
+	lifecycleInProgress atomic.Bool   // true once a shutdown/restart has been initiated
+	feedCacheMu         sync.Mutex
+	feedCache           map[string]feedCacheEntry // key: "cacheKey" → cached XML + expiry
+	feedCacheStop       chan struct{}             // closed to stop the feed cache sweeper goroutine
 }
 
 // feedCacheEntry holds a pre-rendered RSS feed and its expiry time.
@@ -317,38 +314,37 @@ func NewHandler(deps HandlerDeps) *Handler {
 	}
 
 	h := &Handler{
-		log:              logger.New("handlers"),
-		buildInfo:        deps.BuildInfo,
-		media:            c.Media,
-		streaming:        c.Streaming,
-		hls:      c.HLS,
-		auth:     c.Auth,
-		database: c.Database,
-		config:   c.Config,
+		log:       logger.New("handlers"),
+		buildInfo: deps.BuildInfo,
+		media:     c.Media,
+		streaming: c.Streaming,
+		hls:       c.HLS,
+		auth:      c.Auth,
+		database:  c.Database,
+		config:    c.Config,
 		// deletionRequests is lazy-initialized on first use (see requireDeletionRepo)
 		// so that GORM() is not captured before the database module's Start() runs.
-		analytics: o.Analytics,
-		playlist:         o.Playlist,
-		admin:            o.Admin,
-		tasks:            o.Tasks,
-		upload:           o.Upload,
-		scanner:          o.Scanner,
-		thumbnails:       o.Thumbnails,
-		validator:        o.Validator,
-		backup:           o.Backup,
-		autodiscovery:    o.Autodiscovery,
-		suggestions:      o.Suggestions,
-		security:         o.Security,
-		categorizer:      o.Categorizer,
-		updater:          o.Updater,
-		remote:           o.Remote,
-		receiver:         o.Receiver,
-		follower:         o.Follower,
-		extractor:        o.Extractor,
-		crawler:          o.Crawler,
-		duplicates:       o.Duplicates,
-		downloader:       o.Downloader,
-		claude:           o.Claude,
+		analytics:     o.Analytics,
+		playlist:      o.Playlist,
+		admin:         o.Admin,
+		tasks:         o.Tasks,
+		upload:        o.Upload,
+		scanner:       o.Scanner,
+		thumbnails:    o.Thumbnails,
+		validator:     o.Validator,
+		backup:        o.Backup,
+		autodiscovery: o.Autodiscovery,
+		suggestions:   o.Suggestions,
+		security:      o.Security,
+		categorizer:   o.Categorizer,
+		updater:       o.Updater,
+		remote:        o.Remote,
+		receiver:      o.Receiver,
+		follower:      o.Follower,
+		extractor:     o.Extractor,
+		crawler:       o.Crawler,
+		duplicates:    o.Duplicates,
+		downloader:    o.Downloader,
 	}
 	// shutdownFunc wraps the outer shutdown to also stop the view-cooldown sweeper.
 	// Assigned after h is constructed so the closure can safely reference h.
@@ -405,98 +401,95 @@ func isPrivateSession(c *gin.Context) bool {
 // Those events would flood the audit_log without adding review value beyond
 // what the analytics drill-down already provides.
 var auditableEventTypes = map[string]bool{
-	analytics.EventLogin:              true,
-	analytics.EventLoginFailed:        true,
-	analytics.EventLogout:             true,
-	analytics.EventRegister:           true,
-	analytics.EventAgeGatePass:        true,
-	analytics.EventFavoriteAdd:        true,
-	analytics.EventFavoriteRemove:     true,
-	analytics.EventRatingSet:          true,
-	analytics.EventPlaylistCreate:     true,
-	analytics.EventPlaylistDelete:     true,
-	analytics.EventPlaylistItemAdd:    true,
-	analytics.EventUploadSuccess:      true,
-	analytics.EventUploadFailed:       true,
-	analytics.EventPasswordChange:     true,
-	analytics.EventAccountDelete:      true,
-	analytics.EventAPITokenCreate:     true,
-	analytics.EventAPITokenRevoke:     true,
-	analytics.EventMediaDeleted:       true,
-	analytics.EventHLSError:           true,
-	analytics.EventMatureBlocked:      true,
-	analytics.EventPermissionDenied:   true,
-	analytics.EventPreferencesChange:  true,
-	analytics.EventBulkDelete:         true,
-	analytics.EventBulkUpdate:         true,
-	analytics.EventUserRoleChange:     true,
-	analytics.EventServerError:        true,
+	analytics.EventLogin:             true,
+	analytics.EventLoginFailed:       true,
+	analytics.EventLogout:            true,
+	analytics.EventRegister:          true,
+	analytics.EventAgeGatePass:       true,
+	analytics.EventFavoriteAdd:       true,
+	analytics.EventFavoriteRemove:    true,
+	analytics.EventRatingSet:         true,
+	analytics.EventPlaylistCreate:    true,
+	analytics.EventPlaylistDelete:    true,
+	analytics.EventPlaylistItemAdd:   true,
+	analytics.EventUploadSuccess:     true,
+	analytics.EventUploadFailed:      true,
+	analytics.EventPasswordChange:    true,
+	analytics.EventAccountDelete:     true,
+	analytics.EventAPITokenCreate:    true,
+	analytics.EventAPITokenRevoke:    true,
+	analytics.EventMediaDeleted:      true,
+	analytics.EventHLSError:          true,
+	analytics.EventMatureBlocked:     true,
+	analytics.EventPermissionDenied:  true,
+	analytics.EventPreferencesChange: true,
+	analytics.EventBulkDelete:        true,
+	analytics.EventBulkUpdate:        true,
+	analytics.EventUserRoleChange:    true,
+	analytics.EventServerError:       true,
 
 	// Round-12 coverage: curation, governance, and admin infrastructure events.
-	analytics.EventCollectionCreate:      true,
-	analytics.EventCollectionUpdate:      true,
-	analytics.EventCollectionDelete:      true,
-	analytics.EventCollectionItemsAdd:    true,
-	analytics.EventCollectionItemRemove:  true,
-	analytics.EventSmartPlaylistCreate:   true,
-	analytics.EventSmartPlaylistUpdate:   true,
-	analytics.EventSmartPlaylistDelete:   true,
-	analytics.EventChapterCreate:         true,
-	analytics.EventChapterUpdate:         true,
-	analytics.EventChapterDelete:         true,
-	analytics.EventAutoTagRuleCreate:     true,
-	analytics.EventAutoTagRuleUpdate:     true,
-	analytics.EventAutoTagRuleDelete:     true,
-	analytics.EventAutoTagRulesApply:     true,
-	analytics.EventDeletionRequestSubmit: true,
+	analytics.EventCollectionCreate:       true,
+	analytics.EventCollectionUpdate:       true,
+	analytics.EventCollectionDelete:       true,
+	analytics.EventCollectionItemsAdd:     true,
+	analytics.EventCollectionItemRemove:   true,
+	analytics.EventSmartPlaylistCreate:    true,
+	analytics.EventSmartPlaylistUpdate:    true,
+	analytics.EventSmartPlaylistDelete:    true,
+	analytics.EventChapterCreate:          true,
+	analytics.EventChapterUpdate:          true,
+	analytics.EventChapterDelete:          true,
+	analytics.EventAutoTagRuleCreate:      true,
+	analytics.EventAutoTagRuleUpdate:      true,
+	analytics.EventAutoTagRuleDelete:      true,
+	analytics.EventAutoTagRulesApply:      true,
+	analytics.EventDeletionRequestSubmit:  true,
 	analytics.EventDeletionRequestApprove: true,
-	analytics.EventDeletionRequestDeny:   true,
-	analytics.EventBackupCreate:          true,
-	analytics.EventBackupRestore:         true,
-	analytics.EventBackupDelete:          true,
-	analytics.EventScanRun:               true,
-	analytics.EventScanReview:            true,
-	analytics.EventConfigUpdate:          true,
-	analytics.EventThumbnailUpload:       true,
-	analytics.EventThumbnailCleanup:      true,
-	analytics.EventAdminTaskRun:          true,
-	analytics.EventAdminTaskEnable:       true,
-	analytics.EventAdminTaskDisable:      true,
-	analytics.EventAdminTaskStop:         true,
+	analytics.EventDeletionRequestDeny:    true,
+	analytics.EventBackupCreate:           true,
+	analytics.EventBackupRestore:          true,
+	analytics.EventBackupDelete:           true,
+	analytics.EventScanRun:                true,
+	analytics.EventScanReview:             true,
+	analytics.EventConfigUpdate:           true,
+	analytics.EventThumbnailUpload:        true,
+	analytics.EventThumbnailCleanup:       true,
+	analytics.EventAdminTaskRun:           true,
+	analytics.EventAdminTaskEnable:        true,
+	analytics.EventAdminTaskDisable:       true,
+	analytics.EventAdminTaskStop:          true,
 	analytics.EventFollowerSettingsUpdate: true,
 
 	// Round-13 coverage: legacy admin actions and pipeline operations.
-	analytics.EventUserCreate:                true,
-	analytics.EventUserUpdate:                true,
-	analytics.EventUserDelete:                true,
-	analytics.EventUserPasswordChange:        true,
-	analytics.EventBulkUserDelete:            true,
-	analytics.EventBulkUserEnable:            true,
-	analytics.EventBulkUserDisable:           true,
-	analytics.EventMediaUpdate:               true,
-	analytics.EventMediaDelete:               true,
-	analytics.EventServerRestart:             true,
-	analytics.EventServerShutdown:            true,
-	analytics.EventPlaylistUpdate:            true,
-	analytics.EventPlaylistImport:            true,
-	analytics.EventReceiverDuplicateResolve:  true,
-	analytics.EventClaudeApprovalAct:         true,
-	analytics.EventClaudeConfigUpdate:        true,
-	analytics.EventClaudePromptSend:          true,
-	analytics.EventUpdaterApply:              true,
-	analytics.EventUpdaterConfigUpdate:       true,
-	analytics.EventClassifyRun:               true,
-	analytics.EventCategorizerRun:            true,
-	analytics.EventValidatorRun:              true,
-	analytics.EventDiscoveryRun:              true,
-	analytics.EventDownloaderJobCreate:       true,
-	analytics.EventDownloaderJobCancel:       true,
-	analytics.EventCrawlerRun:                true,
-	analytics.EventExtractorRun:              true,
-	analytics.EventSecurityIPListMutate:      true,
-	analytics.EventReceiverPair:              true,
-	analytics.EventReceiverUnpair:            true,
-	analytics.EventRemoteStoreUpdate:         true,
+	analytics.EventUserCreate:               true,
+	analytics.EventUserUpdate:               true,
+	analytics.EventUserDelete:               true,
+	analytics.EventUserPasswordChange:       true,
+	analytics.EventBulkUserDelete:           true,
+	analytics.EventBulkUserEnable:           true,
+	analytics.EventBulkUserDisable:          true,
+	analytics.EventMediaUpdate:              true,
+	analytics.EventMediaDelete:              true,
+	analytics.EventServerRestart:            true,
+	analytics.EventServerShutdown:           true,
+	analytics.EventPlaylistUpdate:           true,
+	analytics.EventPlaylistImport:           true,
+	analytics.EventReceiverDuplicateResolve: true,
+	analytics.EventUpdaterApply:             true,
+	analytics.EventUpdaterConfigUpdate:      true,
+	analytics.EventClassifyRun:              true,
+	analytics.EventCategorizerRun:           true,
+	analytics.EventValidatorRun:             true,
+	analytics.EventDiscoveryRun:             true,
+	analytics.EventDownloaderJobCreate:      true,
+	analytics.EventDownloaderJobCancel:      true,
+	analytics.EventCrawlerRun:               true,
+	analytics.EventExtractorRun:             true,
+	analytics.EventSecurityIPListMutate:     true,
+	analytics.EventReceiverPair:             true,
+	analytics.EventReceiverUnpair:           true,
+	analytics.EventRemoteStoreUpdate:        true,
 }
 
 // trackServerEvent emits a server-side traffic event with the caller's
@@ -707,11 +700,6 @@ func (h *Handler) requireThumbnails(c *gin.Context) bool {
 }
 func (h *Handler) requireSecurity(c *gin.Context) bool {
 	return requireModule(c, h.security, "Security feature")
-}
-func (h *Handler) requireClaude(c *gin.Context) bool {
-	return checkFeatureEnabled(c, h.claude, "Claude assistant", func() bool {
-		return h.config.Get().Claude.Enabled
-	})
 }
 
 // adminLogActionParams groups arguments for logAdminAction to avoid excess parameters.

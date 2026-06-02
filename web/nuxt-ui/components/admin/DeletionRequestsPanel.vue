@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { DataDeletionRequest } from '~/types/api'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess } = useAdminFeedback()
 
 let destroyed = false
 onUnmounted(() => { destroyed = true })
@@ -23,7 +24,7 @@ async function load() {
     const data = await adminApi.listDeletionRequests(statusFilter.value || undefined)
     if (!destroyed) requests.value = data ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load requests', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load requests')
   } finally {
     if (!destroyed) loading.value = false
   }
@@ -42,11 +43,11 @@ async function confirmProcess() {
   try {
     await adminApi.processDeletionRequest(selected.value.id, processAction.value, adminNotes.value)
     const label = processAction.value === 'approve' ? 'approved (user deleted)' : 'denied'
-    toast.add({ title: `Request ${label}`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Request ${label}`)
     if (!destroyed) processOpen.value = false
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     if (!destroyed) processing.value = false
   }

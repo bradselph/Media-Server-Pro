@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { ScheduledTask, LogEntry } from '~/types/api'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const toast = useToast()
+const { notifyError, notifySuccess, notifyInfo } = useAdminFeedback()
 
 // ── Tasks ──────────────────────────────────────────────────────────────────────
 const tasks = ref<ScheduledTask[]>([])
@@ -14,16 +15,16 @@ async function loadTasks() {
   tasksLoading.value = true
   try { tasks.value = (await adminApi.listTasks()) ?? [] }
   catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load tasks', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load tasks', 'i-lucide-alert-circle')
   } finally { tasksLoading.value = false }
 }
 
 async function runTask(id: string) {
   try {
     await adminApi.runTask(id)
-    toast.add({ title: 'Task triggered', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Task triggered')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -35,7 +36,7 @@ async function toggleTask(task: ScheduledTask) {
     else await adminApi.enableTask(task.id)
     await loadTasks()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     togglingTasks.value.delete(task.id)
   }
@@ -44,10 +45,10 @@ async function toggleTask(task: ScheduledTask) {
 async function stopTask(id: string) {
   try {
     await adminApi.stopTask(id)
-    toast.add({ title: 'Task stop requested', color: 'info', icon: 'i-lucide-info' })
+    notifyInfo('Task stop requested')
     taskRefreshTimeout = setTimeout(loadTasks, 1000)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -86,17 +87,17 @@ function cancelScheduleEditor(taskId: string) {
 async function saveSchedule(taskId: string) {
   const secs = Number(scheduleEditing.value[taskId])
   if (!Number.isFinite(secs) || secs < 60) {
-    toast.add({ title: 'Schedule must be at least 60 seconds', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Schedule must be at least 60 seconds')
     return
   }
   scheduleSaving.value.add(taskId)
   try {
     await adminApi.updateTaskSchedule(taskId, secs)
-    toast.add({ title: 'Schedule updated', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Schedule updated')
     delete scheduleEditing.value[taskId]
     await loadTasks()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally {
     scheduleSaving.value.delete(taskId)
   }
@@ -125,7 +126,7 @@ async function loadLogs() {
     await nextTick()
     if (logsContainer.value) logsContainer.value.scrollTop = logsContainer.value.scrollHeight
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load logs', color: 'error', icon: 'i-lucide-alert-circle' })
+    notifyError(e, 'Failed to load logs', 'i-lucide-alert-circle')
   } finally { logsLoading.value = false }
 }
 

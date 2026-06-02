@@ -1,5 +1,51 @@
 # Changelog
 
+## [Unreleased] - 2026-05-29
+
+Zero-trust bug hunt — 5 adversarially-verified passes (correctness, logic/nil/auth,
+security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` green.
+
+- fix(crawler): accept added/ignored discovery statuses (approve/ignore were fully broken)
+- fix(auth): return 404 (not 500) when deleting a missing API token
+- fix(playlists): enforce CanCreatePlaylists for smart playlists
+- fix(extractor): gate HLS streaming on the extractor feature flag
+- fix(admin): distinguish not-found from internal error in AdminDeletePlaylist
+- fix(collections): bound AddCollectionItems batch size
+- test(crawler): regression-guard discovery status allow-list
+- fix(upload): guard all Progress field access with the per-upload mutex
+- fix(upload): restrict GetUploadProgress to the upload owner (IDOR)
+- fix(upload): treat file Close failure as upload error
+- fix(suggestions): snapshot profiles before saving in evictStaleProfiles (data race)
+- fix(tasks): read task schedule under lock in executeTask (data race)
+- fix(hls): persist FailCount on transcode failure
+- fix(hls): propagate master playlist Sync/Close errors
+- fix(follower): avoid wg.Wait deadlock on websocket write error
+- fix(follower): validate MasterURL against SSRF on save
+- fix(receiver): guard against nil catalog item in PushCatalog
+- fix(validator): persist correct status when fix races with ClearResult
+- fix(thumbnails): block path traversal in SaveCustomThumbnail
+- fix(thumbnails): hold inFlight claim through synchronous preview generation
+- fix(thumbnails): prevent formatBytes panic on >=1TB sizes
+- fix(playlist): strip CR/LF from M3U export fields
+- fix(media): don't create orphan metadata for deleted media
+- fix(media): treat empty playback-position delete as success
+- fix(media-reports): log discarded CountByStatus error
+- fix(seo): invalidate sitemap and feed caches on media rescan
+- fix(scanner): apply 24h TTL to repo cache for unreviewed content
+- fix(updater): propagate downloaded-update file Close error
+- fix(repos): log federated date parse failures in rowToMediaRecord
+- fix(admin): surface task-override persistence failures
+- fix(sidebar): guard playNext double-click and clamp progressPct
+- fix(profile): clear accent-hue debounce timer on unmount
+- fix(browse): include tag_mode in live preview count
+- fix(format): don't treat 0 as missing in duration/watch-time/uptime
+- fix(analytics): avoid accumulating consent-changed listeners
+- fix(admin): ignore superseded conversation loads in ClaudeChatPanel
+- fix(admin): guard syncRemote/deleteRemote against double-submit
+- fix(admin): add in-flight guard to deleteDiscovery
+- fix(admin): correct actionColor return type for neutral badge
+
+
 ## [1.17.0] - 2026-05-25 (minor)
 
 - fix(player,build): extract JSON-LD escape to utils to unbreak Nuxt build

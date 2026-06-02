@@ -1699,9 +1699,15 @@ DOWNLOAD_ENABLED=true
 DOWNLOAD_REQUIRE_AUTH=false
 
 # ── HLS adaptive streaming ───────────────────────────────────────────────
+# NOTE: These HLS_* values SEED config.json on first boot only. After the
+# first start the admin UI / config.json owns them, so change them there —
+# editing these lines later has no effect on an existing install.
 HLS_ENABLED=$FEAT_HLS
 HLS_SEGMENT_DURATION=6
 HLS_CONCURRENT_LIMIT=2
+# hardware_accel: auto|none|nvenc|qsv|vaapi|videotoolbox (auto probes for a GPU
+# encoder and falls back to software libx264 when none is available).
+HLS_HARDWARE_ACCEL=auto
 HLS_AUTO_GENERATE=false
 HLS_PRE_GENERATE_INTERVAL_HOURS=1
 HLS_QUALITIES=360p,480p,720p,1080p

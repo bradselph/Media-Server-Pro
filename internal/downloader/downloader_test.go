@@ -1,10 +1,258 @@
 package downloader
 
 import (
+	"errors"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+// ---------------------------------------------------------------------------
+// Import destinations
+// ---------------------------------------------------------------------------
+
+func TestListDestinations_RootsAndSubdirs(t *testing.T) {
+	base := t.TempDir()
+	videos := filepath.Join(base, "videos")
+	music := filepath.Join(base, "music")
+	uploads := filepath.Join(base, "uploads")
+	for _, d := range []string{videos, music, uploads} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A sub-directory under videos stands in for a grafted HiDrive mount.
+	hidrive := filepath.Join(videos, "hidrive")
+	if err := os.MkdirAll(hidrive, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A file (not a dir) under videos must NOT become a destination.
+	if err := os.WriteFile(filepath.Join(videos, "loose.mp4"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dests := ListDestinations(videos, music, uploads, uploads)
+
+	byKey := map[string]ImportDestination{}
+	for _, d := range dests {
+		byKey[d.Key] = d
+	}
+	for _, want := range []string{"videos", "music", "uploads", "videos/hidrive"} {
+		if _, ok := byKey[want]; !ok {
+			t.Errorf("expected destination key %q in %+v", want, dests)
+		}
+	}
+	if byKey["videos/hidrive"].Path != hidrive {
+		t.Errorf("videos/hidrive path = %q, want %q", byKey["videos/hidrive"].Path, hidrive)
+	}
+	if _, ok := byKey["videos/loose.mp4"]; ok {
+		t.Error("a regular file was wrongly listed as a destination")
+	}
+	if !byKey["uploads"].IsDefault {
+		t.Error("uploads should be flagged default when defaultDir == uploads")
+	}
+}
+
+func TestListDestinations_SkipsEmptyRoots(t *testing.T) {
+	base := t.TempDir()
+	videos := filepath.Join(base, "videos")
+	if err := os.MkdirAll(videos, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dests := ListDestinations(videos, "", "", "")
+	for _, d := range dests {
+		if d.Key == "music" || d.Key == "uploads" {
+			t.Errorf("empty root should be skipped, got %q", d.Key)
+		}
+	}
+}
+
+func TestResolveDestination(t *testing.T) {
+	base := t.TempDir()
+	videos := filepath.Join(base, "videos")
+	uploads := filepath.Join(base, "uploads")
+	hidrive := filepath.Join(videos, "hidrive")
+	for _, d := range []string{uploads, hidrive} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := ResolveDestination("videos/hidrive", videos, "", uploads, uploads)
+	if err != nil {
+		t.Fatalf("resolve videos/hidrive: %v", err)
+	}
+	if got != hidrive {
+		t.Errorf("resolved path = %q, want %q", got, hidrive)
+	}
+
+	// Unknown keys and path-traversal attempts must be rejected — only keys the
+	// enumerator produced are accepted, so these can never reach the filesystem.
+	for _, bad := range []string{"videos/../../etc", "nope", "../secrets", "videos/missing"} {
+		if _, err := ResolveDestination(bad, videos, "", uploads, uploads); err == nil {
+			t.Errorf("expected error resolving %q, got nil", bad)
+		}
+	}
+}
+
+func TestListDestinations_FlagsWritable(t *testing.T) {
+	base := t.TempDir()
+	videos := filepath.Join(base, "videos")
+	if err := os.MkdirAll(filepath.Join(videos, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range ListDestinations(videos, "", "", videos) {
+		if !d.Writable {
+			t.Errorf("destination %q should be writable (temp dir), got writable=false", d.Key)
+		}
+	}
+}
+
+func TestDestinationWritable(t *testing.T) {
+	base := t.TempDir()
+	// A not-yet-created sub-folder under a writable dir is writable (MkdirAll path).
+	if !destinationWritable(filepath.Join(base, "newsub", "deeper")) {
+		t.Error("new sub-folder under a writable dir should be writable")
+	}
+	// A path under a regular file (not a directory) is not writable.
+	f := filepath.Join(base, "afile")
+	if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if destinationWritable(filepath.Join(f, "sub")) {
+		t.Error("path under a regular file should not be writable")
+	}
+}
+
+// ImportFile must never let two imports of the same filename collide: each gets a
+// unique destination via an O_CREATE|O_EXCL claim, so no copy truncates another.
+func TestImportFile_ConcurrentSameNameNoClobber(t *testing.T) {
+	base := t.TempDir()
+	src := filepath.Join(base, "src")
+	dst := filepath.Join(base, "dst")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte("hello-import-payload")
+	if err := os.WriteFile(filepath.Join(src, "movie.mp4"), content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	const n = 8
+	var wg sync.WaitGroup
+	paths := make([]string, n)
+	errs := make([]error, n)
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			// deleteSource=false: each call copies the (shared, surviving) source.
+			p, _, err := ImportFile(src, dst, "movie.mp4", false)
+			paths[i], errs[i] = p, err
+		}(i)
+	}
+	wg.Wait()
+
+	seen := map[string]bool{}
+	for i := range n {
+		if errs[i] != nil {
+			t.Fatalf("import %d failed: %v", i, errs[i])
+		}
+		if seen[paths[i]] {
+			t.Fatalf("duplicate destination %q — atomic claim failed", paths[i])
+		}
+		seen[paths[i]] = true
+		got, err := os.ReadFile(paths[i])
+		if err != nil {
+			t.Fatalf("read %q: %v", paths[i], err)
+		}
+		if string(got) != string(content) {
+			t.Errorf("file %q content = %q, want %q (clobbered?)", paths[i], got, content)
+		}
+	}
+	if len(seen) != n {
+		t.Errorf("expected %d distinct files, got %d", n, len(seen))
+	}
+}
+
+func TestImportFile_SequentialCollisionNumbering(t *testing.T) {
+	base := t.TempDir()
+	src := filepath.Join(base, "src")
+	dst := filepath.Join(base, "dst")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "a.mp4"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p1, _, err := ImportFile(src, dst, "a.mp4", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2, _, err := ImportFile(src, dst, "a.mp4", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := filepath.Base(p1); got != "a.mp4" {
+		t.Errorf("first import name = %q, want a.mp4", got)
+	}
+	if got := filepath.Base(p2); got != "a_1.mp4" {
+		t.Errorf("second import name = %q, want a_1.mp4", got)
+	}
+}
+
+func TestResolveDestination_UnknownIsSentinel(t *testing.T) {
+	base := t.TempDir()
+	videos := filepath.Join(base, "videos")
+	if err := os.MkdirAll(videos, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ResolveDestination("nope", videos, "", "", "")
+	if !errors.Is(err, ErrUnknownDestination) {
+		t.Errorf("want ErrUnknownDestination, got %v", err)
+	}
+}
+
+func TestSanitizeSubfolder_InvalidIsSentinel(t *testing.T) {
+	for _, bad := range []string{"a/b", "..", "bad\x00name"} {
+		if _, err := sanitizeSubfolder(bad); !errors.Is(err, ErrInvalidSubfolder) {
+			t.Errorf("sanitizeSubfolder(%q) = %v, want ErrInvalidSubfolder", bad, err)
+		}
+	}
+}
+
+func TestSanitizeSubfolder(t *testing.T) {
+	// Empty / whitespace → no sub-folder, no error.
+	for _, empty := range []string{"", "   ", "\t"} {
+		got, err := sanitizeSubfolder(empty)
+		if err != nil || got != "" {
+			t.Errorf("sanitizeSubfolder(%q) = (%q, %v), want (\"\", nil)", empty, got, err)
+		}
+	}
+
+	// Valid single names are trimmed and returned unchanged.
+	for _, ok := range []string{"New Series", "2024", "season_1", " trimmed "} {
+		got, err := sanitizeSubfolder(ok)
+		if err != nil {
+			t.Errorf("sanitizeSubfolder(%q) unexpected error: %v", ok, err)
+		}
+		if want := filepath.Base(strings.TrimSpace(ok)); got != want {
+			t.Errorf("sanitizeSubfolder(%q) = %q, want %q", ok, got, want)
+		}
+	}
+
+	// Anything with separators, traversal, or control bytes must be rejected so
+	// the name can never escape the chosen destination root.
+	for _, bad := range []string{"a/b", `a\b`, "..", ".", "../etc", "sub/../..", "bad\x00name", "line\nbreak"} {
+		if _, err := sanitizeSubfolder(bad); err == nil {
+			t.Errorf("sanitizeSubfolder(%q) = nil error, want rejection", bad)
+		}
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Module basics

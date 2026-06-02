@@ -10,10 +10,12 @@ import type {
 } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatWatchTime, formatBytes } from '~/utils/format'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const analyticsApi = useAnalyticsApi()
 const adminApi = useAdminApi()
 const toast = useToast()
+const { notifyError, notifySuccess, notifyWarning } = useAdminFeedback()
 
 // ── Filtering & view-state ──────────────────────────────────────────────────
 // Most filters live in URL-style refs so the user can tweak the dashboard
@@ -72,12 +74,12 @@ async function backfillDate(date: string) {
   backfilling.value = date
   try {
     await analyticsApi.backfillDailyStats(date)
-    toast.add({ title: `Recomputed ${date} from raw events`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Recomputed ${date} from raw events`)
     // Reload everything so the daily breakdown + dependent panels
     // (period comparison, timeline, etc.) all reflect the new totals.
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Backfill failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Backfill failed')
   } finally {
     backfilling.value = null
   }
@@ -99,7 +101,7 @@ async function copyEventJson() {
     await navigator.clipboard.writeText(JSON.stringify(eventDetail.value, null, 2))
     toast.add({ title: 'Event JSON copied', color: 'success', icon: 'i-lucide-clipboard-check' })
   } catch {
-    toast.add({ title: 'Clipboard unavailable', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    notifyWarning('Clipboard unavailable')
   }
 }
 
@@ -135,7 +137,7 @@ async function evaluateAlerts() {
 }
 function addOrUpdateAlertRule() {
   if (!alertEdit.value.name || !alertEdit.value.metric) {
-    toast.add({ title: 'Name and metric required', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    notifyWarning('Name and metric required')
     return
   }
   if (alertEdit.value.id) {
@@ -195,7 +197,7 @@ async function loadAdminActions() {
     const resp = await adminApi.getAuditLog({ limit: 100, offset: 0 })
     adminActions.value = resp?.items ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load admin actions', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load admin actions')
   } finally {
     adminActionsLoading.value = false
   }
@@ -219,7 +221,7 @@ const rangeResult = ref<RangeComparison | null>(null)
 const rangeLoading = ref(false)
 async function runRangeCompare() {
   if (!rangeAStart.value || !rangeAEnd.value || !rangeBStart.value || !rangeBEnd.value) {
-    toast.add({ title: 'All four dates required', color: 'warning', icon: 'i-lucide-alert-triangle' })
+    notifyWarning('All four dates required')
     return
   }
   rangeLoading.value = true
@@ -229,7 +231,7 @@ async function runRangeCompare() {
       rangeBStart.value, rangeBEnd.value,
     )
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Comparison failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Comparison failed')
   } finally {
     rangeLoading.value = false
   }
@@ -335,7 +337,7 @@ function startLiveTail() {
       }
     })
   } catch (e: unknown) {
-    toast.add({ title: 'Failed to open live tail', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Failed to open live tail')
   }
 }
 
@@ -363,7 +365,7 @@ async function openMediaDetail(mediaId: string, title: string) {
   try {
     mediaDetail.value = await analyticsApi.getMediaAnalytics(mediaId, 30)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load media analytics', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load media analytics')
   } finally {
     mediaDetailLoading.value = false
   }
@@ -418,7 +420,7 @@ async function drillByType() {
   try {
     drillEvents.value = (await analyticsApi.getEventsByType(drillType.value.trim(), 50)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { drillLoading.value = false }
 }
 
@@ -428,7 +430,7 @@ async function drillByMedia() {
   try {
     drillEvents.value = (await analyticsApi.getEventsByMedia(drillMediaId.value.trim(), 50)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { drillLoading.value = false }
 }
 
@@ -444,7 +446,7 @@ async function drillByUser() {
     drillEvents.value = (await analyticsApi.getEventsByUser(drillUserId.value.trim(), 50)) ?? []
     void loadUserAggregate(drillUserId.value.trim())
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   } finally { drillLoading.value = false }
 }
 
@@ -574,7 +576,7 @@ async function load() {
     if (r(34) !== null) forecastErrors.value = r(34) as MetricForecast
 
     const failed = results.filter(x => x.status === 'rejected')
-    if (failed.length) toast.add({ title: `${failed.length} analytics endpoint(s) failed`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+    if (failed.length) notifyWarning(`${failed.length} analytics endpoint(s) failed`)
     // Admin actions feed pulls from a different endpoint (audit-log table,
     // not analytics_events) so it can't ride the Promise.allSettled batch
     // above. Fire it alongside but don't block the dashboard render on it.
@@ -591,7 +593,7 @@ async function reloadTopUsers() {
   try {
     topUsers.value = (await analyticsApi.getTopUsers(topUserMetric.value, 10)) ?? []
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load top users', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to load top users')
   } finally {
     topUsersLoading.value = false
   }
@@ -1101,10 +1103,10 @@ const hasTrafficActivity = computed(() =>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <template v-for="cmp in [
-            { label: 'Views', cmp: cmpViews },
-            { label: 'Streams', cmp: cmpStreams },
+            { label: 'Views', cmp: cmpViews, isBytes: false },
+            { label: 'Streams', cmp: cmpStreams, isBytes: false },
             { label: 'Bandwidth', cmp: cmpBandwidth, isBytes: true },
-            { label: 'Logins', cmp: cmpLogins },
+            { label: 'Logins', cmp: cmpLogins, isBytes: false },
           ]" :key="cmp.label">
             <div v-if="cmp.cmp" class="flex flex-col">
               <p class="text-lg font-bold text-highlighted truncate">
@@ -1138,10 +1140,10 @@ const hasTrafficActivity = computed(() =>
       </template>
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <template v-for="f in [
-          { label: 'Views', cmp: forecastViews },
-          { label: 'Streams', cmp: forecastStreams },
-          { label: 'Bandwidth', cmp: forecastBandwidth, isBytes: true },
-          { label: 'Server Errors', cmp: forecastErrors, isError: true },
+          { label: 'Views', cmp: forecastViews, isBytes: false, isError: false },
+          { label: 'Streams', cmp: forecastStreams, isBytes: false, isError: false },
+          { label: 'Bandwidth', cmp: forecastBandwidth, isBytes: true, isError: false },
+          { label: 'Server Errors', cmp: forecastErrors, isBytes: false, isError: true },
         ]" :key="f.label">
           <div v-if="f.cmp">
             <div class="flex items-center gap-1 mb-0.5">
@@ -1183,7 +1185,7 @@ const hasTrafficActivity = computed(() =>
           Engagement Timeline ({{ timelineDays }} days)
         </div>
       </template>
-      <MetricLineChart
+      <AdminMetricLineChart
         :series="[
           { label: 'Views', color: 'stroke-primary text-primary', values: tlViews },
           { label: 'Streams', color: 'stroke-emerald-500 text-emerald-500', values: tlStreams },
@@ -1204,7 +1206,7 @@ const hasTrafficActivity = computed(() =>
             Bandwidth Served ({{ timelineDays }} days)
           </div>
         </template>
-        <MetricLineChart
+        <AdminMetricLineChart
           :series="[
             { label: 'Bytes', color: 'stroke-cyan-500 text-cyan-500', values: tlBandwidth, format: (v: number) => formatBytes(v) },
           ]"
@@ -1219,7 +1221,7 @@ const hasTrafficActivity = computed(() =>
             5xx Server Errors ({{ timelineDays }} days)
           </div>
         </template>
-        <MetricLineChart
+        <AdminMetricLineChart
           :series="[
             { label: 'Errors', color: 'stroke-red-500 text-red-500', values: tlServerErrors },
           ]"
@@ -2049,22 +2051,22 @@ const hasTrafficActivity = computed(() =>
           <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
             <UCard
               v-for="m in [
-                { label: 'Views', value: userAggregate.total_views, icon: 'i-lucide-eye' },
-                { label: 'Playbacks', value: userAggregate.total_playbacks, icon: 'i-lucide-play' },
-                { label: 'Completions', value: userAggregate.total_completions, icon: 'i-lucide-check-circle' },
+                { label: 'Views', value: userAggregate.total_views, icon: 'i-lucide-eye', isTime: false },
+                { label: 'Playbacks', value: userAggregate.total_playbacks, icon: 'i-lucide-play', isTime: false },
+                { label: 'Completions', value: userAggregate.total_completions, icon: 'i-lucide-check-circle', isTime: false },
                 { label: 'Watch Time', value: userAggregate.total_watch_time, icon: 'i-lucide-clock', isTime: true },
-                { label: 'Downloads', value: userAggregate.total_downloads, icon: 'i-lucide-download' },
-                { label: 'Searches', value: userAggregate.total_searches, icon: 'i-lucide-search' },
-                { label: 'Favorites +', value: userAggregate.favorites_added, icon: 'i-lucide-heart' },
-                { label: 'Favorites −', value: userAggregate.favorites_removed, icon: 'i-lucide-heart-off' },
-                { label: 'Ratings', value: userAggregate.ratings_set, icon: 'i-lucide-star' },
-                { label: 'Playlists +', value: userAggregate.playlists_created, icon: 'i-lucide-list-plus' },
-                { label: 'Uploads OK', value: userAggregate.uploads_succeeded, icon: 'i-lucide-upload' },
-                { label: 'Uploads Fail', value: userAggregate.uploads_failed, icon: 'i-lucide-alert-triangle' },
-                { label: 'Logins', value: userAggregate.logins, icon: 'i-lucide-log-in' },
-                { label: 'Failed Logins', value: userAggregate.logins_failed, icon: 'i-lucide-shield-alert' },
-                { label: 'Logouts', value: userAggregate.logouts, icon: 'i-lucide-log-out' },
-                { label: 'Unique Media', value: userAggregate.unique_media, icon: 'i-lucide-clapperboard' },
+                { label: 'Downloads', value: userAggregate.total_downloads, icon: 'i-lucide-download', isTime: false },
+                { label: 'Searches', value: userAggregate.total_searches, icon: 'i-lucide-search', isTime: false },
+                { label: 'Favorites +', value: userAggregate.favorites_added, icon: 'i-lucide-heart', isTime: false },
+                { label: 'Favorites −', value: userAggregate.favorites_removed, icon: 'i-lucide-heart-off', isTime: false },
+                { label: 'Ratings', value: userAggregate.ratings_set, icon: 'i-lucide-star', isTime: false },
+                { label: 'Playlists +', value: userAggregate.playlists_created, icon: 'i-lucide-list-plus', isTime: false },
+                { label: 'Uploads OK', value: userAggregate.uploads_succeeded, icon: 'i-lucide-upload', isTime: false },
+                { label: 'Uploads Fail', value: userAggregate.uploads_failed, icon: 'i-lucide-alert-triangle', isTime: false },
+                { label: 'Logins', value: userAggregate.logins, icon: 'i-lucide-log-in', isTime: false },
+                { label: 'Failed Logins', value: userAggregate.logins_failed, icon: 'i-lucide-shield-alert', isTime: false },
+                { label: 'Logouts', value: userAggregate.logouts, icon: 'i-lucide-log-out', isTime: false },
+                { label: 'Unique Media', value: userAggregate.unique_media, icon: 'i-lucide-clapperboard', isTime: false },
               ]"
               :key="m.label"
               :ui="{ body: 'p-2' }"
@@ -2202,7 +2204,7 @@ const hasTrafficActivity = computed(() =>
                 </UCard>
               </div>
               <p class="text-xs uppercase tracking-wide font-semibold text-muted mb-1">Activity (last 30 days)</p>
-              <MetricLineChart
+              <AdminMetricLineChart
                 :series="[
                   { label: 'Views', color: 'stroke-primary text-primary', values: mediaDetail.view_timeline },
                   { label: 'Playbacks', color: 'stroke-emerald-500 text-emerald-500', values: mediaDetail.playback_timeline },

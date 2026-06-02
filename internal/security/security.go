@@ -69,8 +69,6 @@ func init() {
 var authPaths = map[string]struct{}{
 	"/api/auth/login":           {},
 	"/api/auth/register":        {},
-	"/api/auth/admin-login":     {},
-	"/api/admin/login":          {},
 	"/api/auth/change-password": {},
 	"/api/auth/delete-account":  {},
 }
@@ -231,7 +229,7 @@ func (m *Module) Start(_ context.Context) error {
 			Comment:   reason,
 			AddedAt:   time.Now(),
 			AddedBy:   "rate-limiter",
-			ExpiresAt: new(time.Now().Add(duration)),
+			ExpiresAt: helpers.Ptr(time.Now().Add(duration)),
 		}
 		if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 			m.log.Warn("Failed to persist auto-ban for %s: %v", ip, err)
@@ -373,7 +371,7 @@ func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 		Comment:   reason,
 		AddedAt:   time.Now(),
 		AddedBy:   "system",
-		ExpiresAt: new(time.Now().Add(duration)),
+		ExpiresAt: helpers.Ptr(time.Now().Add(duration)),
 	}
 	if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 		m.log.Warn("Failed to persist ban for %s: %v", ip, err)
@@ -1086,6 +1084,7 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 		if strings.HasPrefix(cleaned, "/web/static/") ||
 			strings.HasPrefix(cleaned, "/stream") ||
 			strings.HasPrefix(cleaned, "/hls/") ||
+			strings.HasPrefix(cleaned, "/extractor/hls/") ||
 			strings.HasPrefix(cleaned, "/download") ||
 			strings.HasPrefix(cleaned, "/thumbnail") ||
 			mediaExempt ||

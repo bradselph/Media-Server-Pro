@@ -353,7 +353,6 @@ type IPListRepository interface {
 	GetEntries(ctx context.Context, listType string) ([]*IPEntryRecord, error)
 	AddEntry(ctx context.Context, listType string, entry *IPEntryRecord) error
 	RemoveEntry(ctx context.Context, listType string, ipValue string) error
-	SetEnabled(ctx context.Context, listType string, enabled bool) error
 }
 
 // IPEntryRecord represents an IP list entry in the database

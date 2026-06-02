@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import type { DownloaderJob, ImportableFile, DownloaderHealth, DownloaderSettings, DownloaderDetectResult, DownloaderProgress, DownloaderStreamInfo } from '~/types/api'
+import type { DownloaderJob, ImportableFile, ImportDestination, DownloaderHealth, DownloaderSettings, DownloaderDetectResult, DownloaderProgress, DownloaderStreamInfo } from '~/types/api'
 import { formatBytes, formatUptime } from '~/utils/format'
 import { asRecord } from '~/utils/typeGuards'
+import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const toast = useToast()
+const { notifyError, notifySuccess, notifyInfo } = useAdminFeedback()
 
 // ── Download server config ─────────────────────────────────────────────────────
 
@@ -36,9 +38,9 @@ async function saveDownloadConfig(key: 'enabled' | 'require_auth', value: boolea
     fullConfig.value = updated
     if (key === 'enabled') downloadEnabled.value = value
     else downloadRequireAuth.value = value
-    toast.add({ title: 'Download settings saved', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Download settings saved')
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to save', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed to save')
     // Reload config from server to revert UI to actual state
     loadDownloadConfig()
   } finally {
@@ -123,6 +125,7 @@ onMounted(() => {
   loadDownloadConfig()
   load()
   loadImportable()
+  loadDestinations()
   startAutoRefresh()
 })
 
@@ -163,7 +166,7 @@ async function load() {
     if (loading.value) loading.value = false
   } catch (e: unknown) {
     if (loading.value) {
-      toast.add({ title: e instanceof Error ? e.message : 'Failed to load downloads', color: 'error', icon: 'i-lucide-alert-circle' })
+      notifyError(e, 'Failed to load downloads', 'i-lucide-alert-circle')
       loading.value = false
     }
   }
@@ -172,10 +175,10 @@ async function load() {
 async function cancelDownload(id: string) {
   try {
     await adminApi.cancelDownloaderJob(id)
-    toast.add({ title: 'Download cancelled', color: 'info', icon: 'i-lucide-info' })
+    notifyInfo('Download cancelled')
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -184,7 +187,7 @@ async function deleteDownload(filename: string) {
     await adminApi.deleteDownloaderJob(filename)
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Failed')
   }
 }
 
@@ -210,11 +213,11 @@ async function detect() {
   try {
     const u = new URL(urlStr)
     if (!['http:', 'https:'].includes(u.protocol)) {
-      toast.add({ title: 'URL must use http or https', color: 'error', icon: 'i-lucide-x' })
+      notifyError('URL must use http or https')
       return
     }
   } catch {
-    toast.add({ title: 'Invalid URL', color: 'error', icon: 'i-lucide-x' })
+    notifyError('Invalid URL')
     return
   }
   detecting.value = true
@@ -222,7 +225,7 @@ async function detect() {
   try {
     detected.value = await adminApi.detectDownload(urlStr)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Detection failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Detection failed')
   } finally { detecting.value = false }
 }
 
@@ -239,7 +242,7 @@ async function startDownload(streamUrl?: string) {
       isYouTubeMusic: detected.value.isYouTubeMusic,
       relayId: detected.value.relayId,
     })
-    toast.add({ title: 'Download started', color: 'success', icon: 'i-lucide-check' })
+    notifySuccess('Download started')
     if (result?.downloadId) {
       const next = new Map(activeProgress.value)
       next.set(result.downloadId, { downloadId: result.downloadId, status: 'queued', title: detected.value.title })
@@ -249,7 +252,7 @@ async function startDownload(streamUrl?: string) {
     newUrl.value = ''
     await load()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Download failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Download failed')
   } finally { downloading.value = false }
 }
 
@@ -261,6 +264,48 @@ const importingFile = ref<string | null>(null)
 const deleteSource = ref(true)
 const triggerScan = ref(true)
 
+// ── Import destination prompt ───────────────────────────────────────────────
+const destinations = ref<ImportDestination[]>([])
+const selectedDestKey = ref<string>('')
+const newSubfolder = ref<string>('')
+const importModalOpen = ref(false)
+const pendingFile = ref<ImportableFile | null>(null)
+const loadingDestinations = ref(false)
+
+// Read-only destinations (e.g. a HiDrive share mounted --read-only) are shown but
+// disabled — importing there would fail, so the picker surfaces that up-front.
+const destinationItems = computed(() =>
+  destinations.value.map(d => ({
+    label: d.writable ? d.label : `${d.label} (read-only)`,
+    value: d.key,
+    disabled: !d.writable,
+  }))
+)
+
+// The selected destination is importable only if it exists and is writable.
+const selectedDestWritable = computed(() =>
+  destinations.value.find(d => d.key === selectedDestKey.value)?.writable === true
+)
+
+// Prefer the server-flagged default when it's writable, else the first writable
+// destination, else fall back so the select is never left blank.
+function pickDefaultDestination(): ImportDestination | undefined {
+  const d = destinations.value
+  return d.find(x => x.isDefault && x.writable)
+    ?? d.find(x => x.writable)
+    ?? d.find(x => x.isDefault)
+    ?? d[0]
+}
+
+async function loadDestinations() {
+  try {
+    const result = await adminApi.listImportDestinations()
+    destinations.value = result ?? []
+  } catch {
+    destinations.value = []
+  }
+}
+
 async function loadImportable() {
   try {
     const result = await adminApi.listImportable()
@@ -271,15 +316,56 @@ async function loadImportable() {
   }
 }
 
-async function importFile(filename: string) {
-  importingFile.value = filename
+// Open the per-file prompt so the operator picks where the download is stored.
+// Always starts from a clean subfolder field and a freshly-chosen default so a
+// previous import's choices never leak into the next one.
+async function openImport(f: ImportableFile) {
+  pendingFile.value = f
+  newSubfolder.value = ''
+  if (!destinations.value.length) {
+    loadingDestinations.value = true
+    try {
+      await loadDestinations()
+    } finally {
+      loadingDestinations.value = false
+    }
+  }
+  if (!destinations.value.length) {
+    toast.add({
+      title: 'No import destinations available',
+      description: 'The downloader may be disabled, or no library folders are configured.',
+      color: 'warning',
+      icon: 'i-lucide-alert-triangle',
+    })
+    pendingFile.value = null
+    return
+  }
+  const def = pickDefaultDestination()
+  if (def) selectedDestKey.value = def.key
+  importModalOpen.value = true
+}
+
+// Reset all per-import modal state so the next open starts fresh.
+function closeImportModal() {
+  importModalOpen.value = false
+  newSubfolder.value = ''
+  pendingFile.value = null
+}
+
+async function confirmImport() {
+  const f = pendingFile.value
+  if (!f) return
+  importingFile.value = f.name
   try {
-    const result = await adminApi.importFile(filename, deleteSource.value, triggerScan.value)
+    const result = await adminApi.importFile(f.name, deleteSource.value, triggerScan.value, selectedDestKey.value, newSubfolder.value.trim())
     const deleteNote = result?.sourceDeleted === false ? ' (source file could not be removed)' : ''
-    toast.add({ title: `Imported to ${result?.destination ?? 'library'}${deleteNote}`, color: 'success', icon: 'i-lucide-check' })
+    notifySuccess(`Imported to ${result?.destination ?? 'library'}${deleteNote}`)
+    // Close only on success — on error the modal stays open so the admin sees the
+    // failure in context and can retry or change the destination.
+    closeImportModal()
     await Promise.allSettled([load(), loadImportable()])
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Import failed', color: 'error', icon: 'i-lucide-x' })
+    notifyError(e, 'Import failed')
   } finally {
     importingFile.value = null
   }
@@ -559,11 +645,73 @@ function progressBarColor(status: DownloaderProgress['status']) {
             color="primary"
             :loading="importingFile === f.name"
             :disabled="importingFile !== null"
-            @click="importFile(f.name)"
+            @click="openImport(f)"
           />
         </div>
       </div>
     </UCard>
+
+    <!-- Import destination prompt -->
+    <UModal v-model:open="importModalOpen" :ui="{ content: 'max-w-md' }">
+      <template #content>
+        <UCard>
+          <template #header>
+            <div class="font-semibold flex items-center gap-2">
+              <UIcon name="i-lucide-import" class="size-4" />
+              Import to library
+            </div>
+          </template>
+          <div class="space-y-3">
+            <p v-if="pendingFile" class="text-sm truncate" :title="pendingFile.name">
+              <span class="text-muted">File:</span> {{ pendingFile.name }}
+            </p>
+            <UFormField label="Destination" hint="Where to store this file in the library">
+              <USelect
+                v-model="selectedDestKey"
+                :items="destinationItems"
+                :loading="loadingDestinations"
+                placeholder="Select a destination"
+                class="w-full"
+              />
+            </UFormField>
+            <p v-if="selectedDestKey && !selectedDestWritable" class="text-xs text-error flex items-center gap-1">
+              <UIcon name="i-lucide-lock" class="size-3.5 shrink-0" />
+              This destination is read-only. Pick a writable location or remount it read-write.
+            </p>
+            <UFormField label="New sub-folder" hint="Optional — creates a folder under the destination">
+              <UInput
+                v-model="newSubfolder"
+                placeholder="e.g. New Series"
+                class="w-full"
+              />
+            </UFormField>
+            <div class="flex items-center gap-4 text-sm">
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <UCheckbox v-model="deleteSource" />
+                <span>Delete source</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <UCheckbox v-model="triggerScan" />
+                <span>Scan library</span>
+              </label>
+            </div>
+          </div>
+          <template #footer>
+            <div class="flex justify-end gap-2">
+              <UButton variant="ghost" color="neutral" label="Cancel" @click="closeImportModal" />
+              <UButton
+                color="primary"
+                label="Import"
+                icon="i-lucide-check"
+                :loading="importingFile !== null"
+                :disabled="!selectedDestKey || !selectedDestWritable || importingFile !== null"
+                @click="confirmImport"
+              />
+            </div>
+          </template>
+        </UCard>
+      </template>
+    </UModal>
 
     <!-- Downloaded files list (server files) -->
     <UCard>

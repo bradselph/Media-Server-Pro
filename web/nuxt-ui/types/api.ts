@@ -30,16 +30,13 @@ export interface UserPreferences {
     volume: number
     show_mature: boolean
     mature_preference_set: boolean
-    language: string
     equalizer_preset: string
     resume_playback: boolean
-    show_analytics: boolean
     items_per_page: number
     sort_by: string
     sort_order: string
     filter_category: string
     filter_media_type: string
-    custom_eq_presets?: Record<string, unknown>
     show_continue_watching: boolean
     show_recommended: boolean
     show_trending: boolean
@@ -227,6 +224,7 @@ export interface AdminMediaListResponse {
     items: MediaItem[]
     total_items: number
     total_pages: number
+    scanning?: boolean
 }
 
 export interface AdminMediaListParams {
@@ -1491,6 +1489,14 @@ export interface ImportResult {
     destination: string
     scanTriggered: boolean
     sourceDeleted?: boolean
+}
+
+export interface ImportDestination {
+    key: string
+    label: string
+    path: string
+    isDefault: boolean
+    writable: boolean
 }
 
 // ── Suggestion Stats ──────────────────────────────────────────────────────────

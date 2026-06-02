@@ -4,6 +4,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +13,31 @@ import (
 	"media-server-pro/internal/upload"
 	"media-server-pro/pkg/models"
 )
+
+// userUploadError maps an internal upload error to a safe, user-facing message.
+// Validation failures (type/size/content/name) are surfaced verbatim so the
+// uploader knows exactly what to fix; lower-level I/O errors stay generic to
+// avoid leaking filesystem paths. The full error is still logged server-side.
+func userUploadError(err error) string {
+	if err == nil {
+		return "Upload failed"
+	}
+	msg := err.Error()
+	for _, known := range []string{
+		"file type not allowed",
+		"file content does not match extension",
+		"file size",
+		"invalid filename",
+		"hidden files not allowed",
+		"path traversal detected",
+		"filename contains invalid characters",
+	} {
+		if strings.Contains(msg, known) {
+			return msg
+		}
+	}
+	return "Upload failed"
+}
 
 // requireUploadSessionAndConfig ensures the upload module and config allow this request.
 // When cfg.Uploads.RequireAuth is true, an authenticated session with CanUpload is required.
@@ -158,7 +184,7 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 		result, err := h.upload.ProcessFileHeader(fh, upload.UploadScope{UserID: userID, Category: category})
 		if err != nil {
 			h.log.Error("Upload failed for %s: %v", fh.Filename, err)
-			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: "Upload failed"})
+			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: userUploadError(err)})
 			continue
 		}
 		if result == nil {
@@ -269,6 +295,18 @@ func (h *Handler) GetUploadProgress(c *gin.Context) {
 	if !ok {
 		writeError(c, http.StatusNotFound, "Upload not found")
 		return
+	}
+
+	// Owned uploads are visible only to the user who started them — otherwise any
+	// caller could enumerate upload IDs and read another user's upload metadata.
+	// Anonymous uploads (no owner) have no identity to match, so stay pollable.
+	// Use 404 (not 403) so a mismatched caller cannot confirm the ID exists.
+	if progress.UserID != "" {
+		session := getSession(c)
+		if session == nil || session.UserID != progress.UserID {
+			writeError(c, http.StatusNotFound, "Upload not found")
+			return
+		}
 	}
 
 	writeSuccess(c, progress)

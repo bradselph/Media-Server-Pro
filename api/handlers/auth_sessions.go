@@ -20,13 +20,13 @@ import (
 // (also the prefix) used by the revoke endpoint. This prevents cross-tab
 // session hijack via a stolen API response.
 type userSession struct {
-	ID            string `json:"id"`
-	IPAddress     string `json:"ip_address"`
-	UserAgent     string `json:"user_agent"`
-	CreatedAt     int64  `json:"created_at"`
-	LastActivity  int64  `json:"last_activity"`
-	ExpiresAt     int64  `json:"expires_at"`
-	IsCurrent     bool   `json:"is_current"`
+	ID           string `json:"id"`
+	IPAddress    string `json:"ip_address"`
+	UserAgent    string `json:"user_agent"`
+	CreatedAt    int64  `json:"created_at"`
+	LastActivity int64  `json:"last_activity"`
+	ExpiresAt    int64  `json:"expires_at"`
+	IsCurrent    bool   `json:"is_current"`
 }
 
 // ListMySessions returns every active session belonging to the caller, with

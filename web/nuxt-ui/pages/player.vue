@@ -526,7 +526,7 @@ const {
   activateHLS,
   jobProgress,
   jobRunning,
-} = useHLS(videoRef, mediaIdRef)
+} = useHLS(videoRef, mediaIdRef, { defaultQuality: () => userPrefs.value?.default_quality })
 
 // Request on-demand HLS generation
 const hlsApi = useHlsApi()
