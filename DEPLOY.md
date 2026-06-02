@@ -70,7 +70,6 @@ All runtime config is supplied via environment variables read from
 - `AUTH_ALLOW_REGISTRATION`, `AUTH_ALLOW_GUESTS` — public exposure
 - `RECEIVER_ENABLED`, `RECEIVER_API_KEYS` — accept federated peers
 - `FEATURE_HUGGINGFACE`, `HUGGINGFACE_API_KEY` — visual classifier
-- `FEATURE_CLAUDE`, `ANTHROPIC_API_KEY`, `CLAUDE_MODE` — admin assistant
 
 Build-time (baked into the Nuxt bundle by `deploy.sh`):
 
@@ -153,7 +152,7 @@ snapshot before upgrading across major versions.
 ## Security checklist
 
 - [ ] All secrets (`DATABASE_PASSWORD`, `ADMIN_PASSWORD`, `RECEIVER_API_KEYS`,
-      `HUGGINGFACE_API_KEY`, `ANTHROPIC_API_KEY`) are strong unique values.
+      `HUGGINGFACE_API_KEY`) are strong unique values.
 - [ ] `SERVER_HOST=127.0.0.1` when running behind a reverse proxy.
 - [ ] `AUTH_ALLOW_REGISTRATION=false` unless you intend an open community.
 - [ ] `.env` on the VPS is mode `600`, owned by the `mediaserver` system user.

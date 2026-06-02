@@ -181,17 +181,6 @@ func (r *ReceiverDuplicateRepository) DeletePendingBySlave(ctx context.Context, 
 	return nil
 }
 
-// DeleteForItem removes all duplicate records that reference the given item ID (either side).
-// Zero rows affected is not an error — the item may have had no associated duplicates.
-func (r *ReceiverDuplicateRepository) DeleteForItem(ctx context.Context, itemID string) error {
-	if err := r.db.WithContext(ctx).
-		Where("item_a_id = ? OR item_b_id = ?", itemID, itemID).
-		Delete(&receiverDuplicateRow{}).Error; err != nil {
-		return fmt.Errorf("failed to delete duplicates for item: %w", err)
-	}
-	return nil
-}
-
 func (r *ReceiverDuplicateRepository) rowToRecord(row *receiverDuplicateRow) (*repositories.ReceiverDuplicateRecord, error) {
 	detectedAt, err := parseTime(row.DetectedAt)
 	if err != nil {

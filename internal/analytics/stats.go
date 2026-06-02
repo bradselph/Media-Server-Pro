@@ -2640,18 +2640,6 @@ func (m *Module) GetContentPerformance(limit int) []ContentPerformance {
 	return items
 }
 
-// GetTotalWatchTime returns the sum of all daily watch time tracked.
-func (m *Module) GetTotalWatchTime() float64 {
-	m.statsMu.RLock()
-	defer m.statsMu.RUnlock()
-
-	var total float64
-	for _, ds := range m.dailyStats {
-		total += ds.TotalWatchTime
-	}
-	return total
-}
-
 // GetTopMedia returns most viewed media.
 func (m *Module) GetTopMedia(limit int) []MediaViewCount {
 	m.statsMu.RLock()

@@ -142,144 +142,44 @@ func TestGinSecurityHeaders_NoHSTS_NotHTTPS(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// GinCORS
+// CORS origin matching
 // ---------------------------------------------------------------------------
 
-func TestGinCORS_AllowAll(t *testing.T) {
-	r := gin.New()
-	r.Use(GinCORS(
-		[]string{"*"},
-		[]string{"GET", "POST"},
-		[]string{testContentType},
-	))
-	r.GET("/test", func(c *gin.Context) { c.String(200, "ok") })
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/test", nil)
-	req.Header.Set("Origin", "https://example.com")
-	r.ServeHTTP(w, req)
-
-	got := w.Header().Get(testAllowOriginHdr)
-	// When allowAll is true, we return literal "*" to prevent credential leakage
-	if got != "*" {
-		t.Errorf("ACAO = %q, want *", got)
-	}
-	// Credentials should NOT be set when using wildcard "*"
-	if w.Header().Get("Access-Control-Allow-Credentials") == "true" {
-		t.Error("Credentials should not be set with wildcard origin")
-	}
-}
-
-func TestGinCORS_AllowAll_NoOrigin(t *testing.T) {
-	r := gin.New()
-	r.Use(GinCORS([]string{"*"}, []string{"GET"}, []string{}))
-	r.GET("/test", func(c *gin.Context) { c.String(200, "ok") })
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/test", nil)
-	r.ServeHTTP(w, req)
-
-	got := w.Header().Get(testAllowOriginHdr)
-	if got != "*" {
-		t.Errorf("ACAO without Origin = %q, want *", got)
-	}
-}
-
-func TestGinCORS_SpecificOrigin(t *testing.T) {
-	r := gin.New()
-	r.Use(GinCORS(
-		[]string{testAllowedOrigin},
-		[]string{"GET", "POST"},
-		[]string{testContentType},
-	))
-	r.GET("/test", func(c *gin.Context) { c.String(200, "ok") })
-
-	// Allowed origin
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/test", nil)
-	req.Header.Set("Origin", testAllowedOrigin)
-	r.ServeHTTP(w, req)
-	if got := w.Header().Get(testAllowOriginHdr); got != testAllowedOrigin {
-		t.Errorf("allowed origin: ACAO = %q", got)
-	}
-	if w.Header().Get("Access-Control-Allow-Credentials") != "true" {
-		t.Error("credentials should be true for specific origin")
-	}
-
-	// Disallowed origin
-	w = httptest.NewRecorder()
-	req = httptest.NewRequest("GET", "/test", nil)
-	req.Header.Set("Origin", "https://evil.com")
-	r.ServeHTTP(w, req)
-	if got := w.Header().Get(testAllowOriginHdr); got != "" {
-		t.Errorf("disallowed origin: ACAO = %q, should be empty", got)
-	}
-}
-
-func TestGinCORS_Preflight(t *testing.T) {
-	r := gin.New()
-	r.Use(GinCORS(
-		[]string{"*"},
-		[]string{"GET", "POST", "PUT"},
-		[]string{testContentType, "Authorization"},
-	))
-	r.OPTIONS("/test", func(c *gin.Context) { c.String(200, "ok") })
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("OPTIONS", "/test", nil)
-	req.Header.Set("Origin", "https://example.com")
-	r.ServeHTTP(w, req)
-
-	if w.Code != http.StatusNoContent {
-		t.Errorf("OPTIONS status = %d, want 204", w.Code)
-	}
-	if got := w.Header().Get("Access-Control-Max-Age"); got != "86400" {
-		t.Errorf("Max-Age = %q, want 86400", got)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// CORS config helpers
-// ---------------------------------------------------------------------------
-
-func TestParseCORSConfig(t *testing.T) {
-	cfg := parseCORSConfig([]string{testOriginA, "https://b.com"}, []string{"GET"}, []string{"X-Custom"})
-	if cfg.allowAll {
+func TestParseOriginSet(t *testing.T) {
+	set := parseOriginSet([]string{testOriginA, "https://b.com"})
+	if set.allowAll {
 		t.Error("allowAll should be false for specific origins")
 	}
-	if !cfg.allowedOrigins[testOriginA] {
+	if !set.allowedOrigins[testOriginA] {
 		t.Error("a.com should be allowed")
 	}
-	if !cfg.allowedOrigins["https://b.com"] {
+	if !set.allowedOrigins["https://b.com"] {
 		t.Error("b.com should be allowed")
-	}
-	if cfg.methodsStr != "GET" {
-		t.Errorf("methods = %q", cfg.methodsStr)
 	}
 }
 
-func TestParseCORSConfig_Wildcard(t *testing.T) {
-	cfg := parseCORSConfig([]string{"*"}, nil, nil)
-	if !cfg.allowAll {
+func TestParseOriginSet_Wildcard(t *testing.T) {
+	set := parseOriginSet([]string{"*"})
+	if !set.allowAll {
 		t.Error("allowAll should be true for wildcard")
 	}
 }
 
 func TestAllowOrigin(t *testing.T) {
 	// Wildcard — always returns literal "*" regardless of origin
-	cfg := parseCORSConfig([]string{"*"}, nil, nil)
-	val, ok := cfg.allowOrigin("https://any.com")
+	set := parseOriginSet([]string{"*"})
+	val, ok := set.allowOrigin("https://any.com")
 	if !ok || val != "*" {
 		t.Errorf("wildcard: value=%q, ok=%v", val, ok)
 	}
 
 	// Specific
-	cfg2 := parseCORSConfig([]string{testOriginA}, nil, nil)
-	val, ok = cfg2.allowOrigin(testOriginA)
+	set2 := parseOriginSet([]string{testOriginA})
+	val, ok = set2.allowOrigin(testOriginA)
 	if !ok || val != testOriginA {
 		t.Errorf("allowed: value=%q, ok=%v", val, ok)
 	}
-	val, ok = cfg2.allowOrigin("https://evil.com")
+	val, ok = set2.allowOrigin("https://evil.com")
 	if ok {
 		t.Errorf("disallowed should not be ok, got value=%q", val)
 	}

@@ -21,14 +21,6 @@ func (noOpAnalyticsRepo) List(context.Context, repositories.AnalyticsFilter) ([]
 	return nil, nil
 }
 
-func (noOpAnalyticsRepo) GetByMediaID(context.Context, string) ([]*models.AnalyticsEvent, error) {
-	return nil, nil
-}
-
-func (noOpAnalyticsRepo) GetByUserID(context.Context, string) ([]*models.AnalyticsEvent, error) {
-	return nil, nil
-}
-
 func (noOpAnalyticsRepo) DeleteOlderThan(context.Context, string) error { return nil }
 func (noOpAnalyticsRepo) DeleteByMediaID(context.Context, string) error { return nil }
 

@@ -99,18 +99,6 @@ func (r *ExtractorItemRepository) List(ctx context.Context) ([]*repositories.Ext
 	return records, nil
 }
 
-func (r *ExtractorItemRepository) ListActive(ctx context.Context) ([]*repositories.ExtractorItemRecord, error) {
-	var rows []extractorItemRow
-	if err := r.db.WithContext(ctx).Where("status = ?", "active").Order("created_at DESC").Find(&rows).Error; err != nil {
-		return nil, fmt.Errorf("failed to list active extractor items: %w", err)
-	}
-	records := make([]*repositories.ExtractorItemRecord, len(rows))
-	for i := range rows {
-		records[i] = r.rowToRecord(&rows[i])
-	}
-	return records, nil
-}
-
 func (r *ExtractorItemRepository) UpdateStatus(ctx context.Context, id, status, errorMsg string) error {
 	updates := map[string]interface{}{
 		"status":        status,

@@ -150,8 +150,6 @@ type ScanResult struct {
 type AnalyticsRepository interface {
 	Create(ctx context.Context, event *models.AnalyticsEvent) error
 	List(ctx context.Context, filter AnalyticsFilter) ([]*models.AnalyticsEvent, error)
-	GetByMediaID(ctx context.Context, mediaID string) ([]*models.AnalyticsEvent, error)
-	GetByUserID(ctx context.Context, userID string) ([]*models.AnalyticsEvent, error)
 	DeleteOlderThan(ctx context.Context, before string) error
 	DeleteByMediaID(ctx context.Context, mediaID string) error
 	Count(ctx context.Context, filter AnalyticsFilter) (int64, error)
@@ -191,7 +189,6 @@ type PlaylistRepository interface {
 	AddItem(ctx context.Context, item *models.PlaylistItem) error
 	RemoveItem(ctx context.Context, itemID string) error
 	UpdateItem(ctx context.Context, item *models.PlaylistItem) error
-	GetItems(ctx context.Context, playlistID string) ([]*models.PlaylistItem, error)
 }
 
 // UserPreferencesRepository provides user preferences storage
@@ -451,7 +448,6 @@ type ReceiverDuplicateRepository interface {
 	UpdateStatus(ctx context.Context, id, status, resolvedBy string) error
 	UpdateStatusForItem(ctx context.Context, itemID, status, resolvedBy string) error
 	CountPending(ctx context.Context) (int64, error)
-	DeleteForItem(ctx context.Context, itemID string) error
 	// DeleteBySlave removes all duplicate records where either side belongs to slaveID.
 	DeleteBySlave(ctx context.Context, slaveID string) error
 	// DeletePendingBySlave removes only pending duplicate records for slaveID.
@@ -502,7 +498,6 @@ type ExtractorItemRepository interface {
 	Get(ctx context.Context, id string) (*ExtractorItemRecord, error)
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context) ([]*ExtractorItemRecord, error)
-	ListActive(ctx context.Context) ([]*ExtractorItemRecord, error)
 	UpdateStatus(ctx context.Context, id, status, errorMsg string) error
 }
 
