@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 
@@ -24,12 +25,9 @@ var downloaderUserErrors = []error{
 }
 
 func isDownloaderUserError(err error) bool {
-	for _, target := range downloaderUserErrors {
-		if errors.Is(err, target) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(downloaderUserErrors, func(target error) bool {
+		return errors.Is(err, target)
+	})
 }
 
 const (

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1093,12 +1094,9 @@ func (h *Handler) getUserType(cfg *config.Config, user *models.User) *config.Use
 
 // isValidUserType reports whether name matches a configured user type.
 func (h *Handler) isValidUserType(name string) bool {
-	for _, ut := range h.config.Get().Auth.UserTypes {
-		if ut.Name == name {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(h.config.Get().Auth.UserTypes, func(ut config.UserType) bool {
+		return ut.Name == name
+	})
 }
 
 // checkFeatureEnabled checks that a module is non-nil and that a config flag

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -358,12 +359,9 @@ func (m *Module) isMobileDevice(userAgent string) bool {
 		"mobile", "android", "iphone", "ipad", "ipod",
 		"blackberry", "windows phone", "opera mini", "opera mobi",
 	}
-	for _, indicator := range mobileIndicators {
-		if strings.Contains(ua, indicator) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(mobileIndicators, func(indicator string) bool {
+		return strings.Contains(ua, indicator)
+	})
 }
 
 // generateSessionID creates a unique session ID using crypto/rand to avoid collisions.

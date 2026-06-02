@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1411,27 +1412,15 @@ func (f Filter) matchesTags(item *models.MediaItem) bool {
 	}
 	if f.TagsAll {
 		for _, tag := range f.Tags {
-			found := false
-			for _, itemTag := range item.Tags {
-				if tag == itemTag {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !slices.Contains(item.Tags, tag) {
 				return false
 			}
 		}
 		return true
 	}
-	for _, tag := range f.Tags {
-		for _, itemTag := range item.Tags {
-			if tag == itemTag {
-				return true
-			}
-		}
-	}
-	return false
+	return slices.ContainsFunc(f.Tags, func(tag string) bool {
+		return slices.Contains(item.Tags, tag)
+	})
 }
 
 // GetCategories returns all categories
