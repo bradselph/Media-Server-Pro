@@ -42,6 +42,16 @@ const followerForm = reactive({
   slave_name: '',
 })
 
+// Peer connect (pull a remote peer's catalog into this server). The admin
+// pastes the peer's URL + one of the peer's Receiver API keys; this server
+// reaches out to the peer so it starts pushing as a slave.
+const peerForm = reactive({
+  peer_url: '',
+  peer_api_key: '',
+  our_url: '',
+})
+const peerConnecting = ref(false)
+
 function toggleKeyReveal(idx: number) {
   const next = new Set(revealedKeys.value)
   if (next.has(idx)) next.delete(idx); else next.add(idx)
@@ -258,6 +268,34 @@ async function testFollower() {
   }
 }
 
+async function connectPeer() {
+  if (peerConnecting.value) return
+  if (!peerForm.peer_url.trim() || !peerForm.peer_api_key.trim()) {
+    notifyWarning('Enter the peer URL and its Receiver API key first')
+    return
+  }
+  peerConnecting.value = true
+  try {
+    const result = await adminApi.connectPeer(
+      peerForm.peer_url.trim(),
+      peerForm.peer_api_key.trim(),
+      peerForm.our_url.trim() || undefined,
+    )
+    if (destroyed) return
+    notifySuccess(`Peer connected — ${result.peer_url} will push its catalog here`)
+    // Clear the secret; keep the URL visible for reference.
+    peerForm.peer_api_key = ''
+    // A new slave should appear once the peer's follower connects.
+    await loadReceiver()
+  } catch (e: unknown) {
+    if (!destroyed) {
+      notifyError(e, 'Failed to connect peer')
+    }
+  } finally {
+    if (!destroyed) peerConnecting.value = false
+  }
+}
+
 onMounted(async () => {
   await Promise.all([loadReceiver(), loadFollower()])
   // Poll follower status every 10s so the admin sees connect/disconnect
@@ -432,6 +470,65 @@ onMounted(async () => {
             variant="ghost"
             color="neutral"
             @click="copyKey(key)"
+          />
+        </div>
+      </div>
+    </UCard>
+
+    <!-- Connect a peer (pull its library into this server) -->
+    <UCard v-if="receiverSettings">
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="i-lucide-plug-zap" class="size-4" />
+          <span class="font-semibold">Connect a Peer</span>
+        </div>
+      </template>
+      <p class="text-xs text-muted mb-3">
+        Pull another Media Server Pro instance's library into this server. Paste the peer's URL
+        and one of <em>its</em> Receiver API keys — this server reaches out so the peer starts
+        pushing its catalog here as a slave. No need to log into the peer's admin panel.
+      </p>
+      <div
+        v-if="receiverSettings.api_keys.length === 0"
+        class="text-xs text-warning bg-warning/10 rounded px-3 py-2 mb-3"
+      >
+        This server has no Receiver API keys configured, so a peer can't push to it.
+        Set <code>RECEIVER_API_KEYS</code> and restart before connecting a peer.
+      </div>
+      <div class="space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <UFormField label="Peer URL" hint="https://peer-vps.example.com">
+            <UInput
+              v-model="peerForm.peer_url"
+              placeholder="https://peer-vps.example.com"
+              autocomplete="off"
+            />
+          </UFormField>
+          <UFormField label="Peer Receiver API Key" hint="From the peer's admin → Receiver settings">
+            <UInput
+              v-model="peerForm.peer_api_key"
+              type="password"
+              placeholder="paste the peer's receiver key"
+              autocomplete="new-password"
+            />
+          </UFormField>
+          <UFormField label="Our URL" hint="Optional — leave blank to auto-detect" class="sm:col-span-2">
+            <UInput
+              v-model="peerForm.our_url"
+              placeholder="auto (this server's public URL)"
+              autocomplete="off"
+            />
+          </UFormField>
+        </div>
+        <div class="flex items-center gap-3">
+          <UButton
+            label="Connect Peer"
+            icon="i-lucide-plug-zap"
+            size="sm"
+            color="primary"
+            :loading="peerConnecting"
+            :disabled="receiverSettings.api_keys.length === 0"
+            @click="connectPeer"
           />
         </div>
       </div>

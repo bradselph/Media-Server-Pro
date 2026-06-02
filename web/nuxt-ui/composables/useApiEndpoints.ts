@@ -746,6 +746,18 @@ export function useAdminApi() {
         scanDuplicates: () =>
             api.post<{ message: string }>(`${base}/duplicates/scan`, {}),
 
+        // Peer connect — tell a remote peer to push its catalog to this server
+        // (the receiver-side complement to follower pairing). Admin supplies the
+        // peer's URL + one of the peer's Receiver API keys; this server reaches
+        // out to the peer's /api/receiver/pair so neither admin has to log into
+        // both servers. our_url is optional (derived from the request if blank).
+        connectPeer: (peerUrl: string, peerApiKey: string, ourUrl?: string) =>
+            api.post<{ paired: boolean; peer_url: string; our_url: string }>(`${base}/peer/connect`, {
+                peer_url: peerUrl,
+                peer_api_key: peerApiKey,
+                ...(ourUrl ? { our_url: ourUrl } : {}),
+            }),
+
         // Follower (this server pairing as a slave to another master)
         getFollowerSettings: () => api.get<FollowerSettings>(`${base}/follower/settings`),
         updateFollowerSettings: (body: FollowerSettingsUpdate) =>
