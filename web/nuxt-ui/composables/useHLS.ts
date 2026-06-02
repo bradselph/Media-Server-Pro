@@ -70,6 +70,29 @@ function getSavedQualityPref(): number {
     }
 }
 
+/**
+ * Parse a default_quality preference string ('auto' | '1080p' | '720p' | …)
+ * into a target height in pixels. Returns 0 for auto/unspecified/unparseable.
+ */
+function parseQualityPref(pref: string | null | undefined): number {
+    if (!pref || pref === 'auto') return 0
+    const n = Number.parseInt(pref, 10) // '1080p' -> 1080
+    return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+/**
+ * Pick the quality level matching the requested height, falling back to the
+ * highest level at or below it (so a 720p preference still resolves on a
+ * 1080p/480p ladder). Returns undefined when nothing is at or below.
+ */
+function pickQualityAtOrBelow(levels: HLSQuality[], height: number): HLSQuality | undefined {
+    const exact = levels.find(l => l.height === height)
+    if (exact) return exact
+    return levels
+        .filter(l => l.height <= height)
+        .sort((a, b) => b.height - a.height)[0]
+}
+
 function saveQualityPref(height: number): void {
     try {
         localStorage.setItem(QUALITY_PREF_KEY, String(height))
@@ -81,6 +104,7 @@ function saveQualityPref(height: number): void {
 export function useHLS(
     videoRef: Ref<HTMLVideoElement | null>,
     mediaId: Ref<string>,
+    opts?: { defaultQuality?: () => string | null | undefined },
 ): UseHLSReturn {
     const hlsApi = useHlsApi()
     const settingsApi = useSettingsApi()
@@ -233,10 +257,21 @@ export function useHLS(
             qualities.value = q
             hlsLoading.value = false
 
-            // Restore saved quality preference
+            // Restore saved quality preference. Per-device localStorage takes
+            // precedence (an explicit in-player pick should stick on this
+            // device); otherwise fall back to the user's account default_quality.
             const savedHeight = getSavedQualityPref()
             if (savedHeight > 0) {
                 const match = q.find(level => level.height === savedHeight)
+                if (match) {
+                    hls.currentLevel = match.index
+                    currentQuality.value = match.index
+                    return
+                }
+            }
+            const prefHeight = parseQualityPref(opts?.defaultQuality?.())
+            if (prefHeight > 0) {
+                const match = pickQualityAtOrBelow(q, prefHeight)
                 if (match) {
                     hls.currentLevel = match.index
                     currentQuality.value = match.index
