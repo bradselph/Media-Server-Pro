@@ -148,9 +148,6 @@ const (
 	EventPlaylistUpdate           = "playlist_update"
 	EventPlaylistImport           = "playlist_import"
 	EventReceiverDuplicateResolve = "receiver_duplicate_resolve"
-	EventClaudeApprovalAct        = "claude_approval_act"
-	EventClaudeConfigUpdate       = "claude_config_update"
-	EventClaudePromptSend         = "claude_prompt_send"
 	EventUpdaterApply             = "updater_apply"
 	EventUpdaterConfigUpdate      = "updater_config_update"
 

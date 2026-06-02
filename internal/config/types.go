@@ -32,7 +32,6 @@ type Config struct {
 	UI            UIConfig            `json:"ui"`
 	Downloader    DownloaderConfig    `json:"downloader"`
 	Storage       StorageConfig       `json:"storage"`
-	Claude        ClaudeConfig        `json:"claude"`
 	Tasks         TasksConfig         `json:"tasks"`
 
 	// EnvSeedMigrated guards the one-shot transition to "config.json is
@@ -559,7 +558,6 @@ type FeaturesConfig struct {
 	EnableDuplicateDetection bool `json:"enable_duplicate_detection"`
 	EnableHuggingFace        bool `json:"enable_huggingface"`
 	EnableDownloader         bool `json:"enable_downloader"`
-	EnableClaude             bool `json:"enable_claude"`
 }
 
 // DatabaseConfig holds database connection settings

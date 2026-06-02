@@ -187,7 +187,6 @@ func (m *Manager) syncFeatureToggles() {
 	syncToggle(f.EnableUserAuth, &cfg.Auth.Enabled)
 	syncToggle(f.EnableAdminPanel, &cfg.Admin.Enabled)
 	syncToggle(f.EnableDownloader, &cfg.Downloader.Enabled)
-	syncToggle(f.EnableClaude, &cfg.Claude.Enabled)
 }
 
 // migrateHLSQualityEnabled sets Enabled=true for HLS quality profiles that

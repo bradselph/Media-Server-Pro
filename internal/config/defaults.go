@@ -45,23 +45,6 @@ func DefaultConfig() *Config {
 		UI:            UIConfig{ItemsPerPage: 48, MobileItemsPerPage: 24, MobileGridColumns: 2, FeedMaxItems: 50, FeedDefaultItems: 20},
 		Downloader:    defaultDownloaderConfig(),
 		Storage:       StorageConfig{Backend: "local"},
-		Claude:        defaultClaudeConfig(),
-	}
-}
-
-func defaultClaudeConfig() ClaudeConfig {
-	return ClaudeConfig{
-		Enabled:                 false,
-		BinaryPath:              "",
-		Workdir:                 "",
-		Model:                   "claude-sonnet-4-6",
-		Mode:                    "autonomous",
-		MaxTokens:               4096,
-		MaxToolCallsPerTurn:     32,
-		RequireConfirmForWrites: false,
-		RateLimitPerMinute:      30,
-		RequestTimeout:          600 * time.Second,
-		HistoryRetentionDays:    30,
 	}
 }
 
@@ -339,7 +322,6 @@ func defaultFeaturesConfig() FeaturesConfig {
 		EnableDuplicateDetection: true,
 		EnableHuggingFace:        false,
 		EnableDownloader:         false,
-		EnableClaude:             false,
 	}
 }
 

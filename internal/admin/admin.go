@@ -405,7 +405,6 @@ func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]any {
 		"enable_crawler":             cfg.Features.EnableCrawler,
 		"enable_duplicate_detection": cfg.Features.EnableDuplicateDetection,
 		"enable_downloader":          cfg.Features.EnableDownloader,
-		"enable_claude":              cfg.Features.EnableClaude,
 		"enable_user_auth":           cfg.Features.EnableUserAuth,
 		"enable_admin_panel":         cfg.Features.EnableAdminPanel,
 	}
@@ -717,25 +716,6 @@ func buildConfigExtractorMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigClaudeMap(cfg *config.Config, _ []string) map[string]any {
-	c := cfg.Claude
-	return map[string]any{
-		"enabled":                    c.Enabled,
-		"binary_path":                c.BinaryPath,
-		"workdir":                    c.Workdir,
-		"model":                      c.Model,
-		"mode":                       c.Mode,
-		"max_tokens":                 c.MaxTokens,
-		"system_prompt":              c.SystemPrompt,
-		"require_confirm_for_writes": c.RequireConfirmForWrites,
-		"max_tool_calls_per_turn":    c.MaxToolCallsPerTurn,
-		"rate_limit_per_minute":      c.RateLimitPerMinute,
-		"kill_switch":                c.KillSwitch,
-		"request_timeout":            c.RequestTimeout,
-		"history_retention_days":     c.HistoryRetentionDays,
-	}
-}
-
 // GetConfigMap returns config as a map for JSON serialization.
 //
 // The Follower and Receiver sections are intentionally excluded: they carry
@@ -774,7 +754,6 @@ func (m *Module) GetConfigMap() map[string]any {
 		{"remote_media", buildConfigRemoteMediaMap},
 		{"crawler", buildConfigCrawlerMap},
 		{"extractor", buildConfigExtractorMap},
-		{"claude", buildConfigClaudeMap},
 		{"directories", buildConfigDirectoriesMap},
 	}
 	out := make(map[string]any, len(sections))

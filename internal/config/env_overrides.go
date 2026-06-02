@@ -54,5 +54,4 @@ func (m *Manager) applyTunableEnvOverrides() {
 	m.applyAgeGateEnvOverrides()
 	m.applyDownloaderEnvOverrides()
 	m.applyUIEnvOverrides()
-	m.applyClaudeEnvOverrides()
 }

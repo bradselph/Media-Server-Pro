@@ -20,7 +20,6 @@ const AdminSourcesTab     = defineAsyncComponent(() => import('~/components/admi
 const AdminDiscoveryTab   = defineAsyncComponent(() => import('~/components/admin/DiscoveryTab.vue'))
 const AdminDuplicatesTab  = defineAsyncComponent(() => import('~/components/admin/DuplicatesTab.vue'))
 const AdminCollectionsTab = defineAsyncComponent(() => import('~/components/admin/CollectionsTab.vue'))
-const AdminClaudeTab      = defineAsyncComponent(() => import('~/components/admin/ClaudeTab.vue'))
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -42,7 +41,6 @@ const TABS = [
   { label: 'Discovery', value: 'discovery', icon: 'i-lucide-compass' },
   { label: 'Duplicates', value: 'duplicates', icon: 'i-lucide-copy-x' },
   { label: 'Collections', value: 'collections', icon: 'i-lucide-layers' },
-  { label: 'Claude', value: 'claude', icon: 'i-lucide-brain' },
 ]
 
 const VALID = TABS.map(t => t.value)
@@ -126,7 +124,6 @@ watch(activeTab, tab => {
           <AdminDiscoveryTab v-else-if="activeTab === 'discovery'" />
           <AdminDuplicatesTab v-else-if="activeTab === 'duplicates'" />
           <AdminCollectionsTab v-else-if="activeTab === 'collections'" />
-          <AdminClaudeTab v-else-if="activeTab === 'claude'" />
         </div>
       </div>
     </div>

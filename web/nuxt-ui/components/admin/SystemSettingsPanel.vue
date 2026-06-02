@@ -8,7 +8,7 @@ const { notifyError, notifySuccess } = useAdminFeedback()
 // Adding a new section here (and in Go) keeps both sides in sync.
 type ConfigSection =
   | 'admin' | 'age_gate' | 'analytics' | 'auth' | 'backup'
-  | 'claude' | 'cookie_consent' | 'crawler' | 'database' | 'directories'
+  | 'cookie_consent' | 'crawler' | 'database' | 'directories'
   | 'download' | 'downloader' | 'extractor' | 'features' | 'hls'
   | 'huggingface' | 'logging' | 'mature_scanner' | 'receiver'
   | 'remote_media' | 'security' | 'server' | 'storage' | 'streaming'
@@ -245,10 +245,6 @@ onMounted(loadConfig)
             <div class="flex items-center justify-between">
               <span class="text-sm">Downloader</span>
               <USwitch :model-value="get('features', 'enable_downloader')" @update:model-value="set('features', 'enable_downloader', $event)" />
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Claude Code</span>
-              <USwitch :model-value="get('features', 'enable_claude')" @update:model-value="set('features', 'enable_claude', $event)" />
             </div>
           </div>
           <p class="text-xs text-neutral-500 mt-3">Some toggles require a server restart to take effect.</p>
