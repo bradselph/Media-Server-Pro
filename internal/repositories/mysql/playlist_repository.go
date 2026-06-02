@@ -224,13 +224,3 @@ func (r *PlaylistRepository) UpdateItem(ctx context.Context, item *models.Playli
 	}
 	return nil
 }
-
-// GetItems retrieves all items for a playlist
-func (r *PlaylistRepository) GetItems(ctx context.Context, playlistID string) ([]*models.PlaylistItem, error) {
-	var items []*models.PlaylistItem
-	err := r.db.WithContext(ctx).
-		Where(sqlPlaylistIDEq, playlistID).
-		Order(sqlOrderPositionAsc).
-		Find(&items).Error
-	return items, err
-}

@@ -75,30 +75,8 @@ func (r *AnalyticsRepository) List(ctx context.Context, filter repositories.Anal
 	return events, nil
 }
 
-// defaultAnalyticsQueryLimit caps GetByMediaID/GetByUserID result size to avoid unbounded queries.
+// defaultAnalyticsQueryLimit caps analytics List result size to avoid unbounded queries.
 const defaultAnalyticsQueryLimit = 10000
-
-// GetByMediaID retrieves events for a specific media item (capped by defaultAnalyticsQueryLimit).
-func (r *AnalyticsRepository) GetByMediaID(ctx context.Context, mediaID string) ([]*models.AnalyticsEvent, error) {
-	var events []*models.AnalyticsEvent
-	err := r.db.WithContext(ctx).
-		Where("media_id = ?", mediaID).
-		Order(sqlOrderTimestampDesc).
-		Limit(defaultAnalyticsQueryLimit).
-		Find(&events).Error
-	return events, err
-}
-
-// GetByUserID retrieves events for a specific user (capped by defaultAnalyticsQueryLimit).
-func (r *AnalyticsRepository) GetByUserID(ctx context.Context, userID string) ([]*models.AnalyticsEvent, error) {
-	var events []*models.AnalyticsEvent
-	err := r.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order(sqlOrderTimestampDesc).
-		Limit(defaultAnalyticsQueryLimit).
-		Find(&events).Error
-	return events, err
-}
 
 // DeleteOlderThan deletes events older than the specified timestamp
 func (r *AnalyticsRepository) DeleteOlderThan(ctx context.Context, before string) error {
