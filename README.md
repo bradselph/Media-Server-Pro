@@ -23,7 +23,7 @@ Two Media Server Pro instances can federate: enter a peer's URL + receiver API k
 - Mature-content age gate with cookie/IP TTL.
 
 **Admin surface**
-- Full admin UI: users, media library, scanner, classifier, HLS jobs, thumbnails, validator, suggestions, playlists, sources, security, audit log, backups, updates, system config, analytics, and the optional Claude assistant module.
+- Full admin UI: users, media library, scanner, classifier, HLS jobs, thumbnails, validator, suggestions, playlists, sources, security, audit log, backups, updates, system config, and analytics.
 - Live config reload — most security and feature settings flip without a server restart.
 - Hot-reloadable rate limits, CORS origins, security headers, trusted-proxy CIDRs.
 - Built-in backup/restore with pre-upgrade DB snapshots taken on deploy.
@@ -36,7 +36,6 @@ Two Media Server Pro instances can federate: enter a peer's URL + receiver API k
 **Optional integrations**
 - S3-compatible object storage (MinIO, Backblaze B2 verified) with presigned URLs for ffmpeg.
 - Hugging Face visual classifier for mature-content tagging.
-- Claude assistant (admin-only) with three modes: advisory, interactive, autonomous.
 - Standalone media downloader integration (proxy to a separate downloader service).
 - Extractor module (HLS proxy for external video URLs).
 
@@ -158,7 +157,6 @@ For VPS deploys the `.env` file in the deploy directory is loaded at startup. **
 | `RECEIVER_ENABLED` / `RECEIVER_API_KEYS` | off | Accept federated peers (slave catalog ingest) |
 | `FOLLOWER_MASTER_URL` / `FOLLOWER_API_KEY` | off | This server pushes its catalog to a peer |
 | `FEATURE_HUGGINGFACE` / `HUGGINGFACE_API_KEY` | off | Visual mature-content classifier |
-| `FEATURE_CLAUDE` / `ANTHROPIC_API_KEY` / `CLAUDE_MODE` | off | Admin-only Claude assistant |
 | `STORAGE_BACKEND` (`local`/`s3`) + `S3_ENDPOINT` / `S3_BUCKET` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | `local` | Object-storage backend |
 | `HSTS_ENABLED`, `CSP_ENABLED` | mixed | HTTP security headers |
 | `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS` | off, 1000/60s | Per-IP rate limit |
@@ -209,7 +207,6 @@ internal/
   crawler/             # external library discovery
   scanner/             # local-disk media discovery
   classify/            # mature-content tagging
-  claude/              # admin Claude assistant module
   ...
 pkg/
   models/              # domain types

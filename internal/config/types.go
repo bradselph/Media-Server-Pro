@@ -63,67 +63,6 @@ type TaskOverride struct {
 	ScheduleSecs *int  `json:"schedule_secs,omitempty"`
 }
 
-// ClaudeConfig holds settings for the Claude Code–powered admin assistant.
-//
-// The module shells out to the `claude` CLI installed on the host, which
-// provides the tool layer (Read/Edit/Bash/etc.) and manages its own session
-// state and OAuth credentials (~/.claude/.credentials.json, established via a
-// one-time `claude login` on the VPS). Raw API keys are NOT stored in config;
-// if ANTHROPIC_API_KEY is present in the process environment the CLI picks it
-// up automatically as a fallback.
-type ClaudeConfig struct {
-	Enabled bool `json:"enabled"`
-
-	// BinaryPath is the absolute path to the `claude` executable. Empty means
-	// resolve via $PATH.
-	BinaryPath string `json:"binary_path"`
-
-	// Workdir is the working directory the CLI is invoked from (the repo root
-	// it operates on). Empty means inherit the server process cwd.
-	Workdir string `json:"workdir"`
-
-	// Model selects the Claude model (e.g. "claude-opus-4-7",
-	// "claude-sonnet-4-6", "claude-haiku-4-5-20251001"). Defaults to
-	// the latest Sonnet when empty.
-	Model string `json:"model"`
-
-	// Mode controls execution behavior: "advisory" (plan mode, no writes),
-	// "interactive" (tools require approval — currently falls back to
-	// autonomous until the approval bridge is wired), or "autonomous"
-	// (bypassPermissions, full access).
-	Mode string `json:"mode"`
-
-	// MaxTokens caps output tokens per turn.
-	MaxTokens int `json:"max_tokens"`
-
-	// SystemPrompt is appended to the built-in operational system prompt via
-	// --append-system-prompt.
-	SystemPrompt string `json:"system_prompt"`
-
-	// RequireConfirmForWrites, when true, forces every chat turn into
-	// advisory (read-only) mode regardless of the per-turn or default mode
-	// — Edit/Write/Bash are refused by the CLI, Read/Grep/Glob still work.
-	// Applied in claude.Module.ChatTurn before the mode reaches the CLI.
-	RequireConfirmForWrites bool `json:"require_confirm_for_writes"`
-
-	// MaxToolCallsPerTurn caps how many tools Claude can invoke before the
-	// server forces a stop. Maps to --max-turns.
-	MaxToolCallsPerTurn int `json:"max_tool_calls_per_turn"`
-
-	// RateLimitPerMinute limits how many chat turns any admin can send; 0 = no limit.
-	RateLimitPerMinute int `json:"rate_limit_per_minute"`
-
-	// KillSwitch disables all chat + tool execution when true, regardless of Enabled.
-	KillSwitch bool `json:"kill_switch"`
-
-	// RequestTimeout bounds each CLI invocation. Default 600s (autonomous runs
-	// can take minutes).
-	RequestTimeout time.Duration `json:"request_timeout"`
-
-	// HistoryRetentionDays prunes conversations older than this. 0 = keep forever.
-	HistoryRetentionDays int `json:"history_retention_days"`
-}
-
 // StorageConfig selects and configures the file storage backend.
 type StorageConfig struct {
 	// Backend selects the storage backend: "local" (default) or "s3".

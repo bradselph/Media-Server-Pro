@@ -28,7 +28,7 @@
 # Sensitivity (KNOB_SENSITIVE=true) only affects display in the
 # prompter — values are still stored verbatim in .deploy.env. The
 # deploy machine is the trust boundary; rotate via the upstream
-# provider (GitHub PAT, Hugging Face, Anthropic, etc.) if .deploy.env
+# provider (GitHub PAT, Hugging Face, etc.) if .deploy.env
 # leaks.
 #
 # Sections are display-only — they group prompts in the interactive
@@ -104,11 +104,6 @@ KNOB_ORDER=(
   HIDRIVE_REMOTE_PATH
   HIDRIVE_LIBRARY_SUBDIR
   HIDRIVE_READONLY
-  # ── Claude assistant (admin-only) ────────────────────────────────
-  FEATURE_CLAUDE
-  ANTHROPIC_API_KEY
-  CLAUDE_MODEL
-  CLAUDE_MODE
   # ── Database ─────────────────────────────────────────────────────
   DATABASE_HOST
   DATABASE_PORT
@@ -431,28 +426,6 @@ KNOB_DESCRIPTION[HIDRIVE_READONLY]="Mount HiDrive read-only (true | false). true
 KNOB_DEFAULT[HIDRIVE_READONLY]="true"
 KNOB_SCOPE[HIDRIVE_READONLY]="vps"
 KNOB_SECTION[HIDRIVE_READONLY]="HiDrive mount"
-
-# ── Claude assistant (admin-only) ────────────────────────────────────
-KNOB_DESCRIPTION[FEATURE_CLAUDE]="Enable the Claude admin assistant module (true | false). Admin-only."
-KNOB_DEFAULT[FEATURE_CLAUDE]="false"
-KNOB_SCOPE[FEATURE_CLAUDE]="runtime"
-KNOB_SECTION[FEATURE_CLAUDE]="Claude assistant"
-
-KNOB_DESCRIPTION[ANTHROPIC_API_KEY]="Anthropic API key (sk-ant-...). Optional when the host's claude CLI is logged in."
-KNOB_DEFAULT[ANTHROPIC_API_KEY]=""
-KNOB_SCOPE[ANTHROPIC_API_KEY]="runtime"
-KNOB_SECTION[ANTHROPIC_API_KEY]="Claude assistant"
-KNOB_SENSITIVE[ANTHROPIC_API_KEY]="true"
-
-KNOB_DESCRIPTION[CLAUDE_MODEL]="Anthropic model id used by the admin assistant."
-KNOB_DEFAULT[CLAUDE_MODEL]="claude-sonnet-4-6"
-KNOB_SCOPE[CLAUDE_MODEL]="runtime"
-KNOB_SECTION[CLAUDE_MODEL]="Claude assistant"
-
-KNOB_DESCRIPTION[CLAUDE_MODE]="advisory | interactive | autonomous."
-KNOB_DEFAULT[CLAUDE_MODE]="autonomous"
-KNOB_SCOPE[CLAUDE_MODE]="runtime"
-KNOB_SECTION[CLAUDE_MODE]="Claude assistant"
 
 # ── Database ─────────────────────────────────────────────────────────
 KNOB_DESCRIPTION[DATABASE_HOST]="MariaDB/MySQL host."

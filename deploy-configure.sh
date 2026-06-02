@@ -13,7 +13,7 @@
 #                                          # use when re-auditing config)
 #   ./deploy-configure.sh --only KEY       # prompt one specific knob
 #   ./deploy-configure.sh --set KEY=VAL    # set one knob without prompt
-#                                          # (e.g. --set FEATURE_CLAUDE=true).
+#                                          # (e.g. --set FEATURE_DOWNLOADER=true).
 #                                          # Repeatable; KEY must be in
 #                                          # the registry; VAL may be empty.
 #   ./deploy-configure.sh --list           # list every knob with
