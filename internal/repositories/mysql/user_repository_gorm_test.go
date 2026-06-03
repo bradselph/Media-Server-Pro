@@ -7,12 +7,11 @@ import (
 )
 
 func TestNewUserRepository_ReturnsInterface(t *testing.T) {
-	repo := NewUserRepository(nil)
+	// The explicit interface type makes "constructor returns the interface" a
+	// compile-time guarantee (a runtime type assertion would be tautological).
+	var repo repositories.UserRepository = NewUserRepository(nil)
 	if repo == nil {
 		t.Fatal("NewUserRepository(nil) returned nil")
-	}
-	if _, ok := repo.(repositories.UserRepository); !ok {
-		t.Fatal("NewUserRepository does not implement repositories.UserRepository")
 	}
 }
 
