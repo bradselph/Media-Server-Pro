@@ -3,12 +3,18 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/analytics"
 )
+
+// sensitiveConfigKeywords are substrings whose presence in a config key marks
+// its value for redaction in the audit log. Package-level so the recursive
+// redactor does not reallocate it per call.
+var sensitiveConfigKeywords = []string{"password", "token", "api_key", "secret", "deploy_key"}
 
 // redactSensitiveConfigKeys returns a copy of m with sensitive values replaced by "[REDACTED]".
 // Prevents database credentials, API keys, tokens, etc. from being stored in the audit log.
@@ -19,9 +25,9 @@ func redactSensitiveConfigKeys(m map[string]any) map[string]any {
 	redacted := make(map[string]any, len(m))
 	for k, v := range m {
 		keyLower := strings.ToLower(k)
-		if strings.Contains(keyLower, "password") || strings.Contains(keyLower, "token") ||
-			strings.Contains(keyLower, "api_key") || strings.Contains(keyLower, "secret") ||
-			strings.Contains(keyLower, "deploy_key") {
+		if slices.ContainsFunc(sensitiveConfigKeywords, func(kw string) bool {
+			return strings.Contains(keyLower, kw)
+		}) {
 			redacted[k] = "[REDACTED]"
 			continue
 		}

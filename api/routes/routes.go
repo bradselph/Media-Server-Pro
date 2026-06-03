@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/gin-contrib/gzip"
@@ -43,10 +44,10 @@ func ginAnalyticsErrorTracker(analyticsMod *analytics.Module) gin.HandlerFunc {
 			return
 		}
 		path := c.Request.URL.Path
-		for _, p := range skipPrefixes {
-			if strings.HasPrefix(path, p) {
-				return
-			}
+		if slices.ContainsFunc(skipPrefixes, func(p string) bool {
+			return strings.HasPrefix(path, p)
+		}) {
+			return
 		}
 		userID, sessionID := "", ""
 		if v, ok := c.Get("session"); ok {
