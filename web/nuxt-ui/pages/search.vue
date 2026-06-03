@@ -25,16 +25,41 @@ const loading = ref(false)
 const error = ref('')
 const localQuery = ref(query.value)
 const lastFetchedFor = ref<string | null>(null)
+const PAGE_SIZE = 60
+const total = ref(0)
+const page = ref(1)
+const loadingMore = ref(false)
+const hasMore = computed(() => items.value.length < total.value)
 
 // Request token discards stale results when the user types again before the
 // previous /api/media response lands — the equivalent of an abort without
 // plumbing AbortController through the api wrapper.
 let searchToken = 0
 
+// Watched marker — best-effort batch fetch of playback positions for the given
+// items so we can render the "Watched" badge / progress bar. Merges into the
+// existing map so appended pages keep earlier results' progress.
+async function loadPositions(list: MediaItem[], token: number) {
+  if (!authStore.isLoggedIn || list.length === 0) return
+  try {
+    const r = await playbackApi.getBatchPositions(list.map(i => i.id))
+    if (token !== searchToken) return
+    const positions = r?.positions ?? {}
+    const next: Record<string, number> = { ...playbackProgress.value }
+    for (const item of list) {
+      const pos = positions[item.id]
+      if (pos && item.duration > 0) next[item.id] = pos / item.duration
+    }
+    playbackProgress.value = next
+  } catch { /* non-critical */ }
+}
+
 async function runSearch(q: string) {
   const token = ++searchToken
   if (!q) {
     items.value = []
+    total.value = 0
+    page.value = 1
     lastFetchedFor.value = ''
     error.value = ''
     loading.value = false
@@ -43,35 +68,41 @@ async function runSearch(q: string) {
   loading.value = true
   error.value = ''
   try {
-    const res = await mediaApi.list({ search: q, limit: 60 })
+    const res = await mediaApi.list({ search: q, limit: PAGE_SIZE })
     if (token !== searchToken) return // stale — newer query already in flight
     items.value = res?.items ?? []
+    total.value = res?.total_items ?? items.value.length
+    page.value = 1
     lastFetchedFor.value = q
     pushRecent(q)
-    // Watched marker — best-effort batch fetch of playback positions for the
-    // visible items so we can render the "Watched" badge / progress bar.
-    if (authStore.isLoggedIn && items.value.length > 0) {
-      const ids = items.value.map(i => i.id)
-      try {
-        const r = await playbackApi.getBatchPositions(ids)
-        if (token !== searchToken) return
-        const positions = r?.positions ?? {}
-        const next: Record<string, number> = {}
-        for (const item of items.value) {
-          const pos = positions[item.id]
-          if (pos && item.duration > 0) next[item.id] = pos / item.duration
-        }
-        playbackProgress.value = next
-      } catch { /* non-critical */ }
-    } else {
-      playbackProgress.value = {}
-    }
+    playbackProgress.value = {}
+    await loadPositions(items.value, token)
   } catch (e: unknown) {
     if (token !== searchToken) return
     error.value = e instanceof Error ? e.message : 'Search failed'
     items.value = []
+    total.value = 0
   } finally {
     if (token === searchToken) loading.value = false
+  }
+}
+
+// Append the next page of results for the current query.
+async function loadMore() {
+  const q = lastFetchedFor.value
+  if (!q || loadingMore.value || !hasMore.value) return
+  const token = searchToken
+  loadingMore.value = true
+  try {
+    const res = await mediaApi.list({ search: q, limit: PAGE_SIZE, page: page.value + 1 })
+    if (token !== searchToken) return // a newer search superseded this load
+    const more = res?.items ?? []
+    items.value = [...items.value, ...more]
+    total.value = res?.total_items ?? total.value
+    page.value += 1
+    await loadPositions(more, token)
+  } catch { /* non-critical — leave existing results in place */ } finally {
+    loadingMore.value = false
   }
 }
 
@@ -331,7 +362,7 @@ async function saveCurrentSearch() {
     <!-- Result grid -->
     <div v-else class="space-y-3">
       <p class="text-xs text-muted">
-        {{ items.length }} result{{ items.length === 1 ? '' : 's' }} for
+        Showing {{ items.length }} of {{ total }} result{{ total === 1 ? '' : 's' }} for
         <em class="text-default">{{ query }}</em>
       </p>
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -395,6 +426,16 @@ async function saveCurrentSearch() {
             <span v-if="item.size"> · {{ formatBytes(item.size) }}</span>
           </p>
         </component>
+      </div>
+      <div v-if="hasMore" class="flex justify-center pt-2">
+        <UButton
+          :loading="loadingMore"
+          color="neutral"
+          variant="soft"
+          icon="i-lucide-chevron-down"
+          :label="loadingMore ? 'Loading…' : `Load more (${total - items.length} remaining)`"
+          @click="loadMore"
+        />
       </div>
     </div>
   </UContainer>
