@@ -1151,6 +1151,27 @@ func (m *Module) parsedTrustedCIDRs() []*net.IPNet {
 	return m.cidrParsed
 }
 
+// isTrustedProxyIP reports whether ip falls within a known reverse-proxy range:
+// the hardcoded private/loopback ranges (privateCIDRs) or any admin-configured
+// extra CIDRs. A nil ip is never trusted. privateCIDRs is checked first to match
+// the original inline ordering.
+func isTrustedProxyIP(ip net.IP, extraTrusted []*net.IPNet) bool {
+	if ip == nil {
+		return false
+	}
+	for _, ipNet := range privateCIDRs {
+		if ipNet.Contains(ip) {
+			return true
+		}
+	}
+	for _, ipNet := range extraTrusted {
+		if ipNet.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 // getClientIP extracts the real client IP, trusting X-Forwarded-For only from private network
 // proxies (RFC-1918 + loopback) and any additional CIDRs in extraTrusted.
 // Validates the extracted IP to ensure it's well-formed.
@@ -1161,24 +1182,7 @@ func getClientIP(r *http.Request, extraTrusted []*net.IPNet) string {
 	}
 
 	// Only trust forwarded headers from private network ranges (reverse proxies)
-	ip := net.ParseIP(remoteIP)
-	trusted := false
-	if ip != nil {
-		for _, ipNet := range privateCIDRs {
-			if ipNet.Contains(ip) {
-				trusted = true
-				break
-			}
-		}
-		if !trusted {
-			for _, ipNet := range extraTrusted {
-				if ipNet.Contains(ip) {
-					trusted = true
-					break
-				}
-			}
-		}
-	}
+	trusted := isTrustedProxyIP(net.ParseIP(remoteIP), extraTrusted)
 
 	if trusted {
 		// Walk X-Forwarded-For right-to-left, skipping entries that are themselves
@@ -1193,23 +1197,8 @@ func getClientIP(r *http.Request, extraTrusted []*net.IPNet) string {
 				if parsedIP == nil {
 					continue
 				}
-				// Check if this entry is itself a trusted proxy
-				isTrustedEntry := false
-				for _, ipNet := range privateCIDRs {
-					if ipNet.Contains(parsedIP) {
-						isTrustedEntry = true
-						break
-					}
-				}
-				if !isTrustedEntry {
-					for _, ipNet := range extraTrusted {
-						if ipNet.Contains(parsedIP) {
-							isTrustedEntry = true
-							break
-						}
-					}
-				}
-				if !isTrustedEntry {
+				// The first XFF entry that is not itself a trusted proxy is the client.
+				if !isTrustedProxyIP(parsedIP, extraTrusted) {
 					return candidate
 				}
 			}
