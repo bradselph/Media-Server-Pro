@@ -14,7 +14,7 @@ const props = defineProps<{
   isPiP: boolean
   pipSupported: boolean
   isTheater: boolean
-  qualities: Array<{ name: string; index: number }>
+  qualities: Array<{ name: string; index: number; bitrate?: number; codec?: string }>
   currentQuality: number
   thumbnailPreviews: string[]
   showControls: boolean
@@ -62,9 +62,29 @@ const seekBarPreviewUrl = computed(() => {
   return props.thumbnailPreviews[idx] ?? null
 })
 
+// Map an HLS videoCodec id (e.g. 'avc1.64001f') to a friendly name; '' when unknown.
+function friendlyCodec(codec?: string): string {
+  if (!codec) return ''
+  if (codec.startsWith('avc1') || codec.startsWith('h264')) return 'H.264'
+  if (codec.startsWith('hvc1') || codec.startsWith('hev1') || codec.startsWith('h265')) return 'H.265'
+  if (codec.startsWith('av01')) return 'AV1'
+  if (codec.startsWith('vp09') || codec.startsWith('vp9')) return 'VP9'
+  if (codec.startsWith('vp08') || codec.startsWith('vp8')) return 'VP8'
+  return ''
+}
+
+// Dropdown label: "1080p · 8.0 Mbps · H.264" (bitrate/codec appended when known).
+function formatQualityLabel(q: { name: string; bitrate?: number; codec?: string }): string {
+  const parts = [q.name]
+  if (q.bitrate && q.bitrate > 0) parts.push(`${(q.bitrate / 1e6).toFixed(1)} Mbps`)
+  const codec = friendlyCodec(q.codec)
+  if (codec) parts.push(codec)
+  return parts.join(' · ')
+}
+
 const qualityMenuItems = computed(() => [[
   { label: 'Auto', click: () => emit('quality-select', -1) },
-  ...props.qualities.map(q => ({ label: q.name, click: () => emit('quality-select', q.index) })),
+  ...props.qualities.map(q => ({ label: formatQualityLabel(q), click: () => emit('quality-select', q.index) })),
 ]])
 
 const chapterMenuItems = computed(() => [[
@@ -273,8 +293,8 @@ function copyLinkAtTime() {
         @click="emit('cycle-speed')"
       />
 
-      <!-- Quality selector (HLS only) — desktop only -->
-      <UDropdownMenu v-if="qualities.length > 0" :items="qualityMenuItems" class="max-md:hidden">
+      <!-- Quality selector (HLS only) — all screen sizes (bandwidth matters most on mobile) -->
+      <UDropdownMenu v-if="qualities.length > 0" :items="qualityMenuItems">
         <UButton
           :label="currentQualityLabel"
           icon="i-lucide-layers"

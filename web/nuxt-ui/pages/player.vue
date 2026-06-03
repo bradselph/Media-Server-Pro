@@ -1359,6 +1359,7 @@ watch(mediaId, (id, oldId) => {
             ref="videoRef"
             class="max-md:absolute max-md:inset-0 max-md:h-full max-md:w-full max-md:object-contain md:relative md:inset-auto md:h-auto md:w-full md:aspect-video"
             :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
+            :poster="mediaApi.getThumbnailUrl(media.id)"
             preload="auto"
             @loadedmetadata="onVideoLoaded"
             @timeupdate="onTimeUpdate"
