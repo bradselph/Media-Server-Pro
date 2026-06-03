@@ -5,6 +5,7 @@ import { formatDuration, formatBytes } from '~/utils/format'
 import { useSavedSearchesApi } from '~/composables/useApiEndpoints'
 import { useRecentSearches } from '~/composables/useRecentSearches'
 import { highlightMatch } from '~/utils/highlight'
+import { blurHashBgStyle } from '~/utils/blurhash'
 
 definePageMeta({ layout: 'default', title: 'Search' })
 
@@ -345,7 +346,10 @@ async function saveCurrentSearch() {
           ]"
           @click="selectionMode ? toggleSelect(item.id) : undefined"
         >
-          <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
+          <div
+            class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb"
+            :style="item.type !== 'audio' ? blurHashBgStyle(item.blur_hash) : {}"
+          >
             <HoverPreviewImg
               :media-id="item.id"
               :src="mediaApi.getThumbnailUrl(item.id)"

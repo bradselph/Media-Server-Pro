@@ -3,6 +3,7 @@ import type { WatchHistoryItem, MediaItem } from '~/types/api'
 import { useWatchHistoryApi } from '~/composables/useApiEndpoints'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration, formatRelativeDate } from '~/utils/format'
+import { blurHashBgStyle } from '~/utils/blurhash'
 
 definePageMeta({ layout: 'default', title: 'Watch History', middleware: 'auth' })
 
@@ -188,7 +189,10 @@ watch(() => authStore.user, (user) => {
       >
         <NuxtLink :to="resumeUrl(item)" class="block">
           <!-- Thumbnail -->
-          <div class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
+          <div
+            class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb"
+            :style="mediaMap[item.media_id]?.type !== 'audio' ? blurHashBgStyle(mediaMap[item.media_id]?.blur_hash) : {}"
+          >
             <HoverPreviewImg
               v-if="!failedThumbs.has(item.media_id)"
               :media-id="item.media_id"

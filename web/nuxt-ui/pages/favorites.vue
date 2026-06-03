@@ -2,6 +2,7 @@
 import type { FavoriteItem, MediaItem } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration, formatRelativeDate } from '~/utils/format'
+import { blurHashBgStyle } from '~/utils/blurhash'
 import { useFavoritesApi } from '~/composables/useApiEndpoints'
 
 definePageMeta({ layout: 'default', title: 'Favorites', middleware: 'auth' })
@@ -106,7 +107,10 @@ watch(() => authStore.user, (user) => {
         class="group relative"
       >
         <NuxtLink :to="`/player?id=${encodeURIComponent(fav.media_id)}`" class="block">
-          <div class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
+          <div
+            class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb"
+            :style="mediaMap[fav.media_id]?.type !== 'audio' ? blurHashBgStyle(mediaMap[fav.media_id]?.blur_hash) : {}"
+          >
             <HoverPreviewImg
               v-if="mediaMap[fav.media_id] && !failedThumbnails.has(fav.media_id)"
               :media-id="fav.media_id"
