@@ -18,13 +18,20 @@ const props = defineProps<{
   // Passing a partial map is fine; missing IDs just don't render the
   // indicator.
   progress?: Record<string, number>
+  // Favorited media IDs (parent-owned) so the heart renders its filled state.
+  favoriteIds?: Set<string>
+  // Parent-provided builder for the "add to playlist" dropdown menu items.
+  // When omitted, the playlist action is not shown.
+  playlistMenuItems?: (mediaId: string) => { label: string; icon?: string; click?: () => void; to?: string }[][]
 }>()
 
 const emit = defineEmits<{
   'thumbnail-error': [id: string]
+  'toggle-favorite': [mediaId: string]
 }>()
 
 const mediaApi = useMediaApi()
+const authStore = useAuthStore()
 const scrollContainer = ref<HTMLElement | null>(null)
 
 function scrollBy(delta: number) {
@@ -132,6 +139,31 @@ function getGradientStyle(id: string): string {
             <UIcon name="i-lucide-check" class="size-3" />
             <span>Watched</span>
           </div>
+          <!-- Hover quick actions (logged-in only) — favorite + add to playlist,
+               matching the home grid's card overlay. -->
+          <template v-if="authStore.isLoggedIn">
+            <button
+              class="absolute bottom-6 right-1 p-0.5 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+              :aria-label="favoriteIds?.has(s.media_id) ? 'Remove from favorites' : 'Add to favorites'"
+              @click.prevent.stop="emit('toggle-favorite', s.media_id)"
+            >
+              <UIcon
+                name="i-lucide-heart"
+                :class="favoriteIds?.has(s.media_id) ? 'size-4 text-red-400 [&>svg]:fill-current' : 'size-4 text-white'"
+              />
+            </button>
+            <div
+              v-if="playlistMenuItems"
+              class="absolute bottom-6 right-8 opacity-0 group-hover:opacity-100 transition-opacity"
+              @click.prevent.stop
+            >
+              <UDropdownMenu :items="playlistMenuItems(s.media_id)">
+                <button class="p-0.5 rounded-full bg-black/50" aria-label="Add to playlist">
+                  <UIcon name="i-lucide-list-plus" class="size-4 text-white" />
+                </button>
+              </UDropdownMenu>
+            </div>
+          </template>
         </div>
         <p class="text-xs font-semibold truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(s)">{{ getDisplayTitle(s) }}</p>
         <p v-if="s.category" class="text-[10px] text-muted truncate mt-0.5">{{ s.category }}</p>

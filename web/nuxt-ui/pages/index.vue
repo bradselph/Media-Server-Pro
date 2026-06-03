@@ -177,30 +177,34 @@ async function loadFavorites() {
   } catch { /* non-critical */ }
 }
 
-async function toggleFavorite(e: Event, item: MediaItem) {
-  e.preventDefault()
-  e.stopPropagation()
+async function toggleFavoriteId(id: string) {
   if (!authStore.isLoggedIn) { router.push('/login'); return }
-  if (togglingIds.value.has(item.id)) return
-  const wasFav = favoriteIds.value.has(item.id)
+  if (togglingIds.value.has(id)) return
+  const wasFav = favoriteIds.value.has(id)
   // Optimistic update
   const next = new Set(favoriteIds.value)
-  if (wasFav) { next.delete(item.id) } else { next.add(item.id) }
+  if (wasFav) { next.delete(id) } else { next.add(id) }
   favoriteIds.value = next
-  togglingIds.value.add(item.id)
+  togglingIds.value.add(id)
   try {
-    if (wasFav) { await favoritesApi.remove(item.id) }
-    else { await favoritesApi.add(item.id) }
+    if (wasFav) { await favoritesApi.remove(id) }
+    else { await favoritesApi.add(id) }
     if (!indexMounted) return
   } catch {
     if (!indexMounted) return
     // Revert on error
     const reverted = new Set(favoriteIds.value)
-    if (wasFav) { reverted.add(item.id) } else { reverted.delete(item.id) }
+    if (wasFav) { reverted.add(id) } else { reverted.delete(id) }
     favoriteIds.value = reverted
   } finally {
-    togglingIds.value.delete(item.id)
+    togglingIds.value.delete(id)
   }
+}
+
+async function toggleFavorite(e: Event, item: MediaItem) {
+  e.preventDefault()
+  e.stopPropagation()
+  await toggleFavoriteId(item.id)
 }
 
 // Playback progress (ratio 0-1) per media ID — for progress bar overlays
@@ -1068,7 +1072,10 @@ onUnmounted(() => {
         title="Continue Watching"
         icon="i-lucide-play-circle"
         :items="continueWatching"
+        :favorite-ids="favoriteIds"
+        :playlist-menu-items="playlistMenuItemsFor"
         :failed-ids="failedSuggestions"
+        @toggle-favorite="toggleFavoriteId"
         :loading="recsLoading"
         :progress="suggestionProgress"
         @thumbnail-error="onSuggestionThumbnailError"
@@ -1131,7 +1138,10 @@ onUnmounted(() => {
         title="Trending"
         icon="i-lucide-flame"
         :items="trending"
+        :favorite-ids="favoriteIds"
+        :playlist-menu-items="playlistMenuItemsFor"
         :failed-ids="failedSuggestions"
+        @toggle-favorite="toggleFavoriteId"
         :loading="recsLoading"
         :progress="suggestionProgress"
         to="/categories"
@@ -1144,7 +1154,10 @@ onUnmounted(() => {
         title="Recommended For You"
         icon="i-lucide-thumbs-up"
         :items="recommended"
+        :favorite-ids="favoriteIds"
+        :playlist-menu-items="playlistMenuItemsFor"
         :failed-ids="failedSuggestions"
+        @toggle-favorite="toggleFavoriteId"
         :loading="recsLoading"
         :progress="suggestionProgress"
         to="/"
@@ -1273,7 +1286,10 @@ onUnmounted(() => {
         title="Popular"
         icon="i-lucide-star"
         :items="general"
+        :favorite-ids="favoriteIds"
+        :playlist-menu-items="playlistMenuItemsFor"
         :failed-ids="failedSuggestions"
+        @toggle-favorite="toggleFavoriteId"
         to="/categories"
         @thumbnail-error="onSuggestionThumbnailError"
       />
