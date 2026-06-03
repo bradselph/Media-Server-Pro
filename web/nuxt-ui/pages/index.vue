@@ -1451,6 +1451,32 @@ onUnmounted(() => {
           }"
         />
       </template>
+      <!-- Active type filter chip — gives a removable summary + one-tap clear
+           (the type selector chips are desktop-only, so this also surfaces the
+           active type on mobile). -->
+      <UButton
+        v-if="params.type && params.type !== 'all'"
+        :label="TYPE_OPTIONS.find(o => o.value === params.type)?.label ?? params.type"
+        icon="i-lucide-shapes"
+        trailing-icon="i-lucide-x"
+        variant="soft"
+        color="primary"
+        size="sm"
+        aria-label="Clear type filter"
+        @click="params.type = 'all'"
+      />
+      <!-- Active minimum-rating filter chip -->
+      <UButton
+        v-if="(params.min_rating ?? 0) > 0"
+        :label="MIN_RATING_OPTIONS.find(o => o.value === params.min_rating)?.label ?? `★ ${params.min_rating}+`"
+        icon="i-lucide-star"
+        trailing-icon="i-lucide-x"
+        variant="soft"
+        color="primary"
+        size="sm"
+        aria-label="Clear rating filter"
+        @click="params.min_rating = 0"
+      />
       <!-- Hide watched toggle (logged-in users only) -->
       <UButton
         v-if="authStore.isLoggedIn"
