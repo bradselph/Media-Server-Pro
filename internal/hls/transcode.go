@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
-	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 
 	ffmpeg "github.com/u2takey/ffmpeg-go"
@@ -118,7 +117,7 @@ func (m *Module) finalizeJobCompleted(job *models.HLSJob) {
 	m.jobsMu.Lock()
 	job.Status = models.HLSStatusCompleted
 	job.Progress = 100
-	job.CompletedAt = helpers.Ptr(time.Now())
+	job.CompletedAt = new(time.Now())
 	if cancel, ok := m.jobCancels[job.ID]; ok {
 		cancel()
 		delete(m.jobCancels, job.ID)

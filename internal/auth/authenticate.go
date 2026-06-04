@@ -8,7 +8,6 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
 
@@ -131,7 +130,7 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 	// concurrent password changes or preference updates.
 	userCopy := *user
 	userCopy.PreviousLastLogin = userCopy.LastLogin
-	userCopy.LastLogin = helpers.Ptr(time.Now())
+	userCopy.LastLogin = new(time.Now())
 	if err := m.userRepo.Update(ctx, &userCopy); err != nil {
 		m.log.Warn("Failed to persist LastLogin for %s: %v", req.Username, err)
 	} else {
@@ -243,7 +242,7 @@ func (m *Module) recordFailedAttempt(ip string) {
 		attempt.LockedAt = nil
 		// Re-lock immediately if this IP has already triggered enough lockout windows.
 		if attempt.Windows >= cfg.Auth.MaxLoginAttempts {
-			attempt.LockedAt = helpers.Ptr(time.Now())
+			attempt.LockedAt = new(time.Now())
 			m.log.Warn("Re-locked IP %s after %d repeated lockout windows (escalating lockout per design)", ip, attempt.Windows)
 		}
 		return
@@ -251,7 +250,7 @@ func (m *Module) recordFailedAttempt(ip string) {
 
 	attempt.Count++
 	if attempt.Count >= cfg.Auth.MaxLoginAttempts {
-		attempt.LockedAt = helpers.Ptr(time.Now())
+		attempt.LockedAt = new(time.Now())
 		m.log.Warn("Locked out IP due to too many failed attempts: %s", ip)
 	}
 }

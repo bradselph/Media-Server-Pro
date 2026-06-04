@@ -301,7 +301,7 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 
 	progress.mu.Lock()
 	progress.Status = UploadStatusCompleted
-	progress.CompletedAt = helpers.Ptr(time.Now())
+	progress.CompletedAt = new(time.Now())
 	progress.Progress = 100
 	progress.mu.Unlock()
 	m.log.Info("Upload complete: %s (%d bytes) by user %s", prepared.Filename, written, scope.UserID)
