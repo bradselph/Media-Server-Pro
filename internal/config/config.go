@@ -97,7 +97,7 @@ func (m *Manager) Load() error {
 		m.applyInfraEnvOverrides()
 
 		// One-shot upgrade: bake the current env-driven tunable values into
-		// config.json so effective behaviour does not change on the first load
+		// config.json so effective behavior does not change on the first load
 		// after the upgrade, then let config.json own tunables from then on.
 		if !m.config.EnvSeedMigrated {
 			m.applyTunableEnvOverrides()

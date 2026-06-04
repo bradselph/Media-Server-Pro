@@ -677,7 +677,7 @@ func (m *Module) computeTopSearches(ctx context.Context, since, until string, li
 	return out
 }
 
-// FailedLoginEntry summarises a recent failed login attempt for the security
+// FailedLoginEntry summarizes a recent failed login attempt for the security
 // review panel — IP, attempted username (when present in the event payload),
 // and timestamp. Recent N entries; deduplication is the caller's call.
 type FailedLoginEntry struct {
@@ -2388,8 +2388,8 @@ func (m *Module) GetRangeComparison(aStart, aEnd, bStart, bEnd string) RangeComp
 }
 
 // comparedMetrics is the set of DailyStats columns the A/B comparison
-// surfaces. Kept centralised so adding a column to DailyStats only requires
-// one edit here. Same JSON-tag values dailyStatField recognises.
+// surfaces. Kept centralized so adding a column to DailyStats only requires
+// one edit here. Same JSON-tag values dailyStatField recognizes.
 var comparedMetrics = []string{
 	"total_views", "unique_users", "total_watch_time",
 	"logins", "logins_failed", "logouts", "registrations",

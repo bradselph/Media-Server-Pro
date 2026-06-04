@@ -933,7 +933,7 @@ func (h *Handler) AdminGetAnalyticsDiagnostics(c *gin.Context) {
 // AdminGetAnalyticsHealth returns a compact health snapshot suitable for
 // external uptime monitors and cron pollers. Reports module healthy state,
 // flush lag, and live subscriber count. Returns 503 with available=false if
-// the analytics module is not initialised so monitors don't get a stale 200.
+// the analytics module is not initialized so monitors don't get a stale 200.
 func (h *Handler) AdminGetAnalyticsHealth(c *gin.Context) {
 	if h.analytics == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{

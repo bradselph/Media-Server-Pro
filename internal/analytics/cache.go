@@ -9,7 +9,7 @@ import (
 // aggregation endpoints (top-users, top-searches, error-paths, heatmap,
 // device-breakdown, etc.). Each of those scans 50k-100k events per
 // request — without a cache, the dashboard's auto-refresh + click-
-// around behaviour hammers the analytics_events table for the same
+// around behavior hammers the analytics_events table for the same
 // answer over and over.
 //
 // Keys are caller-defined strings so methods like GetTopUsers can build

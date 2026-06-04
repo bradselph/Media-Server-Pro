@@ -35,6 +35,7 @@ import (
 	"media-server-pro/internal/server"
 
 	"github.com/gin-gonic/gin"
+
 	"media-server-pro/internal/streaming"
 	"media-server-pro/internal/suggestions"
 	"media-server-pro/internal/tasks"
@@ -696,7 +697,7 @@ func registerTasks(
 		}
 	}
 	// Media library scan — discovers new/removed files every hour.
-	// Gated on Features.EnableAutoDiscovery so the flag is honoured at tick
+	// Gated on Features.EnableAutoDiscovery so the flag is honored at tick
 	// time (not just at startup); when it's off the task tick is a no-op.
 	registerWithOverride(tasks.TaskRegistration{
 		ID:          "media-scan",

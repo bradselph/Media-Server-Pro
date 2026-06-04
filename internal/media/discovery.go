@@ -327,7 +327,7 @@ func (m *Module) Start(_ context.Context) error {
 	}()
 
 	// Periodic re-scans are driven by the tasks scheduler ("media-scan" task,
-	// registered in cmd/server/main.go). The scheduler honours the
+	// registered in cmd/server/main.go). The scheduler honors the
 	// EnableAutoDiscovery feature flag at tick time and also feeds fresh data
 	// into the suggestions module after each scan, so the media module no
 	// longer runs its own duplicate ticker here.
@@ -1400,7 +1400,7 @@ func (f Filter) matchesSearch(item *models.MediaItem) bool {
 }
 
 // matchesTags checks whether the item matches the filter's tag set.
-// Default behaviour is OR: the item passes if it has at least one of the
+// Default behavior is OR: the item passes if it has at least one of the
 // listed tags. When TagsAll is true the match becomes AND: every listed
 // tag must be present on the item. An empty Tags slice matches all items.
 func (f Filter) matchesTags(item *models.MediaItem) bool {
