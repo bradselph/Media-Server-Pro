@@ -51,10 +51,7 @@ func paginatePlaylists(playlists []*models.Playlist, page, limit int) []*models.
 	if start >= len(playlists) {
 		return []*models.Playlist{}
 	}
-	end := start + limit
-	if end > len(playlists) {
-		end = len(playlists)
-	}
+	end := min(start+limit, len(playlists))
 	return playlists[start:end]
 }
 
@@ -74,10 +71,7 @@ func (h *Handler) AdminListPlaylists(c *gin.Context) {
 	totalItems := len(filtered)
 	totalPages := 1
 	if limit > 0 && totalItems > 0 {
-		totalPages = (totalItems + limit - 1) / limit
-		if totalPages < 1 {
-			totalPages = 1
-		}
+		totalPages = max((totalItems+limit-1)/limit, 1)
 	}
 	items := paginatePlaylists(filtered, page, limit)
 	writeSuccess(c, map[string]any{

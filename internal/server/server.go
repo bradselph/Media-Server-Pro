@@ -517,7 +517,7 @@ func (s *Server) saveConfigWithRetry() {
 	// Save configuration with retry logic (graceful degradation on failure)
 	// Retry up to 3 times with 100ms delay to handle temporary filesystem issues
 	saved := false
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := s.config.Save(); err != nil {
 			s.log.Warn("Failed to save configuration (attempt %d/3): %v", i+1, err)
 			if i < 2 {

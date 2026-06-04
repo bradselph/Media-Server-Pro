@@ -81,7 +81,7 @@ func TestRegisterTask(t *testing.T) {
 
 func TestRegisterTask_Multiple(t *testing.T) {
 	m := newTestModule(t)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		m.RegisterTask(TaskRegistration{
 			ID:       fmt.Sprintf("task-%d", i),
 			Name:     fmt.Sprintf("Task %d", i),

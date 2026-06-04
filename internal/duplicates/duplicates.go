@@ -339,7 +339,7 @@ func (m *Module) isResolvedRemovalCached(ctx context.Context, fp string, resolve
 
 // processFingerprintGroup records duplicate pairs for all unordered (i,j) pairs in group.
 func (m *Module) processFingerprintGroup(ctx context.Context, fp string, group []localFpEntry, resolvedFPs map[string]bool) {
-	for i := 0; i < len(group); i++ {
+	for i := range group {
 		for j := i + 1; j < len(group); j++ {
 			m.tryRecordLocalPair(ctx, localPairForRecord{fp: fp, a: group[i], b: group[j]}, resolvedFPs)
 		}

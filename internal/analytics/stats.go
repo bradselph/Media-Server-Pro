@@ -332,7 +332,7 @@ func (m *Module) GetDailyStats(days int) []*models.DailyStats {
 	var stats []*models.DailyStats
 	now := time.Now()
 
-	for i := 0; i < days; i++ {
+	for i := range days {
 		date := now.AddDate(0, 0, -i).Format(dateFormat)
 		if daily, ok := m.dailyStats[date]; ok {
 			d := *daily
@@ -931,8 +931,8 @@ func (m *Module) computeHourlyHeatmap(ctx context.Context, days int) []HourlyHea
 	// 7 days × 24 hours = 168 cells, always emit the full grid (zero-filled)
 	// so the frontend can render a clean rectangle without per-cell guards.
 	grid := make([]HourlyHeatmapCell, 7*24)
-	for d := 0; d < 7; d++ {
-		for h := 0; h < 24; h++ {
+	for d := range 7 {
+		for h := range 24 {
 			grid[d*24+h] = HourlyHeatmapCell{DayOfWeek: d, Hour: h}
 		}
 	}
@@ -1745,7 +1745,7 @@ func sqrt(x float64) float64 {
 		return 0
 	}
 	z := x / 2
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		z -= (z*z - x) / (2 * z)
 	}
 	return z

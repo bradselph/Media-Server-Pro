@@ -70,7 +70,7 @@ func TestGinRequestID_UniquePerRequest(t *testing.T) {
 		c.String(200, "ok")
 	})
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest("GET", "/test", nil)
 		r.ServeHTTP(w, req)

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -136,9 +137,7 @@ func deepCopyItem(item *models.MediaItem) *models.MediaItem {
 	}
 	if item.Metadata != nil {
 		cp.Metadata = make(map[string]string, len(item.Metadata))
-		for k, v := range item.Metadata {
-			cp.Metadata[k] = v
-		}
+		maps.Copy(cp.Metadata, item.Metadata)
 	}
 	return &cp
 }
@@ -1067,9 +1066,7 @@ func (m *Module) applyProbeData(current *models.MediaItem, probe *ffprobeResult)
 		}
 	}
 	applyStreamData(current, probe)
-	for k, v := range probe.Format.Tags {
-		current.Metadata[k] = v
-	}
+	maps.Copy(current.Metadata, probe.Format.Tags)
 }
 
 // applyStreamData extracts codec and dimension info from probe streams.

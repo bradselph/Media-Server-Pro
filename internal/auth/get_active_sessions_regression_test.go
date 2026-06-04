@@ -185,7 +185,7 @@ func TestFND0058_GetActiveSessions_MultipleValidSessions(t *testing.T) {
 	now := time.Now()
 
 	// Add multiple sessions for alice
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		sess := &models.Session{
 			ID:        sessID(i),
 			Username:  "alice",
@@ -236,7 +236,7 @@ func TestFND0058_GetActiveSessions_ThreadSafety(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			defer wg.Done()
 			active := m.GetActiveSessions("alice")

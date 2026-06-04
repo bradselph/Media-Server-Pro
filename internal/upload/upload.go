@@ -588,10 +588,7 @@ func (m *Module) sanitizeFilename(filename string) (string, error) {
 		if len(ext) > 254 {
 			ext = ext[:254]
 		}
-		maxBase := 255 - len(ext)
-		if maxBase < 1 {
-			maxBase = 1
-		}
+		maxBase := max(255-len(ext), 1)
 		filename = filename[:maxBase] + ext
 	}
 

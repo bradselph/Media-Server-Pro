@@ -21,7 +21,7 @@ func TestRateLimiter_AutoBanAfterViolations(t *testing.T) {
 	})
 	ip := "10.99.99.1"
 	// Exhaust the rate limit to trigger violations
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		rl.CheckRequest(ip)
 	}
 	// After enough violations, the IP should be auto-banned

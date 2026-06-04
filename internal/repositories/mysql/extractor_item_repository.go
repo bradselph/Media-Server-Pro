@@ -100,7 +100,7 @@ func (r *ExtractorItemRepository) List(ctx context.Context) ([]*repositories.Ext
 }
 
 func (r *ExtractorItemRepository) UpdateStatus(ctx context.Context, id, status, errorMsg string) error {
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"status":        status,
 		"error_message": errorMsg,
 		"updated_at":    time.Now().Format(sqlTimeFormat),

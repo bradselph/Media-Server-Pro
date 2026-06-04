@@ -146,7 +146,7 @@ func (c *Client) ClassifyImage(ctx context.Context, imageData ImageData) (*Class
 func (c *Client) runWithRetry(ctx context.Context, url string, imageData ImageData) (*ClassificationResult, error) {
 	empty := &ClassificationResult{Model: c.model}
 	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := range maxRetries {
 		if attempt > 0 && !c.sleepBeforeRetry(ctx, attempt) {
 			return empty, nil
 		}

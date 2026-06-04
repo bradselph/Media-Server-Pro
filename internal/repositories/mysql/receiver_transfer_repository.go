@@ -209,10 +209,7 @@ func (r *ReceiverMediaRepository) UpsertBatch(ctx context.Context, slaveID strin
 	const batchSize = 100
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for start := 0; start < len(rows); start += batchSize {
-			end := start + batchSize
-			if end > len(rows) {
-				end = len(rows)
-			}
+			end := min(start+batchSize, len(rows))
 			if err := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "id"}},
 				DoUpdates: clause.AssignmentColumns(receiverMediaUpdateColumns),
@@ -258,10 +255,7 @@ func (r *ReceiverMediaRepository) ReplaceSlaveMedia(ctx context.Context, slaveID
 			return fmt.Errorf("failed to delete existing media for slave: %w", err)
 		}
 		for start := 0; start < len(rows); start += batchSize {
-			end := start + batchSize
-			if end > len(rows) {
-				end = len(rows)
-			}
+			end := min(start+batchSize, len(rows))
 			if err := tx.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "id"}},
 				DoUpdates: clause.AssignmentColumns(receiverMediaUpdateColumns),

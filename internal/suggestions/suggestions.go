@@ -4,6 +4,7 @@ package suggestions
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math"
 	"math/rand" // Go 1.20+ auto-seeds the default source
 	"sort"
@@ -393,13 +394,9 @@ func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 func (m *Module) snapshotProfile(profile *UserProfile) *UserProfile {
 	cp := *profile
 	cp.CategoryScores = make(map[string]float64, len(profile.CategoryScores))
-	for k, v := range profile.CategoryScores {
-		cp.CategoryScores[k] = v
-	}
+	maps.Copy(cp.CategoryScores, profile.CategoryScores)
 	cp.TypePreferences = make(map[string]float64, len(profile.TypePreferences))
-	for k, v := range profile.TypePreferences {
-		cp.TypePreferences[k] = v
-	}
+	maps.Copy(cp.TypePreferences, profile.TypePreferences)
 	cp.ViewHistory = make([]ViewHistory, len(profile.ViewHistory))
 	copy(cp.ViewHistory, profile.ViewHistory)
 	return &cp
@@ -622,10 +619,7 @@ func topShuffled(sorted []*Suggestion, n int) []*Suggestion {
 		rand.Shuffle(len(result), func(i, j int) { result[i], result[j] = result[j], result[i] })
 		return result
 	}
-	poolSize := n * 4
-	if poolSize > len(sorted) {
-		poolSize = len(sorted)
-	}
+	poolSize := min(n*4, len(sorted))
 	pool := make([]*Suggestion, poolSize)
 	copy(pool, sorted[:poolSize])
 	rand.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })

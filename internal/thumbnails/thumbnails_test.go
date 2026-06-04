@@ -118,7 +118,7 @@ func TestCleanup_RemovesExcessPreviews(t *testing.T) {
 	m.mediaIDProvider = &fakeMediaIDProvider{ids: map[string]bool{id: true}}
 
 	// Config has PreviewCount=3, so _preview_0..2 are valid; 3..4 are excess
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		writeTestFile(t, filepath.Join(dir, id+"_preview_"+strconv.Itoa(i)+".jpg"), 50)
 	}
 

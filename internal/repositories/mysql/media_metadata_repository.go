@@ -114,7 +114,7 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 		// if the existing row doesn't already have one (preserve existing UUIDs).
 		if err := tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "path"}},
-			DoUpdates: clause.Assignments(map[string]interface{}{
+			DoUpdates: clause.Assignments(map[string]any{
 				// MySQL uses VALUES(col) to reference the incoming row in ON DUPLICATE KEY UPDATE.
 				"views":          gorm.Expr("VALUES(views)"),
 				"last_played":    gorm.Expr("VALUES(last_played)"),

@@ -288,10 +288,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	totalItems := len(allItems)
 	totalPages := 1
 	if limit > 0 {
-		totalPages = (totalItems + limit - 1) / limit
-		if totalPages < 1 {
-			totalPages = 1
-		}
+		totalPages = max((totalItems+limit-1)/limit, 1)
 	}
 
 	items := allItems
