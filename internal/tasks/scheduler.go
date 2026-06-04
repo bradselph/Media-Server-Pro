@@ -398,9 +398,7 @@ func (m *Module) RunNow(taskID string) error {
 		return fmt.Errorf("task scheduler is stopping")
 	}
 
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
+	m.wg.Go(func() {
 		// Re-check ctx after the goroutine starts — the scheduler may have been
 		// stopped between the RLock release above and this goroutine being scheduled.
 		// Tasks that don't honor context cancellation would otherwise run to
@@ -409,7 +407,7 @@ func (m *Module) RunNow(taskID string) error {
 			return
 		}
 		m.executeTask(ctx, task)
-	}()
+	})
 	return nil
 }
 

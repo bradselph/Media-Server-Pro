@@ -293,7 +293,7 @@ func readProcMeminfo() (total, used uint64) {
 	}
 	var memTotal, memAvailable uint64
 	var foundTotal, foundAvail bool
-	for _, line := range bytes.Split(data, []byte{'\n'}) {
+	for line := range bytes.SplitSeq(data, []byte{'\n'}) {
 		if bytes.HasPrefix(line, []byte("MemTotal:")) {
 			fields := bytes.Fields(line)
 			if len(fields) >= 2 {

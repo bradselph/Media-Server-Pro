@@ -55,7 +55,7 @@ func (m *Module) ensureVariantPlaylistExists(ctx context.Context, job *models.HL
 // are skipped — they should never appear in FFmpeg-generated manifests.
 func rewritePlaylistLines(data []byte, baseURL string) []byte {
 	var buf bytes.Buffer
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
 			if strings.Contains(trimmed, "..") || strings.ContainsAny(trimmed, "\r\n") {

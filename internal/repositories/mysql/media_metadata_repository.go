@@ -239,7 +239,7 @@ func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repos
 	if filter.Search != "" {
 		// Split into words so "blonde sassy" matches items containing both words
 		// anywhere in path or category (AND logic: every word must appear).
-		for _, word := range strings.Fields(filter.Search) {
+		for word := range strings.FieldsSeq(filter.Search) {
 			like := "%" + escapeLike(word) + "%"
 			query = query.Where("(path LIKE ? ESCAPE '\\\\' OR category LIKE ? ESCAPE '\\\\')", like, like)
 		}

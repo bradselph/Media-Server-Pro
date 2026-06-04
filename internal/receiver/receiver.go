@@ -1016,7 +1016,7 @@ func nodeToSlaveRecord(node *SlaveNode) *repositories.ReceiverSlaveRecord {
 func mediaRecordToItem(rec *repositories.ReceiverMediaRecord) *MediaItem {
 	var tags []string
 	if rec.Tags != "" {
-		for _, t := range strings.Split(rec.Tags, ",") {
+		for t := range strings.SplitSeq(rec.Tags, ",") {
 			if v := strings.TrimSpace(t); v != "" {
 				tags = append(tags, v)
 			}
