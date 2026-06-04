@@ -682,18 +682,12 @@ func exportFieldToString(v any) string {
 		return strconv.FormatBool(t)
 	default:
 		// Slices, maps, etc. — emit as JSON so the cell is at least readable.
-		b, err := jsonMarshal(v)
+		b, err := json.Marshal(v)
 		if err != nil {
 			return ""
 		}
 		return string(b)
 	}
-}
-
-// jsonMarshal is split out so unit tests can stub it if needed; the
-// real impl uses encoding/json.
-var jsonMarshal = func(v any) ([]byte, error) {
-	return json.Marshal(v)
 }
 
 // fetchExportRows dispatches the panel name to the correct analytics

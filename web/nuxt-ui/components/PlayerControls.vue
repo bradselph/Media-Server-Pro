@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { MediaChapter } from '~/types/api'
 import { formatDuration } from '~/utils/format'
 
 const props = defineProps<{

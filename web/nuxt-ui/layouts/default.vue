@@ -272,8 +272,6 @@ function handleSlashShortcut(e: KeyboardEvent) {
 onMounted(() => document.addEventListener('keydown', handleSlashShortcut))
 onUnmounted(() => document.removeEventListener('keydown', handleSlashShortcut))
 
-const playbackStore = usePlaybackStore()
-
 // The Now Playing sidebar replaces the bottom-overlay MiniPlayer. On desktop
 // it lifts the floating "?" help button only when the user has collapsed the
 // sidebar to its rail width; on mobile it occupies a 60px bottom dock and we
