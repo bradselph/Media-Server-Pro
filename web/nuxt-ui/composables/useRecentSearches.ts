@@ -25,8 +25,6 @@ function write(list: string[]) {
 export function useRecentSearches() {
     const recent = useState<string[]>('msp-recent-searches', () => read())
 
-    function refresh() { recent.value = read() }
-
     function push(q: string) {
         const trimmed = q.trim()
         if (!trimmed) return
@@ -45,5 +43,5 @@ export function useRecentSearches() {
         write([])
     }
 
-    return { recent, push, remove, clear, refresh }
+    return { recent, push, remove, clear }
 }

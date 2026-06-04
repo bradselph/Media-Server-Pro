@@ -20,6 +20,7 @@
  */
 import type { Playlist } from '~/types/api'
 import { formatDuration } from '~/utils/format'
+import { getMediaGradient } from '~/utils/gradient'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useQueueStore } from '~/stores/queue'
 import { useSidebarState } from '~/composables/useSidebarState'
@@ -186,20 +187,6 @@ function onPlaylistContext(e: Event) {
 onMounted(() => window.addEventListener('msp:playlist-context', onPlaylistContext))
 onUnmounted(() => window.removeEventListener('msp:playlist-context', onPlaylistContext))
 
-// ── Deterministic gradient for fallback art (matches index.vue) ──
-const PALETTES: [string, string][] = [
-    ['#1a0835','#9333ea'],['#081530','#2563eb'],['#1a0808','#dc2626'],
-    ['#081508','#16a34a'],['#1a1208','#d97706'],['#081515','#0891b2'],
-    ['#150815','#db2777'],['#0a0815','#6366f1'],['#150a0a','#ea580c'],
-    ['#0a1515','#059669'],['#0f0a20','#a855f7'],['#1a1000','#ca8a04'],
-]
-function gradFor(id: string): string {
-    let h = 0
-    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffff
-    const [a, b] = PALETTES[h % PALETTES.length]
-    return `linear-gradient(135deg, ${a}, ${b})`
-}
-
 // ── Mobile body-scroll lock + focus trap when sheet is open ─────
 const sheetRef = ref<HTMLElement | null>(null)
 let lastFocusedBeforeSheet: HTMLElement | null = null
@@ -330,7 +317,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
         <div v-if="playback.mediaInfo" class="np">
           <div
             class="np__art"
-            :style="{ background: playback.mediaInfo.thumbnail_url ? '#000' : gradFor(playback.currentMediaId || 'x') }"
+            :style="{ background: playback.mediaInfo.thumbnail_url ? '#000' : getMediaGradient(playback.currentMediaId || 'x') }"
           >
             <img
               v-if="playback.mediaInfo.thumbnail_url"
@@ -422,7 +409,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
             <ul class="rows">
               <li v-for="(item, i) in queue.items" :key="item.id" class="row">
                 <span class="row__index">{{ String(i + 1).padStart(2, '0') }}</span>
-                <div class="thumb" :style="{ background: gradFor(item.id) }">
+                <div class="thumb" :style="{ background: getMediaGradient(item.id) }">
                   <img v-if="item.thumbnail_url" :src="item.thumbnail_url" :alt="getDisplayTitle(item)" class="thumb__img" @error="($event.target as HTMLImageElement).style.display='none'" />
                   <UIcon v-else :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="thumb__glyph size-3.5" />
                 </div>
@@ -465,7 +452,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
             <ul v-if="(pinnedPlaylist.items?.length ?? 0) > 0" class="rows">
               <li v-for="(item, i) in pinnedPlaylist.items ?? []" :key="(item.id ?? item.media_id) + '-' + i" class="row">
                 <span class="row__index">{{ String(i + 1).padStart(2, '0') }}</span>
-                <div class="thumb" :style="{ background: gradFor(item.media_id) }">
+                <div class="thumb" :style="{ background: getMediaGradient(item.media_id) }">
                   <UIcon name="i-lucide-film" class="thumb__glyph size-3.5" />
                 </div>
                 <div class="row__meta">
@@ -497,7 +484,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
         <button class="rail__icon-btn rail__icon-btn--accent" aria-label="Expand" title="Expand ([)" @click="sb.expand()">
           <UIcon name="i-lucide-panel-left" class="size-4" />
         </button>
-        <div v-if="playback.mediaInfo" class="rail__art" :style="{ background: gradFor(playback.currentMediaId || 'x') }">
+        <div v-if="playback.mediaInfo" class="rail__art" :style="{ background: getMediaGradient(playback.currentMediaId || 'x') }">
           <img v-if="playback.mediaInfo.thumbnail_url" :src="playback.mediaInfo.thumbnail_url" :alt="getDisplayTitle(playback.mediaInfo)" class="rail__art-img" @error="($event.target as HTMLImageElement).style.display='none'" />
           <UIcon v-else :name="playback.mediaInfo.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-3.5" />
         </div>
@@ -539,7 +526,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
         :aria-label="playback.mediaInfo ? `Now playing: ${getDisplayTitle(playback.mediaInfo)}` : 'Open sidebar'"
         @click="mobileSheetOpen = true"
       >
-        <div v-if="playback.mediaInfo" class="dock__art" :style="{ background: gradFor(playback.currentMediaId || 'x') }">
+        <div v-if="playback.mediaInfo" class="dock__art" :style="{ background: getMediaGradient(playback.currentMediaId || 'x') }">
           <img v-if="playback.mediaInfo.thumbnail_url" :src="playback.mediaInfo.thumbnail_url" :alt="getDisplayTitle(playback.mediaInfo)" class="dock__art-img" @error="($event.target as HTMLImageElement).style.display='none'" />
           <UIcon v-else :name="playback.mediaInfo.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-4" />
         </div>
@@ -590,7 +577,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 
           <div class="sheet__body scroll-thin">
             <div v-if="playback.mediaInfo" class="np">
-              <div class="np__art" :style="{ background: playback.mediaInfo.thumbnail_url ? '#000' : gradFor(playback.currentMediaId || 'x') }">
+              <div class="np__art" :style="{ background: playback.mediaInfo.thumbnail_url ? '#000' : getMediaGradient(playback.currentMediaId || 'x') }">
                 <img v-if="playback.mediaInfo.thumbnail_url" :src="playback.mediaInfo.thumbnail_url" :alt="getDisplayTitle(playback.mediaInfo)" class="np__art-img" />
                 <UIcon v-else :name="playback.mediaInfo.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="np__art-glyph size-7" />
                 <span class="np__live"><span class="np__live-dot" />Now playing</span>
@@ -654,7 +641,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
                 <ul class="rows">
                   <li v-for="(item, i) in queue.items" :key="item.id" class="row">
                     <span class="row__index">{{ String(i + 1).padStart(2, '0') }}</span>
-                    <div class="thumb" :style="{ background: gradFor(item.id) }">
+                    <div class="thumb" :style="{ background: getMediaGradient(item.id) }">
                       <img v-if="item.thumbnail_url" :src="item.thumbnail_url" :alt="getDisplayTitle(item)" class="thumb__img" @error="($event.target as HTMLImageElement).style.display='none'" />
                       <UIcon v-else :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="thumb__glyph size-3.5" />
                     </div>
@@ -688,7 +675,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
                 <ul v-if="(pinnedPlaylist.items?.length ?? 0) > 0" class="rows">
                   <li v-for="(item, i) in pinnedPlaylist.items ?? []" :key="(item.id ?? item.media_id) + '-' + i" class="row">
                     <span class="row__index">{{ String(i + 1).padStart(2, '0') }}</span>
-                    <div class="thumb" :style="{ background: gradFor(item.media_id) }"><UIcon name="i-lucide-film" class="thumb__glyph size-3.5" /></div>
+                    <div class="thumb" :style="{ background: getMediaGradient(item.media_id) }"><UIcon name="i-lucide-film" class="thumb__glyph size-3.5" /></div>
                     <div class="row__meta"><p class="row__title">{{ getDisplayTitle(item) }}</p></div>
                     <div class="row__actions row__actions--mobile">
                       <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="row-btn" aria-label="Play" @click="mobileSheetOpen = false">

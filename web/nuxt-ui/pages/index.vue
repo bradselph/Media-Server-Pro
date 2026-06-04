@@ -6,21 +6,8 @@ import type { SavedSearch } from '~/composables/useApiEndpoints'
 import { resolveComponent } from 'vue'
 import { formatDuration, formatBytes, formatRelativeDate, formatResolution } from '~/utils/format'
 import { blurHashToDataUrl } from '~/utils/blurhash'
+import { getMediaGradient } from '~/utils/gradient'
 import { useQueueStore } from '~/stores/queue'
-
-const PALETTES: [string, string][] = [
-  ['#1a0835','#9333ea'],['#081530','#2563eb'],['#1a0808','#dc2626'],
-  ['#081508','#16a34a'],['#1a1208','#d97706'],['#081515','#0891b2'],
-  ['#150815','#db2777'],['#0a0815','#6366f1'],['#150a0a','#ea580c'],
-  ['#0a1515','#059669'],['#0f0a20','#a855f7'],['#1a1000','#ca8a04'],
-]
-
-function getItemGradient(id: string): string {
-  let hash = 0
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffff
-  const [c1, c2] = PALETTES[hash % PALETTES.length]
-  return `linear-gradient(135deg, ${c1}, ${c2})`
-}
 
 const TYPE_OPTIONS = [
   { label: 'All Types', value: 'all' },
@@ -496,15 +483,13 @@ async function surpriseMe() {
 
 // Tag filter — supports both single-click-on-card (sets one tag, OR mode)
 // AND the /browse tag-cloud flow which deep-links here via ?tags=a,b,c&tag_mode=and.
-// `filterTags` is the authoritative set; `filterTag` (computed) preserves the
-// pre-existing "first active tag" semantics that other call sites read.
+// `filterTags` is the authoritative set of active tag filters.
 const initialTagsFromQuery = ((route.query.tags as string | undefined) ?? '')
   .split(',')
   .map(s => s.trim())
   .filter(Boolean)
 const filterTags = ref<Set<string>>(new Set(initialTagsFromQuery))
 const tagMode = ref<'and' | 'or'>(route.query.tag_mode === 'and' ? 'and' : 'or')
-const filterTag = computed(() => [...filterTags.value][0] ?? '')
 
 // Hide watched toggle — only active for logged-in users
 const hideWatched = ref(route.query.hide_watched === 'true')
@@ -514,13 +499,6 @@ function setTagFilter(tag: string) {
   // OR mode so accidental AND mode from the previous nav doesn't filter
   // everything away on the next click.
   filterTags.value = new Set([tag])
-  tagMode.value = 'or'
-  params.page = 1
-  load()
-}
-
-function clearTagFilter() {
-  filterTags.value = new Set()
   tagMode.value = 'or'
   params.page = 1
   load()
@@ -919,7 +897,7 @@ onUnmounted(() => {
   <template v-if="resumeHero || (authStore.isLoggedIn ? trending.length > 0 : general.length > 0)">
     <div
       class="relative overflow-hidden min-h-[240px] flex items-end"
-      :style="{ background: getItemGradient((resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).media_id) }"
+      :style="{ background: getMediaGradient((resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).media_id) }"
     >
       <!-- Actual media thumbnail as background -->
       <img
@@ -1648,7 +1626,7 @@ onUnmounted(() => {
           <div
             v-if="item.type !== 'audio'"
             class="absolute inset-0"
-            :style="{ background: getItemGradient(item.id) }"
+            :style="{ background: getMediaGradient(item.id) }"
           />
           <!-- Selection checkbox -->
           <div v-if="selectionMode" class="absolute top-1.5 left-1.5 z-10">
@@ -1669,7 +1647,7 @@ onUnmounted(() => {
           <div
             v-else-if="item.type === 'audio'"
             class="w-full h-full flex flex-col items-center justify-center gap-2"
-            :style="{ background: getItemGradient(item.id) }"
+            :style="{ background: getMediaGradient(item.id) }"
           >
             <AudioBars size="lg" :bars="7" class="opacity-70 group-hover:opacity-100 transition-opacity" />
             <span class="text-[10px] font-medium text-white/60 uppercase tracking-wider">{{ item.codec || 'Audio' }}</span>

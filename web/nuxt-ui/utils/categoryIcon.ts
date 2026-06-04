@@ -38,8 +38,8 @@ export function iconForCategory(name: string | null | undefined): string {
 }
 
 // Deterministic gradient swatch used for category tiles when the
-// server does not supply a cover image. Pairs with `getItemGradient()`
-// in components but is keyed by category name rather than item id.
+// server does not supply a cover image. Pairs with `getMediaGradient()`
+// (utils/gradient.ts) but is keyed by category name rather than item id.
 const SWATCHES: ReadonlyArray<readonly [string, string]> = [
   ['#1a0835', '#9333ea'], ['#081530', '#2563eb'], ['#1a0808', '#dc2626'],
   ['#081508', '#16a34a'], ['#1a1208', '#d97706'], ['#081515', '#0891b2'],

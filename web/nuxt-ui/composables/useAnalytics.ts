@@ -87,11 +87,6 @@ export function pageview(path?: string): void {
     })
 }
 
-export function event(name: string, params?: Record<string, unknown>): void {
-    if (typeof window === 'undefined' || !window.gtag) return
-    window.gtag('event', name, params || {})
-}
-
 export function useAnalytics() {
-    return { initGA, pageview, event }
+    return { initGA, pageview }
 }

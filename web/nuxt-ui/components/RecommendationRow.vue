@@ -2,6 +2,7 @@
 import type { Suggestion } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { formatDuration } from '~/utils/format'
+import { getMediaGradient } from '~/utils/gradient'
 
 const props = defineProps<{
   title: string
@@ -38,19 +39,6 @@ function scrollBy(delta: number) {
   scrollContainer.value?.scrollBy({ left: delta, behavior: 'smooth' })
 }
 
-const PALETTES: [string, string][] = [
-  ['#1a0835','#9333ea'],['#081530','#2563eb'],['#1a0808','#dc2626'],
-  ['#081508','#16a34a'],['#1a1208','#d97706'],['#081515','#0891b2'],
-  ['#150815','#db2777'],['#0a0815','#6366f1'],['#150a0a','#ea580c'],
-  ['#0a1515','#059669'],['#0f0a20','#a855f7'],['#1a1000','#ca8a04'],
-]
-
-function getGradientStyle(id: string): string {
-  let hash = 0
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffff
-  const [c1, c2] = PALETTES[hash % PALETTES.length]
-  return `linear-gradient(135deg, ${c1}, ${c2})`
-}
 </script>
 
 <template>
@@ -95,7 +83,7 @@ function getGradientStyle(id: string): string {
           <div
             v-if="s.media_type === 'audio'"
             class="w-full h-full flex flex-col items-center justify-center gap-2"
-            :style="{ background: getGradientStyle(s.media_id) }"
+            :style="{ background: getMediaGradient(s.media_id) }"
           >
             <AudioBars size="sm" :bars="5" class="opacity-70 group-hover:opacity-100 transition-opacity" />
             <span class="text-[9px] font-medium text-white/60 uppercase tracking-wider">Audio</span>
@@ -104,7 +92,7 @@ function getGradientStyle(id: string): string {
           <template v-else>
             <div
               class="absolute inset-0"
-              :style="{ background: getGradientStyle(s.media_id) }"
+              :style="{ background: getMediaGradient(s.media_id) }"
             />
             <HoverPreviewImg
               v-if="!failedIds?.has(s.media_id)"
