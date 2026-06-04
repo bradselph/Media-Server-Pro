@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 )
@@ -337,10 +338,8 @@ func (m *Manager) warnCORS() {
 	if !m.config.Security.CORSEnabled || !m.config.Auth.Enabled {
 		return
 	}
-	for _, origin := range m.config.Security.CORSOrigins {
-		if origin == "*" {
-			m.log.Warn("SECURITY: Wildcard CORS origin (*) is active with authentication enabled.")
-			return
-		}
+	if slices.Contains(m.config.Security.CORSOrigins, "*") {
+		m.log.Warn("SECURITY: Wildcard CORS origin (*) is active with authentication enabled.")
+		return
 	}
 }

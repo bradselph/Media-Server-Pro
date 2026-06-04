@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -219,8 +220,8 @@ func TestGetRetentionGrid_UpperTriangular(t *testing.T) {
 			continue
 		}
 		age := 0
-		for i := len(g.Weeks) - 1; i >= 0; i-- {
-			if g.Weeks[i].CohortStart == c.CohortStart {
+		for i, v := range slices.Backward(g.Weeks) {
+			if v.CohortStart == c.CohortStart {
 				age = len(g.Weeks) - 1 - i
 				break
 			}

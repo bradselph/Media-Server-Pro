@@ -371,8 +371,8 @@ func (m *Module) monitorProgress(jobID string, stderr io.Reader, run *qualityRun
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if idx := strings.Index(line, "time="); idx >= 0 {
-			m.handleProgressUpdate(jobID, line[idx+5:], run)
+		if _, after, ok := strings.Cut(line, "time="); ok {
+			m.handleProgressUpdate(jobID, after, run)
 		}
 	}
 	if err := scanner.Err(); err != nil {

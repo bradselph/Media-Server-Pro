@@ -315,7 +315,7 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 	mediaID := strings.TrimSuffix(filename, ext)
 	// Strip responsive size suffixes (-sm / -md / -lg)
 	for _, sfx := range []string{"-sm", "-md", "-lg"} {
-		if stripped := strings.TrimSuffix(mediaID, sfx); stripped != mediaID {
+		if stripped, ok := strings.CutSuffix(mediaID, sfx); ok {
 			mediaID = stripped
 			break
 		}

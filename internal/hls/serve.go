@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"media-server-pro/pkg/models"
@@ -89,10 +90,8 @@ func (m *Module) hlsCORSOrigin(r *http.Request) string {
 	if !cfg.Security.CORSEnabled || len(cfg.Security.CORSOrigins) == 0 {
 		return "*"
 	}
-	for _, o := range cfg.Security.CORSOrigins {
-		if o == "*" {
-			return "*"
-		}
+	if slices.Contains(cfg.Security.CORSOrigins, "*") {
+		return "*"
 	}
 	// Operator has configured specific origins — reflect a matching one.
 	requestOrigin := r.Header.Get("Origin")

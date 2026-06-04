@@ -1191,8 +1191,8 @@ func getClientIP(r *http.Request, extraTrusted []*net.IPNet) string {
 		// (nginx → app) and multi-proxy (CDN → nginx → app) topologies.
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			parts := strings.Split(xff, ",")
-			for i := len(parts) - 1; i >= 0; i-- {
-				candidate := strings.TrimSpace(parts[i])
+			for _, part := range slices.Backward(parts) {
+				candidate := strings.TrimSpace(part)
 				parsedIP := net.ParseIP(candidate)
 				if parsedIP == nil {
 					continue

@@ -77,7 +77,7 @@ var configFieldDenyList = map[string]bool{
 func filterDeniedConfigKeys(updates map[string]any) []string {
 	var rejected []string
 	for k := range updates {
-		topLevel := strings.SplitN(strings.ToLower(k), ".", 2)[0]
+		topLevel, _, _ := strings.Cut(strings.ToLower(k), ".")
 		if configDenyList[topLevel] {
 			rejected = append(rejected, k)
 			delete(updates, k)
@@ -151,7 +151,7 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 	// Determine whether any updated key falls outside the hot-reload set.
 	restartRequired := false
 	for k := range updates {
-		topLevel := strings.SplitN(strings.ToLower(k), ".", 2)[0]
+		topLevel, _, _ := strings.Cut(strings.ToLower(k), ".")
 		if !hotReloadKeys[topLevel] {
 			restartRequired = true
 			break

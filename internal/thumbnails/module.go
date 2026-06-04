@@ -113,7 +113,7 @@ func (m *Module) Start(ctx context.Context) error {
 
 	m.log.Info("Starting %d thumbnail worker(s) with queue size %d...", workerCount, queueSize)
 
-	for i := 0; i < workerCount; i++ {
+	for i := range workerCount {
 		m.wg.Add(1)
 		go m.worker(i)
 	}
