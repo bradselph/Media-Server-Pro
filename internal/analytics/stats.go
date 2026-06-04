@@ -95,7 +95,7 @@ func (m *Module) ensureMediaStatsLocked(mediaID string) *models.ViewStats {
 	return stats
 }
 
-func (m *Module) updateStats(event models.AnalyticsEvent, delta float64, isNewMedia bool, isFirstCompletion bool) {
+func (m *Module) updateStats(event models.AnalyticsEvent, delta float64, isNewMedia, isFirstCompletion bool) {
 	m.statsMu.Lock()
 	// Use event.Timestamp so events with historical timestamps (e.g. replayed
 	// or bulk-imported) are bucketed to the correct day, not always "today".
@@ -218,11 +218,11 @@ func (m *Module) applyPlaybackToDailyStatsLocked(delta float64, daily *models.Da
 	}
 }
 
-func (m *Module) updateMediaStatsLocked(event models.AnalyticsEvent, delta float64, isNewMedia bool, isFirstCompletion bool) {
+func (m *Module) updateMediaStatsLocked(event models.AnalyticsEvent, delta float64, isNewMedia, isFirstCompletion bool) {
 	m.applyMediaEventLocked(event, delta, isNewMedia, isFirstCompletion)
 }
 
-func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent, delta float64, isNewMedia bool, isFirstCompletion bool) {
+func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent, delta float64, isNewMedia, isFirstCompletion bool) {
 	if event.MediaID == "" {
 		return
 	}
@@ -245,7 +245,7 @@ func (m *Module) applyViewToMediaStatsLocked(event models.AnalyticsEvent, stats 
 	}
 }
 
-func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, stats *models.ViewStats, delta float64, isNewMedia bool, isFirstCompletion bool) {
+func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, stats *models.ViewStats, delta float64, isNewMedia, isFirstCompletion bool) {
 	pos, _ := event.Data["position"].(float64)
 	dur, _ := event.Data["duration"].(float64)
 	if dur > 0 {
@@ -1429,7 +1429,7 @@ type IPSummary struct {
 // event volume, top IPs by bandwidth (from stream_end's bytes_sent payload).
 // Memoised 60s — this is the most expensive single aggregation we expose,
 // scanning up to 100k events with two output rankings.
-func (m *Module) GetIPSummary(ctx context.Context, days int, limit int) IPSummary {
+func (m *Module) GetIPSummary(ctx context.Context, days, limit int) IPSummary {
 	if days <= 0 {
 		days = 30
 	}
