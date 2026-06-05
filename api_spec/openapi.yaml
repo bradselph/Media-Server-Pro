@@ -1573,27 +1573,6 @@ components:
         thumbnail_url:
           type: string
 
-    OnDeckItem:
-      type: object
-      required: [ media_id, name, show_name, season, episode, category ]
-      properties:
-        media_id:
-          type: string
-        name:
-          type: string
-        show_name:
-          type: string
-        season:
-          type: integer
-        episode:
-          type: integer
-        category:
-          type: string
-        duration:
-          type: number
-        thumbnail_url:
-          type: string
-
     RatedItem:
       type: object
       required: [ media_id, name, category, media_type, rating ]
@@ -3952,39 +3931,6 @@ paths:
                           since:
                             type: string
                             format: date-time
-                          total:
-                            type: integer
-
-  /api/suggestions/on-deck:
-    get:
-      tags: [ suggestions ]
-      summary: Get on-deck content (next episodes, etc.)
-      security:
-        - sessionCookie: [ ]
-      parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 10
-            maximum: 50
-      responses:
-        '200':
-          description: On-deck items
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/APIEnvelope'
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          items:
-                            type: array
-                            items:
-                              $ref: '#/components/schemas/OnDeckItem'
                           total:
                             type: integer
 

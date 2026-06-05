@@ -683,7 +683,6 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.DELETE("/suggestions/profile", requireAuth(), h.ResetMyProfile)
 	api.GET("/suggestions/recent", requireAuth(), h.GetRecentContent)
 	api.GET("/suggestions/new", requireAuth(), h.GetNewSinceLastVisit)
-	api.GET("/suggestions/on-deck", requireAuth(), h.GetOnDeck)
 	api.POST("/ratings", requireAuth(), h.RecordRating)
 	api.GET("/ratings", requireAuth(), h.GetMyRatings)
 
