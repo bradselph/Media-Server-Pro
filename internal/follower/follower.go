@@ -126,11 +126,11 @@ type Status struct {
 	MasterURL       string    `json:"master_url,omitempty"`
 	SlaveID         string    `json:"slave_id,omitempty"`
 	SlaveName       string    `json:"slave_name,omitempty"`
-	LastConnectedAt time.Time `json:"last_connected_at,omitempty"`
-	LastCatalogPush time.Time `json:"last_catalog_push,omitempty"`
+	LastConnectedAt time.Time `json:"last_connected_at,omitzero"`
+	LastCatalogPush time.Time `json:"last_catalog_push,omitzero"`
 	LastCatalogSize int       `json:"last_catalog_size,omitempty"`
 	LastError       string    `json:"last_error,omitempty"`
-	LastErrorAt     time.Time `json:"last_error_at,omitempty"`
+	LastErrorAt     time.Time `json:"last_error_at,omitzero"`
 }
 
 // GetStatus returns a snapshot of the follower's live state.

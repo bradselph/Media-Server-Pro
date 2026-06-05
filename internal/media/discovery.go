@@ -170,7 +170,7 @@ type Metadata struct {
 	// ProbeModTime records the file mtime at the time ffprobe was last run.
 	// extractMetadata skips ffprobe when the file mtime hasn't advanced,
 	// making subsequent hourly scans near-instant for unchanged libraries.
-	ProbeModTime time.Time `json:"probe_mod_time,omitempty"`
+	ProbeModTime time.Time `json:"probe_mod_time,omitzero"`
 	// BlurHash is set by the thumbnails module after generation; used for LQIP placeholders
 	BlurHash string `json:"blur_hash,omitempty"`
 	// Duration is the media file duration in seconds, extracted by ffprobe.

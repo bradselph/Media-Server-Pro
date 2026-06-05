@@ -380,8 +380,8 @@ type UserStats struct {
 	LoginsFailed      int       `json:"logins_failed"`
 	Logouts           int       `json:"logouts"`
 	UniqueMedia       int       `json:"unique_media"`
-	FirstSeen         time.Time `json:"first_seen,omitempty"`
-	LastSeen          time.Time `json:"last_seen,omitempty"`
+	FirstSeen         time.Time `json:"first_seen,omitzero"`
+	LastSeen          time.Time `json:"last_seen,omitzero"`
 	MostViewedMediaID string    `json:"most_viewed_media_id,omitempty"`
 	MostViewedCount   int       `json:"most_viewed_count"`
 }
