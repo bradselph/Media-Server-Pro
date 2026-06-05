@@ -338,17 +338,6 @@ async function deleteMediaItem(id: string) {
   }
 }
 
-function sortBy(col: string) {
-  if (params.sort === col) {
-    params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc'
-  } else {
-    params.sort = col
-    params.sort_order = 'asc'
-  }
-  params.page = 1
-  load()
-}
-
 watch([() => params.type, () => params.is_mature], () => {
   params.page = 1
   selectedIds.value = new Set()

@@ -6,8 +6,7 @@ import { useAdminFeedback } from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
-const toast = useToast()
-const { notifyError, notifySuccess } = useAdminFeedback()
+const { notifyError, notifySuccess, notifyWarning } = useAdminFeedback()
 
 const jobs = ref<HLSJob[]>([])
 const stats = ref<HLSStats | null>(null)
@@ -160,7 +159,8 @@ async function validateJob(id: string) {
   try {
     validationResult.value = await adminApi.validateHLS(id)
     const ok = validationResult.value.valid
-    toast.add({ title: ok ? 'HLS output is valid' : 'HLS validation failed', color: ok ? 'success' : 'warning', icon: ok ? 'i-lucide-check' : 'i-lucide-alert-triangle' })
+    if (ok) notifySuccess('HLS output is valid')
+    else notifyWarning('HLS validation failed')
   } catch (e: unknown) {
     notifyError(e, 'Validation failed')
   } finally { if (!destroyed) validating.value = null }
