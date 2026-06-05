@@ -92,9 +92,8 @@ func (h *Handler) GetContinueWatching(c *gin.Context) {
 	if !h.requireSuggestions(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -113,9 +112,8 @@ func (h *Handler) GetPersonalizedSuggestions(c *gin.Context) {
 	if !h.requireSuggestionsCatalogue(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 	h.respondSuggestions(c, session.UserID, 10, 100)
@@ -126,9 +124,8 @@ func (h *Handler) RecordRating(c *gin.Context) {
 	if !h.requireSuggestions(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -163,9 +160,8 @@ func (h *Handler) GetMyProfile(c *gin.Context) {
 	if !h.requireSuggestions(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 	profile := h.suggestions.GetUserProfile(session.UserID)
@@ -189,9 +185,8 @@ func (h *Handler) ResetMyProfile(c *gin.Context) {
 	if !h.requireSuggestions(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 	if err := h.suggestions.ResetUserProfile(session.UserID); err != nil {
@@ -215,9 +210,8 @@ func (h *Handler) GetMyRatings(c *gin.Context) {
 	if !h.requireSuggestions(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -318,9 +312,8 @@ type mediaRecentItem struct {
 // GetNewSinceLastVisit returns media added since the user's previous login.
 // Requires auth. Falls back to a 7-day window if previous_last_login is not set.
 func (h *Handler) GetNewSinceLastVisit(c *gin.Context) {
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -393,9 +386,8 @@ func (h *Handler) GetOnDeck(c *gin.Context) {
 	if !h.requireSuggestions(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 	if !h.requireCategorizer(c) {

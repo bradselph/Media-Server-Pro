@@ -899,9 +899,8 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 // GetBatchPlaybackPositions returns playback positions for multiple media IDs.
 // Query param: ids=id1,id2,... (max 100)
 func (h *Handler) GetBatchPlaybackPositions(c *gin.Context) {
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -966,9 +965,8 @@ func (h *Handler) GetPlaybackPosition(c *gin.Context) {
 		return
 	}
 
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 	position := h.media.GetPlaybackPosition(c.Request.Context(), mediaPath, session.UserID)

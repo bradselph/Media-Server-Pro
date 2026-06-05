@@ -162,9 +162,8 @@ func (h *Handler) AdminProcessDeletionRequest(c *gin.Context) {
 		return
 	}
 
-	adminSession := getSession(c)
+	adminSession := RequireSession(c)
 	if adminSession == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 

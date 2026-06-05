@@ -192,9 +192,8 @@ func (h *Handler) GetPlaylist(c *gin.Context) {
 	if !ok {
 		return
 	}
-	s := getSession(c)
+	s := RequireSession(c)
 	if s == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 	userID := playlist.UserID(s.UserID)
