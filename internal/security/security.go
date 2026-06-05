@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -83,12 +84,11 @@ type Module struct {
 	blacklist       *IPList
 	rateLimiter     *RateLimiter
 	authRateLimiter *RateLimiter // stricter limits for auth endpoints
-	healthy         bool
-	healthMsg       string
-	// totalBlocked and totalRateLimited are guarded by mu; could use atomic.Int64 for hot-path-only updates.
-	totalBlocked     int64
-	totalRateLimited int64
-	mu               sync.RWMutex
+	healthy          bool
+	healthMsg        string
+	totalBlocked     atomic.Int64
+	totalRateLimited atomic.Int64
+	mu               sync.RWMutex // guards healthy/healthMsg
 	// cidrRaw and cidrParsed cache the parsed trusted-proxy CIDRs so that net.ParseCIDR
 	// is not called on every HTTP request. Rebuilt whenever the raw config strings change.
 	cidrMu     sync.Mutex
@@ -622,11 +622,6 @@ func (m *Module) GetStats() Stats {
 	bannedIPs := len(m.rateLimiter.bannedIPs)
 	m.rateLimiter.mu.RUnlock()
 
-	m.mu.RLock()
-	totalBlocked := m.totalBlocked
-	totalRateLimited := m.totalRateLimited
-	m.mu.RUnlock()
-
 	return Stats{
 		WhitelistEnabled: whitelistEnabled,
 		WhitelistCount:   whitelistCount,
@@ -635,8 +630,8 @@ func (m *Module) GetStats() Stats {
 		RateLimitEnabled: m.config.Get().Security.RateLimitEnabled,
 		ActiveClients:    activeClients,
 		BannedIPs:        bannedIPs,
-		TotalBlocked:     totalBlocked,
-		TotalRateLimited: totalRateLimited,
+		TotalBlocked:     m.totalBlocked.Load(),
+		TotalRateLimited: m.totalRateLimited.Load(),
 	}
 }
 
@@ -1066,9 +1061,7 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 		allowed, reason := m.CheckAccess(ip)
 		if !allowed {
 			m.log.Warn("Access denied for %s: %s", ip, reason)
-			m.mu.Lock()
-			m.totalBlocked++
-			m.mu.Unlock()
+			m.totalBlocked.Add(1)
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
@@ -1119,9 +1112,7 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 
 		if !allowed {
 			m.log.Warn("Rate limit exceeded for %s on %s", ip, reqPath)
-			m.mu.Lock()
-			m.totalRateLimited++
-			m.mu.Unlock()
+			m.totalRateLimited.Add(1)
 			c.Header("Retry-After", fmt.Sprintf("%d", int(time.Until(resetAt).Seconds())))
 			c.AbortWithStatus(http.StatusTooManyRequests)
 			return
