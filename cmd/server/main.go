@@ -696,6 +696,19 @@ func registerTasks(
 			}
 		}
 	}
+
+	registerMediaTasks(registerWithOverride, cfg, mediaModule, suggestionsModule)
+	registerThumbnailTasks(registerWithOverride, cfg, mediaModule, thumbnailsModule, log)
+	registerSessionBackupTasks(registerWithOverride, cfg, authModule, backupModule, log)
+	registerScannerTasks(registerWithOverride, cfg, mediaModule, scannerModule, duplicatesModule, log)
+	registerAdminHealthTasks(registerWithOverride, cfg, adminModule, log)
+	registerHLSStreamingTasks(registerWithOverride, cfg, mediaModule, hlsModule, streamingModule, log)
+	registerCacheCleanupTasks(registerWithOverride, cfg, hlsModule, analyticsModule, categorizerModule, remoteModule, log)
+	registerScheduleWatcher(scheduler, cfg, log)
+}
+
+// registerMediaTasks registers the media library scan and metadata cleanup tasks.
+func registerMediaTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, mediaModule *media.Module, suggestionsModule *suggestions.Module) {
 	// Media library scan — discovers new/removed files every hour.
 	// Gated on Features.EnableAutoDiscovery so the flag is honored at tick
 	// time (not just at startup); when it's off the task tick is a no-op.
@@ -745,7 +758,10 @@ func registerTasks(
 			return mediaModule.Scan()
 		},
 	})
+}
 
+// registerThumbnailTasks registers thumbnail generation and cleanup tasks.
+func registerThumbnailTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, mediaModule *media.Module, thumbnailsModule *thumbnails.Module, log *logger.Logger) {
 	// Thumbnail generation — generates missing thumbnails every 30m
 	registerWithOverride(tasks.TaskRegistration{
 		ID:          "thumbnail-generation",
@@ -802,7 +818,10 @@ func registerTasks(
 			return nil
 		},
 	})
+}
 
+// registerSessionBackupTasks registers expired-session and old-backup cleanup tasks.
+func registerSessionBackupTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, authModule *auth.Module, backupModule *backup.Module, log *logger.Logger) {
 	// Session cleanup — removes expired sessions every hour
 	registerWithOverride(tasks.TaskRegistration{
 		ID:          "session-cleanup",
@@ -835,7 +854,11 @@ func registerTasks(
 			return err
 		},
 	})
+}
 
+// registerScannerTasks registers mature-content scanning, HF classification,
+// and duplicate-detection tasks.
+func registerScannerTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, mediaModule *media.Module, scannerModule *scanner.Module, duplicatesModule *duplicates.Module, log *logger.Logger) {
 	// Mature content scan — scans all media directories for mature content every 12h
 	// and applies auto-flagged results to the media library so ListMedia can filter them.
 	registerWithOverride(tasks.TaskRegistration{
@@ -927,7 +950,10 @@ func registerTasks(
 			return duplicatesModule.ScanLocalMedia(ctx)
 		},
 	})
+}
 
+// registerAdminHealthTasks registers audit-log retention and periodic health-check tasks.
+func registerAdminHealthTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, adminModule *admin.Module, log *logger.Logger) {
 	// Audit log cleanup — removes entries older than AdminConfig.AuditLogRetentionDays.
 	// Default 90 days; admin can tune via the AdminConfig field. A retention of <= 0
 	// disables eviction entirely (the task ticks but is a no-op).
@@ -985,7 +1011,11 @@ func registerTasks(
 			return nil
 		},
 	})
+}
 
+// registerHLSStreamingTasks registers HLS pre-generation, HLS inactive-job
+// cleanup, and streaming-session eviction tasks.
+func registerHLSStreamingTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, mediaModule *media.Module, hlsModule *hls.Module, streamingModule *streaming.Module, log *logger.Logger) {
 	// HLS pre-generation — generates HLS content for video media that doesn't have it yet.
 	// Interval is configurable via hls.pre_generate_interval_hours (default: 1).
 	// Each cycle queues at most ConcurrentLimit jobs and skips entirely when existing
@@ -1093,7 +1123,11 @@ func registerTasks(
 			},
 		})
 	}
+}
 
+// registerCacheCleanupTasks registers retention/eviction passes for analytics
+// data, stale HLS locks, categorizer rows, and the remote-media cache.
+func registerCacheCleanupTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, hlsModule *hls.Module, analyticsModule *analytics.Module, categorizerModule *categorizer.Module, remoteModule *remote.Module, log *logger.Logger) {
 	// Analytics cleanup — trims events, daily-stats rows, and in-memory
 	// caches older than Analytics.RetentionDays. Hot-path flushing of
 	// dirty rows still happens on the analytics module's own 30s flush
@@ -1175,9 +1209,12 @@ func registerTasks(
 			},
 		})
 	}
+}
 
-	// Re-apply intervals when they are changed via the admin config panel so
-	// that a server restart is not required to pick up a new schedule.
+// registerScheduleWatcher re-applies config-driven task intervals when they are
+// changed via the admin config panel so that a server restart is not required
+// to pick up a new schedule.
+func registerScheduleWatcher(scheduler *tasks.Module, cfg *config.Manager, log *logger.Logger) {
 	cfg.OnChange(func(newCfg *config.Config) {
 		newInterval := max(time.Duration(newCfg.HLS.PreGenerateIntervalHours)*time.Hour, 15*time.Minute)
 		if err := scheduler.UpdateSchedule("hls-pregenerate", newInterval); err != nil {
