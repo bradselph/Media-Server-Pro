@@ -452,6 +452,12 @@ func (m *Module) setHeaders(w http.ResponseWriter, contentType string, fileSize,
 
 // streamFromReader streams content from an io.Reader (e.g., S3 ranged GET response)
 // to the response writer. Used when the backend supports efficient range reads.
+//
+// NOTE: streamFromReader, streamContentSeeker, and streamContent deliberately
+// share an identical inner loop (read → write → accumulate → flush) but differ
+// in seek handling and byte accounting. Keeping them separate avoids an
+// unverified must-seek-first precondition and an extra call per chunk that a
+// shared helper would introduce on this hot path — do not dedup.
 func (m *Module) streamFromReader(w http.ResponseWriter, reader io.Reader, totalBytes, chunkSize int64, session *models.StreamSession) error {
 	bufInterface := m.bufferPool.Get()
 	buf := bufInterface.([]byte) //nolint:errcheck // pool invariant: only []byte stored
