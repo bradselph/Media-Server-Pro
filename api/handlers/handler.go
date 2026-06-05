@@ -385,10 +385,8 @@ func getSession(c *gin.Context) *models.Session {
 // don't expose per-user history; only writes that would surface in the
 // user's own /history, /favorites, or analytics drill-downs are gated.
 func isPrivateSession(c *gin.Context) bool {
-	if v := c.GetHeader("X-MSP-Private"); v == "1" || strings.EqualFold(v, "true") {
-		return true
-	}
-	return false
+	v := c.GetHeader("X-MSP-Private")
+	return v == "1" || strings.EqualFold(v, "true")
 }
 
 // auditableEventTypes lists event types that, in addition to bumping the
