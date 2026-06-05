@@ -56,7 +56,6 @@ import type {
     MediaStats,
     ModuleHealth,
     NewSinceResponse,
-    OnDeckResponse,
     PermissionsInfo,
     Playlist,
     PlaylistItem,
@@ -335,8 +334,6 @@ export function useSuggestionsApi() {
             api.get<RecentItem[]>(`/api/suggestions/recent${buildQS({days: days || undefined, limit: limit || undefined})}`),
         getNewSinceLastVisit: (limit?: number) =>
             api.get<NewSinceResponse>(`/api/suggestions/new${buildQS({limit: limit || undefined})}`),
-        getOnDeck: (limit?: number) =>
-            api.get<OnDeckResponse>(`/api/suggestions/on-deck${buildQS({limit: limit || undefined})}`),
     }
 }
 

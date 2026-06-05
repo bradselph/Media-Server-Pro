@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem, Playlist, MediaStats } from '~/types/api'
+import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, Playlist, MediaStats } from '~/types/api'
 import { getDisplayTitle } from '~/utils/mediaTitle'
 import { useApiEndpoints, useFavoritesApi, usePlaylistApi, useSavedSearchesApi } from '~/composables/useApiEndpoints'
 import type { SavedSearch } from '~/composables/useApiEndpoints'
@@ -206,7 +206,6 @@ const trending = ref<Suggestion[]>([])
 const recommended = ref<Suggestion[]>([])
 const recentlyAdded = ref<RecentItem[]>([])
 const newSinceLastVisit = ref<NewSinceResponse | null>(null)
-const onDeck = ref<OnDeckItem[]>([])
 // General suggestions (shown to logged-out users — public endpoint)
 const general = ref<Suggestion[]>([])
 
@@ -256,17 +255,16 @@ async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
   recsLoading.value = true
   try {
-    const [cw, tr, rec, recent, newSince, deck] = await Promise.allSettled([
+    const [cw, tr, rec, recent, newSince] = await Promise.allSettled([
       suggestionsApi.getContinueWatching(20),
       suggestionsApi.getTrending(20),
       suggestionsApi.getPersonalized(12),
       suggestionsApi.getRecent(14, 20),
       suggestionsApi.getNewSinceLastVisit(20),
-      suggestionsApi.getOnDeck(10),
     ])
     if (!indexMounted) return
     // Deduplicate across rows: higher-priority rows "claim" their IDs so lower-priority
-    // rows don't show the same item twice. Priority: continueWatching > onDeck > trending > recommended > recent.
+    // rows don't show the same item twice. Priority: continueWatching > trending > recommended > recent.
     const seenIds = new Set<string>()
     function dedup<T extends { id?: string; media_id?: string }>(items: T[]): T[] {
       return items.filter(item => {
@@ -277,7 +275,6 @@ async function loadRecommendations() {
       })
     }
     if (cw.status === 'fulfilled') continueWatching.value = dedup(cw.value ?? [])
-    if (deck.status === 'fulfilled') onDeck.value = dedup((deck.value?.items ?? []) as Parameters<typeof dedup>[0]) as typeof onDeck.value
     if (tr.status === 'fulfilled') trending.value = dedup(tr.value ?? [])
     if (rec.status === 'fulfilled') recommended.value = dedup(rec.value ?? [])
     if (recent.status === 'fulfilled') recentlyAdded.value = dedup(recent.value ?? [])
@@ -432,7 +429,6 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
     recommended.value = []
     recentlyAdded.value = []
     newSinceLastVisit.value = null
-    onDeck.value = []
     userRatings.value = {}
     savedSearches.value = []
     savedSearchMatches.value = {}
@@ -1058,57 +1054,6 @@ onUnmounted(() => {
         :progress="suggestionProgress"
         @thumbnail-error="onSuggestionThumbnailError"
       />
-
-      <!-- On Deck — next entry in a series. The backend keys items by series
-           (show_name + season/episode) so a viewer who finished S01E03 sees
-           S01E04 as the natural next pickup. Naming kept neutral; the
-           feature applies to any episodic content. -->
-      <div v-if="onDeck.length > 0" class="space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
-            <UIcon name="i-lucide-list-video" class="size-4 text-[var(--accent)]" />
-            On Deck
-          </h2>
-          <div class="flex items-center gap-2">
-            <NuxtLink to="/history" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
-            <div class="flex gap-1">
-              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
-              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
-            </div>
-          </div>
-        </div>
-        <div ref="onDeckScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-          <NuxtLink
-            v-for="ep in onDeck"
-            :key="ep.media_id"
-            :to="`/player?id=${encodeURIComponent(ep.media_id)}`"
-            class="group shrink-0 w-40"
-          >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
-              <img
-                v-if="ep.thumbnail_url"
-                :src="ep.thumbnail_url"
-                :alt="getDisplayTitle(ep)"
-                width="320"
-                height="180"
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                loading="lazy"
-              />
-              <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-list-video" class="size-6 text-muted" />
-              </div>
-              <div v-if="ep.season > 0 || ep.episode > 0" class="absolute bottom-1 left-1 text-[10px] font-bold text-white bg-black/60 rounded px-1">
-                {{ ep.season > 0 ? `S${String(ep.season).padStart(2,'0')}` : '' }}{{ ep.episode > 0 ? `E${String(ep.episode).padStart(2,'0')}` : '' }}
-              </div>
-              <div v-if="ep.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
-                {{ formatDuration(ep.duration) }}
-              </div>
-            </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors leading-tight" :title="ep.show_name">{{ ep.show_name }}</p>
-            <p class="text-[10px] text-muted truncate" :title="getDisplayTitle(ep)">{{ getDisplayTitle(ep) }}</p>
-          </NuxtLink>
-        </div>
-      </div>
 
       <!-- Trending -->
       <RecommendationRow
