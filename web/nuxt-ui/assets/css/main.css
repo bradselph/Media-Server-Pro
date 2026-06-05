@@ -156,8 +156,8 @@ body {
 
 /* Scrollbar-hide utility — horizontal-scroll carousels per handoff §6.5.
    Hides the scrollbar on both WebKit (Chrome/Safari/Edge) and Firefox while
-   keeping the container scrollable. Applied to recommendation rows, on-deck
-   strips, and admin mobile tab strip. */
+   keeping the container scrollable. Applied to recommendation rows and the
+   admin mobile tab strip. */
 .scrollbar-hide {
     scrollbar-width: none;           /* Firefox */
     -ms-overflow-style: none;        /* legacy IE/Edge */
