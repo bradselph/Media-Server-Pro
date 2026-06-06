@@ -86,7 +86,3 @@ export function pageview(path?: string): void {
         page_title: document.title,
     })
 }
-
-export function useAnalytics() {
-    return {initGA, pageview}
-}
