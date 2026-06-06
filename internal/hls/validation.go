@@ -136,9 +136,9 @@ func (m *Module) parseSegments(content string) []string {
 	var segments []string
 	// Handle both Unix (\n) and Windows (\r\n) line endings
 	content = strings.ReplaceAll(content, "\r\n", "\n")
-	lines := strings.Split(content, "\n")
+	lines := strings.SplitSeq(content, "\n")
 
-	for _, line := range lines {
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if isSegmentLine(line) {
 			segments = append(segments, line)

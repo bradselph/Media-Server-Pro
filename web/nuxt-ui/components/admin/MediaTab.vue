@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import type { MediaItem, AdminMediaListParams, ThumbnailStats, MediaChapter } from '~/types/api'
-import { getDisplayTitle } from '~/utils/mediaTitle'
-import { formatBytes, formatDuration } from '~/utils/format'
-import { useAdminFeedback } from '~/composables/useAdminFeedback'
+import type {AdminMediaListParams, MediaChapter, MediaItem, ThumbnailStats} from '~/types/api'
+import {getDisplayTitle} from '~/utils/mediaTitle'
+import {formatBytes, formatDuration} from '~/utils/format'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
 const chaptersApi = useChaptersApi()
-const { notifyError, notifySuccess, notifyInfo } = useAdminFeedback()
+const {notifyError, notifySuccess, notifyInfo} = useAdminFeedback()
 
 const thumbStats = ref<ThumbnailStats | null>(null)
+
 async function loadThumbStats() {
-  try { thumbStats.value = await adminApi.getThumbnailStats() }
-  catch { /* optional — suppress if endpoint unavailable */ }
+  try {
+    thumbStats.value = await adminApi.getThumbnailStats()
+  } catch { /* optional — suppress if endpoint unavailable */
+  }
 }
 
 const items = ref<MediaItem[]>([])
@@ -28,8 +31,9 @@ const confirmBulkDelete = ref(false)
 // Bulk selection
 const selectedIds = ref(new Set<string>())
 const allPageSelected = computed(() =>
-  items.value.length > 0 && items.value.every(item => selectedIds.value.has(item.id)),
+    items.value.length > 0 && items.value.every(item => selectedIds.value.has(item.id)),
 )
+
 function toggleSelectAll() {
   if (allPageSelected.value) {
     items.value.forEach(item => selectedIds.value.delete(item.id))
@@ -38,13 +42,16 @@ function toggleSelectAll() {
   }
   selectedIds.value = new Set(selectedIds.value)
 }
+
 function toggleSelect(id: string) {
   const next = new Set(selectedIds.value)
   if (next.has(id)) next.delete(id)
   else next.add(id)
   selectedIds.value = next
 }
+
 const bulkRunning = ref(false)
+
 async function runBulk(action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) {
   const ids = [...selectedIds.value]
   if (!ids.length) return
@@ -54,6 +61,7 @@ async function runBulk(action: 'delete' | 'update', data?: { category?: string; 
   }
   await executeBulk(action, data)
 }
+
 async function executeBulk(action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) {
   const ids = [...selectedIds.value]
   if (!ids.length) return
@@ -75,9 +83,11 @@ async function executeBulk(action: 'delete' | 'update', data?: { category?: stri
 const editTarget = ref<MediaItem | null>(null)
 const editOpen = computed({
   get: () => !!editTarget.value,
-  set: (v: boolean) => { if (!v) editTarget.value = null },
+  set: (v: boolean) => {
+    if (!v) editTarget.value = null
+  },
 })
-const editForm = reactive({ name: '', category: '', is_mature: false, tags: '', description: '' })
+const editForm = reactive({name: '', category: '', is_mature: false, tags: '', description: ''})
 const editSaving = ref(false)
 
 // Thumbnail upload state
@@ -131,7 +141,7 @@ async function saveEdit() {
       category: editForm.category,
       is_mature: editForm.is_mature,
       tags: editForm.tags.split(',').map((t: string) => t.trim()).filter(Boolean),
-      metadata: { ...editTarget.value.metadata, description: editForm.description },
+      metadata: {...editTarget.value.metadata, description: editForm.description},
     })
     notifySuccess('Media updated')
     editTarget.value = null
@@ -147,10 +157,12 @@ async function saveEdit() {
 const chaptersTarget = ref<MediaItem | null>(null)
 const chaptersOpen = computed({
   get: () => !!chaptersTarget.value,
-  set: (v: boolean) => { if (!v) chaptersTarget.value = null },
+  set: (v: boolean) => {
+    if (!v) chaptersTarget.value = null
+  },
 })
 const chapters = ref<MediaChapter[]>([])
-const newChapter = reactive({ start_time: 0, end_time: '', label: '' })
+const newChapter = reactive({start_time: 0, end_time: '', label: ''})
 const chaptersLoading = ref(false)
 const chaptersSaving = ref(false)
 
@@ -226,13 +238,19 @@ let loadSeq = 0
 
 function onSearchInput() {
   if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => { params.page = 1; load() }, 300)
+  searchTimer = setTimeout(() => {
+    params.page = 1;
+    load()
+  }, 300)
 }
 
 // load() is bound directly to event handlers, so it stays param-less.
 // loadInternal carries the silent flag the scan poll uses to avoid spamming an
 // error toast every few seconds on a transient fetch failure mid-scan.
-function load() { return loadInternal(false) }
+function load() {
+  return loadInternal(false)
+}
+
 async function loadInternal(silent: boolean) {
   const seq = ++loadSeq
   selectedIds.value = new Set()
@@ -263,7 +281,10 @@ let scanPollTimer: ReturnType<typeof setInterval> | null = null
 let scanPolls = 0
 const MAX_SCAN_POLLS = 100 // ~5 min at 3s — safety bound so the poll can't run forever
 function stopScanPoll() {
-  if (scanPollTimer) { clearInterval(scanPollTimer); scanPollTimer = null }
+  if (scanPollTimer) {
+    clearInterval(scanPollTimer);
+    scanPollTimer = null
+  }
 }
 
 async function handleScan() {
@@ -292,61 +313,64 @@ const rowBusy = ref<Set<string>>(new Set())
 
 async function generateThumbnail(id: string) {
   if (rowBusy.value.has(`thumb-${id}`)) return
-  const next = new Set(rowBusy.value); next.add(`thumb-${id}`); rowBusy.value = next
+  const next = new Set(rowBusy.value);
+  next.add(`thumb-${id}`);
+  rowBusy.value = next
   try {
     await adminApi.generateThumbnail(id)
     notifySuccess('Thumbnail queued')
   } catch (e: unknown) {
     notifyError(e, 'Thumbnail failed')
   } finally {
-    const cleared = new Set(rowBusy.value); cleared.delete(`thumb-${id}`); rowBusy.value = cleared
+    const cleared = new Set(rowBusy.value);
+    cleared.delete(`thumb-${id}`);
+    rowBusy.value = cleared
   }
 }
 
 async function generateHLS(id: string) {
   if (rowBusy.value.has(`hls-${id}`)) return
-  const next = new Set(rowBusy.value); next.add(`hls-${id}`); rowBusy.value = next
+  const next = new Set(rowBusy.value);
+  next.add(`hls-${id}`);
+  rowBusy.value = next
   try {
     await hlsApi.generate(id)
     notifyInfo('HLS generation started')
   } catch (e: unknown) {
     notifyError(e, 'HLS generation failed')
   } finally {
-    const cleared = new Set(rowBusy.value); cleared.delete(`hls-${id}`); rowBusy.value = cleared
+    const cleared = new Set(rowBusy.value);
+    cleared.delete(`hls-${id}`);
+    rowBusy.value = cleared
   }
 }
 
 function confirmDelete(id: string) {
   confirmDeleteId.value = id
 }
+
 async function executeDelete() {
   const id = confirmDeleteId.value
   if (!id) return
   confirmDeleteId.value = null
   await deleteMediaItem(id)
 }
+
 async function deleteMediaItem(id: string) {
   if (rowBusy.value.has(`del-${id}`)) return
-  const next = new Set(rowBusy.value); next.add(`del-${id}`); rowBusy.value = next
+  const next = new Set(rowBusy.value);
+  next.add(`del-${id}`);
+  rowBusy.value = next
   try {
     await adminApi.deleteMedia(id)
     await load()
   } catch (e: unknown) {
     notifyError(e, 'Delete failed')
   } finally {
-    const cleared = new Set(rowBusy.value); cleared.delete(`del-${id}`); rowBusy.value = cleared
+    const cleared = new Set(rowBusy.value);
+    cleared.delete(`del-${id}`);
+    rowBusy.value = cleared
   }
-}
-
-function sortBy(col: string) {
-  if (params.sort === col) {
-    params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc'
-  } else {
-    params.sort = col
-    params.sort_order = 'asc'
-  }
-  params.page = 1
-  load()
 }
 
 watch([() => params.type, () => params.is_mature], () => {
@@ -376,11 +400,15 @@ onMounted(async () => {
       try {
         const found = await mediaApi.getById(editId)
         if (found) openEdit(found)
-      } catch { /* best-effort */ }
+      } catch { /* best-effort */
+      }
     }
   }
 })
-onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() })
+onUnmounted(() => {
+  if (searchTimer) clearTimeout(searchTimer);
+  stopScanPoll()
+})
 </script>
 
 <template>
@@ -396,11 +424,13 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
         <p class="text-xs text-muted">Thumbnail Size</p>
       </UCard>
       <UCard :ui="{ body: 'p-3' }">
-        <p class="text-xl font-bold" :class="thumbStats.pending_generation > 0 ? 'text-warning' : 'text-highlighted'">{{ thumbStats.pending_generation.toLocaleString() }}</p>
+        <p class="text-xl font-bold" :class="thumbStats.pending_generation > 0 ? 'text-warning' : 'text-highlighted'">
+          {{ thumbStats.pending_generation.toLocaleString() }}</p>
         <p class="text-xs text-muted">Pending Generation</p>
       </UCard>
       <UCard :ui="{ body: 'p-3' }">
-        <p class="text-xl font-bold" :class="thumbStats.generation_errors > 0 ? 'text-error' : 'text-highlighted'">{{ thumbStats.generation_errors.toLocaleString() }}</p>
+        <p class="text-xl font-bold" :class="thumbStats.generation_errors > 0 ? 'text-error' : 'text-highlighted'">
+          {{ thumbStats.generation_errors.toLocaleString() }}</p>
         <p class="text-xs text-muted">Generation Errors</p>
       </UCard>
     </div>
@@ -409,42 +439,43 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
     <div class="flex flex-wrap gap-2 items-center justify-between">
       <div class="flex flex-wrap gap-2">
         <UInput
-          v-model="params.search"
-          icon="i-lucide-search"
-          placeholder="Search media…"
-          class="w-52"
-          @input="onSearchInput"
+            v-model="params.search"
+            icon="i-lucide-search"
+            placeholder="Search media…"
+            class="w-52"
+            @input="onSearchInput"
         />
         <USelect
-          v-model="params.type"
-          :items="[
+            v-model="params.type"
+            :items="[
             { label: 'All Types', value: 'all' },
             { label: 'Video', value: 'video' },
             { label: 'Audio', value: 'audio' },
             { label: 'Image', value: 'image' },
           ]"
-          class="w-36"
+            class="w-36"
         />
         <USelect
-          v-model="params.is_mature"
-          :items="[
+            v-model="params.is_mature"
+            :items="[
             { label: 'All Content', value: 'all' },
             { label: 'SFW Only', value: 'false' },
             { label: 'Mature Only', value: 'true' },
           ]"
-          class="w-40"
+            class="w-40"
         />
       </div>
       <div class="flex gap-2">
         <UButton
-          icon="i-lucide-scan"
-          label="Scan Library"
-          :loading="scanning"
-          variant="outline"
-          color="neutral"
-          @click="handleScan"
+            icon="i-lucide-scan"
+            label="Scan Library"
+            :loading="scanning"
+            variant="outline"
+            color="neutral"
+            @click="handleScan"
         />
-        <UButton icon="i-lucide-refresh-cw" aria-label="Refresh media list" variant="ghost" color="neutral" @click="load" />
+        <UButton icon="i-lucide-refresh-cw" aria-label="Refresh media list" variant="ghost" color="neutral"
+                 @click="load"/>
       </div>
     </div>
 
@@ -458,54 +489,57 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
     </div>
 
     <!-- Bulk action bar -->
-    <div v-if="selectedIds.size > 0" class="flex flex-wrap items-center gap-2 p-3 bg-elevated rounded-lg border border-default">
-      <span class="text-sm font-medium">{{ selectedIds.size }} item{{ selectedIds.size !== 1 ? 's' : '' }} selected</span>
+    <div v-if="selectedIds.size > 0"
+         class="flex flex-wrap items-center gap-2 p-3 bg-elevated rounded-lg border border-default">
+      <span class="text-sm font-medium">{{ selectedIds.size }} item{{
+          selectedIds.size !== 1 ? 's' : ''
+        }} selected</span>
       <UButton
-        icon="i-lucide-shield"
-        label="Mark Mature"
-        size="xs"
-        variant="outline"
-        color="warning"
-        :loading="bulkRunning"
-        @click="runBulk('update', { is_mature: true })"
+          icon="i-lucide-shield"
+          label="Mark Mature"
+          size="xs"
+          variant="outline"
+          color="warning"
+          :loading="bulkRunning"
+          @click="runBulk('update', { is_mature: true })"
       />
       <UButton
-        icon="i-lucide-shield-off"
-        label="Unmark Mature"
-        size="xs"
-        variant="outline"
-        color="neutral"
-        :loading="bulkRunning"
-        @click="runBulk('update', { is_mature: false })"
+          icon="i-lucide-shield-off"
+          label="Unmark Mature"
+          size="xs"
+          variant="outline"
+          color="neutral"
+          :loading="bulkRunning"
+          @click="runBulk('update', { is_mature: false })"
       />
       <UButton
-        icon="i-lucide-trash-2"
-        label="Delete Selected"
-        size="xs"
-        variant="outline"
-        color="error"
-        :loading="bulkRunning"
-        @click="runBulk('delete')"
+          icon="i-lucide-trash-2"
+          label="Delete Selected"
+          size="xs"
+          variant="outline"
+          color="error"
+          :loading="bulkRunning"
+          @click="runBulk('delete')"
       />
       <UButton
-        icon="i-lucide-x"
-        label="Clear"
-        size="xs"
-        variant="ghost"
-        color="neutral"
-        @click="selectedIds = new Set()"
+          icon="i-lucide-x"
+          label="Clear"
+          size="xs"
+          variant="ghost"
+          color="neutral"
+          @click="selectedIds = new Set()"
       />
     </div>
 
     <!-- Table -->
     <UCard>
       <div v-if="loading" class="flex justify-center py-8">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary"/>
       </div>
       <UTable
-        v-else
-        :data="items"
-        :columns="[
+          v-else
+          :data="items"
+          :columns="[
           { accessorKey: '_select', header: '' },
           { accessorKey: 'name', header: 'Name' },
           { accessorKey: 'type', header: 'Type' },
@@ -519,16 +553,16 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
       >
         <template #_select-header>
           <UCheckbox
-            :model-value="allPageSelected"
-            aria-label="Select all"
-            @update:model-value="toggleSelectAll"
+              :model-value="allPageSelected"
+              aria-label="Select all"
+              @update:model-value="toggleSelectAll"
           />
         </template>
         <template #_select-cell="{ row }">
           <UCheckbox
-            :model-value="selectedIds.has(row.original.id)"
-            aria-label="Select row"
-            @update:model-value="toggleSelect(row.original.id)"
+              :model-value="selectedIds.has(row.original.id)"
+              aria-label="Select row"
+              @update:model-value="toggleSelect(row.original.id)"
           />
         </template>
 
@@ -538,7 +572,7 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
           </div>
         </template>
         <template #type-cell="{ row }">
-          <UBadge :label="row.original.type" color="neutral" variant="subtle" size="xs" />
+          <UBadge :label="row.original.type" color="neutral" variant="subtle" size="xs"/>
         </template>
         <template #size-cell="{ row }">
           <span class="text-sm">{{ formatBytes(row.original.size) }}</span>
@@ -554,59 +588,59 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
         </template>
         <template #is_mature-cell="{ row }">
           <UBadge
-            v-if="row.original.is_mature"
-            label="Mature"
-            color="error"
-            variant="subtle"
-            size="xs"
+              v-if="row.original.is_mature"
+              label="Mature"
+              color="error"
+              variant="subtle"
+              size="xs"
           />
           <span v-else class="text-muted text-sm">—</span>
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-1 justify-end">
             <UButton
-              icon="i-lucide-pencil"
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              title="Edit"
-              @click="openEdit(row.original)"
+                icon="i-lucide-pencil"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                title="Edit"
+                @click="openEdit(row.original)"
             />
             <UButton
-              icon="i-lucide-image"
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              title="Generate thumbnail"
-              :loading="rowBusy.has(`thumb-${row.original.id}`)"
-              @click="generateThumbnail(row.original.id)"
+                icon="i-lucide-image"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                title="Generate thumbnail"
+                :loading="rowBusy.has(`thumb-${row.original.id}`)"
+                @click="generateThumbnail(row.original.id)"
             />
             <UButton
-              v-if="row.original.type !== 'audio'"
-              icon="i-lucide-video"
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              title="Generate HLS"
-              :loading="rowBusy.has(`hls-${row.original.id}`)"
-              @click="generateHLS(row.original.id)"
+                v-if="row.original.type !== 'audio'"
+                icon="i-lucide-video"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                title="Generate HLS"
+                :loading="rowBusy.has(`hls-${row.original.id}`)"
+                @click="generateHLS(row.original.id)"
             />
             <UButton
-              icon="i-lucide-list-ordered"
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              title="Edit chapters"
-              @click="openChapters(row.original)"
+                icon="i-lucide-list-ordered"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                title="Edit chapters"
+                @click="openChapters(row.original)"
             />
             <UButton
-              icon="i-lucide-trash-2"
-              size="xs"
-              variant="ghost"
-              color="error"
-              title="Delete"
-              :loading="rowBusy.has(`del-${row.original.id}`)"
-              @click="confirmDelete(row.original.id)"
+                icon="i-lucide-trash-2"
+                size="xs"
+                variant="ghost"
+                color="error"
+                title="Delete"
+                :loading="rowBusy.has(`del-${row.original.id}`)"
+                @click="confirmDelete(row.original.id)"
             />
           </div>
         </template>
@@ -619,40 +653,44 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
     <!-- Pagination -->
     <div v-if="totalPages > 1" class="flex justify-center">
       <UPagination
-        v-model:page="params.page"
-        :total="totalItems"
-        :items-per-page="params.limit"
-        @update:page="load"
+          v-model:page="params.page"
+          :total="totalItems"
+          :items-per-page="params.limit"
+          @update:page="load"
       />
     </div>
 
     <!-- Single-item delete confirmation -->
     <UModal
-      :open="!!confirmDeleteId"
-      title="Delete Media Item"
-      @update:open="val => { if (!val) confirmDeleteId = null }"
+        :open="!!confirmDeleteId"
+        title="Delete Media Item"
+        @update:open="val => { if (!val) confirmDeleteId = null }"
     >
       <template #body>
         <p>Are you sure you want to delete this media item? This action cannot be undone.</p>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmDeleteId = null" />
-        <UButton color="error" label="Delete" :loading="!!confirmDeleteId && rowBusy.has(`del-${confirmDeleteId}`)" @click="executeDelete" />
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmDeleteId = null"/>
+        <UButton color="error" label="Delete" :loading="!!confirmDeleteId && rowBusy.has(`del-${confirmDeleteId}`)"
+                 @click="executeDelete"/>
       </template>
     </UModal>
 
     <!-- Bulk delete confirmation -->
     <UModal
-      :open="confirmBulkDelete"
-      title="Delete Selected Items"
-      @update:open="val => { if (!val) { confirmBulkDelete = false; selectedIds = new Set() } }"
+        :open="confirmBulkDelete"
+        title="Delete Selected Items"
+        @update:open="val => { if (!val) { confirmBulkDelete = false; selectedIds = new Set() } }"
     >
       <template #body>
-        <p>Are you sure you want to delete <strong>{{ selectedIds.size }}</strong> selected item{{ selectedIds.size !== 1 ? 's' : '' }}? This action cannot be undone.</p>
+        <p>Are you sure you want to delete <strong>{{ selectedIds.size }}</strong> selected
+          item{{ selectedIds.size !== 1 ? 's' : '' }}? This action cannot be undone.</p>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false; selectedIds = new Set()" />
-        <UButton color="error" label="Delete" :loading="bulkRunning" @click="confirmBulkDelete = false; executeBulk('delete')" />
+        <UButton variant="ghost" color="neutral" label="Cancel"
+                 @click="confirmBulkDelete = false; selectedIds = new Set()"/>
+        <UButton color="error" label="Delete" :loading="bulkRunning"
+                 @click="confirmBulkDelete = false; executeBulk('delete')"/>
       </template>
     </UModal>
 
@@ -661,60 +699,61 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
       <template #body>
         <div class="space-y-4">
           <UFormField label="Name">
-            <UInput v-model="editForm.name" class="w-full" />
+            <UInput v-model="editForm.name" class="w-full"/>
           </UFormField>
           <UFormField label="Category">
-            <UInput v-model="editForm.category" placeholder="e.g. Entertainment" class="w-full" />
+            <UInput v-model="editForm.category" placeholder="e.g. Entertainment" class="w-full"/>
           </UFormField>
           <UFormField label="Tags" hint="Comma-separated (e.g. action, sci-fi)">
-            <UInput v-model="editForm.tags" placeholder="e.g. action, comedy" class="w-full" />
+            <UInput v-model="editForm.tags" placeholder="e.g. action, comedy" class="w-full"/>
           </UFormField>
           <UFormField label="Description">
-            <UTextarea v-model="editForm.description" placeholder="Short description (stored in metadata)" :rows="3" class="w-full" />
+            <UTextarea v-model="editForm.description" placeholder="Short description (stored in metadata)" :rows="3"
+                       class="w-full"/>
           </UFormField>
           <UFormField label="Mature content">
-            <UCheckbox v-model="editForm.is_mature" label="Mark as 18+ content" />
+            <UCheckbox v-model="editForm.is_mature" label="Mark as 18+ content"/>
           </UFormField>
           <!-- Thumbnail upload -->
           <UFormField label="Custom Thumbnail" hint="JPEG, PNG, or WebP — replaces the existing thumbnail">
             <div class="space-y-2">
               <!-- Preview -->
               <div v-if="thumbPreviewUrl" class="relative w-40 rounded-lg overflow-hidden aspect-video bg-muted">
-                <img :src="thumbPreviewUrl" alt="Thumbnail preview" class="w-full h-full object-cover" />
+                <img :src="thumbPreviewUrl" alt="Thumbnail preview" class="w-full h-full object-cover"/>
                 <UButton
-                  icon="i-lucide-x"
-                  size="xs"
-                  color="neutral"
-                  variant="solid"
-                  class="absolute top-1 right-1"
-                  aria-label="Remove selection"
-                  @click="thumbFile = null; thumbPreviewUrl = null; if (thumbFileInput) thumbFileInput.value = ''"
+                    icon="i-lucide-x"
+                    size="xs"
+                    color="neutral"
+                    variant="solid"
+                    class="absolute top-1 right-1"
+                    aria-label="Remove selection"
+                    @click="thumbFile = null; thumbPreviewUrl = null; if (thumbFileInput) thumbFileInput.value = ''"
                 />
               </div>
               <div class="flex gap-2">
                 <input
-                  ref="thumbFileInput"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  class="hidden"
-                  @change="onThumbFileChange"
+                    ref="thumbFileInput"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    class="hidden"
+                    @change="onThumbFileChange"
                 />
                 <UButton
-                  icon="i-lucide-image-plus"
-                  label="Choose Image"
-                  size="sm"
-                  color="neutral"
-                  variant="outline"
-                  @click="thumbFileInput?.click()"
+                    icon="i-lucide-image-plus"
+                    label="Choose Image"
+                    size="sm"
+                    color="neutral"
+                    variant="outline"
+                    @click="thumbFileInput?.click()"
                 />
                 <UButton
-                  v-if="thumbFile"
-                  icon="i-lucide-upload"
-                  label="Upload"
-                  size="sm"
-                  color="primary"
-                  :loading="thumbUploading"
-                  @click="uploadThumbnail"
+                    v-if="thumbFile"
+                    icon="i-lucide-upload"
+                    label="Upload"
+                    size="sm"
+                    color="primary"
+                    :loading="thumbUploading"
+                    @click="uploadThumbnail"
                 />
               </div>
             </div>
@@ -722,8 +761,8 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
         </div>
       </template>
       <template #footer>
-        <UButton label="Save" :loading="editSaving" color="primary" @click="saveEdit" />
-        <UButton label="Cancel" variant="ghost" color="neutral" @click="editOpen = false" />
+        <UButton label="Save" :loading="editSaving" color="primary" @click="saveEdit"/>
+        <UButton label="Cancel" variant="ghost" color="neutral" @click="editOpen = false"/>
       </template>
     </UModal>
 
@@ -732,13 +771,14 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
       <UCard>
         <template #header>
           <div class="flex items-center justify-between">
-            <h3 class="font-semibold text-highlighted">Chapters: {{ chaptersTarget?.name ? getDisplayTitle(chaptersTarget) : 'Loading' }}</h3>
-            <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="chaptersOpen = false" />
+            <h3 class="font-semibold text-highlighted">Chapters:
+              {{ chaptersTarget?.name ? getDisplayTitle(chaptersTarget) : 'Loading' }}</h3>
+            <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="chaptersOpen = false"/>
           </div>
         </template>
 
         <div v-if="chaptersLoading" class="flex items-center justify-center py-8">
-          <UIcon name="i-lucide-loader" class="animate-spin mr-2" />
+          <UIcon name="i-lucide-loader" class="animate-spin mr-2"/>
           <span class="text-muted">Loading chapters...</span>
         </div>
         <div v-else class="space-y-4">
@@ -746,18 +786,21 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
           <div v-if="chapters.length > 0" class="space-y-2">
             <h4 class="font-medium text-sm text-highlighted">Existing Chapters</h4>
             <div class="space-y-1 max-h-48 overflow-y-auto">
-              <div v-for="ch in chapters" :key="ch.id" class="flex items-center justify-between bg-muted rounded p-2 text-sm">
+              <div v-for="ch in chapters" :key="ch.id"
+                   class="flex items-center justify-between bg-muted rounded p-2 text-sm">
                 <div class="flex-1">
                   <p class="font-medium">{{ ch.label }}</p>
-                  <p class="text-xs text-muted">{{ formatDuration(Math.floor(ch.start_time)) }}{{ ch.end_time ? ` – ${formatDuration(Math.floor(ch.end_time))}` : '' }}</p>
+                  <p class="text-xs text-muted">{{
+                      formatDuration(Math.floor(ch.start_time))
+                    }}{{ ch.end_time ? ` – ${formatDuration(Math.floor(ch.end_time))}` : '' }}</p>
                 </div>
                 <UButton
-                  icon="i-lucide-trash-2"
-                  size="xs"
-                  variant="ghost"
-                  color="error"
-                  :loading="chaptersSaving"
-                  @click="deleteChapter(ch.id)"
+                    icon="i-lucide-trash-2"
+                    size="xs"
+                    variant="ghost"
+                    color="error"
+                    :loading="chaptersSaving"
+                    @click="deleteChapter(ch.id)"
                 />
               </div>
             </div>
@@ -768,20 +811,21 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
           <div class="border-t pt-4 space-y-2">
             <h4 class="font-medium text-sm text-highlighted">Add New Chapter</h4>
             <UFormField label="Label" required>
-              <UInput v-model="newChapter.label" placeholder="e.g., Introduction" />
+              <UInput v-model="newChapter.label" placeholder="e.g., Introduction"/>
             </UFormField>
             <UFormField label="Start time (seconds)" required>
-              <UInput v-model.number="newChapter.start_time" type="number" min="0" step="0.1" />
+              <UInput v-model.number="newChapter.start_time" type="number" min="0" step="0.1"/>
             </UFormField>
             <UFormField label="End time (seconds, optional)">
-              <UInput v-model="newChapter.end_time" type="number" min="0" step="0.1" placeholder="Leave empty for open-ended" />
+              <UInput v-model="newChapter.end_time" type="number" min="0" step="0.1"
+                      placeholder="Leave empty for open-ended"/>
             </UFormField>
             <UButton
-              label="Add Chapter"
-              :loading="chaptersSaving"
-              color="primary"
-              class="w-full"
-              @click="addChapter"
+                label="Add Chapter"
+                :loading="chaptersSaving"
+                color="primary"
+                class="w-full"
+                @click="addChapter"
             />
           </div>
         </div>
@@ -790,6 +834,6 @@ onUnmounted(() => { if (searchTimer) clearTimeout(searchTimer); stopScanPoll() }
 
     <!-- Moderation reports (design plan §5.3) — surfaces user-submitted
          reports against media items so admins can resolve or dismiss them. -->
-    <AdminMediaReportsPanel class="mt-6" />
+    <AdminMediaReportsPanel class="mt-6"/>
   </div>
 </template>

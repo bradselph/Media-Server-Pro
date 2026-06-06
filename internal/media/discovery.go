@@ -10,11 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -135,9 +137,7 @@ func deepCopyItem(item *models.MediaItem) *models.MediaItem {
 	}
 	if item.Metadata != nil {
 		cp.Metadata = make(map[string]string, len(item.Metadata))
-		for k, v := range item.Metadata {
-			cp.Metadata[k] = v
-		}
+		maps.Copy(cp.Metadata, item.Metadata)
 	}
 	return &cp
 }
@@ -170,7 +170,7 @@ type Metadata struct {
 	// ProbeModTime records the file mtime at the time ffprobe was last run.
 	// extractMetadata skips ffprobe when the file mtime hasn't advanced,
 	// making subsequent hourly scans near-instant for unchanged libraries.
-	ProbeModTime time.Time `json:"probe_mod_time,omitempty"`
+	ProbeModTime time.Time `json:"probe_mod_time,omitzero"`
 	// BlurHash is set by the thumbnails module after generation; used for LQIP placeholders
 	BlurHash string `json:"blur_hash,omitempty"`
 	// Duration is the media file duration in seconds, extracted by ffprobe.
@@ -327,7 +327,7 @@ func (m *Module) Start(_ context.Context) error {
 	}()
 
 	// Periodic re-scans are driven by the tasks scheduler ("media-scan" task,
-	// registered in cmd/server/main.go). The scheduler honours the
+	// registered in cmd/server/main.go). The scheduler honors the
 	// EnableAutoDiscovery feature flag at tick time and also feeds fresh data
 	// into the suggestions module after each scan, so the media module no
 	// longer runs its own duplicate ticker here.
@@ -766,8 +766,7 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 			item.Category = meta.Category
 		}
 		if meta.LastPlayed != nil {
-			t := *meta.LastPlayed
-			item.LastPlayed = &t
+			item.LastPlayed = new(*meta.LastPlayed)
 		}
 		item.DateAdded = meta.DateAdded
 		m.mu.Unlock()
@@ -906,8 +905,7 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		m.mu.RLock()
 		item.Views = meta.Views
 		if meta.LastPlayed != nil {
-			t := *meta.LastPlayed
-			item.LastPlayed = &t
+			item.LastPlayed = new(*meta.LastPlayed)
 		}
 		item.DateAdded = meta.DateAdded
 		item.IsMature = meta.IsMature
@@ -1066,9 +1064,7 @@ func (m *Module) applyProbeData(current *models.MediaItem, probe *ffprobeResult)
 		}
 	}
 	applyStreamData(current, probe)
-	for k, v := range probe.Format.Tags {
-		current.Metadata[k] = v
-	}
+	maps.Copy(current.Metadata, probe.Format.Tags)
 }
 
 // applyStreamData extracts codec and dimension info from probe streams.
@@ -1402,7 +1398,7 @@ func (f Filter) matchesSearch(item *models.MediaItem) bool {
 }
 
 // matchesTags checks whether the item matches the filter's tag set.
-// Default behaviour is OR: the item passes if it has at least one of the
+// Default behavior is OR: the item passes if it has at least one of the
 // listed tags. When TagsAll is true the match becomes AND: every listed
 // tag must be present on the item. An empty Tags slice matches all items.
 func (f Filter) matchesTags(item *models.MediaItem) bool {
@@ -1411,27 +1407,15 @@ func (f Filter) matchesTags(item *models.MediaItem) bool {
 	}
 	if f.TagsAll {
 		for _, tag := range f.Tags {
-			found := false
-			for _, itemTag := range item.Tags {
-				if tag == itemTag {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !slices.Contains(item.Tags, tag) {
 				return false
 			}
 		}
 		return true
 	}
-	for _, tag := range f.Tags {
-		for _, itemTag := range item.Tags {
-			if tag == itemTag {
-				return true
-			}
-		}
-	}
-	return false
+	return slices.ContainsFunc(f.Tags, func(tag string) bool {
+		return slices.Contains(item.Tags, tag)
+	})
 }
 
 // GetCategories returns all categories
@@ -1597,7 +1581,7 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 		m.metadata[path] = meta
 	}
 	meta.Views++
-	meta.LastPlayed = helpers.Ptr(time.Now())
+	meta.LastPlayed = new(time.Now())
 	if item, exists := m.media[path]; exists {
 		item.Views = meta.Views
 		item.LastPlayed = meta.LastPlayed

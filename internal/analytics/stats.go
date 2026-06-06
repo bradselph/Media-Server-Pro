@@ -95,13 +95,13 @@ func (m *Module) ensureMediaStatsLocked(mediaID string) *models.ViewStats {
 	return stats
 }
 
-func (m *Module) updateStats(event models.AnalyticsEvent, delta float64, isNewMedia bool, isFirstCompletion bool) {
+func (m *Module) updateStats(event models.AnalyticsEvent, delta float64, isNewMedia, isFirstCompletion bool) {
 	m.statsMu.Lock()
 	// Use event.Timestamp so events with historical timestamps (e.g. replayed
 	// or bulk-imported) are bucketed to the correct day, not always "today".
 	today := event.Timestamp.Format(dateFormat)
 	m.updateDailyStatsLocked(event, today, delta)
-	m.updateMediaStatsLocked(event, delta, isNewMedia, isFirstCompletion)
+	m.updateMediaStatsLocked(event, isNewMedia, isFirstCompletion)
 	m.statsMu.Unlock()
 	// Persistence happens out-of-band on the flush ticker; here we just record
 	// the date as dirty so the flush picks it up. Done outside statsMu because
@@ -218,11 +218,11 @@ func (m *Module) applyPlaybackToDailyStatsLocked(delta float64, daily *models.Da
 	}
 }
 
-func (m *Module) updateMediaStatsLocked(event models.AnalyticsEvent, delta float64, isNewMedia bool, isFirstCompletion bool) {
-	m.applyMediaEventLocked(event, delta, isNewMedia, isFirstCompletion)
+func (m *Module) updateMediaStatsLocked(event models.AnalyticsEvent, isNewMedia, isFirstCompletion bool) {
+	m.applyMediaEventLocked(event, isNewMedia, isFirstCompletion)
 }
 
-func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent, delta float64, isNewMedia bool, isFirstCompletion bool) {
+func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent, isNewMedia, isFirstCompletion bool) {
 	if event.MediaID == "" {
 		return
 	}
@@ -231,7 +231,7 @@ func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent, delta float6
 	case "view":
 		m.applyViewToMediaStatsLocked(event, stats)
 	case "playback":
-		m.applyPlaybackToMediaStatsLocked(event, stats, delta, isNewMedia, isFirstCompletion)
+		m.applyPlaybackToMediaStatsLocked(event, stats, isNewMedia, isFirstCompletion)
 	}
 }
 
@@ -245,7 +245,7 @@ func (m *Module) applyViewToMediaStatsLocked(event models.AnalyticsEvent, stats 
 	}
 }
 
-func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, stats *models.ViewStats, delta float64, isNewMedia bool, isFirstCompletion bool) {
+func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, stats *models.ViewStats, isNewMedia, isFirstCompletion bool) {
 	pos, _ := event.Data["position"].(float64)
 	dur, _ := event.Data["duration"].(float64)
 	if dur > 0 {
@@ -332,7 +332,7 @@ func (m *Module) GetDailyStats(days int) []*models.DailyStats {
 	var stats []*models.DailyStats
 	now := time.Now()
 
-	for i := 0; i < days; i++ {
+	for i := range days {
 		date := now.AddDate(0, 0, -i).Format(dateFormat)
 		if daily, ok := m.dailyStats[date]; ok {
 			d := *daily
@@ -380,8 +380,8 @@ type UserStats struct {
 	LoginsFailed      int       `json:"logins_failed"`
 	Logouts           int       `json:"logouts"`
 	UniqueMedia       int       `json:"unique_media"`
-	FirstSeen         time.Time `json:"first_seen,omitempty"`
-	LastSeen          time.Time `json:"last_seen,omitempty"`
+	FirstSeen         time.Time `json:"first_seen,omitzero"`
+	LastSeen          time.Time `json:"last_seen,omitzero"`
 	MostViewedMediaID string    `json:"most_viewed_media_id,omitempty"`
 	MostViewedCount   int       `json:"most_viewed_count"`
 }
@@ -677,7 +677,7 @@ func (m *Module) computeTopSearches(ctx context.Context, since, until string, li
 	return out
 }
 
-// FailedLoginEntry summarises a recent failed login attempt for the security
+// FailedLoginEntry summarizes a recent failed login attempt for the security
 // review panel — IP, attempted username (when present in the event payload),
 // and timestamp. Recent N entries; deduplication is the caller's call.
 type FailedLoginEntry struct {
@@ -931,8 +931,8 @@ func (m *Module) computeHourlyHeatmap(ctx context.Context, days int) []HourlyHea
 	// 7 days × 24 hours = 168 cells, always emit the full grid (zero-filled)
 	// so the frontend can render a clean rectangle without per-cell guards.
 	grid := make([]HourlyHeatmapCell, 7*24)
-	for d := 0; d < 7; d++ {
-		for h := 0; h < 24; h++ {
+	for d := range 7 {
+		for h := range 24 {
 			grid[d*24+h] = HourlyHeatmapCell{DayOfWeek: d, Hour: h}
 		}
 	}
@@ -1429,7 +1429,7 @@ type IPSummary struct {
 // event volume, top IPs by bandwidth (from stream_end's bytes_sent payload).
 // Memoised 60s — this is the most expensive single aggregation we expose,
 // scanning up to 100k events with two output rankings.
-func (m *Module) GetIPSummary(ctx context.Context, days int, limit int) IPSummary {
+func (m *Module) GetIPSummary(ctx context.Context, days, limit int) IPSummary {
 	if days <= 0 {
 		days = 30
 	}
@@ -1560,7 +1560,7 @@ type AnalyticsHealth struct {
 	CheckedAt         time.Time `json:"checked_at"`
 }
 
-// Health returns a compact module-health snapshot. See AnalyticsHealth.
+// AnalyticsHealth returns a compact module-health snapshot.
 //
 // Cheap — all reads are in-memory under existing fine-grained locks. Safe to
 // call from a public route (no DB I/O), so no rate limiting is required.
@@ -1745,7 +1745,7 @@ func sqrt(x float64) float64 {
 		return 0
 	}
 	z := x / 2
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		z -= (z*z - x) / (2 * z)
 	}
 	return z
@@ -2388,8 +2388,8 @@ func (m *Module) GetRangeComparison(aStart, aEnd, bStart, bEnd string) RangeComp
 }
 
 // comparedMetrics is the set of DailyStats columns the A/B comparison
-// surfaces. Kept centralised so adding a column to DailyStats only requires
-// one edit here. Same JSON-tag values dailyStatField recognises.
+// surfaces. Kept centralized so adding a column to DailyStats only requires
+// one edit here. Same JSON-tag values dailyStatField recognizes.
 var comparedMetrics = []string{
 	"total_views", "unique_users", "total_watch_time",
 	"logins", "logins_failed", "logouts", "registrations",
@@ -2591,8 +2591,7 @@ func (m *Module) GetMediaStats(mediaID string) *models.ViewStats {
 	defer m.statsMu.RUnlock()
 
 	if stats, ok := m.mediaStats[mediaID]; ok {
-		s := *stats
-		return &s
+		return new(*stats)
 	}
 	return &models.ViewStats{}
 }

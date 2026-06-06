@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -15,16 +16,13 @@ import (
 // isDirectoryWithinMediaPaths returns true if cleanPath is under one of the allowed roots.
 // Used to prevent arbitrary filesystem traversal by admins.
 func isDirectoryWithinMediaPaths(cleanPath string, allowedRoots []string) bool {
-	for _, root := range allowedRoots {
+	return slices.ContainsFunc(allowedRoots, func(root string) bool {
 		if root == "" {
-			continue
+			return false
 		}
 		cleanRoot := filepath.Clean(root)
-		if cleanPath == cleanRoot || strings.HasPrefix(cleanPath, cleanRoot+string(filepath.Separator)) {
-			return true
-		}
-	}
-	return false
+		return cleanPath == cleanRoot || strings.HasPrefix(cleanPath, cleanRoot+string(filepath.Separator))
+	})
 }
 
 // DiscoverMedia discovers and suggests organization for media files

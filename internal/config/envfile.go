@@ -41,12 +41,12 @@ func stripEnvQuotes(value string) string {
 }
 
 func parseEnvLine(line string) (key, value string) {
-	idx := strings.Index(line, "=")
-	if idx == -1 {
+	before, after, ok := strings.Cut(line, "=")
+	if !ok {
 		return "", ""
 	}
-	key = strings.TrimSpace(line[:idx])
-	raw := strings.TrimSpace(line[idx+1:])
+	key = strings.TrimSpace(before)
+	raw := strings.TrimSpace(after)
 
 	// If the value is quoted, pass it through as-is (comments inside quotes are
 	// part of the value). Otherwise strip inline comments (# preceded by whitespace).

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -384,10 +385,8 @@ func getSession(c *gin.Context) *models.Session {
 // don't expose per-user history; only writes that would surface in the
 // user's own /history, /favorites, or analytics drill-downs are gated.
 func isPrivateSession(c *gin.Context) bool {
-	if v := c.GetHeader("X-MSP-Private"); v == "1" || strings.EqualFold(v, "true") {
-		return true
-	}
-	return false
+	v := c.GetHeader("X-MSP-Private")
+	return v == "1" || strings.EqualFold(v, "true")
 }
 
 // auditableEventTypes lists event types that, in addition to bumping the
@@ -1093,12 +1092,9 @@ func (h *Handler) getUserType(cfg *config.Config, user *models.User) *config.Use
 
 // isValidUserType reports whether name matches a configured user type.
 func (h *Handler) isValidUserType(name string) bool {
-	for _, ut := range h.config.Get().Auth.UserTypes {
-		if ut.Name == name {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(h.config.Get().Auth.UserTypes, func(ut config.UserType) bool {
+		return ut.Name == name
+	})
 }
 
 // checkFeatureEnabled checks that a module is non-nil and that a config flag

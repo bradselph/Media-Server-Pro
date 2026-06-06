@@ -190,7 +190,7 @@ func defaultHLSConfig() HLSConfig {
 		// HLS cache cleanup defaults OFF — owner product rule says the cache
 		// must never be auto-deleted without an explicit admin action. Admins
 		// who want eviction can flip CleanupEnabled and tune the interval +
-		// retention; the hls-inactive-cleanup scheduled task honours all three.
+		// retention; the hls-inactive-cleanup scheduled task honors all three.
 		CleanupEnabled:           false,
 		CleanupInterval:          1 * time.Hour,
 		RetentionMinutes:         60,

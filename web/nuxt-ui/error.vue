@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { NuxtError } from '#app'
+import type {NuxtError} from '#app'
 
 defineProps<{ error: NuxtError }>()
 
 function handleBack() {
-  clearError({ redirect: '/' })
+  clearError({redirect: '/'})
 }
 </script>
 
@@ -16,11 +16,13 @@ function handleBack() {
         {{ error.statusCode === 404 ? 'Page Not Found' : 'Something Went Wrong' }}
       </h1>
       <p class="text-muted text-sm">
-        {{ error.statusCode === 404
-          ? 'The page you were looking for doesn\'t exist or has been moved.'
-          : (error.message || 'An unexpected error occurred.') }}
+        {{
+          error.statusCode === 404
+              ? 'The page you were looking for doesn\'t exist or has been moved.'
+              : (error.message || 'An unexpected error occurred.')
+        }}
       </p>
-      <UButton icon="i-lucide-house" label="Back to Home" @click="handleBack" />
+      <UButton icon="i-lucide-house" label="Back to Home" @click="handleBack"/>
     </div>
   </div>
 </template>

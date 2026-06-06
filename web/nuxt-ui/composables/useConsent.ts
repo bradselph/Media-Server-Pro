@@ -48,7 +48,7 @@ export function setConsent(opts: { analytics?: boolean; advertising?: boolean })
     } catch {
         // private-browsing mode — localStorage may throw on write
     }
-    window.dispatchEvent(new CustomEvent('msp:consent-changed', { detail: next }))
+    window.dispatchEvent(new CustomEvent('msp:consent-changed', {detail: next}))
     return next
 }
 

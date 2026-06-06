@@ -464,10 +464,8 @@ func (m *Module) IsKnownRemoteURL(remoteURL string) bool {
 		}
 	}
 	// Also accept URLs that match a cached entry (previously fetched & validated).
-	if _, ok := m.mediaCache[remoteURL]; ok {
-		return true
-	}
-	return false
+	_, ok := m.mediaCache[remoteURL]
+	return ok
 }
 
 // StreamRemote streams a remote media file

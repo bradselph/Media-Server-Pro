@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"media-server-pro/pkg/models"
@@ -54,7 +55,7 @@ func (m *Module) ensureVariantPlaylistExists(ctx context.Context, job *models.HL
 // are skipped — they should never appear in FFmpeg-generated manifests.
 func rewritePlaylistLines(data []byte, baseURL string) []byte {
 	var buf bytes.Buffer
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
 			if strings.Contains(trimmed, "..") || strings.ContainsAny(trimmed, "\r\n") {
@@ -89,10 +90,8 @@ func (m *Module) hlsCORSOrigin(r *http.Request) string {
 	if !cfg.Security.CORSEnabled || len(cfg.Security.CORSOrigins) == 0 {
 		return "*"
 	}
-	for _, o := range cfg.Security.CORSOrigins {
-		if o == "*" {
-			return "*"
-		}
+	if slices.Contains(cfg.Security.CORSOrigins, "*") {
+		return "*"
 	}
 	// Operator has configured specific origins — reflect a matching one.
 	requestOrigin := r.Header.Get("Origin")

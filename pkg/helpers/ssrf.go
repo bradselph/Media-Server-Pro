@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 )
 
@@ -83,10 +84,8 @@ func ValidateURLForSSRF(rawURL string) error {
 		return fmt.Errorf("no addresses resolved for %s", host)
 	}
 
-	for _, ip := range ips {
-		if isPrivateIP(ip) {
-			return fmt.Errorf("URL resolves to private/reserved address %s", host)
-		}
+	if slices.ContainsFunc(ips, isPrivateIP) {
+		return fmt.Errorf("URL resolves to private/reserved address %s", host)
 	}
 
 	return nil

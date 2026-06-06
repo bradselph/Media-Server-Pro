@@ -122,18 +122,3 @@ func (m *Module) Cleanup() (*CleanupResult, error) {
 
 	return result, nil
 }
-
-func formatBytes(b int64) string {
-	const unit = 1024
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	// "KMGTPE" covers every exponent reachable for an int64 byte count (max ~8 EB),
-	// so the index can never run past the end of the unit string.
-	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
-}

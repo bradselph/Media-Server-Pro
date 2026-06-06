@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import type {
-  SlaveNode,
-  ReceiverStats,
+  FollowerSettings,
+  FollowerStatus,
   ReceiverAdminSettings,
   ReceiverDuplicate,
   ReceiverMedia,
-  FollowerSettings,
-  FollowerStatus,
+  ReceiverStats,
+  SlaveNode,
 } from '~/types/api'
-import { formatBytes } from '~/utils/format'
-import { useAdminFeedback } from '~/composables/useAdminFeedback'
+import {formatBytes} from '~/utils/format'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const { notifyError, notifySuccess, notifyWarning } = useAdminFeedback()
+const {notifyError, notifySuccess, notifyWarning} = useAdminFeedback()
 
 const receiverStats = ref<ReceiverStats | null>(null)
 const receiverSettings = ref<ReceiverAdminSettings | null>(null)
@@ -277,9 +277,9 @@ async function connectPeer() {
   peerConnecting.value = true
   try {
     const result = await adminApi.connectPeer(
-      peerForm.peer_url.trim(),
-      peerForm.peer_api_key.trim(),
-      peerForm.our_url.trim() || undefined,
+        peerForm.peer_url.trim(),
+        peerForm.peer_api_key.trim(),
+        peerForm.our_url.trim() || undefined,
     )
     if (destroyed) return
     notifySuccess(`Peer connected — ${result.peer_url} will push its catalog here`)
@@ -311,15 +311,15 @@ onMounted(async () => {
       <template #header>
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-link-2" class="size-4" />
+            <UIcon name="i-lucide-link-2" class="size-4"/>
             <span class="font-semibold">This Server &rarr; Another Master</span>
           </div>
           <UBadge
-            v-if="followerStatus"
-            :label="followerStatus.connected ? 'connected' : (followerStatus.enabled ? 'idle' : 'disabled')"
-            :color="followerStatus.connected ? 'success' : (followerStatus.enabled ? 'warning' : 'neutral')"
-            variant="subtle"
-            size="xs"
+              v-if="followerStatus"
+              :label="followerStatus.connected ? 'connected' : (followerStatus.enabled ? 'idle' : 'disabled')"
+              :color="followerStatus.connected ? 'success' : (followerStatus.enabled ? 'warning' : 'neutral')"
+              variant="subtle"
+              size="xs"
           />
         </div>
       </template>
@@ -329,30 +329,31 @@ onMounted(async () => {
         and the two libraries sync automatically.
       </p>
       <div v-if="followerLoading" class="flex justify-center py-4">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
       </div>
       <div v-else class="space-y-3">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <UFormField label="Master URL" hint="https://other-vps.example.com">
             <UInput
-              v-model="followerForm.master_url"
-              placeholder="https://other-vps.example.com"
-              autocomplete="off"
+                v-model="followerForm.master_url"
+                placeholder="https://other-vps.example.com"
+                autocomplete="off"
             />
           </UFormField>
-          <UFormField label="Receiver API Key" :hint="followerSettings?.api_key_configured ? 'Leave blank to keep existing key' : 'From the other server\'s admin → Receiver settings'">
+          <UFormField label="Receiver API Key"
+                      :hint="followerSettings?.api_key_configured ? 'Leave blank to keep existing key' : 'From the other server\'s admin → Receiver settings'">
             <UInput
-              v-model="followerForm.api_key"
-              type="password"
-              :placeholder="followerSettings?.api_key_configured ? '••••••••' : 'paste API key'"
-              autocomplete="new-password"
+                v-model="followerForm.api_key"
+                type="password"
+                :placeholder="followerSettings?.api_key_configured ? '••••••••' : 'paste API key'"
+                autocomplete="new-password"
             />
           </UFormField>
           <UFormField label="Slave ID" hint="Leave blank to use hostname">
-            <UInput v-model="followerForm.slave_id" placeholder="auto" />
+            <UInput v-model="followerForm.slave_id" placeholder="auto"/>
           </UFormField>
           <UFormField label="Display Name" hint="Shown in the master's slave list">
-            <UInput v-model="followerForm.slave_name" placeholder="auto" />
+            <UInput v-model="followerForm.slave_name" placeholder="auto"/>
           </UFormField>
         </div>
         <p class="text-xs text-muted">
@@ -361,29 +362,29 @@ onMounted(async () => {
         </p>
         <div class="flex items-center gap-3 flex-wrap">
           <UButton
-            label="Test Connection"
-            icon="i-lucide-zap"
-            size="sm"
-            variant="outline"
-            color="neutral"
-            :loading="followerTesting"
-            @click="testFollower"
+              label="Test Connection"
+              icon="i-lucide-zap"
+              size="sm"
+              variant="outline"
+              color="neutral"
+              :loading="followerTesting"
+              @click="testFollower"
           />
           <UButton
-            label="Save"
-            icon="i-lucide-save"
-            size="sm"
-            color="primary"
-            :loading="followerSaving"
-            @click="saveFollower"
+              label="Save"
+              icon="i-lucide-save"
+              size="sm"
+              color="primary"
+              :loading="followerSaving"
+              @click="saveFollower"
           />
           <UButton
-            icon="i-lucide-refresh-cw"
-            aria-label="Refresh status"
-            size="sm"
-            variant="ghost"
-            color="neutral"
-            @click="refreshFollowerStatus"
+              icon="i-lucide-refresh-cw"
+              aria-label="Refresh status"
+              size="sm"
+              variant="ghost"
+              color="neutral"
+              @click="refreshFollowerStatus"
           />
         </div>
         <!-- Live status detail -->
@@ -434,7 +435,7 @@ onMounted(async () => {
     <UCard v-if="receiverSettings">
       <template #header>
         <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-key-round" class="size-4" />
+          <UIcon name="i-lucide-key-round" class="size-4"/>
           <span class="font-semibold">Receiver API Keys</span>
         </div>
       </template>
@@ -448,28 +449,28 @@ onMounted(async () => {
       </div>
       <div v-else class="space-y-2">
         <div
-          v-for="(key, idx) in receiverSettings.api_keys"
-          :key="idx"
-          class="flex items-center gap-2 bg-muted/40 rounded px-3 py-2"
+            v-for="(key, idx) in receiverSettings.api_keys"
+            :key="idx"
+            class="flex items-center gap-2 bg-muted/40 rounded px-3 py-2"
         >
           <code class="flex-1 text-xs font-mono break-all">
             {{ revealedKeys.has(idx) ? key : maskKey(key) }}
           </code>
           <UButton
-            :icon="revealedKeys.has(idx) ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-            :aria-label="revealedKeys.has(idx) ? 'Hide key' : 'Show key'"
-            size="xs"
-            variant="ghost"
-            color="neutral"
-            @click="toggleKeyReveal(idx)"
+              :icon="revealedKeys.has(idx) ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+              :aria-label="revealedKeys.has(idx) ? 'Hide key' : 'Show key'"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              @click="toggleKeyReveal(idx)"
           />
           <UButton
-            icon="i-lucide-copy"
-            aria-label="Copy key"
-            size="xs"
-            variant="ghost"
-            color="neutral"
-            @click="copyKey(key)"
+              icon="i-lucide-copy"
+              aria-label="Copy key"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              @click="copyKey(key)"
           />
         </div>
       </div>
@@ -479,7 +480,7 @@ onMounted(async () => {
     <UCard v-if="receiverSettings">
       <template #header>
         <div class="flex items-center gap-2">
-          <UIcon name="i-lucide-plug-zap" class="size-4" />
+          <UIcon name="i-lucide-plug-zap" class="size-4"/>
           <span class="font-semibold">Connect a Peer</span>
         </div>
       </template>
@@ -489,8 +490,8 @@ onMounted(async () => {
         pushing its catalog here as a slave. No need to log into the peer's admin panel.
       </p>
       <div
-        v-if="receiverSettings.api_keys.length === 0"
-        class="text-xs text-warning bg-warning/10 rounded px-3 py-2 mb-3"
+          v-if="receiverSettings.api_keys.length === 0"
+          class="text-xs text-warning bg-warning/10 rounded px-3 py-2 mb-3"
       >
         This server has no Receiver API keys configured, so a peer can't push to it.
         Set <code>RECEIVER_API_KEYS</code> and restart before connecting a peer.
@@ -499,36 +500,36 @@ onMounted(async () => {
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <UFormField label="Peer URL" hint="https://peer-vps.example.com">
             <UInput
-              v-model="peerForm.peer_url"
-              placeholder="https://peer-vps.example.com"
-              autocomplete="off"
+                v-model="peerForm.peer_url"
+                placeholder="https://peer-vps.example.com"
+                autocomplete="off"
             />
           </UFormField>
           <UFormField label="Peer Receiver API Key" hint="From the peer's admin → Receiver settings">
             <UInput
-              v-model="peerForm.peer_api_key"
-              type="password"
-              placeholder="paste the peer's receiver key"
-              autocomplete="new-password"
+                v-model="peerForm.peer_api_key"
+                type="password"
+                placeholder="paste the peer's receiver key"
+                autocomplete="new-password"
             />
           </UFormField>
           <UFormField label="Our URL" hint="Optional — leave blank to auto-detect" class="sm:col-span-2">
             <UInput
-              v-model="peerForm.our_url"
-              placeholder="auto (this server's public URL)"
-              autocomplete="off"
+                v-model="peerForm.our_url"
+                placeholder="auto (this server's public URL)"
+                autocomplete="off"
             />
           </UFormField>
         </div>
         <div class="flex items-center gap-3">
           <UButton
-            label="Connect Peer"
-            icon="i-lucide-plug-zap"
-            size="sm"
-            color="primary"
-            :loading="peerConnecting"
-            :disabled="receiverSettings.api_keys.length === 0"
-            @click="connectPeer"
+              label="Connect Peer"
+              icon="i-lucide-plug-zap"
+              size="sm"
+              color="primary"
+              :loading="peerConnecting"
+              :disabled="receiverSettings.api_keys.length === 0"
+              @click="connectPeer"
           />
         </div>
       </div>
@@ -539,14 +540,15 @@ onMounted(async () => {
       <template #header>
         <div class="flex items-center justify-between">
           <span class="font-semibold">Slave Nodes ({{ slaves.length }})</span>
-          <UButton icon="i-lucide-refresh-cw" aria-label="Refresh slaves" variant="ghost" color="neutral" size="xs" @click="loadReceiver" />
+          <UButton icon="i-lucide-refresh-cw" aria-label="Refresh slaves" variant="ghost" color="neutral" size="xs"
+                   @click="loadReceiver"/>
         </div>
       </template>
       <div v-if="receiverLoading" class="flex justify-center py-6">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
       </div>
       <div v-else-if="slaves.length === 0" class="text-center py-8 text-muted text-sm">
-        <UIcon name="i-lucide-radio-tower" class="size-10 mx-auto mb-2 opacity-30" />
+        <UIcon name="i-lucide-radio-tower" class="size-10 mx-auto mb-2 opacity-30"/>
         <p>No slave nodes registered.</p>
         <p class="text-xs mt-1">Slaves register automatically when a receiver instance connects.</p>
       </div>
@@ -556,12 +558,14 @@ onMounted(async () => {
             <p class="font-medium text-sm">{{ slave.name }}</p>
             <p class="text-xs text-muted truncate">{{ slave.base_url }}</p>
             <div class="flex items-center gap-2 mt-1">
-              <UBadge :label="slave.status" :color="statusColor(slave.status)" variant="subtle" size="xs" />
+              <UBadge :label="slave.status" :color="statusColor(slave.status)" variant="subtle" size="xs"/>
               <span class="text-xs text-muted">{{ slave.media_count }} media</span>
-              <span v-if="slave.last_seen" class="text-xs text-muted">· last seen {{ new Date(slave.last_seen).toLocaleString() }}</span>
+              <span v-if="slave.last_seen"
+                    class="text-xs text-muted">· last seen {{ new Date(slave.last_seen).toLocaleString() }}</span>
             </div>
           </div>
-          <UButton icon="i-lucide-trash-2" aria-label="Remove slave" size="xs" variant="ghost" color="error" @click="removeSlave(slave.id)" />
+          <UButton icon="i-lucide-trash-2" aria-label="Remove slave" size="xs" variant="ghost" color="error"
+                   @click="removeSlave(slave.id)"/>
         </div>
       </div>
     </UCard>
@@ -569,32 +573,34 @@ onMounted(async () => {
     <!-- Slave media browser -->
     <div class="flex justify-end">
       <UButton
-        icon="i-lucide-database"
-        :label="showSlaveMedia ? 'Hide Media' : 'Browse Slave Media'"
-        size="sm"
-        variant="outline"
-        color="neutral"
-        :loading="slaveMediaLoading"
-        @click="showSlaveMedia ? showSlaveMedia = false : loadSlaveMedia()"
+          icon="i-lucide-database"
+          :label="showSlaveMedia ? 'Hide Media' : 'Browse Slave Media'"
+          size="sm"
+          variant="outline"
+          color="neutral"
+          :loading="slaveMediaLoading"
+          @click="showSlaveMedia ? showSlaveMedia = false : loadSlaveMedia()"
       />
     </div>
     <UCard v-if="showSlaveMedia">
       <template #header>
         <div class="flex items-center justify-between">
           <span class="font-semibold">Slave Media ({{ slaveMedia.length }})</span>
-          <UButton icon="i-lucide-refresh-cw" aria-label="Refresh slave media" variant="ghost" color="neutral" size="xs" @click="loadSlaveMedia" />
+          <UButton icon="i-lucide-refresh-cw" aria-label="Refresh slave media" variant="ghost" color="neutral" size="xs"
+                   @click="loadSlaveMedia"/>
         </div>
       </template>
       <div v-if="slaveMediaLoading" class="flex justify-center py-4">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
       </div>
-      <div v-else-if="slaveMedia.length === 0" class="text-center py-4 text-muted text-sm">No media from slave nodes.</div>
+      <div v-else-if="slaveMedia.length === 0" class="text-center py-4 text-muted text-sm">No media from slave nodes.
+      </div>
       <div v-else class="divide-y divide-default max-h-64 overflow-y-auto">
         <button
-          v-for="m in slaveMedia"
-          :key="m.id"
-          class="flex items-center gap-3 py-2 w-full text-left hover:bg-muted/40 transition-colors px-1 rounded"
-          @click="openSlaveMediaDetail(m.id)"
+            v-for="m in slaveMedia"
+            :key="m.id"
+            class="flex items-center gap-3 py-2 w-full text-left hover:bg-muted/40 transition-colors px-1 rounded"
+            @click="openSlaveMediaDetail(m.id)"
         >
           <div class="flex-1 min-w-0">
             <p class="text-sm font-medium truncate">{{ m.name }}</p>
@@ -615,9 +621,12 @@ onMounted(async () => {
             <p class="text-xs text-muted">vs. {{ d.item_b_name }}</p>
           </div>
           <div class="flex gap-1">
-            <UButton label="Keep A" size="xs" variant="outline" color="success" @click="resolveDuplicate(d.id, 'keep_a')" />
-            <UButton label="Keep B" size="xs" variant="outline" color="neutral" @click="resolveDuplicate(d.id, 'keep_b')" />
-            <UButton label="Keep Both" size="xs" variant="ghost" color="neutral" @click="resolveDuplicate(d.id, 'keep_both')" />
+            <UButton label="Keep A" size="xs" variant="outline" color="success"
+                     @click="resolveDuplicate(d.id, 'keep_a')"/>
+            <UButton label="Keep B" size="xs" variant="outline" color="neutral"
+                     @click="resolveDuplicate(d.id, 'keep_b')"/>
+            <UButton label="Keep Both" size="xs" variant="ghost" color="neutral"
+                     @click="resolveDuplicate(d.id, 'keep_both')"/>
           </div>
         </div>
       </div>
@@ -625,21 +634,24 @@ onMounted(async () => {
 
     <!-- Slave media detail modal -->
     <UModal
-      v-if="selectedSlaveMedia || slaveMediaDetailLoading"
-      :open="!!(selectedSlaveMedia || slaveMediaDetailLoading)"
-      :title="selectedSlaveMedia ? selectedSlaveMedia.name : 'Loading…'"
-      @update:open="val => { if (!val) { selectedSlaveMedia = null; slaveMediaDetailLoading = false } }"
+        v-if="selectedSlaveMedia || slaveMediaDetailLoading"
+        :open="!!(selectedSlaveMedia || slaveMediaDetailLoading)"
+        :title="selectedSlaveMedia ? selectedSlaveMedia.name : 'Loading…'"
+        @update:open="val => { if (!val) { selectedSlaveMedia = null; slaveMediaDetailLoading = false } }"
     >
       <template #body>
         <div v-if="slaveMediaDetailLoading" class="flex justify-center py-4">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
         </div>
         <div v-else-if="selectedSlaveMedia" class="space-y-2 text-sm">
           <div class="grid grid-cols-2 gap-2">
             <div><span class="text-muted">Type:</span> {{ selectedSlaveMedia.media_type }}</div>
             <div><span class="text-muted">Size:</span> {{ formatBytes(selectedSlaveMedia.size) }}</div>
-            <div v-if="selectedSlaveMedia.duration"><span class="text-muted">Duration:</span> {{ selectedSlaveMedia.duration }}s</div>
-            <div><span class="text-muted">Slave ID:</span> <span class="font-mono text-xs">{{ selectedSlaveMedia.slave_id }}</span></div>
+            <div v-if="selectedSlaveMedia.duration"><span class="text-muted">Duration:</span>
+              {{ selectedSlaveMedia.duration }}s
+            </div>
+            <div><span class="text-muted">Slave ID:</span> <span
+                class="font-mono text-xs">{{ selectedSlaveMedia.slave_id }}</span></div>
           </div>
           <div>
             <span class="text-muted">Path:</span>
@@ -647,12 +659,13 @@ onMounted(async () => {
           </div>
           <div v-if="selectedSlaveMedia.content_fingerprint">
             <span class="text-muted">Fingerprint:</span>
-            <p class="font-mono text-xs mt-1 bg-muted rounded px-2 py-1 break-all">{{ selectedSlaveMedia.content_fingerprint }}</p>
+            <p class="font-mono text-xs mt-1 bg-muted rounded px-2 py-1 break-all">
+              {{ selectedSlaveMedia.content_fingerprint }}</p>
           </div>
         </div>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Close" @click="selectedSlaveMedia = null" />
+        <UButton variant="ghost" color="neutral" label="Close" @click="selectedSlaveMedia = null"/>
       </template>
     </UModal>
   </div>

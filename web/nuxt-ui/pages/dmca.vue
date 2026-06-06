@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ title: 'DMCA Notice & Takedown Policy' })
+definePageMeta({title: 'DMCA Notice & Takedown Policy'})
 
 const brand = useBrandConfig()
 
@@ -40,12 +40,19 @@ const dmcaAddress = computed(() => brand.value.dmcaAddress || 'Address on file w
         <h2 class="text-base font-semibold text-highlighted mb-2">2. Filing a Notice of Infringement</h2>
         <p class="mb-2">A valid DMCA takedown notice must include all of the following:</p>
         <ol class="list-decimal pl-5 space-y-1">
-          <li>A physical or electronic signature of the copyright owner or a person authorized to act on their behalf.</li>
+          <li>A physical or electronic signature of the copyright owner or a person authorized to act on their behalf.
+          </li>
           <li>Identification of the copyrighted work claimed to have been infringed.</li>
-          <li>Identification of the material that is claimed to be infringing, with information reasonably sufficient to permit us to locate the material (e.g., the full URL of the page where the material appears on the Website).</li>
+          <li>Identification of the material that is claimed to be infringing, with information reasonably sufficient to
+            permit us to locate the material (e.g., the full URL of the page where the material appears on the Website).
+          </li>
           <li>Your name, mailing address, telephone number, and email address.</li>
-          <li>A statement that you have a good-faith belief that use of the material in the manner complained of is not authorized by the copyright owner, its agent, or the law.</li>
-          <li>A statement, made under penalty of perjury, that the information in the notice is accurate and that you are the copyright owner or are authorized to act on the copyright owner's behalf.</li>
+          <li>A statement that you have a good-faith belief that use of the material in the manner complained of is not
+            authorized by the copyright owner, its agent, or the law.
+          </li>
+          <li>A statement, made under penalty of perjury, that the information in the notice is accurate and that you
+            are the copyright owner or are authorized to act on the copyright owner's behalf.
+          </li>
         </ol>
         <p class="mt-2 text-xs text-muted">
           Notices that omit any of the above elements may be ineffective under 17 U.S.C. § 512(c)(3).

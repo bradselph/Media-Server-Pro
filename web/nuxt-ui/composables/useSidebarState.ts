@@ -38,8 +38,12 @@ function initFromStorage() {
 
     // Persist on change. These watchers live for the lifetime of the SPA
     // (module scope) which is fine — there's only ever one sidebar.
-    watch(open, (v) => { localStorage.setItem(LS_OPEN, String(v)) })
-    watch(tab, (v) => { localStorage.setItem(LS_TAB, v) })
+    watch(open, (v) => {
+        localStorage.setItem(LS_OPEN, String(v))
+    })
+    watch(tab, (v) => {
+        localStorage.setItem(LS_TAB, v)
+    })
     watch(pinnedPlaylistId, (v) => {
         if (v) localStorage.setItem(LS_PIN, v)
         else localStorage.removeItem(LS_PIN)
@@ -52,10 +56,20 @@ export function useSidebarState() {
         open,
         tab,
         pinnedPlaylistId,
-        toggle: () => { open.value = !open.value },
-        expand: () => { open.value = true },
-        collapse: () => { open.value = false },
-        setTab: (next: Tab) => { tab.value = next },
-        pinPlaylist: (id: string | null) => { pinnedPlaylistId.value = id },
+        toggle: () => {
+            open.value = !open.value
+        },
+        expand: () => {
+            open.value = true
+        },
+        collapse: () => {
+            open.value = false
+        },
+        setTab: (next: Tab) => {
+            tab.value = next
+        },
+        pinPlaylist: (id: string | null) => {
+            pinnedPlaylistId.value = id
+        },
     }
 }

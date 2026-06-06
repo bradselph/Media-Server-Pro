@@ -45,8 +45,7 @@ func testModuleWithUsers(t *testing.T, users []*models.User) (*Module, *stubUser
 		users:    make(map[string]*models.User),
 	}
 	for _, u := range users {
-		cp := *u
-		m.users[u.Username] = &cp
+		m.users[u.Username] = new(*u)
 	}
 	return m, repo
 }

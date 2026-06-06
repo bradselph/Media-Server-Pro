@@ -121,22 +121,22 @@ func (UserPermissions) TableName() string {
 // keys, mapping them to the canonical fields AutoPlay and EqualizerPreset respectively.
 // Use Validate() to ensure all fields contain reasonable values before persistence.
 type UserPreferences struct {
-	UserID              string         `json:"user_id,omitempty" db:"user_id" gorm:"primaryKey;size:255"`
-	Theme               string         `json:"theme" db:"theme" gorm:"size:50;default:dark"`
-	ViewMode            string         `json:"view_mode" db:"view_mode" gorm:"size:50;default:grid"`
-	DefaultQuality      string         `json:"default_quality" db:"default_quality" gorm:"size:50;default:auto"`
-	AutoPlay            bool           `json:"auto_play" db:"auto_play" gorm:"default:false"`
-	PlaybackSpeed       float64        `json:"playback_speed" db:"playback_speed" gorm:"default:1.0"`
-	Volume              float64        `json:"volume" db:"volume" gorm:"default:1.0"`
-	ShowMature          bool           `json:"show_mature" db:"show_mature" gorm:"default:false"`
-	MaturePreferenceSet bool           `json:"mature_preference_set" db:"mature_preference_set" gorm:"default:false"`
-	EqualizerPreset     string         `json:"equalizer_preset" db:"equalizer_preset" gorm:"size:100"`
-	ResumePlayback      bool           `json:"resume_playback" db:"resume_playback" gorm:"not null"`
-	ItemsPerPage        int            `json:"items_per_page" db:"items_per_page" gorm:"default:20"`
-	SortBy              string         `json:"sort_by" db:"sort_by" gorm:"size:50;default:date_added"`
-	SortOrder           string         `json:"sort_order" db:"sort_order" gorm:"size:10;default:desc"`
-	FilterCategory      string         `json:"filter_category" db:"filter_category" gorm:"size:100"`
-	FilterMediaType     string         `json:"filter_media_type" db:"filter_media_type" gorm:"size:50"`
+	UserID              string  `json:"user_id,omitempty" db:"user_id" gorm:"primaryKey;size:255"`
+	Theme               string  `json:"theme" db:"theme" gorm:"size:50;default:dark"`
+	ViewMode            string  `json:"view_mode" db:"view_mode" gorm:"size:50;default:grid"`
+	DefaultQuality      string  `json:"default_quality" db:"default_quality" gorm:"size:50;default:auto"`
+	AutoPlay            bool    `json:"auto_play" db:"auto_play" gorm:"default:false"`
+	PlaybackSpeed       float64 `json:"playback_speed" db:"playback_speed" gorm:"default:1.0"`
+	Volume              float64 `json:"volume" db:"volume" gorm:"default:1.0"`
+	ShowMature          bool    `json:"show_mature" db:"show_mature" gorm:"default:false"`
+	MaturePreferenceSet bool    `json:"mature_preference_set" db:"mature_preference_set" gorm:"default:false"`
+	EqualizerPreset     string  `json:"equalizer_preset" db:"equalizer_preset" gorm:"size:100"`
+	ResumePlayback      bool    `json:"resume_playback" db:"resume_playback" gorm:"not null"`
+	ItemsPerPage        int     `json:"items_per_page" db:"items_per_page" gorm:"default:20"`
+	SortBy              string  `json:"sort_by" db:"sort_by" gorm:"size:50;default:date_added"`
+	SortOrder           string  `json:"sort_order" db:"sort_order" gorm:"size:10;default:desc"`
+	FilterCategory      string  `json:"filter_category" db:"filter_category" gorm:"size:100"`
+	FilterMediaType     string  `json:"filter_media_type" db:"filter_media_type" gorm:"size:50"`
 	// Home section visibility — default true (show all sections)
 	ShowContinueWatching bool `json:"show_continue_watching" db:"show_continue_watching" gorm:"not null"`
 	ShowRecommended      bool `json:"show_recommended" db:"show_recommended" gorm:"not null"`

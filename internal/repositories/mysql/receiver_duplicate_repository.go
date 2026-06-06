@@ -116,7 +116,7 @@ func (r *ReceiverDuplicateRepository) ExistsResolvedRemoval(ctx context.Context,
 }
 
 func (r *ReceiverDuplicateRepository) UpdateStatus(ctx context.Context, id, status, resolvedBy string) error {
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"status":      status,
 		"resolved_by": resolvedBy,
 		"resolved_at": time.Now().Format(sqlTimeFormat),
@@ -135,7 +135,7 @@ func (r *ReceiverDuplicateRepository) UpdateStatus(ctx context.Context, id, stat
 // (on either side) with the given status.  Used to cascade resolution when an item is removed.
 // Zero rows affected is not an error — the item may have had no pending duplicates.
 func (r *ReceiverDuplicateRepository) UpdateStatusForItem(ctx context.Context, itemID, status, resolvedBy string) error {
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"status":      status,
 		"resolved_by": resolvedBy,
 		"resolved_at": time.Now().Format(sqlTimeFormat),

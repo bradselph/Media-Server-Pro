@@ -5,9 +5,9 @@ on:
   # the same self-hosted runner (both previously ran npm ci + go build in
   # parallel which corrupted shared module caches).
   workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
+    workflows: [ "CI" ]
+    types: [ completed ]
+    branches: [ main ]
 
   workflow_dispatch:
     inputs:
@@ -32,7 +32,7 @@ permissions:
 
 jobs:
   bump-release:
-    runs-on: [self-hosted, Linux, X64, media-server]
+    runs-on: [ self-hosted, Linux, X64, media-server ]
     if: |
       github.event_name == 'workflow_dispatch' || (
         github.event_name == 'workflow_run' &&
@@ -160,7 +160,7 @@ jobs:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     needs: bump-release
     if: always() && needs.bump-release.result == 'success'
-    runs-on: [self-hosted, Linux, X64, media-server]
+    runs-on: [ self-hosted, Linux, X64, media-server ]
     strategy:
       fail-fast: false
       matrix:
@@ -220,9 +220,9 @@ jobs:
   # ─── Create GitHub Release with all binaries ────────────────────────────────
   release:
     name: Create GitHub Release
-    needs: [bump-release, build]
+    needs: [ bump-release, build ]
     if: always() && needs.bump-release.result == 'success' && needs.build.result == 'success'
-    runs-on: [self-hosted, Linux, X64, media-server]
+    runs-on: [ self-hosted, Linux, X64, media-server ]
 
     steps:
       - name: Checkout repository

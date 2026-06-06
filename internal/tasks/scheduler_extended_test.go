@@ -19,13 +19,13 @@ func TestExecuteTask_PanicRecovery(t *testing.T) {
 	m.mu.Unlock()
 	defer m.Stop(context.Background())
 
-	var ranCount int32
+	var ranCount atomic.Int32
 	m.RegisterTask(TaskRegistration{
 		ID:       "panic-task",
 		Name:     "Panic Task",
 		Schedule: 1 * time.Hour,
 		Func: func(_ context.Context) error {
-			atomic.AddInt32(&ranCount, 1)
+			ranCount.Add(1)
 			panic("test panic")
 		},
 	})
@@ -58,13 +58,13 @@ func TestRunNow_AfterError_StillRunnable(t *testing.T) {
 	m.mu.Unlock()
 	defer m.Stop(context.Background())
 
-	var count int32
+	var count atomic.Int32
 	m.RegisterTask(TaskRegistration{
 		ID:       "retry-test",
 		Name:     "Retry Test",
 		Schedule: 1 * time.Hour,
 		Func: func(_ context.Context) error {
-			n := atomic.AddInt32(&count, 1)
+			n := count.Add(1)
 			if n == 1 {
 				return context.DeadlineExceeded
 			}
@@ -79,7 +79,7 @@ func TestRunNow_AfterError_StillRunnable(t *testing.T) {
 		t.Fatalf("RunNow after error: %v", err)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if atomic.LoadInt32(&count) < 2 {
+	if count.Load() < 2 {
 		t.Error("task should have run again after RunNow")
 	}
 }
@@ -117,18 +117,18 @@ func TestRegisterTask_AfterStart(t *testing.T) {
 	m.mu.Unlock()
 	defer m.Stop(context.Background())
 
-	var ran int32
+	var ran atomic.Int32
 	m.RegisterTask(TaskRegistration{
 		ID:       "late-register",
 		Name:     "Late Register",
 		Schedule: 1 * time.Hour,
 		Func: func(_ context.Context) error {
-			atomic.AddInt32(&ran, 1)
+			ran.Add(1)
 			return nil
 		},
 	})
 	time.Sleep(200 * time.Millisecond)
-	if atomic.LoadInt32(&ran) < 1 {
+	if ran.Load() < 1 {
 		t.Error("task registered after Start should run once immediately")
 	}
 }

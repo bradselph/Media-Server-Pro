@@ -727,7 +727,7 @@ func findChecksumAssetURL(assets []releaseAsset) string {
 }
 
 func parseExpectedHashFromChecksum(checksumData []byte, assetName string) string {
-	for _, line := range strings.Split(string(checksumData), "\n") {
+	for line := range strings.SplitSeq(string(checksumData), "\n") {
 		parts := strings.Fields(line)
 		if len(parts) >= 2 {
 			// Second field may be path (e.g. artifacts/binaries-linux-amd64/media-server-pro-linux-amd64) or basename
@@ -1143,8 +1143,7 @@ func (m *Module) GetActiveBuildStatus() *UpdateStatus {
 	if m.activeBuild == nil {
 		return nil
 	}
-	cp := *m.activeBuild
-	return &cp
+	return new(*m.activeBuild)
 }
 
 // IsBuildRunning reports whether a source build is currently in progress.

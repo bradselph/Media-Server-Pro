@@ -5,6 +5,7 @@ import (
 	"embed"
 	"io/fs"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
@@ -28,17 +29,14 @@ func pathExcludedFromSPA(path string) bool {
 		"/_nuxt/",  // Nuxt UI build assets
 		"/_fonts/", // Nuxt UI cached fonts
 	}
-	for _, prefix := range excludedPrefixes {
-		if strings.HasPrefix(path, prefix) {
-			return true
-		}
+	if slices.ContainsFunc(excludedPrefixes, func(prefix string) bool {
+		return strings.HasPrefix(path, prefix)
+	}) {
+		return true
 	}
 	// Exact-match crawler endpoints — these are served by the Go router
 	// (api/handlers/seo.go) and must not be swallowed by the SPA index.
-	if path == "/sitemap.xml" || path == "/robots.txt" {
-		return true
-	}
-	return false
+	return path == "/sitemap.xml" || path == "/robots.txt"
 }
 
 // registerEmbeddedStatic registers embedded static file routes. Returns true if successful.

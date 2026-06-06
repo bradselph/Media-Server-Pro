@@ -85,7 +85,7 @@ func (r *PlaylistRepository) Update(ctx context.Context, playlist *models.Playli
 	if playlist == nil {
 		return fmt.Errorf("playlist cannot be nil")
 	}
-	result := r.db.WithContext(ctx).Model(playlist).Where(sqlIDEq, playlist.ID).Updates(map[string]interface{}{
+	result := r.db.WithContext(ctx).Model(playlist).Where(sqlIDEq, playlist.ID).Updates(map[string]any{
 		"name":        playlist.Name,
 		"description": playlist.Description,
 		"user_id":     playlist.UserID,
@@ -209,7 +209,7 @@ func (r *PlaylistRepository) UpdateItem(ctx context.Context, item *models.Playli
 	if item == nil {
 		return fmt.Errorf("item cannot be nil")
 	}
-	result := r.db.WithContext(ctx).Model(item).Where(sqlIDEq, item.ID).Updates(map[string]interface{}{
+	result := r.db.WithContext(ctx).Model(item).Where(sqlIDEq, item.ID).Updates(map[string]any{
 		"playlist_id": item.PlaylistID,
 		"media_id":    item.MediaID,
 		"media_path":  item.MediaPath,

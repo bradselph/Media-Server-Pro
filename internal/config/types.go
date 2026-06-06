@@ -39,7 +39,7 @@ type Config struct {
 	// environment variable re-overrode the saved config on each load, so any
 	// value an admin changed in the UI silently reverted on the next restart.
 	// On the first load after the upgrade (flag false), the current env-driven
-	// tunable values are baked into config.json so effective behaviour does not
+	// tunable values are baked into config.json so effective behavior does not
 	// change; thereafter tunable env vars no longer override saved settings.
 	// Infrastructure/secret env vars (paths, bind, DB/storage creds, log level,
 	// updater branch, admin bootstrap) continue to apply on every load.

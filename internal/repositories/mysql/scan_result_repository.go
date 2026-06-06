@@ -176,7 +176,7 @@ func (r *ScanResultRepository) MarkReviewed(ctx context.Context, path, reviewedB
 	result := r.db.WithContext(ctx).
 		Model(&scanResultRow{}).
 		Where(sqlPathEq, path).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"needs_review":    false,
 			"reviewed_by":     reviewedBy,
 			"reviewed_at":     now,

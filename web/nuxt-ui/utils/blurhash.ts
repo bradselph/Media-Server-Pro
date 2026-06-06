@@ -45,3 +45,15 @@ export function blurHashToDataUrl(
         return null
     }
 }
+
+/**
+ * Returns an inline-style object that paints a BlurHash as a cover background,
+ * or an empty object when the hash is missing/undecodable (e.g. during SSR).
+ * Use behind a thumbnail as a low-quality placeholder while the image loads.
+ */
+export function blurHashBgStyle(
+    hash: string | undefined | null,
+): Record<string, string> {
+    const url = blurHashToDataUrl(hash)
+    return url ? {backgroundImage: `url(${url})`, backgroundSize: 'cover'} : {}
+}

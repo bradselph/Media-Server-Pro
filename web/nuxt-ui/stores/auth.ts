@@ -59,7 +59,8 @@ if (typeof window !== 'undefined') {
         try {
             if (v) window.localStorage.setItem(LS_PRIVATE_SESSION, '1')
             else window.localStorage.removeItem(LS_PRIVATE_SESSION)
-        } catch { /* localStorage may be blocked */ }
+        } catch { /* localStorage may be blocked */
+        }
     })
 }
 

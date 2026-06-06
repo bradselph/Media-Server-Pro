@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"media-server-pro/internal/logger"
-	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 )
 
@@ -93,7 +92,7 @@ func TestCopyHLSJob_DeepCopy(t *testing.T) {
 		MediaPath:   "/test/media-1.mp4",
 		Status:      models.HLSStatusCompleted,
 		Qualities:   []string{"720p", "1080p"},
-		CompletedAt: helpers.Ptr(time.Now()),
+		CompletedAt: new(time.Now()),
 	}
 	cp := copyHLSJob(original)
 	if cp == original {

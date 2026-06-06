@@ -163,7 +163,6 @@ linters:
       - _old_code
       - vendor
       - web/static
-      - web/frontend
 
 output:
   formats:

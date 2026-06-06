@@ -109,7 +109,7 @@ func (r *SavedSearchRepository) UpdateLastSeen(ctx context.Context, id, userID s
 func rowToRecord(row savedSearchRow) *repositories.SavedSearchRecord {
 	var tags []string
 	if row.Tags != "" {
-		for _, t := range strings.Split(row.Tags, ",") {
+		for t := range strings.SplitSeq(row.Tags, ",") {
 			if t = strings.TrimSpace(t); t != "" {
 				tags = append(tags, t)
 			}

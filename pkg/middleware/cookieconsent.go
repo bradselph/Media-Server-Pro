@@ -37,7 +37,7 @@ func NewCookieConsent(cfg config.CookieConsentConfig) *CookieConsent {
 }
 
 // consentStatus returns whether consent has been given and whether analytics was accepted.
-func (cc *CookieConsent) consentStatus(r *http.Request) (given bool, analyticsAccepted bool) {
+func (cc *CookieConsent) consentStatus(r *http.Request) (given, analyticsAccepted bool) {
 	cookie, err := r.Cookie(cc.cfg.CookieName)
 	if err != nil || cookie.Value == "" {
 		return false, false

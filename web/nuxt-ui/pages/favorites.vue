@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import type { FavoriteItem, MediaItem } from '~/types/api'
-import { getDisplayTitle } from '~/utils/mediaTitle'
-import { formatDuration, formatRelativeDate } from '~/utils/format'
-import { useFavoritesApi } from '~/composables/useApiEndpoints'
+import type {FavoriteItem, MediaItem} from '~/types/api'
+import {getDisplayTitle} from '~/utils/mediaTitle'
+import {formatDuration, formatRelativeDate} from '~/utils/format'
+import {blurHashBgStyle} from '~/utils/blurhash'
+import {useFavoritesApi} from '~/composables/useApiEndpoints'
 
-definePageMeta({ layout: 'default', title: 'Favorites', middleware: 'auth' })
+definePageMeta({layout: 'default', title: 'Favorites', middleware: 'auth'})
 
 const favoritesApi = useFavoritesApi()
 const mediaApi = useMediaApi()
@@ -42,10 +43,15 @@ async function load() {
           if (item && pos && item.duration > 0) next[id] = pos / item.duration
         }
         playbackProgress.value = next
-      } catch { /* non-critical */ }
+      } catch { /* non-critical */
+      }
     }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load favorites', color: 'error', icon: 'i-lucide-alert-circle' })
+    toast.add({
+      title: e instanceof Error ? e.message : 'Failed to load favorites',
+      color: 'error',
+      icon: 'i-lucide-alert-circle'
+    })
   } finally {
     loading.value = false
   }
@@ -58,9 +64,9 @@ async function removeFavorite(mediaId: string) {
   try {
     await favoritesApi.remove(mediaId)
     favorites.value = favorites.value.filter(f => f.media_id !== mediaId)
-    toast.add({ title: 'Removed from favorites', color: 'success', icon: 'i-lucide-check' })
+    toast.add({title: 'Removed from favorites', color: 'success', icon: 'i-lucide-check'})
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x'})
   } finally {
     const cleared = new Set(removing.value)
     cleared.delete(mediaId)
@@ -85,81 +91,87 @@ watch(() => authStore.user, (user) => {
 <template>
   <UContainer class="py-6 max-w-5xl">
     <div class="flex items-center gap-2 mb-6">
-      <UIcon name="i-lucide-heart" class="size-5 text-primary" />
+      <UIcon name="i-lucide-heart" class="size-5 text-primary"/>
       <h1 class="text-xl font-semibold">Favorites</h1>
-      <UBadge v-if="favorites.length > 0" :label="String(favorites.length)" color="neutral" variant="subtle" size="xs" />
+      <UBadge v-if="favorites.length > 0" :label="String(favorites.length)" color="neutral" variant="subtle" size="xs"/>
     </div>
 
-    <MediaCardSkeleton v-if="loading" :count="10" />
+    <MediaCardSkeleton v-if="loading" :count="10"/>
 
     <div v-else-if="favorites.length === 0" class="text-center py-16 text-muted">
-      <UIcon name="i-lucide-heart" class="size-10 mb-3 mx-auto opacity-40" />
+      <UIcon name="i-lucide-heart" class="size-10 mb-3 mx-auto opacity-40"/>
       <p class="text-lg font-medium">No favorites yet</p>
       <p class="text-sm mt-1">Browse media and click the heart icon to save items here.</p>
-      <UButton class="mt-4" label="Browse Media" to="/" variant="outline" />
+      <UButton class="mt-4" label="Browse Media" to="/" variant="outline"/>
     </div>
 
     <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
       <div
-        v-for="fav in favorites"
-        :key="fav.id"
-        class="group relative"
+          v-for="fav in favorites"
+          :key="fav.id"
+          class="group relative"
       >
         <NuxtLink :to="`/player?id=${encodeURIComponent(fav.media_id)}`" class="block">
-          <div class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
+          <div
+              class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb"
+              :style="mediaMap[fav.media_id]?.type !== 'audio' ? blurHashBgStyle(mediaMap[fav.media_id]?.blur_hash) : {}"
+          >
             <HoverPreviewImg
-              v-if="mediaMap[fav.media_id] && !failedThumbnails.has(fav.media_id)"
-              :media-id="fav.media_id"
-              :src="getThumbnailUrl(mediaMap[fav.media_id])!"
-              :alt="getDisplayTitle(mediaMap[fav.media_id])"
-              img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-              @error="failedThumbnails.add(fav.media_id)"
+                v-if="mediaMap[fav.media_id] && !failedThumbnails.has(fav.media_id)"
+                :media-id="fav.media_id"
+                :src="getThumbnailUrl(mediaMap[fav.media_id])!"
+                :alt="getDisplayTitle(mediaMap[fav.media_id])"
+                img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                @error="failedThumbnails.add(fav.media_id)"
             />
-            <div v-else-if="mediaMap[fav.media_id]?.type === 'audio'" class="w-full h-full flex items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
-              <AudioBars size="sm" :bars="5" />
+            <div v-else-if="mediaMap[fav.media_id]?.type === 'audio'"
+                 class="w-full h-full flex items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
+              <AudioBars size="sm" :bars="5"/>
             </div>
             <div v-else class="w-full h-full flex items-center justify-center">
-              <UIcon name="i-lucide-film" class="size-8 text-muted" />
+              <UIcon name="i-lucide-film" class="size-8 text-muted"/>
             </div>
             <!-- Duration badge -->
             <div
-              v-if="mediaMap[fav.media_id]?.duration"
-              class="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1 rounded font-mono"
+                v-if="mediaMap[fav.media_id]?.duration"
+                class="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1 rounded font-mono"
             >
               {{ formatDuration(mediaMap[fav.media_id]!.duration) }}
             </div>
             <!-- Progress bar (in-progress items) -->
             <div
-              v-if="playbackProgress[fav.media_id] && (playbackProgress[fav.media_id] ?? 0) < 0.9"
-              class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"
+                v-if="playbackProgress[fav.media_id] && (playbackProgress[fav.media_id] ?? 0) < 0.9"
+                class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"
             >
               <div
-                class="h-full bg-primary"
-                :style="{ width: `${Math.min(100, Math.round((playbackProgress[fav.media_id] ?? 0) * 100))}%` }"
+                  class="h-full bg-primary"
+                  :style="{ width: `${Math.min(100, Math.round((playbackProgress[fav.media_id] ?? 0) * 100))}%` }"
               />
             </div>
             <!-- Watched marker (≥90%, checklist §6) -->
             <div
-              v-if="(playbackProgress[fav.media_id] ?? 0) >= 0.9"
-              class="absolute bottom-1 left-1 flex items-center gap-1 bg-emerald-600/85 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm"
-              :title="`Watched (${Math.round((playbackProgress[fav.media_id] ?? 0) * 100)}%)`"
+                v-if="(playbackProgress[fav.media_id] ?? 0) >= 0.9"
+                class="absolute bottom-1 left-1 flex items-center gap-1 bg-emerald-600/85 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm"
+                :title="`Watched (${Math.round((playbackProgress[fav.media_id] ?? 0) * 100)}%)`"
             >
-              <UIcon name="i-lucide-check" class="size-3" />
+              <UIcon name="i-lucide-check" class="size-3"/>
               <span>Watched</span>
             </div>
           </div>
-          <p class="text-sm font-semibold truncate" :title="mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_id">
+          <p class="text-sm font-semibold truncate"
+             :title="mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_id">
             {{ mediaMap[fav.media_id] ? getDisplayTitle(mediaMap[fav.media_id]) : fav.media_id }}
           </p>
-          <p v-if="fav.added_at" class="text-xs text-muted" :title="new Date(fav.added_at).toLocaleString()">Saved {{ formatRelativeDate(fav.added_at) }}</p>
+          <p v-if="fav.added_at" class="text-xs text-muted" :title="new Date(fav.added_at).toLocaleString()">Saved
+            {{ formatRelativeDate(fav.added_at) }}</p>
         </NuxtLink>
         <button
-          class="absolute top-1 right-1 p-0.5 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
-          aria-label="Remove from favorites"
-          :disabled="removing.has(fav.media_id)"
-          @click.prevent.stop="removeFavorite(fav.media_id)"
+            class="absolute top-1 right-1 p-0.5 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
+            aria-label="Remove from favorites"
+            :disabled="removing.has(fav.media_id)"
+            @click.prevent.stop="removeFavorite(fav.media_id)"
         >
-          <UIcon name="i-lucide-x" class="size-3.5 text-white" />
+          <UIcon name="i-lucide-x" class="size-3.5 text-white"/>
         </button>
       </div>
     </div>

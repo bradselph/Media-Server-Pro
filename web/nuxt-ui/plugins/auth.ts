@@ -1,4 +1,4 @@
-import { THEMES, type ThemeValue } from '~/stores/theme'
+import {THEMES, type ThemeValue} from '~/stores/theme'
 
 // Initialize auth state on app startup by checking the session
 export default defineNuxtPlugin(async () => {

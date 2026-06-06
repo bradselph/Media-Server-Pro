@@ -51,7 +51,6 @@ func NewExtractorItemRepository(db *gorm.DB) repositories.ExtractorItemRepositor
 }
 
 func (r *ExtractorItemRepository) Upsert(ctx context.Context, item *repositories.ExtractorItemRecord) error {
-	row := r.recordToRow(item)
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -59,7 +58,7 @@ func (r *ExtractorItemRepository) Upsert(ctx context.Context, item *repositories
 			"quality", "width", "height", "duration", "site", "detection_method",
 			"status", "error_message", "resolved_at", "expires_at", "updated_at",
 		}),
-	}).Create(&row).Error; err != nil {
+	}).Create(new(r.recordToRow(item))).Error; err != nil {
 		return fmt.Errorf("failed to upsert extractor item: %w", err)
 	}
 	return nil
@@ -100,7 +99,7 @@ func (r *ExtractorItemRepository) List(ctx context.Context) ([]*repositories.Ext
 }
 
 func (r *ExtractorItemRepository) UpdateStatus(ctx context.Context, id, status, errorMsg string) error {
-	updates := map[string]interface{}{
+	updates := map[string]any{
 		"status":        status,
 		"error_message": errorMsg,
 		"updated_at":    time.Now().Format(sqlTimeFormat),
@@ -137,8 +136,7 @@ func (r *ExtractorItemRepository) recordToRow(rec *repositories.ExtractorItemRec
 		UpdatedAt:       rec.UpdatedAt.Format(sqlTimeFormat),
 	}
 	if rec.ExpiresAt != nil {
-		s := rec.ExpiresAt.Format(sqlTimeFormat)
-		row.ExpiresAt = &s
+		row.ExpiresAt = new(rec.ExpiresAt.Format(sqlTimeFormat))
 	}
 	return row
 }

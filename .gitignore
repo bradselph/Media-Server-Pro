@@ -102,3 +102,7 @@ docs/audit-screenshots/lighthouse-mobile/report.json
 /build_manifest.js
 *.env.backup.txt
 *.env.backup
+
+# Local Go workspace file — replace directive in go.mod covers the patched module
+go.work
+go.work.sum

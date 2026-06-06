@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import type { ReviewQueueItem, ScannerStats, ValidatorStats, AutoTagRule } from '~/types/api'
-import { asRecord } from '~/utils/typeGuards'
-import { useAdminFeedback } from '~/composables/useAdminFeedback'
+import type {AutoTagRule, ReviewQueueItem, ScannerStats, ValidatorStats} from '~/types/api'
+import {asRecord} from '~/utils/typeGuards'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const { notifyError, notifySuccess } = useAdminFeedback()
+const {notifyError, notifySuccess} = useAdminFeedback()
 
 const subTab = ref('scanner')
 let scanRefreshTimer: ReturnType<typeof setTimeout> | null = null
 const subTabs = [
-  { label: 'Mature Scanner', value: 'scanner', icon: 'i-lucide-scan' },
-  { label: 'Validator', value: 'validator', icon: 'i-lucide-shield-check' },
-  { label: 'Auto-Tags', value: 'autotags', icon: 'i-lucide-tag' },
+  {label: 'Mature Scanner', value: 'scanner', icon: 'i-lucide-scan'},
+  {label: 'Validator', value: 'validator', icon: 'i-lucide-shield-check'},
+  {label: 'Auto-Tags', value: 'autotags', icon: 'i-lucide-tag'},
 ]
 
 // ── Scanner ────────────────────────────────────────────────────────────────────
@@ -33,7 +33,9 @@ async function loadScanner() {
     reviewQueue.value = queue ?? []
   } catch (e: unknown) {
     notifyError(e, 'Failed to load scanner', 'i-lucide-alert-circle')
-  } finally { scannerLoading.value = false }
+  } finally {
+    scannerLoading.value = false
+  }
 }
 
 async function startScan() {
@@ -50,7 +52,9 @@ async function startScan() {
     scanRefreshTimer = setTimeout(loadScanner, 2000)
   } catch (e: unknown) {
     notifyError(e, 'Scan failed')
-  } finally { scanning.value = false }
+  } finally {
+    scanning.value = false
+  }
 }
 
 async function batchAction(action: 'approve' | 'reject') {
@@ -111,9 +115,13 @@ const validateResult = ref<unknown>(null)
 
 async function loadValidator() {
   validatorLoading.value = true
-  try { validatorStats.value = await adminApi.getValidatorStats() }
-  catch (e: unknown) { notifyError(e, 'Failed to load validator stats') }
-  finally { validatorLoading.value = false }
+  try {
+    validatorStats.value = await adminApi.getValidatorStats()
+  } catch (e: unknown) {
+    notifyError(e, 'Failed to load validator stats')
+  } finally {
+    validatorLoading.value = false
+  }
 }
 
 async function runValidate() {
@@ -123,7 +131,9 @@ async function runValidate() {
     validateResult.value = await adminApi.validateMedia(validateId.value.trim())
   } catch (e: unknown) {
     notifyError(e, 'Validation failed')
-  } finally { validating.value = false }
+  } finally {
+    validating.value = false
+  }
 }
 
 async function runFix() {
@@ -134,7 +144,9 @@ async function runFix() {
     notifySuccess('Media fixed')
   } catch (e: unknown) {
     notifyError(e, 'Fix failed')
-  } finally { validating.value = false }
+  } finally {
+    validating.value = false
+  }
 }
 
 // ── Scanner confidence thresholds ──────────────────────────────────────────────
@@ -152,7 +164,8 @@ async function loadScannerConfig() {
       highConfidenceThreshold.value = typeof ms?.high_confidence_threshold === 'number' ? ms.high_confidence_threshold : 0.85
       mediumConfidenceThreshold.value = typeof ms?.medium_confidence_threshold === 'number' ? ms.medium_confidence_threshold : 0.65
     }
-  } catch { /* non-critical */ }
+  } catch { /* non-critical */
+  }
 }
 
 async function saveScannerThresholds() {
@@ -180,7 +193,7 @@ async function saveScannerThresholds() {
 const autoTagRules = ref<AutoTagRule[]>([])
 const autoTagLoading = ref(false)
 const autoTagApplying = ref(false)
-const autoTagRuleForm = reactive({ name: '', pattern: '', tags: '', priority: 0, enabled: true })
+const autoTagRuleForm = reactive({name: '', pattern: '', tags: '', priority: 0, enabled: true})
 const autoTagFormOpen = ref(false)
 const autoTagEditTarget = ref<AutoTagRule | null>(null)
 const autoTagSaving = ref(false)
@@ -225,10 +238,10 @@ async function saveAutoTagRule() {
   autoTagSaving.value = true
   try {
     if (autoTagEditTarget.value) {
-      await adminApi.updateAutoTagRule(autoTagEditTarget.value.id, { ...autoTagRuleForm })
+      await adminApi.updateAutoTagRule(autoTagEditTarget.value.id, {...autoTagRuleForm})
       notifySuccess('Rule updated')
     } else {
-      await adminApi.createAutoTagRule({ ...autoTagRuleForm })
+      await adminApi.createAutoTagRule({...autoTagRuleForm})
       notifySuccess('Rule created')
     }
     autoTagFormOpen.value = false
@@ -267,13 +280,18 @@ async function applyAutoTagRules() {
 }
 
 watch(subTab, (v) => {
-  if (v === 'scanner') { loadScanner(); loadScannerConfig() }
-  else if (v === 'validator') loadValidator()
+  if (v === 'scanner') {
+    loadScanner();
+    loadScannerConfig()
+  } else if (v === 'validator') loadValidator()
   else if (v === 'autotags') loadAutoTagRules()
-}, { immediate: true })
+}, {immediate: true})
 
 onUnmounted(() => {
-  if (scanRefreshTimer) { clearTimeout(scanRefreshTimer); scanRefreshTimer = null }
+  if (scanRefreshTimer) {
+    clearTimeout(scanRefreshTimer);
+    scanRefreshTimer = null
+  }
 })
 </script>
 
@@ -283,259 +301,287 @@ onUnmounted(() => {
       <template #content="{ item }">
         <div class="pt-3">
 
-    <!-- Scanner -->
-    <div v-if="item.value === 'scanner'" class="space-y-4">
-      <!-- Confidence thresholds config -->
-      <UCard :ui="{ body: 'p-4' }">
-        <p class="text-xs font-semibold text-muted mb-3 uppercase tracking-wide">Content Scanner Thresholds</p>
-        <div class="flex flex-wrap items-end gap-4">
-          <UFormField label="High confidence" description="Score ≥ this value → auto-flag as mature">
-            <UInput
-              v-model.number="highConfidenceThreshold"
-              type="number"
-              min="0"
-              max="1"
-              step="0.01"
-              class="w-24"
-            />
-          </UFormField>
-          <UFormField label="Medium confidence" description="Score ≥ this value → add to review queue">
-            <UInput
-              v-model.number="mediumConfidenceThreshold"
-              type="number"
-              min="0"
-              max="1"
-              step="0.01"
-              class="w-24"
-            />
-          </UFormField>
-          <UButton
-            :loading="scannerConfigSaving"
-            icon="i-lucide-save"
-            label="Save"
-            size="sm"
-            @click="saveScannerThresholds"
-          />
-        </div>
-      </UCard>
+          <!-- Scanner -->
+          <div v-if="item.value === 'scanner'" class="space-y-4">
+            <!-- Confidence thresholds config -->
+            <UCard :ui="{ body: 'p-4' }">
+              <p class="text-xs font-semibold text-muted mb-3 uppercase tracking-wide">Content Scanner Thresholds</p>
+              <div class="flex flex-wrap items-end gap-4">
+                <UFormField label="High confidence" description="Score ≥ this value → auto-flag as mature">
+                  <UInput
+                      v-model.number="highConfidenceThreshold"
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      class="w-24"
+                  />
+                </UFormField>
+                <UFormField label="Medium confidence" description="Score ≥ this value → add to review queue">
+                  <UInput
+                      v-model.number="mediumConfidenceThreshold"
+                      type="number"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      class="w-24"
+                  />
+                </UFormField>
+                <UButton
+                    :loading="scannerConfigSaving"
+                    icon="i-lucide-save"
+                    label="Save"
+                    size="sm"
+                    @click="saveScannerThresholds"
+                />
+              </div>
+            </UCard>
 
-      <!-- Stats -->
-      <div v-if="scannerStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <UCard v-for="item in [
+            <!-- Stats -->
+            <div v-if="scannerStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <UCard v-for="item in [
           { label: 'Total Scanned', value: scannerStats.total_scanned },
           { label: 'Mature', value: scannerStats.mature_count },
           { label: 'Auto-Flagged', value: scannerStats.auto_flagged },
           { label: 'Pending Review', value: scannerStats.pending_review },
         ]" :key="item.label" :ui="{ body: 'p-3' }">
-          <p class="text-xl font-bold text-highlighted">{{ (item.value ?? 0).toLocaleString() }}</p>
-          <p class="text-xs text-muted">{{ item.label }}</p>
-        </UCard>
-      </div>
-
-      <!-- Scan controls -->
-      <UCard>
-        <template #header><div class="font-semibold">Run Scan</div></template>
-        <div class="flex flex-wrap gap-2">
-          <UInput v-model="scanPath" placeholder="Path (optional, leave blank for full scan)" class="flex-1 min-w-48" />
-          <UButton :loading="scanning" icon="i-lucide-scan" label="Scan" @click="startScan" />
-        </div>
-      </UCard>
-
-      <!-- Review queue -->
-      <UCard>
-        <template #header>
-          <div class="flex items-center justify-between flex-wrap gap-2">
-            <div class="font-semibold">Review Queue ({{ reviewQueue.length }})</div>
-            <div class="flex gap-2">
-              <UButton v-if="selected.length > 0" icon="i-lucide-check" label="Approve Selected" size="xs" color="success" variant="outline" @click="batchAction('approve')" />
-              <UButton v-if="selected.length > 0" icon="i-lucide-x" label="Reject Selected" size="xs" color="error" variant="outline" @click="batchAction('reject')" />
-              <UButton v-if="reviewQueue.length > 0" icon="i-lucide-trash-2" aria-label="Clear review queue" size="xs" variant="ghost" color="error" @click="clearQueue" />
-              <UButton icon="i-lucide-refresh-cw" aria-label="Refresh scanner" size="xs" variant="ghost" color="neutral" @click="loadScanner" />
+                <p class="text-xl font-bold text-highlighted">{{ (item.value ?? 0).toLocaleString() }}</p>
+                <p class="text-xs text-muted">{{ item.label }}</p>
+              </UCard>
             </div>
-          </div>
-        </template>
-        <div v-if="scannerLoading" class="flex justify-center py-6">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
-        </div>
-        <div v-else-if="reviewQueue.length === 0" class="text-center py-6 text-muted text-sm">No items pending review.</div>
-        <div v-else class="divide-y divide-default text-sm">
-          <div class="flex items-center gap-2 py-2 font-medium text-muted text-xs">
-            <UCheckbox :model-value="selected.length === reviewQueue.length && reviewQueue.length > 0" @update:model-value="toggleAll" />
-            <span class="flex-1">Path</span>
-            <span class="w-20 text-right">Confidence</span>
-            <span class="w-24 text-right">Actions</span>
-          </div>
-          <div v-for="item in reviewQueue" :key="item.id" class="flex items-center gap-2 py-2">
-            <UCheckbox :model-value="selected.includes(item.id)" @update:model-value="toggleSelect(item.id)" />
-            <div class="flex-1 min-w-0">
-              <p class="truncate text-xs font-medium" :title="item.name">{{ item.name }}</p>
-              <div class="flex gap-1 mt-0.5 flex-wrap">
-                <UBadge v-for="r in (item.reasons ?? [])" :key="r" :label="r" color="neutral" variant="subtle" size="xs" />
+
+            <!-- Scan controls -->
+            <UCard>
+              <template #header>
+                <div class="font-semibold">Run Scan</div>
+              </template>
+              <div class="flex flex-wrap gap-2">
+                <UInput v-model="scanPath" placeholder="Path (optional, leave blank for full scan)"
+                        class="flex-1 min-w-48"/>
+                <UButton :loading="scanning" icon="i-lucide-scan" label="Scan" @click="startScan"/>
               </div>
-              <p v-if="item.detected_at" class="text-xs text-muted mt-0.5">Detected: {{ new Date(item.detected_at).toLocaleDateString() }}</p>
-            </div>
-            <span class="w-20 text-right text-muted">{{ item.confidence != null ? `${(item.confidence * 100).toFixed(0)}%` : '—' }}</span>
-            <div class="w-24 flex justify-end gap-1">
-              <UButton icon="i-lucide-check" aria-label="Approve" size="xs" variant="ghost" color="success" :loading="reviewingId === item.id" @click="quickReview(item.id, 'approve')" />
-              <UButton icon="i-lucide-x" aria-label="Reject" size="xs" variant="ghost" color="error" :loading="reviewingId === item.id" @click="quickReview(item.id, 'reject')" />
-            </div>
+            </UCard>
+
+            <!-- Review queue -->
+            <UCard>
+              <template #header>
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                  <div class="font-semibold">Review Queue ({{ reviewQueue.length }})</div>
+                  <div class="flex gap-2">
+                    <UButton v-if="selected.length > 0" icon="i-lucide-check" label="Approve Selected" size="xs"
+                             color="success" variant="outline" @click="batchAction('approve')"/>
+                    <UButton v-if="selected.length > 0" icon="i-lucide-x" label="Reject Selected" size="xs"
+                             color="error" variant="outline" @click="batchAction('reject')"/>
+                    <UButton v-if="reviewQueue.length > 0" icon="i-lucide-trash-2" aria-label="Clear review queue"
+                             size="xs" variant="ghost" color="error" @click="clearQueue"/>
+                    <UButton icon="i-lucide-refresh-cw" aria-label="Refresh scanner" size="xs" variant="ghost"
+                             color="neutral" @click="loadScanner"/>
+                  </div>
+                </div>
+              </template>
+              <div v-if="scannerLoading" class="flex justify-center py-6">
+                <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
+              </div>
+              <div v-else-if="reviewQueue.length === 0" class="text-center py-6 text-muted text-sm">No items pending
+                review.
+              </div>
+              <div v-else class="divide-y divide-default text-sm">
+                <div class="flex items-center gap-2 py-2 font-medium text-muted text-xs">
+                  <UCheckbox :model-value="selected.length === reviewQueue.length && reviewQueue.length > 0"
+                             @update:model-value="toggleAll"/>
+                  <span class="flex-1">Path</span>
+                  <span class="w-20 text-right">Confidence</span>
+                  <span class="w-24 text-right">Actions</span>
+                </div>
+                <div v-for="item in reviewQueue" :key="item.id" class="flex items-center gap-2 py-2">
+                  <UCheckbox :model-value="selected.includes(item.id)" @update:model-value="toggleSelect(item.id)"/>
+                  <div class="flex-1 min-w-0">
+                    <p class="truncate text-xs font-medium" :title="item.name">{{ item.name }}</p>
+                    <div class="flex gap-1 mt-0.5 flex-wrap">
+                      <UBadge v-for="r in (item.reasons ?? [])" :key="r" :label="r" color="neutral" variant="subtle"
+                              size="xs"/>
+                    </div>
+                    <p v-if="item.detected_at" class="text-xs text-muted mt-0.5">Detected:
+                      {{ new Date(item.detected_at).toLocaleDateString() }}</p>
+                  </div>
+                  <span class="w-20 text-right text-muted">{{
+                      item.confidence != null ? `${(item.confidence * 100).toFixed(0)}%` : '—'
+                    }}</span>
+                  <div class="w-24 flex justify-end gap-1">
+                    <UButton icon="i-lucide-check" aria-label="Approve" size="xs" variant="ghost" color="success"
+                             :loading="reviewingId === item.id" @click="quickReview(item.id, 'approve')"/>
+                    <UButton icon="i-lucide-x" aria-label="Reject" size="xs" variant="ghost" color="error"
+                             :loading="reviewingId === item.id" @click="quickReview(item.id, 'reject')"/>
+                  </div>
+                </div>
+              </div>
+            </UCard>
           </div>
-        </div>
-      </UCard>
-    </div>
 
 
-    <!-- Validator -->
-    <div v-if="item.value === 'validator'" class="space-y-4">
-      <!-- Stats -->
-      <div v-if="validatorStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <UCard v-for="item in [
+          <!-- Validator -->
+          <div v-if="item.value === 'validator'" class="space-y-4">
+            <!-- Stats -->
+            <div v-if="validatorStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <UCard v-for="item in [
           { label: 'Total', value: validatorStats.total },
           { label: 'Validated', value: validatorStats.validated },
           { label: 'Needs Fix', value: validatorStats.needs_fix },
           { label: 'Fixed', value: validatorStats.fixed },
         ]" :key="item.label" :ui="{ body: 'p-3' }">
-          <p class="text-xl font-bold text-highlighted">{{ (item.value ?? 0).toLocaleString() }}</p>
-          <p class="text-xs text-muted">{{ item.label }}</p>
-        </UCard>
-      </div>
+                <p class="text-xl font-bold text-highlighted">{{ (item.value ?? 0).toLocaleString() }}</p>
+                <p class="text-xs text-muted">{{ item.label }}</p>
+              </UCard>
+            </div>
 
-      <!-- Validate / fix -->
-      <UCard>
-        <template #header><div class="font-semibold">Validate or Fix Media</div></template>
-        <div class="flex flex-wrap gap-2 mb-4">
-          <UInput v-model="validateId" placeholder="Media ID" class="flex-1 min-w-48" />
-          <UButton :loading="validating" icon="i-lucide-shield-check" label="Validate" variant="outline" color="neutral" @click="runValidate" />
-          <UButton :loading="validating" icon="i-lucide-wrench" label="Fix" variant="outline" color="warning" @click="runFix" />
-        </div>
-        <div v-if="validateResult">
-          <pre class="text-xs bg-muted rounded p-3 overflow-auto max-h-64">{{ JSON.stringify(validateResult, null, 2) }}</pre>
-        </div>
-      </UCard>
-    </div>
-
-    <!-- Auto-Tags -->
-    <div v-if="item.value === 'autotags'" class="space-y-4">
-      <!-- Header actions -->
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p class="text-sm text-muted">
-            Rules are matched against the media file path (case-insensitive substring). Tags are merged into existing tags.
-            Higher priority rules are applied first; only the first matching rule runs per item.
-          </p>
-        </div>
-        <div class="flex gap-2">
-          <UButton
-            icon="i-lucide-play"
-            label="Apply All Rules"
-            size="sm"
-            color="primary"
-            variant="outline"
-            :loading="autoTagApplying"
-            @click="applyAutoTagRules"
-          />
-          <UButton
-            icon="i-lucide-plus"
-            label="New Rule"
-            size="sm"
-            color="primary"
-            @click="openCreateRule"
-          />
-          <UButton icon="i-lucide-refresh-cw" aria-label="Refresh rules" size="sm" variant="ghost" color="neutral" :loading="autoTagLoading" @click="loadAutoTagRules" />
-        </div>
-      </div>
-
-      <!-- Loading -->
-      <div v-if="autoTagLoading" class="flex justify-center py-8">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-5 text-primary" />
-      </div>
-
-      <!-- Empty -->
-      <div v-else-if="autoTagRules.length === 0" class="text-center py-10 text-muted text-sm">
-        <UIcon name="i-lucide-tag" class="size-8 mb-2" />
-        <p>No auto-tag rules yet.</p>
-        <p class="text-xs mt-1">Create a rule to automatically tag media based on their file path.</p>
-      </div>
-
-      <!-- Rules list -->
-      <UCard v-else>
-        <div class="divide-y divide-default">
-          <div
-            v-for="rule in autoTagRules"
-            :key="rule.id"
-            class="flex items-start gap-3 py-3"
-          >
-            <div class="flex-1 min-w-0 space-y-1">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-medium text-sm text-highlighted">{{ rule.name }}</span>
-                <UBadge
-                  :label="rule.enabled ? 'Enabled' : 'Disabled'"
-                  :color="rule.enabled ? 'success' : 'neutral'"
-                  variant="subtle"
-                  size="xs"
-                />
-                <UBadge v-if="rule.priority !== 0" :label="`Priority ${rule.priority}`" color="info" variant="subtle" size="xs" />
+            <!-- Validate / fix -->
+            <UCard>
+              <template #header>
+                <div class="font-semibold">Validate or Fix Media</div>
+              </template>
+              <div class="flex flex-wrap gap-2 mb-4">
+                <UInput v-model="validateId" placeholder="Media ID" class="flex-1 min-w-48"/>
+                <UButton :loading="validating" icon="i-lucide-shield-check" label="Validate" variant="outline"
+                         color="neutral" @click="runValidate"/>
+                <UButton :loading="validating" icon="i-lucide-wrench" label="Fix" variant="outline" color="warning"
+                         @click="runFix"/>
               </div>
-              <div class="flex items-center gap-1 text-xs text-muted">
-                <UIcon name="i-lucide-folder-search" class="size-3.5 shrink-0" />
-                <span class="font-mono truncate">{{ rule.pattern }}</span>
+              <div v-if="validateResult">
+                <pre class="text-xs bg-muted rounded p-3 overflow-auto max-h-64">{{
+                    JSON.stringify(validateResult, null, 2)
+                  }}</pre>
               </div>
-              <div class="flex flex-wrap gap-1 mt-0.5">
-                <UBadge
-                  v-for="tag in rule.tags.split(',').map(t => t.trim()).filter(Boolean)"
-                  :key="tag"
-                  :label="tag"
-                  color="primary"
-                  variant="subtle"
-                  size="xs"
+            </UCard>
+          </div>
+
+          <!-- Auto-Tags -->
+          <div v-if="item.value === 'autotags'" class="space-y-4">
+            <!-- Header actions -->
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p class="text-sm text-muted">
+                  Rules are matched against the media file path (case-insensitive substring). Tags are merged into
+                  existing tags.
+                  Higher priority rules are applied first; only the first matching rule runs per item.
+                </p>
+              </div>
+              <div class="flex gap-2">
+                <UButton
+                    icon="i-lucide-play"
+                    label="Apply All Rules"
+                    size="sm"
+                    color="primary"
+                    variant="outline"
+                    :loading="autoTagApplying"
+                    @click="applyAutoTagRules"
                 />
+                <UButton
+                    icon="i-lucide-plus"
+                    label="New Rule"
+                    size="sm"
+                    color="primary"
+                    @click="openCreateRule"
+                />
+                <UButton icon="i-lucide-refresh-cw" aria-label="Refresh rules" size="sm" variant="ghost" color="neutral"
+                         :loading="autoTagLoading" @click="loadAutoTagRules"/>
               </div>
             </div>
-            <div class="flex gap-1 shrink-0">
-              <UButton icon="i-lucide-pencil" size="xs" variant="ghost" color="neutral" @click="openEditRule(rule)" />
-              <UButton
-                icon="i-lucide-trash-2"
-                size="xs"
-                variant="ghost"
-                color="error"
-                :loading="autoTagDeletingId === rule.id"
-                @click="deleteAutoTagRule(rule.id)"
-              />
-            </div>
-          </div>
-        </div>
-      </UCard>
 
-      <!-- Create / Edit modal -->
-      <UModal
-        v-model:open="autoTagFormOpen"
-        :title="autoTagEditTarget ? 'Edit Auto-Tag Rule' : 'New Auto-Tag Rule'"
-      >
-        <template #body>
-          <div class="space-y-4">
-            <UFormField label="Name" required>
-              <UInput v-model="autoTagRuleForm.name" placeholder="e.g. Jazz Music" class="w-full" />
-            </UFormField>
-            <UFormField label="Path pattern" hint="Case-insensitive substring of the file path" required>
-              <UInput v-model="autoTagRuleForm.pattern" placeholder="e.g. /music/jazz" class="w-full font-mono" />
-            </UFormField>
-            <UFormField label="Tags" hint="Comma-separated — merged into existing tags" required>
-              <UInput v-model="autoTagRuleForm.tags" placeholder="e.g. jazz, instrumental, relaxing" class="w-full" />
-            </UFormField>
-            <UFormField label="Priority" hint="Higher = applied first (0 = default)">
-              <UInput v-model.number="autoTagRuleForm.priority" type="number" class="w-28" />
-            </UFormField>
-            <UFormField label="Enabled">
-              <UCheckbox v-model="autoTagRuleForm.enabled" label="Rule is active" />
-            </UFormField>
+            <!-- Loading -->
+            <div v-if="autoTagLoading" class="flex justify-center py-8">
+              <UIcon name="i-lucide-loader-2" class="animate-spin size-5 text-primary"/>
+            </div>
+
+            <!-- Empty -->
+            <div v-else-if="autoTagRules.length === 0" class="text-center py-10 text-muted text-sm">
+              <UIcon name="i-lucide-tag" class="size-8 mb-2"/>
+              <p>No auto-tag rules yet.</p>
+              <p class="text-xs mt-1">Create a rule to automatically tag media based on their file path.</p>
+            </div>
+
+            <!-- Rules list -->
+            <UCard v-else>
+              <div class="divide-y divide-default">
+                <div
+                    v-for="rule in autoTagRules"
+                    :key="rule.id"
+                    class="flex items-start gap-3 py-3"
+                >
+                  <div class="flex-1 min-w-0 space-y-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-medium text-sm text-highlighted">{{ rule.name }}</span>
+                      <UBadge
+                          :label="rule.enabled ? 'Enabled' : 'Disabled'"
+                          :color="rule.enabled ? 'success' : 'neutral'"
+                          variant="subtle"
+                          size="xs"
+                      />
+                      <UBadge v-if="rule.priority !== 0" :label="`Priority ${rule.priority}`" color="info"
+                              variant="subtle" size="xs"/>
+                    </div>
+                    <div class="flex items-center gap-1 text-xs text-muted">
+                      <UIcon name="i-lucide-folder-search" class="size-3.5 shrink-0"/>
+                      <span class="font-mono truncate">{{ rule.pattern }}</span>
+                    </div>
+                    <div class="flex flex-wrap gap-1 mt-0.5">
+                      <UBadge
+                          v-for="tag in rule.tags.split(',').map(t => t.trim()).filter(Boolean)"
+                          :key="tag"
+                          :label="tag"
+                          color="primary"
+                          variant="subtle"
+                          size="xs"
+                      />
+                    </div>
+                  </div>
+                  <div class="flex gap-1 shrink-0">
+                    <UButton icon="i-lucide-pencil" size="xs" variant="ghost" color="neutral"
+                             @click="openEditRule(rule)"/>
+                    <UButton
+                        icon="i-lucide-trash-2"
+                        size="xs"
+                        variant="ghost"
+                        color="error"
+                        :loading="autoTagDeletingId === rule.id"
+                        @click="deleteAutoTagRule(rule.id)"
+                    />
+                  </div>
+                </div>
+              </div>
+            </UCard>
+
+            <!-- Create / Edit modal -->
+            <UModal
+                v-model:open="autoTagFormOpen"
+                :title="autoTagEditTarget ? 'Edit Auto-Tag Rule' : 'New Auto-Tag Rule'"
+            >
+              <template #body>
+                <div class="space-y-4">
+                  <UFormField label="Name" required>
+                    <UInput v-model="autoTagRuleForm.name" placeholder="e.g. Jazz Music" class="w-full"/>
+                  </UFormField>
+                  <UFormField label="Path pattern" hint="Case-insensitive substring of the file path" required>
+                    <UInput v-model="autoTagRuleForm.pattern" placeholder="e.g. /music/jazz" class="w-full font-mono"/>
+                  </UFormField>
+                  <UFormField label="Tags" hint="Comma-separated — merged into existing tags" required>
+                    <UInput v-model="autoTagRuleForm.tags" placeholder="e.g. jazz, instrumental, relaxing"
+                            class="w-full"/>
+                  </UFormField>
+                  <UFormField label="Priority" hint="Higher = applied first (0 = default)">
+                    <UInput v-model.number="autoTagRuleForm.priority" type="number" class="w-28"/>
+                  </UFormField>
+                  <UFormField label="Enabled">
+                    <UCheckbox v-model="autoTagRuleForm.enabled" label="Rule is active"/>
+                  </UFormField>
+                </div>
+              </template>
+              <template #footer>
+                <UButton :label="autoTagEditTarget ? 'Save' : 'Create'" color="primary" :loading="autoTagSaving"
+                         @click="saveAutoTagRule"/>
+                <UButton label="Cancel" variant="ghost" color="neutral" @click="autoTagFormOpen = false"/>
+              </template>
+            </UModal>
           </div>
-        </template>
-        <template #footer>
-          <UButton :label="autoTagEditTarget ? 'Save' : 'Create'" color="primary" :loading="autoTagSaving" @click="saveAutoTagRule" />
-          <UButton label="Cancel" variant="ghost" color="neutral" @click="autoTagFormOpen = false" />
-        </template>
-      </UModal>
-    </div>
 
         </div>
       </template>

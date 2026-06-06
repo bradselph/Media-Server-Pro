@@ -74,39 +74,17 @@ func (h *Handler) AdminRunTask(c *gin.Context) {
 
 // AdminEnableTask enables a background task
 func (h *Handler) AdminEnableTask(c *gin.Context) {
-	if h.tasks == nil {
-		writeError(c, http.StatusServiceUnavailable, msgTasksNotAvailable)
-		return
-	}
-	taskID := strings.TrimSpace(c.Param("id"))
-	if taskID == "" {
-		writeError(c, http.StatusBadRequest, "Task ID is required")
-		return
-	}
-
-	if err := h.tasks.EnableTask(taskID); err != nil {
-		if errors.Is(err, tasks.ErrTaskNotFound) {
-			writeError(c, http.StatusNotFound, "Task not found")
-		} else {
-			writeError(c, http.StatusInternalServerError, err.Error())
-		}
-		return
-	}
-	if err := persistTaskOverride(h.config, taskID, func(o *config.TaskOverride) {
-		enabled := true
-		o.Enabled = &enabled
-	}); err != nil {
-		h.log.Error("Failed to persist enabled override for task %s: %v", taskID, err)
-		writeError(c, http.StatusInternalServerError, "Task enabled but failed to persist configuration")
-		return
-	}
-
-	h.trackServerEvent(c, analytics.EventAdminTaskEnable, map[string]any{"task_id": taskID})
-	writeSuccess(c, map[string]string{"message": "Task enabled"})
+	h.setTaskEnabled(c, true)
 }
 
 // AdminDisableTask disables a background task
 func (h *Handler) AdminDisableTask(c *gin.Context) {
+	h.setTaskEnabled(c, false)
+}
+
+// setTaskEnabled enables or disables a task and persists the override so the
+// state survives a restart. Shared body of AdminEnableTask/AdminDisableTask.
+func (h *Handler) setTaskEnabled(c *gin.Context, enabled bool) {
 	if h.tasks == nil {
 		writeError(c, http.StatusServiceUnavailable, msgTasksNotAvailable)
 		return
@@ -117,7 +95,15 @@ func (h *Handler) AdminDisableTask(c *gin.Context) {
 		return
 	}
 
-	if err := h.tasks.DisableTask(taskID); err != nil {
+	action := "enabled"
+	event := analytics.EventAdminTaskEnable
+	toggle := h.tasks.EnableTask
+	if !enabled {
+		action = "disabled"
+		event = analytics.EventAdminTaskDisable
+		toggle = h.tasks.DisableTask
+	}
+	if err := toggle(taskID); err != nil {
 		if errors.Is(err, tasks.ErrTaskNotFound) {
 			writeError(c, http.StatusNotFound, "Task not found")
 		} else {
@@ -126,16 +112,15 @@ func (h *Handler) AdminDisableTask(c *gin.Context) {
 		return
 	}
 	if err := persistTaskOverride(h.config, taskID, func(o *config.TaskOverride) {
-		disabled := false
-		o.Enabled = &disabled
+		o.Enabled = &enabled
 	}); err != nil {
-		h.log.Error("Failed to persist disabled override for task %s: %v", taskID, err)
-		writeError(c, http.StatusInternalServerError, "Task disabled but failed to persist configuration")
+		h.log.Error("Failed to persist %s override for task %s: %v", action, taskID, err)
+		writeError(c, http.StatusInternalServerError, "Task "+action+" but failed to persist configuration")
 		return
 	}
 
-	h.trackServerEvent(c, analytics.EventAdminTaskDisable, map[string]any{"task_id": taskID})
-	writeSuccess(c, map[string]string{"message": "Task disabled"})
+	h.trackServerEvent(c, event, map[string]any{"task_id": taskID})
+	writeSuccess(c, map[string]string{"message": "Task " + action})
 }
 
 // AdminUpdateTaskSchedule changes the schedule of a registered background task
@@ -177,8 +162,7 @@ func (h *Handler) AdminUpdateTaskSchedule(c *gin.Context) {
 	}
 
 	if err := persistTaskOverride(h.config, taskID, func(o *config.TaskOverride) {
-		secs := req.ScheduleSecs
-		o.ScheduleSecs = &secs
+		o.ScheduleSecs = new(req.ScheduleSecs)
 	}); err != nil {
 		h.log.Error("Failed to persist schedule override for task %s: %v", taskID, err)
 		writeError(c, http.StatusInternalServerError, "Task schedule updated but failed to persist configuration")

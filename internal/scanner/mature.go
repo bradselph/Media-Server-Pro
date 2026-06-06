@@ -799,12 +799,9 @@ func (s *MatureScanner) ScanDirectory(dir string) ([]*ScanResult, error) {
 // relying on a hardcoded list.
 func (s *MatureScanner) isAllowedExtension(ext string) bool {
 	cfg := s.config.Get()
-	for _, allowed := range cfg.Uploads.AllowedExtensions {
-		if strings.EqualFold(ext, allowed) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(cfg.Uploads.AllowedExtensions, func(allowed string) bool {
+		return strings.EqualFold(ext, allowed)
+	})
 }
 
 // stableReviewID returns a deterministic UUID v5 derived from the file path,
@@ -951,7 +948,7 @@ func (s *MatureScanner) SetMatureFlag(ctx context.Context, path string, isMature
 		result.Reasons = append(result.Reasons, "Manual: "+reason)
 	}
 	result.ReviewDecision = "manual"
-	result.ReviewedAt = helpers.Ptr(time.Now())
+	result.ReviewedAt = new(time.Now())
 
 	s.log.Info("Manually set mature flag for %s: %v", path, isMature)
 	repoResult := s.convertScannerToRepo(result)

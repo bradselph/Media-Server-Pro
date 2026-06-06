@@ -1,12 +1,21 @@
 <script setup lang="ts">
-import type { DownloaderJob, ImportableFile, ImportDestination, DownloaderHealth, DownloaderSettings, DownloaderDetectResult, DownloaderProgress, DownloaderStreamInfo } from '~/types/api'
-import { formatBytes, formatUptime } from '~/utils/format'
-import { asRecord } from '~/utils/typeGuards'
-import { useAdminFeedback } from '~/composables/useAdminFeedback'
+import type {
+  DownloaderDetectResult,
+  DownloaderHealth,
+  DownloaderJob,
+  DownloaderProgress,
+  DownloaderSettings,
+  DownloaderStreamInfo,
+  ImportableFile,
+  ImportDestination
+} from '~/types/api'
+import {formatBytes, formatUptime} from '~/utils/format'
+import {asRecord} from '~/utils/typeGuards'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const toast = useToast()
-const { notifyError, notifySuccess, notifyInfo } = useAdminFeedback()
+const {notifyError, notifySuccess, notifyInfo} = useAdminFeedback()
 
 // ── Download server config ─────────────────────────────────────────────────────
 
@@ -24,7 +33,8 @@ async function loadDownloadConfig() {
       downloadEnabled.value = dl?.enabled !== false
       downloadRequireAuth.value = dl?.require_auth !== false
     }
-  } catch { /* non-critical */ }
+  } catch { /* non-critical */
+  }
 }
 
 async function saveDownloadConfig(key: 'enabled' | 'require_auth', value: boolean) {
@@ -32,7 +42,7 @@ async function saveDownloadConfig(key: 'enabled' | 'require_auth', value: boolea
   try {
     const updated = {
       ...fullConfig.value,
-      download: { ...asRecord(fullConfig.value.download), [key]: value },
+      download: {...asRecord(fullConfig.value.download), [key]: value},
     }
     await adminApi.updateConfig(updated)
     fullConfig.value = updated
@@ -65,11 +75,18 @@ function connectWS() {
   const ws = new WebSocket(`${proto}//${location.host}/ws/admin/downloader`)
   wsRef = ws
 
-  ws.onopen = () => { wsConnected.value = true; wsBackoff = 1000 }
+  ws.onopen = () => {
+    wsConnected.value = true;
+    wsBackoff = 1000
+  }
 
   ws.onmessage = (event) => {
     let msg: Record<string, unknown>
-    try { msg = JSON.parse(event.data) } catch { return }
+    try {
+      msg = JSON.parse(event.data)
+    } catch {
+      return
+    }
     if (msg.type === 'connected' && msg.clientId) {
       wsClientId.value = msg.clientId as string
       return
@@ -101,7 +118,9 @@ function connectWS() {
       connectWS()
     }, wsBackoff)
   }
-  ws.onerror = () => { ws.close() }
+  ws.onerror = () => {
+    ws.close()
+  }
 }
 
 // ── Auto-refresh interval ────────────────────────────────────────────────────
@@ -143,13 +162,19 @@ const showSettings = ref(false)
 const isOnline = computed(() => health.value?.online ?? false)
 
 async function loadHealth() {
-  try { health.value = await adminApi.getDownloaderHealth() }
-  catch { health.value = null }
+  try {
+    health.value = await adminApi.getDownloaderHealth()
+  } catch {
+    health.value = null
+  }
 }
 
 async function loadSettings() {
-  try { settings.value = await adminApi.getDownloaderSettings() }
-  catch { settings.value = null }
+  try {
+    settings.value = await adminApi.getDownloaderSettings()
+  } catch {
+    settings.value = null
+  }
 }
 
 
@@ -200,7 +225,7 @@ const downloading = ref(false)
 
 // Filter ad streams out — only show real content
 const filteredStreams = computed(() =>
-  (detected.value?.streams ?? []).filter(s => !s.isAd),
+    (detected.value?.streams ?? []).filter(s => !s.isAd),
 )
 
 function streamLabel(s: DownloaderStreamInfo): string {
@@ -226,7 +251,9 @@ async function detect() {
     detected.value = await adminApi.detectDownload(urlStr)
   } catch (e: unknown) {
     notifyError(e, 'Detection failed')
-  } finally { detecting.value = false }
+  } finally {
+    detecting.value = false
+  }
 }
 
 async function startDownload(streamUrl?: string) {
@@ -245,7 +272,7 @@ async function startDownload(streamUrl?: string) {
     notifySuccess('Download started')
     if (result?.downloadId) {
       const next = new Map(activeProgress.value)
-      next.set(result.downloadId, { downloadId: result.downloadId, status: 'queued', title: detected.value.title })
+      next.set(result.downloadId, {downloadId: result.downloadId, status: 'queued', title: detected.value.title})
       activeProgress.value = next
     }
     detected.value = null
@@ -253,7 +280,9 @@ async function startDownload(streamUrl?: string) {
     await load()
   } catch (e: unknown) {
     notifyError(e, 'Download failed')
-  } finally { downloading.value = false }
+  } finally {
+    downloading.value = false
+  }
 }
 
 // ── Importable files ──────────────────────────────────────────────────────────
@@ -275,16 +304,16 @@ const loadingDestinations = ref(false)
 // Read-only destinations (e.g. a HiDrive share mounted --read-only) are shown but
 // disabled — importing there would fail, so the picker surfaces that up-front.
 const destinationItems = computed(() =>
-  destinations.value.map(d => ({
-    label: d.writable ? d.label : `${d.label} (read-only)`,
-    value: d.key,
-    disabled: !d.writable,
-  }))
+    destinations.value.map(d => ({
+      label: d.writable ? d.label : `${d.label} (read-only)`,
+      value: d.key,
+      disabled: !d.writable,
+    }))
 )
 
 // The selected destination is importable only if it exists and is writable.
 const selectedDestWritable = computed(() =>
-  destinations.value.find(d => d.key === selectedDestKey.value)?.writable === true
+    destinations.value.find(d => d.key === selectedDestKey.value)?.writable === true
 )
 
 // Prefer the server-flagged default when it's writable, else the first writable
@@ -292,9 +321,9 @@ const selectedDestWritable = computed(() =>
 function pickDefaultDestination(): ImportDestination | undefined {
   const d = destinations.value
   return d.find(x => x.isDefault && x.writable)
-    ?? d.find(x => x.writable)
-    ?? d.find(x => x.isDefault)
-    ?? d[0]
+      ?? d.find(x => x.writable)
+      ?? d.find(x => x.isDefault)
+      ?? d[0]
 }
 
 async function loadDestinations() {
@@ -390,10 +419,10 @@ function progressBarColor(status: DownloaderProgress['status']) {
             <p class="text-xs text-muted mt-0.5">Allow admins to queue and manage media downloads</p>
           </div>
           <USwitch
-            :model-value="downloadEnabled"
-            :disabled="configSaving"
-            aria-label="Downloader enabled"
-            @update:model-value="saveDownloadConfig('enabled', $event)"
+              :model-value="downloadEnabled"
+              :disabled="configSaving"
+              aria-label="Downloader enabled"
+              @update:model-value="saveDownloadConfig('enabled', $event)"
           />
         </div>
         <div class="flex items-center justify-between gap-4 pt-3">
@@ -402,10 +431,10 @@ function progressBarColor(status: DownloaderProgress['status']) {
             <p class="text-xs text-muted mt-0.5">Only authenticated users can trigger downloads</p>
           </div>
           <USwitch
-            :model-value="downloadRequireAuth"
-            :disabled="configSaving || !downloadEnabled"
-            aria-label="Require authentication for downloads"
-            @update:model-value="saveDownloadConfig('require_auth', $event)"
+              :model-value="downloadRequireAuth"
+              :disabled="configSaving || !downloadEnabled"
+              aria-label="Require authentication for downloads"
+              @update:model-value="saveDownloadConfig('require_auth', $event)"
           />
         </div>
       </div>
@@ -417,9 +446,9 @@ function progressBarColor(status: DownloaderProgress['status']) {
         <div class="flex items-center gap-3 text-sm flex-wrap">
           <div class="flex items-center gap-1.5">
             <UIcon
-              :name="isOnline ? 'i-lucide-check-circle' : 'i-lucide-x-circle'"
-              :class="isOnline ? 'text-success' : 'text-error'"
-              class="size-4"
+                :name="isOnline ? 'i-lucide-check-circle' : 'i-lucide-x-circle'"
+                :class="isOnline ? 'text-success' : 'text-error'"
+                class="size-4"
             />
             <span class="font-medium">{{ isOnline ? 'Online' : 'Offline' }}</span>
           </div>
@@ -427,21 +456,23 @@ function progressBarColor(status: DownloaderProgress['status']) {
           <span v-if="health?.queuedDownloads != null" class="text-muted">· {{ health.queuedDownloads }} queued</span>
           <span v-if="health?.uptime != null" class="text-muted">· Up {{ formatUptime(health.uptime) }}</span>
           <div class="flex items-center gap-1.5 ml-auto">
-            <UIcon :name="wsConnected ? 'i-lucide-wifi' : 'i-lucide-wifi-off'" class="size-3.5" :class="wsConnected ? 'text-success' : 'text-muted'" />
+            <UIcon :name="wsConnected ? 'i-lucide-wifi' : 'i-lucide-wifi-off'" class="size-3.5"
+                   :class="wsConnected ? 'text-success' : 'text-muted'"/>
             <span class="text-xs text-muted">{{ wsConnected ? 'WS connected' : 'WS disconnected' }}</span>
           </div>
-          <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" @click="loadHealth" />
+          <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" @click="loadHealth"/>
         </div>
 
         <!-- Dependencies -->
-        <div v-if="health?.online && health.dependencies && Object.keys(health.dependencies).length > 0" class="flex flex-wrap gap-2">
+        <div v-if="health?.online && health.dependencies && Object.keys(health.dependencies).length > 0"
+             class="flex flex-wrap gap-2">
           <UBadge
-            v-for="(ver, name) in health.dependencies"
-            :key="String(name)"
-            :label="`${name}: ${ver || '—'}`"
-            color="neutral"
-            variant="subtle"
-            size="xs"
+              v-for="(ver, name) in health.dependencies"
+              :key="String(name)"
+              :label="`${name}: ${ver || '—'}`"
+              color="neutral"
+              variant="subtle"
+              size="xs"
           />
         </div>
 
@@ -455,10 +486,10 @@ function progressBarColor(status: DownloaderProgress['status']) {
       <template #header>
         <div class="flex items-center justify-between">
           <span class="font-semibold flex items-center gap-2">
-            <UIcon name="i-lucide-settings" class="size-4" />
+            <UIcon name="i-lucide-settings" class="size-4"/>
             Downloader Settings
           </span>
-          <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" @click="showSettings = false" />
+          <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" @click="showSettings = false"/>
         </div>
       </template>
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
@@ -468,7 +499,8 @@ function progressBarColor(status: DownloaderProgress['status']) {
         </div>
         <div>
           <p class="text-xs text-muted">Server Storage</p>
-          <UBadge :label="settings.allowServerStorage ? 'Allowed' : 'Browser only'" :color="settings.allowServerStorage ? 'success' : 'neutral'" variant="subtle" size="xs" />
+          <UBadge :label="settings.allowServerStorage ? 'Allowed' : 'Browser only'"
+                  :color="settings.allowServerStorage ? 'success' : 'neutral'" variant="subtle" size="xs"/>
         </div>
         <div v-if="settings.audioFormat">
           <p class="text-xs text-muted">Audio Format</p>
@@ -476,46 +508,53 @@ function progressBarColor(status: DownloaderProgress['status']) {
         </div>
         <div v-if="settings.browserRelayConfigured != null">
           <p class="text-xs text-muted">Browser Relay</p>
-          <UBadge :label="settings.browserRelayConfigured ? 'Configured' : 'Not configured'" :color="settings.browserRelayConfigured ? 'success' : 'neutral'" variant="subtle" size="xs" />
+          <UBadge :label="settings.browserRelayConfigured ? 'Configured' : 'Not configured'"
+                  :color="settings.browserRelayConfigured ? 'success' : 'neutral'" variant="subtle" size="xs"/>
         </div>
         <div v-if="settings.proxyPoolSize != null">
           <p class="text-xs text-muted">Proxy Pool</p>
           <UBadge
-            :label="settings.proxyPoolSize > 0 ? `${settings.proxyPoolSize} entr${settings.proxyPoolSize === 1 ? 'y' : 'ies'}` : 'None'"
-            :color="settings.proxyPoolSize > 0 ? 'success' : 'neutral'"
-            variant="subtle"
-            size="xs"
+              :label="settings.proxyPoolSize > 0 ? `${settings.proxyPoolSize} entr${settings.proxyPoolSize === 1 ? 'y' : 'ies'}` : 'None'"
+              :color="settings.proxyPoolSize > 0 ? 'success' : 'neutral'"
+              variant="subtle"
+              size="xs"
           />
         </div>
       </div>
       <div v-if="settings.supportedSites?.length" class="mt-3">
         <p class="text-xs text-muted mb-1">Supported Sites ({{ settings.supportedSites.length }})</p>
         <div class="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
-          <UBadge v-for="site in settings.supportedSites" :key="site" :label="site" color="neutral" variant="subtle" size="xs" />
+          <UBadge v-for="site in settings.supportedSites" :key="site" :label="site" color="neutral" variant="subtle"
+                  size="xs"/>
         </div>
       </div>
     </UCard>
     <div v-else-if="settings" class="flex justify-end">
-      <UButton icon="i-lucide-settings" label="Show Settings" size="sm" variant="ghost" color="neutral" @click="showSettings = true" />
+      <UButton icon="i-lucide-settings" label="Show Settings" size="sm" variant="ghost" color="neutral"
+               @click="showSettings = true"/>
     </div>
 
     <!-- New Download — detect first, then choose stream -->
     <UCard>
       <template #header>
         <div class="font-semibold flex items-center gap-2">
-          <UIcon name="i-lucide-cloud-download" class="size-4" />
+          <UIcon name="i-lucide-cloud-download" class="size-4"/>
           New Download
         </div>
       </template>
       <div class="space-y-3">
         <p class="text-xs text-muted">
-          Detect the URL first to see available streams. With server storage enabled, completed downloads are saved to the configured import directory.
+          Detect the URL first to see available streams. With server storage enabled, completed downloads are saved to
+          the configured import directory.
         </p>
         <div class="flex flex-wrap gap-2">
-          <UInput v-model="newUrl" placeholder="URL to download…" class="flex-1 min-w-64" :disabled="!isOnline" @keyup.enter="detect" />
-          <UButton :loading="detecting" icon="i-lucide-search" label="Detect" variant="outline" color="neutral" :disabled="!newUrl.trim() || !isOnline" @click="detect" />
+          <UInput v-model="newUrl" placeholder="URL to download…" class="flex-1 min-w-64" :disabled="!isOnline"
+                  @keyup.enter="detect"/>
+          <UButton :loading="detecting" icon="i-lucide-search" label="Detect" variant="outline" color="neutral"
+                   :disabled="!newUrl.trim() || !isOnline" @click="detect"/>
         </div>
-        <p v-if="!isOnline" class="text-xs text-warning">Downloader is offline — detection and downloads are unavailable.</p>
+        <p v-if="!isOnline" class="text-xs text-warning">Downloader is offline — detection and downloads are
+          unavailable.</p>
 
         <!-- Stream options from detect -->
         <template v-if="detected">
@@ -525,22 +564,22 @@ function progressBarColor(status: DownloaderProgress['status']) {
             <!-- Multiple streams to choose from (ad streams filtered) -->
             <div v-if="filteredStreams.length > 0" class="space-y-1.5">
               <div
-                v-for="(s, i) in filteredStreams"
-                :key="i"
-                class="flex items-center gap-2 rounded bg-muted px-2 py-1.5"
+                  v-for="(s, i) in filteredStreams"
+                  :key="i"
+                  class="flex items-center gap-2 rounded bg-muted px-2 py-1.5"
               >
                 <span class="flex-1 text-xs">
                   {{ streamLabel(s) }}{{ s.size ? ` · ${formatBytes(s.size)}` : '' }}
                 </span>
                 <UButton
-                  :loading="downloading"
-                  icon="i-lucide-download"
-                  label="Download"
-                  size="xs"
-                  variant="outline"
-                  color="primary"
-                  :disabled="!isOnline"
-                  @click="startDownload(s.url)"
+                    :loading="downloading"
+                    icon="i-lucide-download"
+                    label="Download"
+                    size="xs"
+                    variant="outline"
+                    color="primary"
+                    :disabled="!isOnline"
+                    @click="startDownload(s.url)"
                 />
               </div>
             </div>
@@ -551,14 +590,14 @@ function progressBarColor(status: DownloaderProgress['status']) {
 
             <!-- YouTube best quality / single stream -->
             <UButton
-              v-if="detected.isYouTube || filteredStreams.length === 0"
-              :loading="downloading"
-              icon="i-lucide-download"
-              :label="detected.isYouTube ? 'Download (best quality)' : 'Download'"
-              color="primary"
-              :disabled="!isOnline"
-              :class="filteredStreams.length > 0 ? 'mt-2' : ''"
-              @click="startDownload()"
+                v-if="detected.isYouTube || filteredStreams.length === 0"
+                :loading="downloading"
+                icon="i-lucide-download"
+                :label="detected.isYouTube ? 'Download (best quality)' : 'Download'"
+                color="primary"
+                :disabled="!isOnline"
+                :class="filteredStreams.length > 0 ? 'mt-2' : ''"
+                @click="startDownload()"
             />
           </UCard>
         </template>
@@ -569,9 +608,9 @@ function progressBarColor(status: DownloaderProgress['status']) {
     <UCard v-if="activeProgress.size > 0">
       <template #header>
         <div class="font-semibold flex items-center gap-2">
-          <UIcon name="i-lucide-loader-2" class="size-4 animate-spin text-primary" />
+          <UIcon name="i-lucide-loader-2" class="size-4 animate-spin text-primary"/>
           Active Downloads
-          <UBadge :label="String(activeProgress.size)" color="info" variant="subtle" size="xs" />
+          <UBadge :label="String(activeProgress.size)" color="info" variant="subtle" size="xs"/>
         </div>
       </template>
       <div class="space-y-3">
@@ -579,18 +618,20 @@ function progressBarColor(status: DownloaderProgress['status']) {
           <div class="flex items-center justify-between gap-2 text-sm">
             <span class="truncate font-medium flex-1">{{ dl.title || dl.filename || id }}</span>
             <div class="flex items-center gap-2 shrink-0">
-              <span class="text-xs text-muted">{{ dl.status }}{{ dl.speed ? ` · ${dl.speed}` : '' }}{{ dl.eta ? ` · ETA ${dl.eta}` : '' }}</span>
+              <span class="text-xs text-muted">{{ dl.status }}{{
+                  dl.speed ? ` · ${dl.speed}` : ''
+                }}{{ dl.eta ? ` · ETA ${dl.eta}` : '' }}</span>
               <UButton
-                v-if="dl.status === 'downloading' || dl.status === 'queued'"
-                icon="i-lucide-x"
-                size="xs"
-                variant="ghost"
-                color="error"
-                @click="cancelDownload(id)"
+                  v-if="dl.status === 'downloading' || dl.status === 'queued'"
+                  icon="i-lucide-x"
+                  size="xs"
+                  variant="ghost"
+                  color="error"
+                  @click="cancelDownload(id)"
               />
             </div>
           </div>
-          <UProgress :value="dl.progress ?? 0" :color="progressBarColor(dl.status)" size="xs" />
+          <UProgress :value="dl.progress ?? 0" :color="progressBarColor(dl.status)" size="xs"/>
           <p v-if="dl.error" class="text-xs text-error">{{ dl.error }}</p>
         </div>
       </div>
@@ -601,28 +642,30 @@ function progressBarColor(status: DownloaderProgress['status']) {
       <template #header>
         <div class="flex items-center justify-between">
           <div class="font-semibold flex items-center gap-2">
-            <UIcon name="i-lucide-package-check" class="size-4" />
+            <UIcon name="i-lucide-package-check" class="size-4"/>
             Import to Library
-            <UBadge :label="String(importable.length)" color="neutral" variant="subtle" size="xs" />
+            <UBadge :label="String(importable.length)" color="neutral" variant="subtle" size="xs"/>
           </div>
           <div class="flex items-center gap-3 text-sm">
             <label class="flex items-center gap-1.5 cursor-pointer">
-              <UCheckbox v-model="deleteSource" />
+              <UCheckbox v-model="deleteSource"/>
               <span>Delete source</span>
             </label>
             <label class="flex items-center gap-1.5 cursor-pointer">
-              <UCheckbox v-model="triggerScan" />
+              <UCheckbox v-model="triggerScan"/>
               <span>Scan library</span>
             </label>
-            <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" :loading="importableLoading" @click="loadImportable" />
+            <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" :loading="importableLoading"
+                     @click="loadImportable"/>
           </div>
         </div>
       </template>
       <p class="text-xs text-muted mb-3">
-        Files below have been downloaded to the server's configured downloads directory and are ready to be moved to the media library.
+        Files below have been downloaded to the server's configured downloads directory and are ready to be moved to the
+        media library.
       </p>
       <div v-if="importableLoading" class="flex justify-center py-4">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
       </div>
       <div v-else-if="importable.length === 0" class="text-center py-4 text-muted text-sm">
         No files ready to import. Complete a download with server storage enabled to populate this list.
@@ -638,14 +681,14 @@ function progressBarColor(status: DownloaderProgress['status']) {
             </p>
           </div>
           <UButton
-            icon="i-lucide-import"
-            label="Import"
-            size="xs"
-            variant="outline"
-            color="primary"
-            :loading="importingFile === f.name"
-            :disabled="importingFile !== null"
-            @click="openImport(f)"
+              icon="i-lucide-import"
+              label="Import"
+              size="xs"
+              variant="outline"
+              color="primary"
+              :loading="importingFile === f.name"
+              :disabled="importingFile !== null"
+              @click="openImport(f)"
           />
         </div>
       </div>
@@ -657,7 +700,7 @@ function progressBarColor(status: DownloaderProgress['status']) {
         <UCard>
           <template #header>
             <div class="font-semibold flex items-center gap-2">
-              <UIcon name="i-lucide-import" class="size-4" />
+              <UIcon name="i-lucide-import" class="size-4"/>
               Import to library
             </div>
           </template>
@@ -667,45 +710,45 @@ function progressBarColor(status: DownloaderProgress['status']) {
             </p>
             <UFormField label="Destination" hint="Where to store this file in the library">
               <USelect
-                v-model="selectedDestKey"
-                :items="destinationItems"
-                :loading="loadingDestinations"
-                placeholder="Select a destination"
-                class="w-full"
+                  v-model="selectedDestKey"
+                  :items="destinationItems"
+                  :loading="loadingDestinations"
+                  placeholder="Select a destination"
+                  class="w-full"
               />
             </UFormField>
             <p v-if="selectedDestKey && !selectedDestWritable" class="text-xs text-error flex items-center gap-1">
-              <UIcon name="i-lucide-lock" class="size-3.5 shrink-0" />
+              <UIcon name="i-lucide-lock" class="size-3.5 shrink-0"/>
               This destination is read-only. Pick a writable location or remount it read-write.
             </p>
             <UFormField label="New sub-folder" hint="Optional — creates a folder under the destination">
               <UInput
-                v-model="newSubfolder"
-                placeholder="e.g. New Series"
-                class="w-full"
+                  v-model="newSubfolder"
+                  placeholder="e.g. New Series"
+                  class="w-full"
               />
             </UFormField>
             <div class="flex items-center gap-4 text-sm">
               <label class="flex items-center gap-1.5 cursor-pointer">
-                <UCheckbox v-model="deleteSource" />
+                <UCheckbox v-model="deleteSource"/>
                 <span>Delete source</span>
               </label>
               <label class="flex items-center gap-1.5 cursor-pointer">
-                <UCheckbox v-model="triggerScan" />
+                <UCheckbox v-model="triggerScan"/>
                 <span>Scan library</span>
               </label>
             </div>
           </div>
           <template #footer>
             <div class="flex justify-end gap-2">
-              <UButton variant="ghost" color="neutral" label="Cancel" @click="closeImportModal" />
+              <UButton variant="ghost" color="neutral" label="Cancel" @click="closeImportModal"/>
               <UButton
-                color="primary"
-                label="Import"
-                icon="i-lucide-check"
-                :loading="importingFile !== null"
-                :disabled="!selectedDestKey || !selectedDestWritable || importingFile !== null"
-                @click="confirmImport"
+                  color="primary"
+                  label="Import"
+                  icon="i-lucide-check"
+                  :loading="importingFile !== null"
+                  :disabled="!selectedDestKey || !selectedDestWritable || importingFile !== null"
+                  @click="confirmImport"
               />
             </div>
           </template>
@@ -718,19 +761,19 @@ function progressBarColor(status: DownloaderProgress['status']) {
       <template #header>
         <div class="flex items-center justify-between">
           <div class="font-semibold flex items-center gap-2">
-            <UIcon name="i-lucide-folder-open" class="size-4" />
+            <UIcon name="i-lucide-folder-open" class="size-4"/>
             Server Files
           </div>
-          <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" @click="load" />
+          <UButton icon="i-lucide-refresh-cw" size="xs" variant="ghost" color="neutral" @click="load"/>
         </div>
       </template>
       <div v-if="loading" class="flex justify-center py-8">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-6" />
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-6"/>
       </div>
       <UTable
-        v-else
-        :data="downloads"
-        :columns="[
+          v-else
+          :data="downloads"
+          :columns="[
           { accessorKey: 'filename', header: 'Filename' },
           { accessorKey: 'size', header: 'Size' },
           { accessorKey: 'created', header: 'Created' },
@@ -739,24 +782,30 @@ function progressBarColor(status: DownloaderProgress['status']) {
       >
         <template #filename-cell="{ row }">
           <div class="max-w-xs">
-            <p class="text-sm font-medium truncate" :title="row.original.filename">{{ row.original.filename || '—' }}</p>
-            <p v-if="row.original.url" class="text-xs text-muted truncate" :title="row.original.url">{{ row.original.url }}</p>
+            <p class="text-sm font-medium truncate" :title="row.original.filename">{{
+                row.original.filename || '—'
+              }}</p>
+            <p v-if="row.original.url" class="text-xs text-muted truncate" :title="row.original.url">{{
+                row.original.url
+              }}</p>
           </div>
         </template>
         <template #size-cell="{ row }">
           <span class="text-sm">{{ formatBytes(row.original.size) }}</span>
         </template>
         <template #created-cell="{ row }">
-          <span class="text-sm text-muted">{{ row.original.created ? new Date(row.original.created * 1000).toLocaleString() : '—' }}</span>
+          <span class="text-sm text-muted">{{
+              row.original.created ? new Date(row.original.created * 1000).toLocaleString() : '—'
+            }}</span>
         </template>
         <template #actions-cell="{ row }">
           <UButton
-            icon="i-lucide-trash-2"
-            aria-label="Delete download"
-            size="xs"
-            variant="ghost"
-            color="error"
-            @click="deleteDownload(row.original.filename)"
+              icon="i-lucide-trash-2"
+              aria-label="Delete download"
+              size="xs"
+              variant="ghost"
+              color="error"
+              @click="deleteDownload(row.original.filename)"
           />
         </template>
       </UTable>

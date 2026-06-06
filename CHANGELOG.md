@@ -74,7 +74,6 @@
 - feat(config,hls): make config.json/UI authoritative over env; add HW-accel encoding + RAM tuning
 - ci(docker-publish): always tag :latest via docker/metadata-action
 
-
 ## [Unreleased] - 2026-05-29
 
 Zero-trust bug hunt — 5 adversarially-verified passes (correctness, logic/nil/auth,
@@ -120,7 +119,6 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(admin): add in-flight guard to deleteDiscovery
 - fix(admin): correct actionColor return type for neutral badge
 
-
 ## [1.17.0] - 2026-05-25 (minor)
 
 - fix(player,build): extract JSON-LD escape to utils to unbreak Nuxt build
@@ -152,7 +150,6 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - Merge branch 'main' into development
 - deploy: regenerate npm lockfile on stale-pin vulnerabilities
 
-
 ## [1.16.0] - 2026-05-23 (minor)
 
 - chore(web): refresh lockfile, split admin tabs, silence intentional chunk warning
@@ -181,7 +178,6 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(follower): dampen reconnect log spam from stale master pairings
 - chore: drop Docker + make knob defaults safe-by-default
 - feat(deploy): knob registry + GA4 analytics wiring
-
 
 ## [1.15.0] - 2026-05-14 (minor)
 
@@ -216,7 +212,6 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(analytics): log zip write errors when emitting export _errors.txt
 - fix(admin): purge media_collection_items rows when media is deleted
 
-
 ## [1.14.0] - 2026-05-10 (minor)
 
 - fix(receiver): add panic recovery to per-message catalog push goroutine
@@ -230,14 +225,12 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(search): drop dead 'item.thumbnail_url || true' v-if guard
 - fix(player): mobile fullscreen no longer crops video, skip zones don't block controls
 
-
 ## [1.13.0] - 2026-05-06 (minor)
 
 - fix: admin user editing, registration default tier, category pagination
 - Update updater.go
 - Update admin_users.go
 - fix(api): add SSRF protection and improve error handling
-
 
 ## [1.12.0] - 2026-05-04 (minor)
 
@@ -273,14 +266,12 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - analytics: surface new traffic counters and per-user view in AdminTab
 - analytics: persist daily stats, expand traffic coverage, kill forge vector
 
-
 ## [1.11.1] - 2026-05-04 (patch)
 
 - ci: stop duplicate CI runs and unblock release pipeline
 - fix(audit): batch D + cleanup — 7 deferred findings
 - fix(audit): batches A/B/C — 15 deferred findings
 - fix(audit): resolve FND-0011, FND-0016, FND-0022, FND-0044
-
 
 ## [1.11.0] - 2026-04-30 (minor)
 
@@ -357,11 +348,7 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(upload): real-time progress bar and remove 30s upload timeout
 - fix(handlers): cap search query at 200 chars; fix admin timer leak
 
-
 ## [1.10.1] - 2026-04-24 (patch)
-
-
-
 
 ## [1.10.0] - 2026-04-23 (minor)
 
@@ -369,18 +356,22 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(player): restore buffer resilience for both direct and HLS streaming
 - Update models.go
 
-
 ## [1.9.0] - 2026-04-23 (minor)
 
 - fix(logger): runtime.Caller depth off-by-one — log source annotations now show actual caller (FND-1551)
 - fix(config): cert/key file existence check, CSP dangerous-directive warning (FND-0792, FND-0793)
 - fix(config): add validateClaude() enforcing mode/tokens/timeout bounds (FND-0791)
 - fix(thumbnails): log warnings on failed thumbnail removal in Cleanup (FND-0942)
-- fix(thumbnails/hls): empty path guards, probe warning logs, nil checks, placeholder error escalation (FND-0861,0892,0893,0963,1053,1121,1122,1151)
-- fix(frontend): toggleTask guard, deletion race, adminDest guards, moduleStatusColor dedup, bulk icon (FND-0672,0813,0814,1181,1183,1202)
-- fix(repos): nil guards on constructors/params, row nil checks, backup JSON empty check, audit limit cap (FND-0704,0705,0751,0761,0762,0771,0772,0851,0853,0922,0923,0982,0983,1081,1083)
-- fix(handlers): lifecycle concurrency guard, task ID trim, disk error log, claude redact arrays (FND-0791,1001,1032,1033,1041,1042,1092)
-- fix(misc): mutex defer, HLS/thumbnail env bounds, CLAUDE_MODE trim, WS case-fold (FND-0781,0782,0871,1071,1072,1161,1221,1231,1234,1235,0722)
+- fix(thumbnails/hls): empty path guards, probe warning logs, nil checks, placeholder error escalation (
+  FND-0861,0892,0893,0963,1053,1121,1122,1151)
+- fix(frontend): toggleTask guard, deletion race, adminDest guards, moduleStatusColor dedup, bulk icon (
+  FND-0672,0813,0814,1181,1183,1202)
+- fix(repos): nil guards on constructors/params, row nil checks, backup JSON empty check, audit limit cap (
+  FND-0704,0705,0751,0761,0762,0771,0772,0851,0853,0922,0923,0982,0983,1081,1083)
+- fix(handlers): lifecycle concurrency guard, task ID trim, disk error log, claude redact arrays (
+  FND-0791,1001,1032,1033,1041,1042,1092)
+- fix(misc): mutex defer, HLS/thumbnail env bounds, CLAUDE_MODE trim, WS case-fold (
+  FND-0781,0782,0871,1071,1072,1161,1221,1231,1234,1235,0722)
 - fix(downloader): replace local mediaExtensions map with helpers.IsMediaExtension (FND-0681)
 - fix(misc): FND-0008/0013-0015/0020/0286-0287/0296-0298/0941/1201
 - fix(hls): FND-0257–0261 stale closure, error visibility, and safety guards
@@ -396,7 +387,8 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(order-161): propagate errors, fix new() anti-patterns, and validate role strings
 - fix(scheduler): correct UpdateSchedule comment about goroutine exit race
 - docs(openapi): add 31 missing endpoint definitions, add auth requirement to HLS capability endpoints
-- fix(admin-users): 404/500 for GetUser errors, self-demote guard, permission/type whitelists, username boundary chars, bulk username validation
+- fix(admin-users): 404/500 for GetUser errors, self-demote guard, permission/type whitelists, username boundary chars,
+  bulk username validation
 - fix(admin): surface backup config load errors, guard saveBackupRetention against unloaded config
 - fix(hls): check scanner.Err() after progress monitoring loop
 - fix(playlists): distinguish 404/403/500 errors, add playlist name length validation
@@ -409,7 +401,8 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(admin,backup): initialize startTime before concurrent access; remove orphaned file on zip open error
 - fix(categorizer): release mu before DB writes, propagate saveItem errors to callers
 - fix(admin): surface loadValidator errors via toast, validate scanPath before API call
-- fix(admin): NaN guard on chapter end_time, clear selection on load, type-safe description coercion, await load() in bulk/edit flows
+- fix(admin): NaN guard on chapter end_time, clear selection on load, type-safe description coercion, await load() in
+  bulk/edit flows
 - fix(playlist): propagate RemoveItem error when duplicate cleanup fails in AddItem
 - fix(media): guard UpdateTags/AddTag against orphan metadata for non-indexed paths
 - fix(media): return 401 instead of 403 for unauthenticated mature content access
@@ -417,7 +410,8 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(scanner): use word-boundary regex for custom keyword matching to prevent false positives
 - fix(media): deep-copy Tags/Metadata in GetMedia/GetMediaByID/ListMedia to prevent cache mutation
 - fix(media): replace new(value) compile errors with copy patterns; fix new(time.Now()) in IncrementViews
-- fix(config,auth): validate bcrypt prefix on ADMIN_PASSWORD_HASH; warn on ADMIN_PASSWORD plaintext; FND-0057 is safe (Go map deletion during range is allowed)
+- fix(config,auth): validate bcrypt prefix on ADMIN_PASSWORD_HASH; warn on ADMIN_PASSWORD plaintext; FND-0057 is safe (
+  Go map deletion during range is allowed)
 - fix(config): guard rate-limit window against zero; validate CORS origins to http/https with host
 - fix(receiver): re-check wsConns in removeSlaveWS to close race window with concurrent reconnect
 - fix(main): call logger.Shutdown() before os.Exit on --version flag
@@ -439,7 +433,8 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(crawler): block IPv6 link-local and ULA ranges in setBlockedURLs to prevent SSRF
 - fix(hls): replace new(time.Now()) with local variable in finalizeJobCompleted
 - fix(extractor-item-repo): replace new(value) compile errors with local variable patterns
-- fix(scheduler,duplicates): guard nil Func and zero schedule in RegisterTask/UpdateSchedule; check ExistsResolvedRemoval error
+- fix(scheduler,duplicates): guard nil Func and zero schedule in RegisterTask/UpdateSchedule; check
+  ExistsResolvedRemoval error
 - fix(system): TrimSpace stripped SQL to fix false rejection of SELECT with leading block comments
 - fix(autodiscovery): delete from DB before map in ClearSuggestion; wrap Rename error with context
 - fix(upload): propagate file.Read error in magic-byte sniff
@@ -462,13 +457,15 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(config): guard analytics env overrides against zero/negative values to prevent ticker panic and broken state
 - fix(user-permissions-repo): use ON CONFLICT upsert to prevent silent no-op on deleted rows
 - fix(claude-audit-panel): add unmount guard to prevent post-unmount state writes
-- fix(repos,vue): new() copy bug, unmount guards, empty metadata unmarshal (FND-0821, FND-0831–0833, FND-0931–0932, FND-0951)
+- fix(repos,vue): new() copy bug, unmount guards, empty metadata unmarshal (FND-0821, FND-0831–0833, FND-0931–0932,
+  FND-0951)
 - fix(analytics,claude,hls): copy semantics, seq transaction, lock-free stat (FND-0188, FND-0189, FND-0225, FND-0265)
 - fix(crawler): reject non-HTTP(S) schemes in probe() to prevent SSRF (FND-0085)
 - fix(auth): TTL overflow, stale config, and bootstrap TOCTOU (FND-0039, FND-0040, FND-0041)
 - fix(auth): dummyHash panic on init failure and cleanupTicker race (FND-0028, FND-0029)
 - fix(validator,auth): video codec detection and role validation (FND-0025, FND-0026, FND-0027)
-- fix(routes,security): bearer_error surfaced, suggestions/recent auth, GetWhitelist TOCTOU (FND-0011, FND-0012, FND-0019)
+- fix(routes,security): bearer_error surfaced, suggestions/recent auth, GetWhitelist TOCTOU (FND-0011, FND-0012,
+  FND-0019)
 - fix(media-receiver): interval validation, semaphore ordering, fpCache cap (FND-0004, FND-0005, FND-0007)
 - fix(media,playlist,categorizer): TOCTOU and lock-scope races (FND-0084, FND-0096, FND-0115)
 - fix(security): log and skip malformed IP/CIDR entries instead of silently ignoring (FND-0018)
@@ -489,7 +486,6 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(suggestion-profile-repo): nil guards and RowsAffected checks (FND-0551–0556)
 - fix(admin-claude): SSE terminal event, marshal error notification, kill-switch readback (FND-0542/0547/0548)
 - fix(admin-scanner): media-first ordering in approve/reject handlers (FND-0531–0533)
-
 
 ## [1.8.0] - 2026-04-22 (minor)
 
@@ -521,7 +517,6 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(ui): AA contrast, hidden carousel scrollbars, remove dead LIVE badge CSS
 - Update main.css
 
-
 ## [1.7.0] - 2026-04-21 (minor)
 
 - feat(player): chapters grid section + relative date metadata
@@ -549,7 +544,6 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - refactor(claude): replace SDK with CLI subprocess integration
 - Update release-version.yml
 
-
 ## [1.6.0] - 2026-04-17 (minor)
 
 - fix(claude): detach chat turn from SSE request context
@@ -563,7 +557,6 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - refactor(claude): organize imports and improve documentation
 - fix(claude): improve error handling and mutex safety
 - feat(admin): add Claude AI integration module
-
 
 ## [1.5.0] - 2026-04-17 (minor)
 
@@ -613,7 +606,8 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix: analytics completion rate stale on partial plays; TOCTOU stream limit; mature-item auth error
 - fix: smart playlist empty conditions returns all media; collection name/item validation gaps
 - fix: thumbnail duplicate job race, extractor stale-cache 404, receiver proxySem hot-reload
-- fix: delete stale DB rows on rename/move and make metadata save non-fatal (BUG-36); fix playlist dedup on load (BUG-35)
+- fix: delete stale DB rows on rename/move and make metadata save non-fatal (BUG-36); fix playlist dedup on load (
+  BUG-35)
 - fix: handle fallback response shape in saveEdit for playlist update
 - fix: three backend correctness bugs in watch history, playlists, and duplicates
 - fix(upload): orphaned files on quota rollback + missing mp4/vob in allowlist
@@ -673,7 +667,6 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - fix(duration): backfill media_metadata.duration from validation_results on startup
 - fix(audit): 10 bugs from master audit — duration persistence, orphan cleanup, error handling, reactivity
 
-
 ## [1.4.0] - 2026-04-14 (minor)
 
 - fix(config): complete GetConfigMap coverage + hot-reload security/CSP/rate-limits
@@ -702,7 +695,8 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - feat(player,ui): mobile player UX + per-card playlist quick-add
 - fix(upload,auth,ui): quota bypass, admin prefs race, pagination state
 - fix(profile): route admin password change to correct endpoint
-- fix(admin): add missing downloader to module health list; fix deletion-requests 500 panic; skip guest IP profiles in suggestions persist
+- fix(admin): add missing downloader to module health list; fix deletion-requests 500 panic; skip guest IP profiles in
+  suggestions persist
 - fix(suggestions): pass actual media duration to RecordView instead of hardcoded 0
 - fix(cleanup): purge analytics_events and playback_positions on media delete
 - fix(player): show duration from video element when DB stores 0; fix admin tab alias
@@ -758,11 +752,7 @@ security, deep concurrency, handler contracts). 39 fixes; `go test -race ./...` 
 - Merge branch 'main' into development
 - fix(pagination): prevent item doubling, missing results, and stale responses
 
-
 ## [1.3.0] - 2026-04-11 (minor)
-
-
-
 
 ## [1.1.0] - 2026-04-05 (minor)
 

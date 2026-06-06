@@ -682,18 +682,12 @@ func exportFieldToString(v any) string {
 		return strconv.FormatBool(t)
 	default:
 		// Slices, maps, etc. — emit as JSON so the cell is at least readable.
-		b, err := jsonMarshal(v)
+		b, err := json.Marshal(v)
 		if err != nil {
 			return ""
 		}
 		return string(b)
 	}
-}
-
-// jsonMarshal is split out so unit tests can stub it if needed; the
-// real impl uses encoding/json.
-var jsonMarshal = func(v any) ([]byte, error) {
-	return json.Marshal(v)
 }
 
 // fetchExportRows dispatches the panel name to the correct analytics
@@ -939,7 +933,7 @@ func (h *Handler) AdminGetAnalyticsDiagnostics(c *gin.Context) {
 // AdminGetAnalyticsHealth returns a compact health snapshot suitable for
 // external uptime monitors and cron pollers. Reports module healthy state,
 // flush lag, and live subscriber count. Returns 503 with available=false if
-// the analytics module is not initialised so monitors don't get a stale 200.
+// the analytics module is not initialized so monitors don't get a stale 200.
 func (h *Handler) AdminGetAnalyticsHealth(c *gin.Context) {
 	if h.analytics == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{

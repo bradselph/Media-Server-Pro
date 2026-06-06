@@ -328,9 +328,8 @@ func (h *Handler) Register(c *gin.Context) {
 
 // GetPreferences returns the current user's preferences
 func (h *Handler) GetPreferences(c *gin.Context) {
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -358,9 +357,8 @@ func (h *Handler) GetPreferences(c *gin.Context) {
 
 // UpdatePreferences updates the current user's preferences
 func (h *Handler) UpdatePreferences(c *gin.Context) {
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -504,9 +502,8 @@ func applyPreferencesPatch(prefs *models.UserPreferences, m map[string]any) {
 
 // GetWatchHistory returns the current user's watch history
 func (h *Handler) GetWatchHistory(c *gin.Context) {
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -586,9 +583,8 @@ func (h *Handler) GetWatchHistory(c *gin.Context) {
 
 // ClearWatchHistory clears the user's watch history.
 func (h *Handler) ClearWatchHistory(c *gin.Context) {
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -812,9 +808,8 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 // produce a 500 response instead of a truncated file. A trailer comment
 // is appended on send failure so consumers can detect incomplete exports.
 func (h *Handler) ExportWatchHistory(c *gin.Context) {
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 

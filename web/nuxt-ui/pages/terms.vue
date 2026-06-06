@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ title: 'Terms of Service' })
+definePageMeta({title: 'Terms of Service'})
 </script>
 
 <template>
@@ -14,7 +14,8 @@ definePageMeta({ title: 'Terms of Service' })
         <p>
           By accessing or using Media Server Pro ("the Service") you confirm that you have read, understood,
           and agree to be bound by these Terms of Service and our
-          <NuxtLink to="/privacy" class="underline hover:text-highlighted">Privacy Policy</NuxtLink>.
+          <NuxtLink to="/privacy" class="underline hover:text-highlighted">Privacy Policy</NuxtLink>
+          .
           If you do not agree, you must not use the Service.
         </p>
       </section>
@@ -37,8 +38,12 @@ definePageMeta({ title: 'Terms of Service' })
           <li>Share your account credentials with any other person.</li>
           <li>Attempt to circumvent age verification or any other access control mechanism.</li>
           <li>Upload, distribute, or access content that is illegal in your jurisdiction.</li>
-          <li>Upload any content depicting or involving minors in a sexual context — this is strictly prohibited and will be reported to law enforcement.</li>
-          <li>Use automated tools (scrapers, bots, crawlers) to download content in bulk without prior written permission.</li>
+          <li>Upload any content depicting or involving minors in a sexual context — this is strictly prohibited and
+            will be reported to law enforcement.
+          </li>
+          <li>Use automated tools (scrapers, bots, crawlers) to download content in bulk without prior written
+            permission.
+          </li>
           <li>Attempt to reverse-engineer, decompile, or disrupt the Service.</li>
           <li>Harass, abuse, or harm other users of the Service.</li>
           <li>Attempt to gain unauthorized access to accounts, systems, or networks associated with the Service.</li>
@@ -71,7 +76,8 @@ definePageMeta({ title: 'Terms of Service' })
         <h2 class="text-base font-semibold text-highlighted mb-2">6. Privacy and Cookies</h2>
         <p>
           Your use of the Service is also governed by our
-          <NuxtLink to="/privacy" class="underline hover:text-highlighted">Privacy Policy</NuxtLink>,
+          <NuxtLink to="/privacy" class="underline hover:text-highlighted">Privacy Policy</NuxtLink>
+          ,
           which is incorporated into these Terms by reference. The Service uses cookies for authentication,
           age verification, and (with your consent) analytics. See the Privacy Policy for full details.
         </p>
@@ -128,7 +134,8 @@ definePageMeta({ title: 'Terms of Service' })
         <p>
           For questions about these Terms, data deletion requests, or to report policy violations,
           please contact the site administrator through the
-          <NuxtLink to="/profile" class="underline hover:text-highlighted">Profile page</NuxtLink>.
+          <NuxtLink to="/profile" class="underline hover:text-highlighted">Profile page</NuxtLink>
+          .
         </p>
       </section>
 

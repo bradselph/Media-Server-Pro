@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -75,20 +76,19 @@ var authPaths = map[string]struct{}{
 
 // Module handles security controls
 type Module struct {
-	config          *config.Manager
-	log             *logger.Logger
-	dbModule        *database.Module
-	repo            repositories.IPListRepository
-	whitelist       *IPList
-	blacklist       *IPList
-	rateLimiter     *RateLimiter
-	authRateLimiter *RateLimiter // stricter limits for auth endpoints
-	healthy         bool
-	healthMsg       string
-	// totalBlocked and totalRateLimited are guarded by mu; could use atomic.Int64 for hot-path-only updates.
-	totalBlocked     int64
-	totalRateLimited int64
-	mu               sync.RWMutex
+	config           *config.Manager
+	log              *logger.Logger
+	dbModule         *database.Module
+	repo             repositories.IPListRepository
+	whitelist        *IPList
+	blacklist        *IPList
+	rateLimiter      *RateLimiter
+	authRateLimiter  *RateLimiter // stricter limits for auth endpoints
+	healthy          bool
+	healthMsg        string
+	totalBlocked     atomic.Int64
+	totalRateLimited atomic.Int64
+	mu               sync.RWMutex // guards healthy/healthMsg
 	// cidrRaw and cidrParsed cache the parsed trusted-proxy CIDRs so that net.ParseCIDR
 	// is not called on every HTTP request. Rebuilt whenever the raw config strings change.
 	cidrMu     sync.Mutex
@@ -229,7 +229,7 @@ func (m *Module) Start(_ context.Context) error {
 			Comment:   reason,
 			AddedAt:   time.Now(),
 			AddedBy:   "rate-limiter",
-			ExpiresAt: helpers.Ptr(time.Now().Add(duration)),
+			ExpiresAt: new(time.Now().Add(duration)),
 		}
 		if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 			m.log.Warn("Failed to persist auto-ban for %s: %v", ip, err)
@@ -371,7 +371,7 @@ func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 		Comment:   reason,
 		AddedAt:   time.Now(),
 		AddedBy:   "system",
-		ExpiresAt: helpers.Ptr(time.Now().Add(duration)),
+		ExpiresAt: new(time.Now().Add(duration)),
 	}
 	if err := m.repo.AddEntry(ctx, "ban", rec); err != nil {
 		m.log.Warn("Failed to persist ban for %s: %v", ip, err)
@@ -622,11 +622,6 @@ func (m *Module) GetStats() Stats {
 	bannedIPs := len(m.rateLimiter.bannedIPs)
 	m.rateLimiter.mu.RUnlock()
 
-	m.mu.RLock()
-	totalBlocked := m.totalBlocked
-	totalRateLimited := m.totalRateLimited
-	m.mu.RUnlock()
-
 	return Stats{
 		WhitelistEnabled: whitelistEnabled,
 		WhitelistCount:   whitelistCount,
@@ -635,8 +630,8 @@ func (m *Module) GetStats() Stats {
 		RateLimitEnabled: m.config.Get().Security.RateLimitEnabled,
 		ActiveClients:    activeClients,
 		BannedIPs:        bannedIPs,
-		TotalBlocked:     totalBlocked,
-		TotalRateLimited: totalRateLimited,
+		TotalBlocked:     m.totalBlocked.Load(),
+		TotalRateLimited: m.totalRateLimited.Load(),
 	}
 }
 
@@ -1066,9 +1061,7 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 		allowed, reason := m.CheckAccess(ip)
 		if !allowed {
 			m.log.Warn("Access denied for %s: %s", ip, reason)
-			m.mu.Lock()
-			m.totalBlocked++
-			m.mu.Unlock()
+			m.totalBlocked.Add(1)
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
@@ -1119,9 +1112,7 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 
 		if !allowed {
 			m.log.Warn("Rate limit exceeded for %s on %s", ip, reqPath)
-			m.mu.Lock()
-			m.totalRateLimited++
-			m.mu.Unlock()
+			m.totalRateLimited.Add(1)
 			c.Header("Retry-After", fmt.Sprintf("%d", int(time.Until(resetAt).Seconds())))
 			c.AbortWithStatus(http.StatusTooManyRequests)
 			return
@@ -1151,6 +1142,27 @@ func (m *Module) parsedTrustedCIDRs() []*net.IPNet {
 	return m.cidrParsed
 }
 
+// isTrustedProxyIP reports whether ip falls within a known reverse-proxy range:
+// the hardcoded private/loopback ranges (privateCIDRs) or any admin-configured
+// extra CIDRs. A nil ip is never trusted. privateCIDRs is checked first to match
+// the original inline ordering.
+func isTrustedProxyIP(ip net.IP, extraTrusted []*net.IPNet) bool {
+	if ip == nil {
+		return false
+	}
+	for _, ipNet := range privateCIDRs {
+		if ipNet.Contains(ip) {
+			return true
+		}
+	}
+	for _, ipNet := range extraTrusted {
+		if ipNet.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 // getClientIP extracts the real client IP, trusting X-Forwarded-For only from private network
 // proxies (RFC-1918 + loopback) and any additional CIDRs in extraTrusted.
 // Validates the extracted IP to ensure it's well-formed.
@@ -1161,24 +1173,7 @@ func getClientIP(r *http.Request, extraTrusted []*net.IPNet) string {
 	}
 
 	// Only trust forwarded headers from private network ranges (reverse proxies)
-	ip := net.ParseIP(remoteIP)
-	trusted := false
-	if ip != nil {
-		for _, ipNet := range privateCIDRs {
-			if ipNet.Contains(ip) {
-				trusted = true
-				break
-			}
-		}
-		if !trusted {
-			for _, ipNet := range extraTrusted {
-				if ipNet.Contains(ip) {
-					trusted = true
-					break
-				}
-			}
-		}
-	}
+	trusted := isTrustedProxyIP(net.ParseIP(remoteIP), extraTrusted)
 
 	if trusted {
 		// Walk X-Forwarded-For right-to-left, skipping entries that are themselves
@@ -1187,29 +1182,14 @@ func getClientIP(r *http.Request, extraTrusted []*net.IPNet) string {
 		// (nginx → app) and multi-proxy (CDN → nginx → app) topologies.
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			parts := strings.Split(xff, ",")
-			for i := len(parts) - 1; i >= 0; i-- {
-				candidate := strings.TrimSpace(parts[i])
+			for _, part := range slices.Backward(parts) {
+				candidate := strings.TrimSpace(part)
 				parsedIP := net.ParseIP(candidate)
 				if parsedIP == nil {
 					continue
 				}
-				// Check if this entry is itself a trusted proxy
-				isTrustedEntry := false
-				for _, ipNet := range privateCIDRs {
-					if ipNet.Contains(parsedIP) {
-						isTrustedEntry = true
-						break
-					}
-				}
-				if !isTrustedEntry {
-					for _, ipNet := range extraTrusted {
-						if ipNet.Contains(parsedIP) {
-							isTrustedEntry = true
-							break
-						}
-					}
-				}
-				if !isTrustedEntry {
+				// The first XFF entry that is not itself a trusted proxy is the client.
+				if !isTrustedProxyIP(parsedIP, extraTrusted) {
 					return candidate
 				}
 			}

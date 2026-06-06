@@ -1,5 +1,6 @@
 // admin_follower.go exposes the follower (this-server-as-slave) pairing
 // settings to the admin UI. Mirrors the receiver/remote admin handlers.
+
 package handlers
 
 import (

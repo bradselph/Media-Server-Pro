@@ -301,7 +301,7 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 
 	progress.mu.Lock()
 	progress.Status = UploadStatusCompleted
-	progress.CompletedAt = helpers.Ptr(time.Now())
+	progress.CompletedAt = new(time.Now())
 	progress.Progress = 100
 	progress.mu.Unlock()
 	m.log.Info("Upload complete: %s (%d bytes) by user %s", prepared.Filename, written, scope.UserID)
@@ -319,7 +319,7 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 // uploadToRemoteStore streams the uploaded file to the configured remote backend
 // (S3/B2).  A progress-tracking reader wraps the source so that the UI sees
 // live byte counts even though we never touch the local filesystem.
-func (m *Module) uploadToRemoteStore(ctx context.Context, file io.Reader, prepared *PreparedUpload, progress *Progress) (destPath string, relKey string, written int64, err error) {
+func (m *Module) uploadToRemoteStore(ctx context.Context, file io.Reader, prepared *PreparedUpload, progress *Progress) (destPath, relKey string, written int64, err error) {
 	// Compute the relative key path within the upload backend.
 	// prepared.DestDir is an absolute local path like /uploads/userID[/category].
 	// Strip the upload root prefix to get the relative part.
@@ -588,10 +588,7 @@ func (m *Module) sanitizeFilename(filename string) (string, error) {
 		if len(ext) > 254 {
 			ext = ext[:254]
 		}
-		maxBase := 255 - len(ext)
-		if maxBase < 1 {
-			maxBase = 1
-		}
+		maxBase := max(255-len(ext), 1)
 		filename = filename[:maxBase] + ext
 	}
 

@@ -2,6 +2,7 @@
 // every device that holds an active session under their account and revoke
 // any one of them — checklist §9 ("Sessions list: device, IP, last active,
 // revoke button").
+
 package handlers
 
 import (

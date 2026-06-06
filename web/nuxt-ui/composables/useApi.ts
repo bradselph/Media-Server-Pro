@@ -1,7 +1,7 @@
 /**
  * Typed API client that unwraps the Go JSON envelope { success, data, message }.
  */
-import { isPrivateSession } from '~/stores/auth'
+import {isPrivateSession} from '~/stores/auth'
 
 interface GoEnvelope<T> {
     success: boolean
@@ -37,7 +37,9 @@ let _redirecting = false
 export function redirectToLogin(): void {
     if (_redirecting || !import.meta.client) return
     _redirecting = true
-    setTimeout(() => { _redirecting = false }, 3000)
+    setTimeout(() => {
+        _redirecting = false
+    }, 3000)
     const redirect = globalThis.location.pathname + globalThis.location.search
     const isAuthPage = ['/login', '/signup', '/admin-login'].some(p => redirect.startsWith(p))
     const target = redirect && !isAuthPage
@@ -117,7 +119,7 @@ function requestFormWithProgress<T>(
                 // Reconstruct a minimal Response so parseEnvelope can handle it.
                 const res = new Response(xhr.responseText, {
                     status: xhr.status,
-                    headers: { 'content-type': xhr.getResponseHeader('content-type') ?? 'application/json' },
+                    headers: {'content-type': xhr.getResponseHeader('content-type') ?? 'application/json'},
                 })
                 resolve(await parseEnvelope<T>(res))
             } catch (err) {

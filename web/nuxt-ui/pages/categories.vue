@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import type { CategoryStats, CategoryBrowseItem } from '~/types/api'
-import { useCategoryBrowseApi } from '~/composables/useApiEndpoints'
-import { getDisplayTitle } from '~/utils/mediaTitle'
-import { formatDuration } from '~/utils/format'
-import { iconForCategory, gradientForCategory } from '~/utils/categoryIcon'
+import type {CategoryBrowseItem, CategoryStats} from '~/types/api'
+import {useCategoryBrowseApi} from '~/composables/useApiEndpoints'
+import {getDisplayTitle} from '~/utils/mediaTitle'
+import {formatDuration} from '~/utils/format'
+import {gradientForCategory, iconForCategory} from '~/utils/categoryIcon'
 
-definePageMeta({ layout: 'default', title: 'Browse by Category' })
+definePageMeta({layout: 'default', title: 'Browse by Category'})
 
 const browseApi = useCategoryBrowseApi()
 const route = useRoute()
@@ -39,7 +39,7 @@ async function loadStats() {
   try {
     stats.value = await browseApi.getStats()
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load categories', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Failed to load categories', color: 'error', icon: 'i-lucide-x'})
   } finally {
     statsLoading.value = false
   }
@@ -48,7 +48,7 @@ async function loadStats() {
 async function loadCategory(cat: string, page = 1) {
   selectedCategory.value = cat
   categoryPage.value = page
-  router.replace({ query: { category: cat } })
+  router.replace({query: {category: cat}})
   loading.value = true
   error.value = ''
   try {
@@ -100,11 +100,12 @@ const grouped = computed(() => {
 const availableCategories = computed(() => {
   if (!stats.value?.by_category) return []
   return Object.entries(stats.value.by_category)
-    .filter(([, count]) => count > 0)
-    .sort((a, b) => b[1] - a[1])
+      .filter(([, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
 })
 
 let hasFetched = false
+
 async function loadAll() {
   hasFetched = true
   await loadStats()
@@ -124,20 +125,20 @@ watch(() => authStore.user, (user) => {
 <template>
   <UContainer class="py-6 max-w-6xl">
     <div class="flex items-center gap-2 mb-6">
-      <UIcon name="i-lucide-layers" class="size-5 text-primary" />
+      <UIcon name="i-lucide-layers" class="size-5 text-primary"/>
       <h1 class="text-xl font-semibold">Browse by Category</h1>
     </div>
 
     <!-- Tile skeleton while the initial /categories/stats request is in flight -->
     <div
-      v-if="statsLoading && !stats"
-      class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8"
-      aria-hidden="true"
+        v-if="statsLoading && !stats"
+        class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8"
+        aria-hidden="true"
     >
       <div
-        v-for="n in 8"
-        :key="n"
-        class="h-[120px] rounded-xl bg-elevated/70 animate-pulse"
+          v-for="n in 8"
+          :key="n"
+          class="h-[120px] rounded-xl bg-elevated/70 animate-pulse"
       />
     </div>
 
@@ -146,20 +147,20 @@ watch(() => authStore.user, (user) => {
          tiles to fill the row on smaller viewports. -->
     <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-8">
       <button
-        v-for="[cat, count] in availableCategories"
-        :key="cat"
-        class="category-tile relative overflow-hidden h-[120px] rounded-xl border text-left transition-all"
-        :class="selectedCategory === cat
+          v-for="[cat, count] in availableCategories"
+          :key="cat"
+          class="category-tile relative overflow-hidden h-[120px] rounded-xl border text-left transition-all"
+          :class="selectedCategory === cat
           ? 'border-primary ring-2 ring-primary/40'
           : 'border-default hover:border-primary/60 hover:-translate-y-0.5'"
-        :style="{ backgroundImage: gradientFor(cat) }"
-        :aria-pressed="selectedCategory === cat"
-        @click="loadCategory(cat)"
+          :style="{ backgroundImage: gradientFor(cat) }"
+          :aria-pressed="selectedCategory === cat"
+          @click="loadCategory(cat)"
       >
         <UIcon
-          :name="iconFor(cat)"
-          class="absolute right-3 bottom-2 size-[88px] text-white"
-          style="opacity: 0.18;"
+            :name="iconFor(cat)"
+            class="absolute right-3 bottom-2 size-[88px] text-white"
+            style="opacity: 0.18;"
         />
         <div class="relative h-full p-3 flex flex-col justify-between">
           <p class="text-base font-bold text-white drop-shadow-sm">{{ cat }}</p>
@@ -173,17 +174,17 @@ watch(() => authStore.user, (user) => {
     <!-- Items panel -->
     <div v-if="selectedCategory">
       <div class="flex items-center gap-2 mb-4">
-        <UIcon :name="iconFor(selectedCategory)" class="size-4 text-primary" />
+        <UIcon :name="iconFor(selectedCategory)" class="size-4 text-primary"/>
         <h2 class="text-lg font-semibold">{{ selectedCategory }}</h2>
-        <UBadge v-if="items.length > 0" :label="String(items.length)" color="neutral" variant="subtle" size="xs" />
+        <UBadge v-if="items.length > 0" :label="String(items.length)" color="neutral" variant="subtle" size="xs"/>
       </div>
 
-      <MediaCardSkeleton v-if="loading" :count="10" />
+      <MediaCardSkeleton v-if="loading" :count="10"/>
 
-      <UAlert v-else-if="error" :title="error" color="error" icon="i-lucide-alert-circle" class="mb-4" />
+      <UAlert v-else-if="error" :title="error" color="error" icon="i-lucide-alert-circle" class="mb-4"/>
 
       <div v-else-if="items.length === 0" class="text-center py-12 text-muted">
-        <UIcon name="i-lucide-inbox" class="size-10 mb-3 mx-auto opacity-40" />
+        <UIcon name="i-lucide-inbox" class="size-10 mb-3 mx-auto opacity-40"/>
         <p>No items in this category yet.</p>
         <p class="text-sm mt-1">Files are categorized automatically during the next library scan.</p>
       </div>
@@ -193,48 +194,51 @@ watch(() => authStore.user, (user) => {
         <div v-for="[group, groupItems] in grouped" :key="group" class="mb-8">
           <h3 class="section-title mb-2 flex items-center gap-1.5">
             <UIcon
-              :name="selectedCategory === 'Music' ? 'i-lucide-music-2' : 'i-lucide-clapperboard'"
-              class="size-3.5"
+                :name="selectedCategory === 'Music' ? 'i-lucide-music-2' : 'i-lucide-clapperboard'"
+                class="size-3.5"
             />
             {{ group }}
             <span class="text-xs font-normal normal-case tracking-normal">({{ groupItems.length }})</span>
           </h3>
           <div class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
             <NuxtLink
-              v-for="item in groupItems"
-              :key="item.id"
-              :to="`/player?id=${encodeURIComponent(item.id)}`"
-              class="group shrink-0 w-36"
+                v-for="item in groupItems"
+                :key="item.id"
+                :to="`/player?id=${encodeURIComponent(item.id)}`"
+                class="group shrink-0 w-36"
             >
-              <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
+              <div
+                  class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
                 <img
-                  v-if="item.thumbnail_url"
-                  :src="item.thumbnail_url"
-                  :alt="item.name"
-                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                  loading="lazy"
+                    v-if="item.thumbnail_url"
+                    :src="item.thumbnail_url"
+                    :alt="item.name"
+                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                    loading="lazy"
                 />
                 <div v-else class="w-full h-full flex items-center justify-center">
-                  <UIcon :name="iconFor(selectedCategory)" class="size-6 text-muted" />
+                  <UIcon :name="iconFor(selectedCategory)" class="size-6 text-muted"/>
                 </div>
                 <!-- Episode badge for TV shows -->
                 <div
-                  v-if="item.detected_info?.season != null && item.detected_info?.episode != null"
-                  class="absolute top-1 left-1"
+                    v-if="item.detected_info?.season != null && item.detected_info?.episode != null"
+                    class="absolute top-1 left-1"
                 >
                   <UBadge
-                    :label="`S${String(item.detected_info.season).padStart(2,'0')}E${String(item.detected_info.episode).padStart(2,'0')}`"
-                    color="neutral"
-                    variant="solid"
-                    size="xs"
-                    class="bg-black/70 text-white border-0"
+                      :label="`S${String(item.detected_info.season).padStart(2,'0')}E${String(item.detected_info.episode).padStart(2,'0')}`"
+                      color="neutral"
+                      variant="solid"
+                      size="xs"
+                      class="bg-black/70 text-white border-0"
                   />
                 </div>
-                <div v-if="item.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
+                <div v-if="item.duration"
+                     class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
                   {{ formatDuration(item.duration) }}
                 </div>
               </div>
-              <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.detected_info?.title || getDisplayTitle(item)">
+              <p class="text-xs font-medium truncate group-hover:text-primary transition-colors"
+                 :title="item.detected_info?.title || getDisplayTitle(item)">
                 {{ item.detected_info?.title || getDisplayTitle(item) }}
               </p>
             </NuxtLink>
@@ -245,47 +249,49 @@ watch(() => authStore.user, (user) => {
       <!-- Flat grid (Movies, Documentaries, etc.) -->
       <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         <NuxtLink
-          v-for="item in paginatedItems"
-          :key="item.id"
-          :to="`/player?id=${encodeURIComponent(item.id)}`"
-          class="group"
+            v-for="item in paginatedItems"
+            :key="item.id"
+            :to="`/player?id=${encodeURIComponent(item.id)}`"
+            class="group"
         >
           <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
             <img
-              v-if="item.thumbnail_url"
-              :src="item.thumbnail_url"
-              :alt="item.name"
-              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-              loading="lazy"
+                v-if="item.thumbnail_url"
+                :src="item.thumbnail_url"
+                :alt="item.name"
+                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
             />
             <div v-else class="w-full h-full flex items-center justify-center">
-              <UIcon :name="iconFor(selectedCategory)" class="size-6 text-muted" />
+              <UIcon :name="iconFor(selectedCategory)" class="size-6 text-muted"/>
             </div>
             <!-- Season/episode badge if detected -->
             <div
-              v-if="item.detected_info?.season != null && item.detected_info?.episode != null"
-              class="absolute top-1 left-1"
+                v-if="item.detected_info?.season != null && item.detected_info?.episode != null"
+                class="absolute top-1 left-1"
             >
               <UBadge
-                :label="`S${String(item.detected_info.season).padStart(2,'0')}E${String(item.detected_info.episode).padStart(2,'0')}`"
-                color="neutral"
-                variant="solid"
-                size="xs"
-                class="bg-black/70 text-white border-0"
+                  :label="`S${String(item.detected_info.season).padStart(2,'0')}E${String(item.detected_info.episode).padStart(2,'0')}`"
+                  color="neutral"
+                  variant="solid"
+                  size="xs"
+                  class="bg-black/70 text-white border-0"
               />
             </div>
             <!-- Year badge if detected (and no episode info) -->
             <div
-              v-else-if="item.detected_info?.year"
-              class="absolute top-1 left-1 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded"
+                v-else-if="item.detected_info?.year"
+                class="absolute top-1 left-1 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded"
             >
               {{ item.detected_info.year }}
             </div>
-            <div v-if="item.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
+            <div v-if="item.duration"
+                 class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
               {{ formatDuration(item.duration) }}
             </div>
           </div>
-          <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="item.detected_info?.title || getDisplayTitle(item)">
+          <p class="text-xs font-medium truncate group-hover:text-primary transition-colors"
+             :title="item.detected_info?.title || getDisplayTitle(item)">
             {{ item.detected_info?.title || getDisplayTitle(item) }}
           </p>
         </NuxtLink>
@@ -293,28 +299,28 @@ watch(() => authStore.user, (user) => {
 
       <!-- Pagination for flat grid -->
       <div v-if="!grouped && totalCategoryPages > 1" class="flex justify-center pt-4">
-        <UPagination v-model:page="categoryPage" :total="totalItems" :items-per-page="ITEMS_PER_PAGE" />
+        <UPagination v-model:page="categoryPage" :total="totalItems" :items-per-page="ITEMS_PER_PAGE"/>
       </div>
     </div>
 
     <!-- Prompt when nothing selected yet -->
     <div v-else-if="!loading && availableCategories.length > 0" class="text-center py-12 text-muted">
-      <UIcon name="i-lucide-layers" class="size-10 mb-3 mx-auto opacity-40" />
+      <UIcon name="i-lucide-layers" class="size-10 mb-3 mx-auto opacity-40"/>
       <p>Select a category above to browse its content.</p>
     </div>
 
     <div v-else-if="!loading && availableCategories.length === 0" class="text-center py-12 text-muted">
-      <UIcon name="i-lucide-folder-search" class="size-10 mb-3 mx-auto opacity-40" />
+      <UIcon name="i-lucide-folder-search" class="size-10 mb-3 mx-auto opacity-40"/>
       <p class="font-medium">No categories found</p>
       <p class="text-sm mt-1">Run the categorizer from the Admin panel to organize your library.</p>
       <UButton
-        v-if="authStore.isAdmin"
-        to="/admin?tab=discovery"
-        label="Open Categorizer"
-        icon="i-lucide-tag"
-        size="sm"
-        variant="outline"
-        class="mt-3"
+          v-if="authStore.isAdmin"
+          to="/admin?tab=discovery"
+          label="Open Categorizer"
+          icon="i-lucide-tag"
+          size="sm"
+          variant="outline"
+          class="mt-3"
       />
     </div>
   </UContainer>

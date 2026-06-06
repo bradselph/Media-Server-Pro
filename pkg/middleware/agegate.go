@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -99,8 +100,8 @@ func extractClientIP(r *http.Request) string {
 	if IsTrustedProxy(remoteIP) {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 			parts := strings.Split(xff, ",")
-			for i := len(parts) - 1; i >= 0; i-- {
-				candidate := strings.TrimSpace(parts[i])
+			for _, part := range slices.Backward(parts) {
+				candidate := strings.TrimSpace(part)
 				// Validate as an IP before trusting: a crafted XFF value like
 				// "not-an-ip, 1.2.3.4" would otherwise store a garbage string,
 				// breaking IP-based TTL tracking in verifiedIPs.

@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+import {defineStore} from 'pinia'
 
 export interface QueueItem {
     id: string
@@ -24,9 +24,11 @@ function loadInitialItems(): QueueItem[] {
         // never injects undefined into row keys / templates.
         return parsed.filter((x): x is QueueItem =>
             !!x && typeof x.id === 'string' && typeof x.name === 'string'
-                && typeof x.duration === 'number',
+            && typeof x.duration === 'number',
         )
-    } catch { return [] }
+    } catch {
+        return []
+    }
 }
 
 export const useQueueStore = defineStore('queue', () => {
@@ -37,9 +39,11 @@ export const useQueueStore = defineStore('queue', () => {
     // pinia-plugin-persistedstate dependency.
     if (typeof window !== 'undefined') {
         watch(items, (next) => {
-            try { window.localStorage.setItem(LS_QUEUE, JSON.stringify(next)) }
-            catch { /* localStorage blocked / full */ }
-        }, { deep: true })
+            try {
+                window.localStorage.setItem(LS_QUEUE, JSON.stringify(next))
+            } catch { /* localStorage blocked / full */
+            }
+        }, {deep: true})
     }
 
     function addToQueue(item: QueueItem) {
@@ -83,5 +87,5 @@ export const useQueueStore = defineStore('queue', () => {
         items.value = copy
     }
 
-    return { items, addToQueue, addNext, shift, remove, clear, moveUp, moveDown }
+    return {items, addToQueue, addNext, shift, remove, clear, moveUp, moveDown}
 })

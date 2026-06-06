@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useSuggestionsApi } from '~/composables/useApiEndpoints'
+import {useSuggestionsApi} from '~/composables/useApiEndpoints'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -19,7 +19,8 @@ async function fetchNewCount() {
   try {
     const resp = await suggestionsApi.getNewSinceLastVisit(1)
     newCount.value = resp.total
-  } catch { /* non-critical */ }
+  } catch { /* non-critical */
+  }
 }
 
 const ageGateOpen = ref(false)
@@ -33,8 +34,10 @@ async function checkAgeGate() {
     if (status.enabled && !status.verified) {
       ageGateOpen.value = true
     }
-  } catch { /* non-critical */ }
-  finally { ageGateChecked.value = true }
+  } catch { /* non-critical */
+  } finally {
+    ageGateChecked.value = true
+  }
 }
 
 async function verifyAge() {
@@ -43,8 +46,10 @@ async function verifyAge() {
   try {
     await ageGateApi.verify()
     ageGateOpen.value = false
-  } catch { /* if verify fails, keep modal open */ }
-  finally { ageGateVerifying.value = false }
+  } catch { /* if verify fails, keep modal open */
+  } finally {
+    ageGateVerifying.value = false
+  }
 }
 
 // Land initial focus on the consent checkbox rather than the destructive "Leave"
@@ -76,7 +81,12 @@ function leaveAgeGate() {
 }
 
 onMounted(checkAgeGate)
-onMounted(() => { versionApi.get().then(r => { serverVersion.value = r.version }).catch(() => {}) })
+onMounted(() => {
+  versionApi.get().then(r => {
+    serverVersion.value = r.version
+  }).catch(() => {
+  })
+})
 onMounted(fetchNewCount)
 onMounted(() => {
   const saved = localStorage.getItem('msp-accent-hue')
@@ -94,7 +104,7 @@ watch(() => authStore.user?.preferences?.accent_hue, (hue) => {
   if (Number.isFinite(stored) && stored === hue) return
   document.documentElement.style.setProperty('--accent-hue', String(hue))
   localStorage.setItem('msp-accent-hue', String(hue))
-}, { immediate: true })
+}, {immediate: true})
 
 useHead({
   title: computed(() => {
@@ -122,6 +132,7 @@ function handleMenuKeydown(e: KeyboardEvent) {
     mobileMenuOpen.value = false
   }
 }
+
 onMounted(() => document.addEventListener('keydown', handleMenuKeydown))
 onUnmounted(() => document.removeEventListener('keydown', handleMenuKeydown))
 
@@ -139,16 +150,16 @@ watch(mobileMenuOpen, async (open) => {
 // (plan §4.1 Option A — filters live on the home route, no separate page).
 const navLinks = computed(() => {
   const links = [
-    { label: 'Home', to: '/', icon: 'i-lucide-house' },
-    { label: 'Browse', to: '/browse', icon: 'i-lucide-tags' },
+    {label: 'Home', to: '/', icon: 'i-lucide-house'},
+    {label: 'Browse', to: '/browse', icon: 'i-lucide-tags'},
   ]
   if (authStore.isLoggedIn) {
     links.push(
-      { label: 'Categories', to: '/categories', icon: 'i-lucide-layers' },
-      { label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music' },
+        {label: 'Categories', to: '/categories', icon: 'i-lucide-layers'},
+        {label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music'},
     )
     if (authStore.user?.permissions?.can_upload) {
-      links.push({ label: 'Upload', to: '/upload', icon: 'i-lucide-upload' })
+      links.push({label: 'Upload', to: '/upload', icon: 'i-lucide-upload'})
     }
   }
   return links
@@ -157,29 +168,31 @@ const navLinks = computed(() => {
 // Mobile menu still shows everything (single-column vertical list is not dense).
 const mobileNavLinks = computed(() => {
   const links = [
-    { label: 'Home', to: '/', icon: 'i-lucide-house' },
-    { label: 'Browse', to: '/browse', icon: 'i-lucide-tags' },
+    {label: 'Home', to: '/', icon: 'i-lucide-house'},
+    {label: 'Browse', to: '/browse', icon: 'i-lucide-tags'},
   ]
   if (authStore.isLoggedIn) {
     links.push(
-      { label: 'Categories', to: '/categories', icon: 'i-lucide-layers' },
-      { label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music' },
-      { label: 'Favorites', to: '/favorites', icon: 'i-lucide-heart' },
-      { label: 'History', to: '/history', icon: 'i-lucide-history' },
+        {label: 'Categories', to: '/categories', icon: 'i-lucide-layers'},
+        {label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music'},
+        {label: 'Favorites', to: '/favorites', icon: 'i-lucide-heart'},
+        {label: 'History', to: '/history', icon: 'i-lucide-history'},
     )
     if (authStore.user?.permissions?.can_upload) {
-      links.push({ label: 'Upload', to: '/upload', icon: 'i-lucide-upload' })
+      links.push({label: 'Upload', to: '/upload', icon: 'i-lucide-upload'})
     }
-    links.push({ label: 'Profile', to: '/profile', icon: 'i-lucide-user' })
+    links.push({label: 'Profile', to: '/profile', icon: 'i-lucide-user'})
     if (authStore.isAdmin) {
-      links.push({ label: 'Admin', to: '/admin', icon: 'i-lucide-shield' })
+      links.push({label: 'Admin', to: '/admin', icon: 'i-lucide-shield'})
     }
   }
   return links
 })
 
 // Close the mobile menu when the route changes (user tapped a link)
-watch(() => route.path, () => { mobileMenuOpen.value = false })
+watch(() => route.path, () => {
+  mobileMenuOpen.value = false
+})
 
 // Avatar dropdown menu items — per handoff §6.1: Profile, Admin (if admin),
 // Logout. Nuxt UI's UDropdownMenu expects a 2D array of groups; each group
@@ -190,12 +203,12 @@ watch(() => route.path, () => { mobileMenuOpen.value = false })
 // request and the backend skips watch-history / analytics writes.
 const avatarMenuItems = computed(() => {
   const primary: Array<{ label: string; icon: string; to?: string; onSelect?: () => void }> = [
-    { label: 'Profile', icon: 'i-lucide-user', to: '/profile' },
-    { label: 'Favorites', icon: 'i-lucide-heart', to: '/favorites' },
-    { label: 'History', icon: 'i-lucide-history', to: '/history' },
+    {label: 'Profile', icon: 'i-lucide-user', to: '/profile'},
+    {label: 'Favorites', icon: 'i-lucide-heart', to: '/favorites'},
+    {label: 'History', icon: 'i-lucide-history', to: '/history'},
   ]
   if (authStore.isAdmin) {
-    primary.push({ label: 'Admin', icon: 'i-lucide-shield', to: '/admin' })
+    primary.push({label: 'Admin', icon: 'i-lucide-shield', to: '/admin'})
   }
   const privacyGroup = [{
     label: authStore.privateSession ? 'Private session — On' : 'Private session — Off',
@@ -205,19 +218,19 @@ const avatarMenuItems = computed(() => {
   return [
     primary,
     privacyGroup,
-    [{ label: 'Log out', icon: 'i-lucide-log-out', onSelect: handleLogout }],
+    [{label: 'Log out', icon: 'i-lucide-log-out', onSelect: handleLogout}],
   ]
 })
 
 const navSearch = ref('')
 const navSearchFocused = ref(false)
-const { push: pushRecentSearch } = useRecentSearches()
+const {push: pushRecentSearch} = useRecentSearches()
 
 function handleNavSearch() {
   const q = navSearch.value.trim()
   if (!q) return
   pushRecentSearch(q)
-  router.push({ path: '/search', query: { q } })
+  router.push({path: '/search', query: {q}})
   navSearch.value = ''
   navSearchFocused.value = false
   mobileMenuOpen.value = false
@@ -227,7 +240,7 @@ function onNavSuggestionSelect(q: string) {
   navSearch.value = ''
   navSearchFocused.value = false
   pushRecentSearch(q)
-  router.push({ path: '/search', query: { q } })
+  router.push({path: '/search', query: {q}})
 }
 
 function onNavSuggestionNavigate(target: string) {
@@ -239,17 +252,29 @@ function onNavSuggestionNavigate(target: string) {
 // Delay the close so click events on the dropdown items actually fire before
 // the panel unmounts. blur → focus race: 150ms covers a normal mouse-click.
 let blurTimer: ReturnType<typeof setTimeout> | null = null
+
 function onNavSearchBlur() {
   if (blurTimer) clearTimeout(blurTimer)
-  blurTimer = setTimeout(() => { navSearchFocused.value = false; blurTimer = null }, 150)
+  blurTimer = setTimeout(() => {
+    navSearchFocused.value = false;
+    blurTimer = null
+  }, 150)
 }
+
 function onNavSearchFocus() {
-  if (blurTimer) { clearTimeout(blurTimer); blurTimer = null }
+  if (blurTimer) {
+    clearTimeout(blurTimer);
+    blurTimer = null
+  }
   navSearchFocused.value = true
 }
-onUnmounted(() => { if (blurTimer) clearTimeout(blurTimer) })
+
+onUnmounted(() => {
+  if (blurTimer) clearTimeout(blurTimer)
+})
 
 const navSearchFormRef = ref<HTMLFormElement | null>(null)
+
 function focusNavSearch() {
   // The search field uses Nuxt UI's UInput, which renders a real <input>
   // inside a wrapper; reach for it through the form's first input descendant
@@ -272,8 +297,6 @@ function handleSlashShortcut(e: KeyboardEvent) {
 onMounted(() => document.addEventListener('keydown', handleSlashShortcut))
 onUnmounted(() => document.removeEventListener('keydown', handleSlashShortcut))
 
-const playbackStore = usePlaybackStore()
-
 // The Now Playing sidebar replaces the bottom-overlay MiniPlayer. On desktop
 // it lifts the floating "?" help button only when the user has collapsed the
 // sidebar to its rail width; on mobile it occupies a 60px bottom dock and we
@@ -288,10 +311,12 @@ const sidebarVisible = computed(() => !SIDEBAR_HIDDEN_ROUTES.has(route.path))
 // by the dock, which sits below content rather than beside it — no padding
 // is added there.
 const isMobileViewport = ref(false)
+
 function syncMobileViewport() {
   if (typeof window === 'undefined') return
   isMobileViewport.value = window.matchMedia('(max-width: 768px)').matches
 }
+
 onMounted(() => {
   syncMobileViewport()
   window.addEventListener('resize', syncMobileViewport)
@@ -321,16 +346,18 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
 
 <template>
   <div class="min-h-screen bg-default text-default">
-    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-md focus:text-sm focus:font-medium">
+    <a href="#main-content"
+       class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-md focus:text-sm focus:font-medium">
       Skip to main content
     </a>
     <!-- Full-page gate: nothing is rendered until the age-gate check resolves.
          Once resolved, if the gate is open the modal covers everything.
          Content only appears after the gate is cleared. -->
-    <div v-if="!ageGateChecked || ageGateOpen" class="fixed inset-0 z-40 bg-default" />
+    <div v-if="!ageGateChecked || ageGateOpen" class="fixed inset-0 z-40 bg-default"/>
 
     <!-- Nav -->
-    <header v-if="ageGateChecked && !ageGateOpen" class="border-b border-[var(--hairline)] bg-[var(--surface-page)] sticky top-0 z-40">
+    <header v-if="ageGateChecked && !ageGateOpen"
+            class="border-b border-[var(--hairline)] bg-[var(--surface-page)] sticky top-0 z-40">
       <UContainer class="flex items-center justify-between h-[60px] gap-4">
         <!-- Brand — per handoff §6.1: 28×28 gradient-filled square logo (rounded 6px),
              brand name 17px/800, tagline 10px/500 uppercase muted. Name/tagline/
@@ -340,11 +367,11 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
              rebrand can skip the gradient and still look cohesive. -->
         <NuxtLink to="/" class="flex items-center gap-2.5 no-underline shrink-0" :aria-label="`${brand.name} — Home`">
           <span
-            class="inline-flex items-center justify-center size-7 rounded-md text-white shadow-sm"
-            :style="{ background: brand.gradient || 'linear-gradient(135deg, oklch(62% 0.13 var(--accent-hue)), oklch(72% 0.13 calc(var(--accent-hue) + 40)))' }"
-            aria-hidden="true"
+              class="inline-flex items-center justify-center size-7 rounded-md text-white shadow-sm"
+              :style="{ background: brand.gradient || 'linear-gradient(135deg, oklch(62% 0.13 var(--accent-hue)), oklch(72% 0.13 calc(var(--accent-hue) + 40)))' }"
+              aria-hidden="true"
           >
-            <UIcon name="i-lucide-film" class="size-4" />
+            <UIcon name="i-lucide-film" class="size-4"/>
           </span>
           <span class="flex flex-col leading-tight">
             <span class="text-[17px] font-extrabold text-highlighted">{{ brand.name }}</span>
@@ -358,18 +385,18 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
              Home doesn't stay lit when on a sub-page). -->
         <nav class="hidden md:flex items-center gap-1">
           <NuxtLink
-            v-for="link in navLinks"
-            :key="link.to"
-            :to="link.to"
-            class="nav-link relative flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted hover:text-default transition-colors"
-            active-class="nav-link--active text-default"
-            :exact-active-class="link.to === '/' ? 'nav-link--active text-default' : ''"
+              v-for="link in navLinks"
+              :key="link.to"
+              :to="link.to"
+              class="nav-link relative flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted hover:text-default transition-colors"
+              active-class="nav-link--active text-default"
+              :exact-active-class="link.to === '/' ? 'nav-link--active text-default' : ''"
           >
-            <UIcon :name="link.icon" class="size-4" />
+            <UIcon :name="link.icon" class="size-4"/>
             {{ link.label }}
             <span
-              v-if="link.to === '/' && newCount > 0"
-              class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-0.5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center"
+                v-if="link.to === '/' && newCount > 0"
+                class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-0.5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center"
             >{{ newCount > 99 ? '99+' : newCount }}</span>
           </NuxtLink>
         </nav>
@@ -380,47 +407,47 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
              NavSearchAutocomplete renders a dropdown with recent searches
              and live media suggestions while the input is focused. -->
         <form
-          ref="navSearchFormRef"
-          class="hidden md:flex items-center flex-1 max-w-xs relative"
-          @submit.prevent="handleNavSearch"
+            ref="navSearchFormRef"
+            class="hidden md:flex items-center flex-1 max-w-xs relative"
+            @submit.prevent="handleNavSearch"
         >
           <UInput
-            v-model="navSearch"
-            icon="i-lucide-search"
-            placeholder="Search titles, tags…"
-            size="sm"
-            class="w-full"
-            type="search"
-            aria-label="Search media. Press slash to focus from anywhere."
-            @focus="onNavSearchFocus"
-            @blur="onNavSearchBlur"
+              v-model="navSearch"
+              icon="i-lucide-search"
+              placeholder="Search titles, tags…"
+              size="sm"
+              class="w-full"
+              type="search"
+              aria-label="Search media. Press slash to focus from anywhere."
+              @focus="onNavSearchFocus"
+              @blur="onNavSearchBlur"
           />
           <NavSearchAutocomplete
-            :query="navSearch"
-            :open="navSearchFocused"
-            @select="onNavSuggestionSelect"
-            @navigate="onNavSuggestionNavigate"
-            @close="navSearchFocused = false"
+              :query="navSearch"
+              :open="navSearchFocused"
+              @select="onNavSuggestionSelect"
+              @navigate="onNavSuggestionNavigate"
+              @close="navSearchFocused = false"
           />
         </form>
 
         <div class="flex items-center gap-2">
           <UButton
-            icon="i-lucide-keyboard"
-            aria-label="Keyboard shortcuts"
-            variant="ghost"
-            color="neutral"
-            size="sm"
-            class="hidden md:flex"
-            @click="() => { if (shortcutsModal) shortcutsModal.open = !shortcutsModal.open }"
+              icon="i-lucide-keyboard"
+              aria-label="Keyboard shortcuts"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              class="hidden md:flex"
+              @click="() => { if (shortcutsModal) shortcutsModal.open = !shortcutsModal.open }"
           />
           <UButton
-            :icon="colorMode.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon'"
-            :aria-label="colorMode.value === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
-            variant="ghost"
-            color="neutral"
-            size="sm"
-            @click="colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'"
+              :icon="colorMode.value === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon'"
+              :aria-label="colorMode.value === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              @click="colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'"
           />
 
           <!-- Avatar dropdown (logged-in) — per handoff §6.1: circle w/ initial
@@ -430,41 +457,41 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
                toggled their session to private (retention plan B.2). -->
           <template v-if="authStore.isLoggedIn">
             <UDropdownMenu
-              :items="avatarMenuItems"
-              :content="{ align: 'end' }"
-              class="hidden md:block"
+                :items="avatarMenuItems"
+                :content="{ align: 'end' }"
+                class="hidden md:block"
             >
               <button
-                class="relative inline-flex items-center justify-center size-8 rounded-full text-white text-sm font-bold cursor-pointer hover:brightness-110 transition-[filter] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-page)]"
-                style="background: linear-gradient(135deg, oklch(62% 0.13 var(--accent-hue)), oklch(72% 0.13 calc(var(--accent-hue) + 40)));"
-                :aria-label="`Account menu for ${authStore.username}${authStore.privateSession ? ' (private session active)' : ''}`"
+                  class="relative inline-flex items-center justify-center size-8 rounded-full text-white text-sm font-bold cursor-pointer hover:brightness-110 transition-[filter] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-page)]"
+                  style="background: linear-gradient(135deg, oklch(62% 0.13 var(--accent-hue)), oklch(72% 0.13 calc(var(--accent-hue) + 40)));"
+                  :aria-label="`Account menu for ${authStore.username}${authStore.privateSession ? ' (private session active)' : ''}`"
               >
                 {{ (authStore.username || '?').charAt(0).toUpperCase() }}
                 <span
-                  v-if="authStore.privateSession"
-                  class="absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center size-4 rounded-full bg-[var(--surface-page)] ring-1 ring-[var(--accent)] text-[var(--accent-soft)]"
-                  aria-hidden="true"
-                  title="Private session is on — history and analytics are paused"
+                    v-if="authStore.privateSession"
+                    class="absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center size-4 rounded-full bg-[var(--surface-page)] ring-1 ring-[var(--accent)] text-[var(--accent-soft)]"
+                    aria-hidden="true"
+                    title="Private session is on — history and analytics are paused"
                 >
-                  <UIcon name="i-lucide-shield-check" class="size-2.5" />
+                  <UIcon name="i-lucide-shield-check" class="size-2.5"/>
                 </span>
               </button>
             </UDropdownMenu>
           </template>
           <template v-else>
-            <UButton to="/login" variant="ghost" color="neutral" size="sm" label="Sign in" class="hidden md:flex" />
-            <UButton to="/signup" color="primary" size="sm" label="Sign up" class="hidden md:flex" />
+            <UButton to="/login" variant="ghost" color="neutral" size="sm" label="Sign in" class="hidden md:flex"/>
+            <UButton to="/signup" color="primary" size="sm" label="Sign up" class="hidden md:flex"/>
           </template>
 
           <!-- Hamburger — mobile only -->
           <UButton
-            :icon="mobileMenuOpen ? 'i-lucide-x' : 'i-lucide-menu'"
-            :aria-label="mobileMenuOpen ? 'Close menu' : 'Open menu'"
-            variant="ghost"
-            color="neutral"
-            size="sm"
-            class="md:hidden"
-            @click="mobileMenuOpen = !mobileMenuOpen"
+              :icon="mobileMenuOpen ? 'i-lucide-x' : 'i-lucide-menu'"
+              :aria-label="mobileMenuOpen ? 'Close menu' : 'Open menu'"
+              variant="ghost"
+              color="neutral"
+              size="sm"
+              class="md:hidden"
+              @click="mobileMenuOpen = !mobileMenuOpen"
           />
         </div>
       </UContainer>
@@ -473,41 +500,41 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
       <div v-if="mobileMenuOpen" ref="mobileMenuRoot" class="md:hidden border-t border-default bg-elevated">
         <UContainer class="py-2 flex flex-col gap-1">
           <NuxtLink
-            v-for="link in mobileNavLinks"
-            :key="link.to"
-            :to="link.to"
-            class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
-            active-class="text-default bg-muted"
+              v-for="link in mobileNavLinks"
+              :key="link.to"
+              :to="link.to"
+              class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
+              active-class="text-default bg-muted"
           >
-            <UIcon :name="link.icon" class="size-4 shrink-0" />
+            <UIcon :name="link.icon" class="size-4 shrink-0"/>
             {{ link.label }}
           </NuxtLink>
           <!-- Mobile search -->
           <form class="px-1 py-2" @submit.prevent="handleNavSearch">
             <UInput
-              v-model="navSearch"
-              icon="i-lucide-search"
-              placeholder="Search titles, tags…"
-              size="sm"
-              type="search"
+                v-model="navSearch"
+                icon="i-lucide-search"
+                placeholder="Search titles, tags…"
+                size="sm"
+                type="search"
             />
           </form>
           <div class="border-t border-default mt-1 pt-1">
             <template v-if="authStore.isLoggedIn">
               <button
-                class="flex w-full items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
-                @click="handleLogout"
+                  class="flex w-full items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
+                  @click="handleLogout"
               >
-                <UIcon name="i-lucide-log-out" class="size-4 shrink-0" />
+                <UIcon name="i-lucide-log-out" class="size-4 shrink-0"/>
                 Log out
               </button>
             </template>
             <template v-else>
               <NuxtLink
-                to="/login"
-                class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
+                  to="/login"
+                  class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
               >
-                <UIcon name="i-lucide-log-in" class="size-4 shrink-0" />
+                <UIcon name="i-lucide-log-in" class="size-4 shrink-0"/>
                 Login
               </NuxtLink>
             </template>
@@ -518,7 +545,7 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
 
     <!-- Page content -->
     <main id="main-content" v-if="ageGateChecked && !ageGateOpen">
-      <slot />
+      <slot/>
     </main>
 
     <!-- Footer -->
@@ -542,7 +569,7 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
     <!-- Now Playing sidebar — right-docked on desktop, bottom dock on mobile.
          Replaces the previous bottom-overlay MiniPlayer. Hidden on /player
          and auth routes via SIDEBAR_HIDDEN_ROUTES. -->
-    <NowPlayingSidebar v-if="ageGateChecked && !ageGateOpen" />
+    <NowPlayingSidebar v-if="ageGateChecked && !ageGateOpen"/>
 
     <!-- Floating help button — discoverability for the keyboard shortcuts
          modal. On mobile the sidebar shows as a 60px bottom dock, so lift
@@ -550,14 +577,15 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
          never overlaps, so keep the button at 20px. Hidden on /player
          where shortcuts are already visible in the controls. -->
     <button
-      v-if="ageGateChecked && !ageGateOpen && route.path !== '/player'"
-      type="button"
-      class="fixed right-5 z-[60] inline-flex items-center justify-center size-9 rounded-full font-mono text-sm text-muted bg-elevated/85 backdrop-blur border border-default shadow-lg transition-[bottom,color] hover:text-default focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-      :style="{ bottom: helpButtonLifted ? '70px' : '20px' }"
-      aria-label="Keyboard shortcuts (?)"
-      title="Keyboard shortcuts (?)"
-      @click="() => { if (shortcutsModal) shortcutsModal.open = true }"
-    >?</button>
+        v-if="ageGateChecked && !ageGateOpen && route.path !== '/player'"
+        type="button"
+        class="fixed right-5 z-[60] inline-flex items-center justify-center size-9 rounded-full font-mono text-sm text-muted bg-elevated/85 backdrop-blur border border-default shadow-lg transition-[bottom,color] hover:text-default focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        :style="{ bottom: helpButtonLifted ? '70px' : '20px' }"
+        aria-label="Keyboard shortcuts (?)"
+        title="Keyboard shortcuts (?)"
+        @click="() => { if (shortcutsModal) shortcutsModal.open = true }"
+    >?
+    </button>
 
     <!-- Global keyboard shortcuts reference (press ? anywhere).
          Gated by the same route check as the floating "?" button above so
@@ -567,17 +595,17 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
          unmounts the component and its document-level keydown listener
          detaches; otherwise both handlers fire and toggle their separate
          visibility refs together. -->
-    <KeyboardShortcutsModal v-if="route.path !== '/player'" ref="shortcutsModal" />
+    <KeyboardShortcutsModal v-if="route.path !== '/player'" ref="shortcutsModal"/>
 
     <!-- Cookie consent banner -->
-    <CookieConsentBanner />
+    <CookieConsentBanner/>
 
     <!-- Age gate modal -->
     <UModal
-      :open="ageGateOpen"
-      :dismissible="false"
-      title="Age Verification Required"
-      description="This site contains mature content. You must be 18 or older to continue."
+        :open="ageGateOpen"
+        :dismissible="false"
+        title="Age Verification Required"
+        description="This site contains mature content. You must be 18 or older to continue."
     >
       <template #body>
         <div class="px-4 pb-2 space-y-4">
@@ -586,12 +614,13 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
             is permitted in your jurisdiction, and that you agree to our
             <NuxtLink to="/terms" class="underline hover:text-default" target="_blank">Terms of Service</NuxtLink>
             and
-            <NuxtLink to="/privacy" class="underline hover:text-default" target="_blank">Privacy Policy</NuxtLink>.
+            <NuxtLink to="/privacy" class="underline hover:text-default" target="_blank">Privacy Policy</NuxtLink>
+            .
           </p>
           <label class="flex items-start gap-3 cursor-pointer select-none">
             <UCheckbox
-              v-model="ageGateTermsAccepted"
-              aria-label="I confirm I am 18 or older and agree to the Terms of Service and Privacy Policy"
+                v-model="ageGateTermsAccepted"
+                aria-label="I confirm I am 18 or older and agree to the Terms of Service and Privacy Policy"
             />
             <span class="text-sm text-default leading-snug">
               I confirm I am 18 or older and agree to the Terms of Service and Privacy Policy.
@@ -604,23 +633,23 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
           <!-- Leave button per handoff §6.9 — gives users who aren't 18+ or
                don't want to confirm an explicit escape route. -->
           <UButton
-            icon="i-lucide-log-out"
-            label="Leave"
-            variant="ghost"
-            color="neutral"
-            :disabled="ageGateVerifying"
-            @click="leaveAgeGate"
+              icon="i-lucide-log-out"
+              label="Leave"
+              variant="ghost"
+              color="neutral"
+              :disabled="ageGateVerifying"
+              @click="leaveAgeGate"
           />
           <!-- Button label kept short to avoid wrap on narrow viewports; the
                binding legal language lives on the checkbox above. -->
           <UButton
-            :loading="ageGateVerifying"
-            :disabled="!ageGateTermsAccepted"
-            icon="i-lucide-check"
-            label="Enter site"
-            size="lg"
-            color="primary"
-            @click="verifyAge"
+              :loading="ageGateVerifying"
+              :disabled="!ageGateTermsAccepted"
+              icon="i-lucide-check"
+              label="Enter site"
+              size="lg"
+              color="primary"
+              @click="verifyAge"
           />
         </div>
       </template>

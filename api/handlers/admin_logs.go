@@ -126,10 +126,7 @@ func readLastNLines(filePath string, n int) ([]string, error) {
 		return nil, err
 	}
 
-	count := total
-	if count > n {
-		count = n
-	}
+	count := min(total, n)
 	result := make([]string, 0, count)
 	start := idx - count
 	for i := start; i < idx; i++ {

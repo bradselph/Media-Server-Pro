@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import type { MediaChapter } from '~/types/api'
-import { formatDuration } from '~/utils/format'
+import {formatDuration} from '~/utils/format'
 
 const props = defineProps<{
   isPlaying: boolean
@@ -14,7 +13,7 @@ const props = defineProps<{
   isPiP: boolean
   pipSupported: boolean
   isTheater: boolean
-  qualities: Array<{ name: string; index: number }>
+  qualities: Array<{ name: string; index: number; bitrate?: number; codec?: string }>
   currentQuality: number
   thumbnailPreviews: string[]
   showControls: boolean
@@ -56,15 +55,35 @@ const seekBarHoverTime = ref(0)
 const seekBarPreviewUrl = computed(() => {
   if (!props.thumbnailPreviews.length || !props.duration) return null
   const idx = Math.min(
-    Math.floor((seekBarHoverTime.value / props.duration) * props.thumbnailPreviews.length),
-    props.thumbnailPreviews.length - 1,
+      Math.floor((seekBarHoverTime.value / props.duration) * props.thumbnailPreviews.length),
+      props.thumbnailPreviews.length - 1,
   )
   return props.thumbnailPreviews[idx] ?? null
 })
 
+// Map an HLS videoCodec id (e.g. 'avc1.64001f') to a friendly name; '' when unknown.
+function friendlyCodec(codec?: string): string {
+  if (!codec) return ''
+  if (codec.startsWith('avc1') || codec.startsWith('h264')) return 'H.264'
+  if (codec.startsWith('hvc1') || codec.startsWith('hev1') || codec.startsWith('h265')) return 'H.265'
+  if (codec.startsWith('av01')) return 'AV1'
+  if (codec.startsWith('vp09') || codec.startsWith('vp9')) return 'VP9'
+  if (codec.startsWith('vp08') || codec.startsWith('vp8')) return 'VP8'
+  return ''
+}
+
+// Dropdown label: "1080p · 8.0 Mbps · H.264" (bitrate/codec appended when known).
+function formatQualityLabel(q: { name: string; bitrate?: number; codec?: string }): string {
+  const parts = [q.name]
+  if (q.bitrate && q.bitrate > 0) parts.push(`${(q.bitrate / 1e6).toFixed(1)} Mbps`)
+  const codec = friendlyCodec(q.codec)
+  if (codec) parts.push(codec)
+  return parts.join(' · ')
+}
+
 const qualityMenuItems = computed(() => [[
-  { label: 'Auto', click: () => emit('quality-select', -1) },
-  ...props.qualities.map(q => ({ label: q.name, click: () => emit('quality-select', q.index) })),
+  {label: 'Auto', click: () => emit('quality-select', -1)},
+  ...props.qualities.map(q => ({label: formatQualityLabel(q), click: () => emit('quality-select', q.index)})),
 ]])
 
 const chapterMenuItems = computed(() => [[
@@ -122,9 +141,9 @@ function copyLinkAtTime() {
   const url = new URL(globalThis.location.href)
   url.searchParams.set('t', String(t))
   navigator.clipboard.writeText(url.toString()).then(() => {
-    toast.add({ title: `Link copied at ${formatDuration(t)}`, color: 'success', icon: 'i-lucide-link' })
+    toast.add({title: `Link copied at ${formatDuration(t)}`, color: 'success', icon: 'i-lucide-link'})
   }).catch(() => {
-    toast.add({ title: 'Failed to copy link', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: 'Failed to copy link', color: 'error', icon: 'i-lucide-x'})
   })
 }
 </script>
@@ -133,39 +152,39 @@ function copyLinkAtTime() {
   <!-- Controls overlay — z-20 ensures it sits above mobile tap zones (z-10).
        Fade timing uses --motion-controls-fade (200ms linear) per handoff §8. -->
   <div
-    class="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/80 to-transparent z-20"
-    :class="showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'"
-    :style="{ transition: `opacity var(--motion-controls-fade)` }"
-    @click.stop
+      class="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/80 to-transparent z-20"
+      :class="showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'"
+      :style="{ transition: `opacity var(--motion-controls-fade)` }"
+      @click.stop
   >
     <!-- Seek bar: expanded touch area (py-2) without visual change -->
     <div
-      role="slider"
-      tabindex="0"
-      :aria-label="`Seek bar: ${formatDuration(currentTime)} of ${formatDuration(duration)}`"
-      :aria-valuemin="0"
-      :aria-valuemax="Math.floor(duration)"
-      :aria-valuenow="Math.floor(currentTime)"
-      :aria-valuetext="`${formatDuration(currentTime)} of ${formatDuration(duration)}`"
-      class="relative w-full cursor-pointer px-3 py-2 touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      @click="onSeekBarClick"
-      @mousemove="onSeekBarMouseMove"
-      @mouseenter="seekBarHovering = true"
-      @mouseleave="seekBarHovering = false"
-      @touchstart.prevent="onSeekBarTouch"
-      @touchmove.prevent="onSeekBarTouch"
-      @touchend.prevent="onSeekBarTouchEnd"
-      @keydown.left.prevent="emit('seek', -5)"
-      @keydown.right.prevent="emit('seek', 5)"
+        role="slider"
+        tabindex="0"
+        :aria-label="`Seek bar: ${formatDuration(currentTime)} of ${formatDuration(duration)}`"
+        :aria-valuemin="0"
+        :aria-valuemax="Math.floor(duration)"
+        :aria-valuenow="Math.floor(currentTime)"
+        :aria-valuetext="`${formatDuration(currentTime)} of ${formatDuration(duration)}`"
+        class="relative w-full cursor-pointer px-3 py-2 touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        @click="onSeekBarClick"
+        @mousemove="onSeekBarMouseMove"
+        @mouseenter="seekBarHovering = true"
+        @mouseleave="seekBarHovering = false"
+        @touchstart.prevent="onSeekBarTouch"
+        @touchmove.prevent="onSeekBarTouch"
+        @touchend.prevent="onSeekBarTouchEnd"
+        @keydown.left.prevent="emit('seek', -5)"
+        @keydown.right.prevent="emit('seek', 5)"
     >
       <!-- Thumbnail preview tooltip -->
       <Transition name="fade">
         <div
-          v-if="seekBarHovering && seekBarPreviewUrl"
-          class="absolute bottom-full mb-1 -translate-x-1/2 pointer-events-none z-10"
-          :style="{ left: `${seekBarHoverX + 12}px` }"
+            v-if="seekBarHovering && seekBarPreviewUrl"
+            class="absolute bottom-full mb-1 -translate-x-1/2 pointer-events-none z-10"
+            :style="{ left: `${seekBarHoverX + 12}px` }"
         >
-          <img :src="seekBarPreviewUrl" class="w-28 h-16 object-cover rounded border border-white/20 shadow-lg" />
+          <img :src="seekBarPreviewUrl" class="w-28 h-16 object-cover rounded border border-white/20 shadow-lg"/>
           <p class="text-center text-white text-xs mt-0.5 drop-shadow">{{ formatDuration(seekBarHoverTime) }}</p>
         </div>
       </Transition>
@@ -173,24 +192,24 @@ function copyLinkAtTime() {
       <div class="relative w-full h-1.5 md:h-1.5 bg-white/20 rounded-full">
         <!-- Buffer fill (behind playback) -->
         <div
-          v-if="showBufferBar"
-          class="absolute top-0 left-0 h-full bg-white/30 rounded-full pointer-events-none"
-          :style="{ width: `${bufferedFraction * 100}%` }"
+            v-if="showBufferBar"
+            class="absolute top-0 left-0 h-full bg-white/30 rounded-full pointer-events-none"
+            :style="{ width: `${bufferedFraction * 100}%` }"
         />
         <!-- Playback progress -->
         <div
-          class="absolute top-0 left-0 h-full bg-primary rounded-full pointer-events-none"
-          :style="{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }"
+            class="absolute top-0 left-0 h-full bg-primary rounded-full pointer-events-none"
+            :style="{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }"
         />
         <!-- Chapter pins on seek bar -->
         <template v-if="chapters.length > 0 && duration > 0">
           <div
-            v-for="ch in chapters"
-            :key="ch.id"
-            class="absolute top-1/2 -translate-y-1/2 w-1 h-3 bg-white/70 rounded-full cursor-pointer hover:bg-white hover:h-4 transition-all pointer-events-auto"
-            :style="{ left: `${(ch.start_time / duration) * 100}%` }"
-            :title="ch.label"
-            @click.stop="emit('seek-to-chapter', ch.start_time)"
+              v-for="ch in chapters"
+              :key="ch.id"
+              class="absolute top-1/2 -translate-y-1/2 w-1 h-3 bg-white/70 rounded-full cursor-pointer hover:bg-white hover:h-4 transition-all pointer-events-auto"
+              :style="{ left: `${(ch.start_time / duration) * 100}%` }"
+              :title="ch.label"
+              @click.stop="emit('seek-to-chapter', ch.start_time)"
           />
         </template>
       </div>
@@ -200,57 +219,57 @@ function copyLinkAtTime() {
     <div class="flex items-center gap-1.5 sm:gap-2 px-3 pb-3">
       <!-- Prev track (playlist context only) -->
       <UButton
-        v-if="hasPrev"
-        icon="i-lucide-skip-back"
-        aria-label="Previous track"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        class="text-white hover:text-white shrink-0"
-        @click="emit('skip-prev')"
+          v-if="hasPrev"
+          icon="i-lucide-skip-back"
+          aria-label="Previous track"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          class="text-white hover:text-white shrink-0"
+          @click="emit('skip-prev')"
       />
 
       <!-- Play/Pause -->
       <UButton
-        :icon="isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
-        :aria-label="isPlaying ? 'Pause' : 'Play'"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        class="text-white hover:text-white shrink-0"
-        @click="emit('toggle-play')"
+          :icon="isPlaying ? 'i-lucide-pause' : 'i-lucide-play'"
+          :aria-label="isPlaying ? 'Pause' : 'Play'"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          class="text-white hover:text-white shrink-0"
+          @click="emit('toggle-play')"
       />
 
       <!-- Next track (playlist context only) -->
       <UButton
-        v-if="hasNext"
-        icon="i-lucide-skip-forward"
-        aria-label="Next track"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        class="text-white hover:text-white shrink-0"
-        @click="emit('skip-next')"
+          v-if="hasNext"
+          icon="i-lucide-skip-forward"
+          aria-label="Next track"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          class="text-white hover:text-white shrink-0"
+          @click="emit('skip-next')"
       />
 
       <!-- Rewind/Forward — desktop only (mobile uses tap overlay) -->
       <UButton
-        icon="i-lucide-rewind"
-        :aria-label="`Rewind ${skipInterval} seconds`"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        class="text-white max-md:hidden shrink-0"
-        @click="emit('seek', -skipInterval)"
+          icon="i-lucide-rewind"
+          :aria-label="`Rewind ${skipInterval} seconds`"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          class="text-white max-md:hidden shrink-0"
+          @click="emit('seek', -skipInterval)"
       />
       <UButton
-        icon="i-lucide-fast-forward"
-        :aria-label="`Forward ${skipInterval} seconds`"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        class="text-white max-md:hidden shrink-0"
-        @click="emit('seek', skipInterval)"
+          icon="i-lucide-fast-forward"
+          :aria-label="`Forward ${skipInterval} seconds`"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          class="text-white max-md:hidden shrink-0"
+          @click="emit('seek', skipInterval)"
       />
 
       <!-- Time display -->
@@ -259,147 +278,147 @@ function copyLinkAtTime() {
       </span>
 
       <!-- Spacer -->
-      <div class="flex-1" />
+      <div class="flex-1"/>
 
       <!-- Right-side controls -->
       <!-- Speed — desktop only (mobile row is too tight with skip buttons) -->
       <UButton
-        :label="`${playbackSpeed}x`"
-        :aria-label="`Playback speed: ${playbackSpeed}x`"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        class="text-white text-xs max-md:hidden shrink-0"
-        @click="emit('cycle-speed')"
-      />
-
-      <!-- Quality selector (HLS only) — desktop only -->
-      <UDropdownMenu v-if="qualities.length > 0" :items="qualityMenuItems" class="max-md:hidden">
-        <UButton
-          :label="currentQualityLabel"
-          icon="i-lucide-layers"
-          :aria-label="`Video quality: ${currentQualityLabel}`"
+          :label="`${playbackSpeed}x`"
+          :aria-label="`Playback speed: ${playbackSpeed}x`"
           variant="ghost"
           color="neutral"
           size="sm"
-          class="text-white text-xs"
-          @click.stop
+          class="text-white text-xs max-md:hidden shrink-0"
+          @click="emit('cycle-speed')"
+      />
+
+      <!-- Quality selector (HLS only) — all screen sizes (bandwidth matters most on mobile) -->
+      <UDropdownMenu v-if="qualities.length > 0" :items="qualityMenuItems">
+        <UButton
+            :label="currentQualityLabel"
+            icon="i-lucide-layers"
+            :aria-label="`Video quality: ${currentQualityLabel}`"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            class="text-white text-xs"
+            @click.stop
         />
       </UDropdownMenu>
 
       <!-- Mute toggle button (all screen sizes) -->
       <UButton
-        :icon="volumeIcon"
-        :aria-label="volume === 0 ? 'Unmute' : 'Mute'"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        class="text-white shrink-0"
-        @click="emit('toggle-mute')"
+          :icon="volumeIcon"
+          :aria-label="volume === 0 ? 'Unmute' : 'Mute'"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          class="text-white shrink-0"
+          @click="emit('toggle-mute')"
       />
 
       <!-- Volume slider — desktop only -->
       <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.05"
-        :value="volume"
-        aria-label="Volume"
-        class="w-16 h-1 accent-primary max-md:hidden"
-        @input="emit('set-volume', +($event.target as HTMLInputElement).value)"
-        @click.stop
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          :value="volume"
+          aria-label="Volume"
+          class="w-16 h-1 accent-primary max-md:hidden"
+          @input="emit('set-volume', +($event.target as HTMLInputElement).value)"
+          @click.stop
       />
 
       <!-- Copy link at timestamp — desktop only -->
       <UButton
-        icon="i-lucide-link"
-        aria-label="Copy link at current time"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        class="text-white max-md:hidden shrink-0"
-        @click="copyLinkAtTime"
+          icon="i-lucide-link"
+          aria-label="Copy link at current time"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          class="text-white max-md:hidden shrink-0"
+          @click="copyLinkAtTime"
       />
 
       <!-- Theater mode — desktop only -->
       <UButton
-        :icon="isTheater ? 'i-lucide-layout-panel-top' : 'i-lucide-clapperboard'"
-        :aria-label="isTheater ? 'Exit theater mode' : 'Theater mode'"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        :class="isTheater ? 'text-primary max-md:hidden shrink-0' : 'text-white max-md:hidden shrink-0'"
-        @click="emit('toggle-theater')"
+          :icon="isTheater ? 'i-lucide-layout-panel-top' : 'i-lucide-clapperboard'"
+          :aria-label="isTheater ? 'Exit theater mode' : 'Theater mode'"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          :class="isTheater ? 'text-primary max-md:hidden shrink-0' : 'text-white max-md:hidden shrink-0'"
+          @click="emit('toggle-theater')"
       />
 
       <!-- PiP — desktop only -->
       <UButton
-        v-if="pipSupported"
-        :icon="isPiP ? 'i-lucide-picture-in-picture-2' : 'i-lucide-picture-in-picture'"
-        :aria-label="isPiP ? 'Exit picture-in-picture' : 'Picture-in-picture'"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        class="text-white max-md:hidden shrink-0"
-        @click="emit('toggle-pip')"
+          v-if="pipSupported"
+          :icon="isPiP ? 'i-lucide-picture-in-picture-2' : 'i-lucide-picture-in-picture'"
+          :aria-label="isPiP ? 'Exit picture-in-picture' : 'Picture-in-picture'"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          class="text-white max-md:hidden shrink-0"
+          @click="emit('toggle-pip')"
       />
 
       <!-- Shuffle -->
       <UButton
-        icon="i-lucide-shuffle"
-        :aria-label="shuffleEnabled ? 'Shuffle on' : 'Shuffle off'"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        :class="shuffleEnabled ? 'text-primary shrink-0' : 'text-white shrink-0'"
-        @click="emit('toggle-shuffle')"
+          icon="i-lucide-shuffle"
+          :aria-label="shuffleEnabled ? 'Shuffle on' : 'Shuffle off'"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          :class="shuffleEnabled ? 'text-primary shrink-0' : 'text-white shrink-0'"
+          @click="emit('toggle-shuffle')"
       />
 
       <!-- Loop (off → one → all) -->
       <UButton
-        :icon="loopMode === 'one' ? 'i-lucide-repeat-1' : 'i-lucide-repeat'"
-        :aria-label="loopMode === 'off' ? 'Loop off' : loopMode === 'one' ? 'Loop one' : 'Loop all'"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        :class="loopMode !== 'off' ? 'text-primary shrink-0' : 'text-white shrink-0'"
-        @click="emit('cycle-loop')"
+          :icon="loopMode === 'one' ? 'i-lucide-repeat-1' : 'i-lucide-repeat'"
+          :aria-label="loopMode === 'off' ? 'Loop off' : loopMode === 'one' ? 'Loop one' : 'Loop all'"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          :class="loopMode !== 'off' ? 'text-primary shrink-0' : 'text-white shrink-0'"
+          @click="emit('cycle-loop')"
       />
 
       <!-- Chapters dropdown — desktop only -->
       <UDropdownMenu v-if="chapters.length > 0" :items="chapterMenuItems" class="max-md:hidden">
         <UButton
-          icon="i-lucide-list-ordered"
-          aria-label="Chapters"
-          variant="ghost"
-          color="neutral"
-          size="sm"
-          class="text-white"
-          @click.stop
+            icon="i-lucide-list-ordered"
+            aria-label="Chapters"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            class="text-white"
+            @click.stop
         />
       </UDropdownMenu>
 
       <!-- Keyboard shortcuts — desktop only -->
       <UButton
-        icon="i-lucide-keyboard"
-        aria-label="Keyboard shortcuts"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        class="text-white max-md:hidden shrink-0"
-        @click.stop="emit('update:showShortcuts', !showShortcuts)"
+          icon="i-lucide-keyboard"
+          aria-label="Keyboard shortcuts"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          class="text-white max-md:hidden shrink-0"
+          @click.stop="emit('update:showShortcuts', !showShortcuts)"
       />
 
       <!-- Fullscreen -->
       <UButton
-        :icon="isFullscreen ? 'i-lucide-minimize' : 'i-lucide-maximize'"
-        :aria-label="isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        class="text-white shrink-0"
-        @click="emit('toggle-fullscreen')"
+          :icon="isFullscreen ? 'i-lucide-minimize' : 'i-lucide-maximize'"
+          :aria-label="isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'"
+          variant="ghost"
+          color="neutral"
+          size="sm"
+          class="text-white shrink-0"
+          @click="emit('toggle-fullscreen')"
       />
     </div>
   </div>
@@ -407,24 +426,32 @@ function copyLinkAtTime() {
   <!-- Keyboard shortcuts overlay -->
   <Transition name="fade">
     <div
-      v-if="showShortcuts"
-      class="absolute inset-0 flex items-center justify-center bg-black/80 z-30"
-      @click.stop="emit('update:showShortcuts', false)"
+        v-if="showShortcuts"
+        class="absolute inset-0 flex items-center justify-center bg-black/80 z-30"
+        @click.stop="emit('update:showShortcuts', false)"
     >
       <div class="bg-elevated rounded-xl p-6 max-w-xs w-full mx-4 shadow-xl" @click.stop>
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-semibold text-highlighted text-base">Keyboard Shortcuts</h3>
-          <UButton icon="i-lucide-x" variant="ghost" color="neutral" size="xs" aria-label="Close" @click="emit('update:showShortcuts', false)" />
+          <UButton icon="i-lucide-x" variant="ghost" color="neutral" size="xs" aria-label="Close"
+                   @click="emit('update:showShortcuts', false)"/>
         </div>
         <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">Space / K</span><span class="text-muted">Play / Pause</span>
-          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">J / L</span><span class="text-muted">Skip ±{{ skipInterval }}s</span>
-          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">← →</span><span class="text-muted">Skip ±{{ Math.max(1, Math.floor(skipInterval / 2)) }}s</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">Space / K</span><span
+            class="text-muted">Play / Pause</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">J / L</span><span
+            class="text-muted">Skip ±{{ skipInterval }}s</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">← →</span><span class="text-muted">Skip ±{{
+            Math.max(1, Math.floor(skipInterval / 2))
+          }}s</span>
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">↑ ↓</span><span class="text-muted">Volume ±5%</span>
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">0–9</span><span class="text-muted">Seek to 0–90%</span>
-          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">Home / End</span><span class="text-muted">Jump to start / end</span>
-          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">, / .</span><span class="text-muted">Frame step (paused)</span>
-          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">&lt; / &gt;</span><span class="text-muted">Decrease / increase speed</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">Home / End</span><span
+            class="text-muted">Jump to start / end</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">, / .</span><span
+            class="text-muted">Frame step (paused)</span>
+          <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">&lt; / &gt;</span><span
+            class="text-muted">Decrease / increase speed</span>
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">F</span><span class="text-muted">Toggle fullscreen</span>
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">T</span><span class="text-muted">Toggle theater mode</span>
           <span class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center">M</span><span class="text-muted">Mute / Unmute</span>

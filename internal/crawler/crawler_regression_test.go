@@ -3,8 +3,6 @@ package crawler
 import (
 	"testing"
 	"time"
-
-	"media-server-pro/pkg/helpers"
 )
 
 // FND-0016: Regression test for discovery ReviewedAt assignment
@@ -28,7 +26,7 @@ func TestFND0016_Discovery_ReviewedAtNonNil(t *testing.T) {
 		Status: "added",
 	}
 
-	disc.ReviewedAt = helpers.Ptr(time.Now())
+	disc.ReviewedAt = new(time.Now())
 
 	// Assertions for FND-0016 regression
 	if disc.ReviewedAt == nil {
@@ -69,7 +67,7 @@ func TestFND0016_Discovery_TimestampForFiltering(t *testing.T) {
 		{
 			ID:         "disc2",
 			Title:      "Older discovery",
-			ReviewedAt: func() *time.Time { t := now.Add(-24 * time.Hour); return &t }(),
+			ReviewedAt: new(now.Add(-24 * time.Hour)),
 		},
 		{
 			ID:         "disc3",

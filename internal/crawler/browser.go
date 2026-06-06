@@ -350,7 +350,7 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 
 			if isM3U8 || isMP4 {
 				streamsMu.Lock()
-				base := strings.SplitN(respURL, "?", 2)[0]
+				base, _, _ := strings.Cut(respURL, "?")
 				if !seen[base] {
 					seen[base] = true
 					st := detectedStream{
@@ -702,7 +702,7 @@ func (bd *browserDetector) extractEmbeddedURLs(
 			continue
 		}
 
-		base := strings.SplitN(u, "?", 2)[0]
+		base, _, _ := strings.Cut(u, "?")
 		if seen[base] {
 			continue
 		}

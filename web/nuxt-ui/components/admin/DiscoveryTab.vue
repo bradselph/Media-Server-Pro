@@ -1,21 +1,25 @@
 <script setup lang="ts">
 import type {
-  CategoryStats, CategorizedItem, DiscoverySuggestion,
-  SuggestionStats, ClassifyStatus, ClassifyStats,
+  CategorizedItem,
+  CategoryStats,
+  ClassifyStats,
+  ClassifyStatus,
+  DiscoverySuggestion,
+  SuggestionStats,
 } from '~/types/api'
-import { formatWatchTime } from '~/utils/format'
-import { asRecord } from '~/utils/typeGuards'
-import { useAdminFeedback } from '~/composables/useAdminFeedback'
+import {formatWatchTime} from '~/utils/format'
+import {asRecord} from '~/utils/typeGuards'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const { notifyError, notifySuccess } = useAdminFeedback()
+const {notifyError, notifySuccess} = useAdminFeedback()
 
 const subTab = ref('categorizer')
 const subTabs = [
-  { label: 'Categorizer', value: 'categorizer', icon: 'i-lucide-tag' },
-  { label: 'Auto-Discovery', value: 'discovery', icon: 'i-lucide-compass' },
-  { label: 'Rec. Engine', value: 'suggestions', icon: 'i-lucide-sparkles' },
-  { label: 'Classification', value: 'classify', icon: 'i-lucide-brain' },
+  {label: 'Categorizer', value: 'categorizer', icon: 'i-lucide-tag'},
+  {label: 'Auto-Discovery', value: 'discovery', icon: 'i-lucide-compass'},
+  {label: 'Rec. Engine', value: 'suggestions', icon: 'i-lucide-sparkles'},
+  {label: 'Classification', value: 'classify', icon: 'i-lucide-brain'},
 ]
 
 // ── Categorizer ────────────────────────────────────────────────────────────────
@@ -32,7 +36,9 @@ async function loadCategorizer() {
     categoryStats.value = await adminApi.getCategoryStats()
   } catch (e: unknown) {
     notifyError(e, 'Failed to load categorizer', 'i-lucide-alert-circle')
-  } finally { categorizerLoading.value = false }
+  } finally {
+    categorizerLoading.value = false
+  }
 }
 
 async function categorizeFile() {
@@ -44,7 +50,9 @@ async function categorizeFile() {
     await loadCategorizer()
   } catch (e: unknown) {
     notifyError(e, 'Failed')
-  } finally { categorizing.value = false }
+  } finally {
+    categorizing.value = false
+  }
 }
 
 async function categorizeDirectory() {
@@ -57,7 +65,9 @@ async function categorizeDirectory() {
     await loadCategorizer()
   } catch (e: unknown) {
     notifyError(e, 'Failed')
-  } finally { categorizing.value = false }
+  } finally {
+    categorizing.value = false
+  }
 }
 
 async function setCategory() {
@@ -69,7 +79,9 @@ async function setCategory() {
     await loadCategorizer()
   } catch (e: unknown) {
     notifyError(e, 'Failed')
-  } finally { categorizing.value = false }
+  } finally {
+    categorizing.value = false
+  }
 }
 
 const browseCategory = ref('')
@@ -83,7 +95,9 @@ async function browseByCategory() {
     categoryItems.value = (await adminApi.getByCategory(browseCategory.value.trim())) ?? []
   } catch (e: unknown) {
     notifyError(e, 'Failed')
-  } finally { categoryItemsLoading.value = false }
+  } finally {
+    categoryItemsLoading.value = false
+  }
 }
 
 const cleaningStale = ref(false)
@@ -115,7 +129,9 @@ async function loadDiscovery() {
     discoverySuggestions.value = (await adminApi.getDiscoverySuggestions()) ?? []
   } catch (e: unknown) {
     notifyError(e, 'Failed to load discovery', 'i-lucide-alert-circle')
-  } finally { discoveryLoading.value = false }
+  } finally {
+    discoveryLoading.value = false
+  }
 }
 
 async function runDiscoveryScan() {
@@ -127,14 +143,18 @@ async function runDiscoveryScan() {
     notifySuccess(`Found ${discoverySuggestions.value.length} suggestions`)
   } catch (e: unknown) {
     notifyError(e, 'Failed')
-  } finally { scanning.value = false }
+  } finally {
+    scanning.value = false
+  }
 }
 
 const processingPaths = ref<Set<string>>(new Set())
 
 async function applyDiscovery(path: string) {
   if (processingPaths.value.has(path)) return
-  const next = new Set(processingPaths.value); next.add(path); processingPaths.value = next
+  const next = new Set(processingPaths.value);
+  next.add(path);
+  processingPaths.value = next
   try {
     await adminApi.applyDiscoverySuggestion(path)
     discoverySuggestions.value = discoverySuggestions.value.filter(s => s.original_path !== path)
@@ -142,13 +162,17 @@ async function applyDiscovery(path: string) {
   } catch (e: unknown) {
     notifyError(e, 'Failed')
   } finally {
-    const cleared = new Set(processingPaths.value); cleared.delete(path); processingPaths.value = cleared
+    const cleared = new Set(processingPaths.value);
+    cleared.delete(path);
+    processingPaths.value = cleared
   }
 }
 
 async function dismissDiscovery(path: string) {
   if (processingPaths.value.has(path)) return
-  const next = new Set(processingPaths.value); next.add(path); processingPaths.value = next
+  const next = new Set(processingPaths.value);
+  next.add(path);
+  processingPaths.value = next
   try {
     await adminApi.dismissDiscoverySuggestion(path)
     discoverySuggestions.value = discoverySuggestions.value.filter(s => s.original_path !== path)
@@ -156,7 +180,9 @@ async function dismissDiscovery(path: string) {
   } catch (e: unknown) {
     notifyError(e, 'Failed')
   } finally {
-    const cleared = new Set(processingPaths.value); cleared.delete(path); processingPaths.value = cleared
+    const cleared = new Set(processingPaths.value);
+    cleared.delete(path);
+    processingPaths.value = cleared
   }
 }
 
@@ -170,7 +196,9 @@ async function loadSuggestions() {
     suggestionStats.value = await adminApi.getSuggestionStats()
   } catch (e: unknown) {
     notifyError(e, 'Failed to load suggestions', 'i-lucide-alert-circle')
-  } finally { suggestionsLoading.value = false }
+  } finally {
+    suggestionsLoading.value = false
+  }
 }
 
 // formatWatchTime imported from ~/utils/format
@@ -196,7 +224,9 @@ async function loadClassify() {
     classifyStats.value = stats
   } catch (e: unknown) {
     notifyError(e, 'Failed to load classification', 'i-lucide-alert-circle')
-  } finally { classifyLoading.value = false }
+  } finally {
+    classifyLoading.value = false
+  }
 }
 
 async function classifyFile() {
@@ -208,7 +238,9 @@ async function classifyFile() {
     notifySuccess('Classification complete')
   } catch (e: unknown) {
     notifyError(e, 'Failed')
-  } finally { classifying.value = false }
+  } finally {
+    classifying.value = false
+  }
 }
 
 async function classifyDirectory() {
@@ -220,7 +252,9 @@ async function classifyDirectory() {
     notifySuccess('Directory classification queued')
   } catch (e: unknown) {
     notifyError(e, 'Failed')
-  } finally { classifying.value = false }
+  } finally {
+    classifying.value = false
+  }
 }
 
 async function classifyAllPending() {
@@ -231,7 +265,9 @@ async function classifyAllPending() {
     notifySuccess(`Queued ${typeof count === 'number' ? count : 0} items for classification`)
   } catch (e: unknown) {
     notifyError(e, 'Failed')
-  } finally { classifying.value = false }
+  } finally {
+    classifying.value = false
+  }
 }
 
 async function runClassifyTask() {
@@ -253,7 +289,9 @@ async function clearClassificationTags() {
     await loadClassify()
   } catch (e: unknown) {
     notifyError(e, 'Failed')
-  } finally { clearingTags.value = false }
+  } finally {
+    clearingTags.value = false
+  }
 }
 
 // Tab-switching lazy load
@@ -262,7 +300,7 @@ watch(subTab, (tab) => {
   else if (tab === 'discovery' && discoverySuggestions.value.length === 0 && !discoveryLoading.value) loadDiscovery()
   else if (tab === 'suggestions' && !suggestionStats.value && !suggestionsLoading.value) loadSuggestions()
   else if (tab === 'classify' && !classifyStatus.value && !classifyLoading.value) loadClassify()
-}, { immediate: true })
+}, {immediate: true})
 </script>
 
 <template>
@@ -293,34 +331,44 @@ watch(subTab, (tab) => {
               <UCard v-if="Object.keys(categoryStats.by_category).length > 0">
                 <template #header><span class="font-semibold">By Category</span></template>
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <div v-for="(count, cat) in categoryStats.by_category" :key="cat" class="flex items-center justify-between p-2 rounded bg-muted/30">
+                  <div v-for="(count, cat) in categoryStats.by_category" :key="cat"
+                       class="flex items-center justify-between p-2 rounded bg-muted/30">
                     <span class="text-sm font-medium capitalize">{{ cat }}</span>
-                    <UBadge :label="String(count)" color="neutral" variant="subtle" size="xs" />
+                    <UBadge :label="String(count)" color="neutral" variant="subtle" size="xs"/>
                   </div>
                 </div>
               </UCard>
             </div>
             <div v-else-if="categorizerLoading" class="flex justify-center py-8">
-              <UIcon name="i-lucide-loader-2" class="animate-spin size-6" />
+              <UIcon name="i-lucide-loader-2" class="animate-spin size-6"/>
             </div>
 
             <!-- Actions -->
             <UCard>
               <template #header><span class="font-semibold">Categorize / Set Category</span></template>
               <div class="space-y-2">
-                <UInput v-model="categorizePath" placeholder="File path" />
+                <UInput v-model="categorizePath" placeholder="File path"/>
                 <div class="flex gap-2">
-                  <UInput v-model="categorizeCategory" placeholder="Category (for manual set)" class="flex-1" />
+                  <UInput v-model="categorizeCategory" placeholder="Category (for manual set)" class="flex-1"/>
                 </div>
                 <div class="flex gap-2 flex-wrap">
-                  <UButton :loading="categorizing" icon="i-lucide-tag" label="Auto-Categorize File" :disabled="!categorizePath.trim()" @click="categorizeFile" />
-                  <UButton :loading="categorizing" icon="i-lucide-folder-sync" label="Categorize Directory" :disabled="!categorizePath.trim()" color="neutral" variant="outline" @click="categorizeDirectory" />
-                  <UButton :loading="categorizing" icon="i-lucide-pen" label="Set Category" :disabled="!categorizePath.trim() || !categorizeCategory.trim()" color="neutral" @click="setCategory" />
-                  <UButton icon="i-lucide-trash-2" label="Clean Stale" color="warning" variant="outline" :loading="cleaningStale" @click="cleanStaleCategories" />
-                  <UButton icon="i-lucide-refresh-cw" aria-label="Refresh stats" variant="ghost" color="neutral" @click="loadCategorizer" />
+                  <UButton :loading="categorizing" icon="i-lucide-tag" label="Auto-Categorize File"
+                           :disabled="!categorizePath.trim()" @click="categorizeFile"/>
+                  <UButton :loading="categorizing" icon="i-lucide-folder-sync" label="Categorize Directory"
+                           :disabled="!categorizePath.trim()" color="neutral" variant="outline"
+                           @click="categorizeDirectory"/>
+                  <UButton :loading="categorizing" icon="i-lucide-pen" label="Set Category"
+                           :disabled="!categorizePath.trim() || !categorizeCategory.trim()" color="neutral"
+                           @click="setCategory"/>
+                  <UButton icon="i-lucide-trash-2" label="Clean Stale" color="warning" variant="outline"
+                           :loading="cleaningStale" @click="cleanStaleCategories"/>
+                  <UButton icon="i-lucide-refresh-cw" aria-label="Refresh stats" variant="ghost" color="neutral"
+                           @click="loadCategorizer"/>
                 </div>
               </div>
-              <pre v-if="categorizeResult" class="mt-3 p-2 rounded bg-muted text-xs overflow-x-auto">{{ JSON.stringify(categorizeResult, null, 2) }}</pre>
+              <pre v-if="categorizeResult" class="mt-3 p-2 rounded bg-muted text-xs overflow-x-auto">{{
+                  JSON.stringify(categorizeResult, null, 2)
+                }}</pre>
             </UCard>
 
             <!-- Browse by category -->
@@ -328,12 +376,13 @@ watch(subTab, (tab) => {
               <template #header><span class="font-semibold">Browse by Category</span></template>
               <div class="flex gap-2">
                 <UInput v-model="browseCategory" placeholder="Category name" class="flex-1"
-                  @keyup.enter="browseByCategory"
+                        @keyup.enter="browseByCategory"
                 />
-                <UButton :loading="categoryItemsLoading" icon="i-lucide-search" label="Browse" :disabled="!browseCategory.trim()" @click="browseByCategory" />
+                <UButton :loading="categoryItemsLoading" icon="i-lucide-search" label="Browse"
+                         :disabled="!browseCategory.trim()" @click="browseByCategory"/>
               </div>
               <div v-if="categoryItemsLoading" class="flex justify-center py-4 mt-2">
-                <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+                <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
               </div>
               <div v-else-if="categoryItems.length > 0" class="mt-3 divide-y divide-default max-h-64 overflow-y-auto">
                 <div v-for="item in categoryItems" :key="item.id" class="py-2 text-sm">
@@ -341,7 +390,8 @@ watch(subTab, (tab) => {
                   <p class="text-xs text-muted truncate">{{ item.category }}</p>
                 </div>
               </div>
-              <p v-else-if="!categoryItemsLoading && browseCategory && categoryItems.length === 0" class="text-center py-4 text-muted text-sm mt-2">No items in this category.</p>
+              <p v-else-if="!categoryItemsLoading && browseCategory && categoryItems.length === 0"
+                 class="text-center py-4 text-muted text-sm mt-2">No items in this category.</p>
             </UCard>
           </template>
 
@@ -350,9 +400,11 @@ watch(subTab, (tab) => {
             <UCard>
               <template #header><span class="font-semibold">Scan Directory</span></template>
               <div class="flex gap-2">
-                <UInput v-model="scanDirectory" placeholder="Directory path to scan" class="flex-1" />
-                <UButton :loading="scanning" icon="i-lucide-compass" label="Scan" :disabled="!scanDirectory.trim()" @click="runDiscoveryScan" />
-                <UButton icon="i-lucide-refresh-cw" aria-label="Reload suggestions" variant="ghost" color="neutral" @click="loadDiscovery" />
+                <UInput v-model="scanDirectory" placeholder="Directory path to scan" class="flex-1"/>
+                <UButton :loading="scanning" icon="i-lucide-compass" label="Scan" :disabled="!scanDirectory.trim()"
+                         @click="runDiscoveryScan"/>
+                <UButton icon="i-lucide-refresh-cw" aria-label="Reload suggestions" variant="ghost" color="neutral"
+                         @click="loadDiscovery"/>
               </div>
             </UCard>
 
@@ -361,24 +413,29 @@ watch(subTab, (tab) => {
                 <span class="font-semibold">Suggestions ({{ discoverySuggestions.length }})</span>
               </template>
               <div v-if="discoveryLoading" class="flex justify-center py-6">
-                <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+                <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
               </div>
               <div v-else-if="discoverySuggestions.length === 0" class="text-center py-8 text-muted text-sm">
                 No discovery suggestions. Run a scan to find media files.
               </div>
               <div v-else class="divide-y divide-default">
-                <div v-for="s in discoverySuggestions" :key="s.original_path" class="flex items-center gap-3 py-2 flex-wrap">
+                <div v-for="s in discoverySuggestions" :key="s.original_path"
+                     class="flex items-center gap-3 py-2 flex-wrap">
                   <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium truncate">{{ s.suggested_name }}</p>
                     <p class="text-xs text-muted truncate">{{ s.original_path }}</p>
                     <div class="flex items-center gap-2 mt-0.5">
-                      <UBadge :label="s.type" color="neutral" variant="subtle" size="xs" />
+                      <UBadge :label="s.type" color="neutral" variant="subtle" size="xs"/>
                       <span class="text-xs text-muted">{{ Math.round(s.confidence * 100) }}% confidence</span>
                     </div>
                   </div>
                   <div class="flex gap-1">
-                    <UButton icon="i-lucide-check" aria-label="Apply suggestion" size="xs" variant="ghost" color="success" :loading="processingPaths.has(s.original_path)" @click="applyDiscovery(s.original_path)" />
-                    <UButton icon="i-lucide-x" aria-label="Dismiss suggestion" size="xs" variant="ghost" color="error" :loading="processingPaths.has(s.original_path)" @click="dismissDiscovery(s.original_path)" />
+                    <UButton icon="i-lucide-check" aria-label="Apply suggestion" size="xs" variant="ghost"
+                             color="success" :loading="processingPaths.has(s.original_path)"
+                             @click="applyDiscovery(s.original_path)"/>
+                    <UButton icon="i-lucide-x" aria-label="Dismiss suggestion" size="xs" variant="ghost" color="error"
+                             :loading="processingPaths.has(s.original_path)"
+                             @click="dismissDiscovery(s.original_path)"/>
                   </div>
                 </div>
               </div>
@@ -388,7 +445,7 @@ watch(subTab, (tab) => {
           <!-- ── Suggestions ─────────────────────────────────────────────── -->
           <template v-else-if="item.value === 'suggestions'">
             <div v-if="suggestionsLoading" class="flex justify-center py-8">
-              <UIcon name="i-lucide-loader-2" class="animate-spin size-6" />
+              <UIcon name="i-lucide-loader-2" class="animate-spin size-6"/>
             </div>
             <template v-else-if="suggestionStats">
               <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -410,7 +467,8 @@ watch(subTab, (tab) => {
                 </UCard>
               </div>
               <div class="flex justify-end">
-                <UButton icon="i-lucide-refresh-cw" aria-label="Refresh suggestion stats" variant="ghost" color="neutral" @click="loadSuggestions" />
+                <UButton icon="i-lucide-refresh-cw" aria-label="Refresh suggestion stats" variant="ghost"
+                         color="neutral" @click="loadSuggestions"/>
               </div>
             </template>
           </template>
@@ -418,7 +476,7 @@ watch(subTab, (tab) => {
           <!-- ── HuggingFace Classification ──────────────────────────────── -->
           <template v-else-if="item.value === 'classify'">
             <div v-if="classifyLoading" class="flex justify-center py-8">
-              <UIcon name="i-lucide-loader-2" class="animate-spin size-6" />
+              <UIcon name="i-lucide-loader-2" class="animate-spin size-6"/>
             </div>
             <template v-else>
               <!-- Status card -->
@@ -427,11 +485,13 @@ watch(subTab, (tab) => {
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
                   <div>
                     <p class="text-muted text-xs">Configured</p>
-                    <UBadge :label="classifyStatus.configured ? 'Yes' : 'No'" :color="classifyStatus.configured ? 'success' : 'error'" variant="subtle" size="xs" />
+                    <UBadge :label="classifyStatus.configured ? 'Yes' : 'No'"
+                            :color="classifyStatus.configured ? 'success' : 'error'" variant="subtle" size="xs"/>
                   </div>
                   <div>
                     <p class="text-muted text-xs">Enabled</p>
-                    <UBadge :label="classifyStatus.enabled ? 'Yes' : 'No'" :color="classifyStatus.enabled ? 'success' : 'neutral'" variant="subtle" size="xs" />
+                    <UBadge :label="classifyStatus.enabled ? 'Yes' : 'No'"
+                            :color="classifyStatus.enabled ? 'success' : 'neutral'" variant="subtle" size="xs"/>
                   </div>
                   <div>
                     <p class="text-muted text-xs">Model</p>
@@ -489,22 +549,31 @@ watch(subTab, (tab) => {
                 <template #header><span class="font-semibold">Classify</span></template>
                 <div class="space-y-3">
                   <div class="flex gap-2">
-                    <UInput v-model="classifyPath" placeholder="File path to classify" class="flex-1" />
-                    <UButton :loading="classifying" icon="i-lucide-brain" label="Classify File" :disabled="!classifyPath.trim()" @click="classifyFile" />
+                    <UInput v-model="classifyPath" placeholder="File path to classify" class="flex-1"/>
+                    <UButton :loading="classifying" icon="i-lucide-brain" label="Classify File"
+                             :disabled="!classifyPath.trim()" @click="classifyFile"/>
                   </div>
                   <div class="flex gap-2 flex-wrap">
-                    <UButton :loading="classifying" icon="i-lucide-folder-open" label="Classify Directory" :disabled="!classifyPath.trim()" color="neutral" variant="outline" @click="classifyDirectory" />
-                    <UButton :loading="classifying" icon="i-lucide-list-checks" label="Classify All Pending" color="warning" variant="outline" @click="classifyAllPending" />
-                    <UButton icon="i-lucide-play" label="Run Task Now" color="neutral" variant="outline" :disabled="!classifyStatus?.configured" @click="runClassifyTask" />
-                    <UButton icon="i-lucide-refresh-cw" aria-label="Refresh classification" variant="ghost" color="neutral" @click="loadClassify" />
+                    <UButton :loading="classifying" icon="i-lucide-folder-open" label="Classify Directory"
+                             :disabled="!classifyPath.trim()" color="neutral" variant="outline"
+                             @click="classifyDirectory"/>
+                    <UButton :loading="classifying" icon="i-lucide-list-checks" label="Classify All Pending"
+                             color="warning" variant="outline" @click="classifyAllPending"/>
+                    <UButton icon="i-lucide-play" label="Run Task Now" color="neutral" variant="outline"
+                             :disabled="!classifyStatus?.configured" @click="runClassifyTask"/>
+                    <UButton icon="i-lucide-refresh-cw" aria-label="Refresh classification" variant="ghost"
+                             color="neutral" @click="loadClassify"/>
                   </div>
-                  <pre v-if="classifyResult" class="p-2 rounded bg-muted text-xs overflow-x-auto">{{ JSON.stringify(classifyResult, null, 2) }}</pre>
+                  <pre v-if="classifyResult" class="p-2 rounded bg-muted text-xs overflow-x-auto">{{
+                      JSON.stringify(classifyResult, null, 2)
+                    }}</pre>
                   <!-- Clear tags -->
                   <div class="border-t border-default pt-3">
                     <p class="text-xs text-muted mb-2">Clear classification tags for a media item by ID:</p>
                     <div class="flex gap-2">
-                      <UInput v-model="clearTagsId" placeholder="Media ID" class="flex-1" />
-                      <UButton :loading="clearingTags" icon="i-lucide-eraser" label="Clear Tags" color="error" variant="outline" :disabled="!clearTagsId.trim()" @click="clearClassificationTags" />
+                      <UInput v-model="clearTagsId" placeholder="Media ID" class="flex-1"/>
+                      <UButton :loading="clearingTags" icon="i-lucide-eraser" label="Clear Tags" color="error"
+                               variant="outline" :disabled="!clearTagsId.trim()" @click="clearClassificationTags"/>
                     </div>
                   </div>
                 </div>
@@ -518,14 +587,15 @@ watch(subTab, (tab) => {
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium truncate">{{ it.name }}</p>
                       <div class="flex flex-wrap gap-1 mt-0.5">
-                        <UBadge v-for="tag in (it.tags ?? []).slice(0, 5)" :key="tag" :label="tag" color="neutral" variant="subtle" size="xs" />
+                        <UBadge v-for="tag in (it.tags ?? []).slice(0, 5)" :key="tag" :label="tag" color="neutral"
+                                variant="subtle" size="xs"/>
                       </div>
                     </div>
                     <UBadge
-                      :label="`${Math.round(it.mature_score * 100)}%`"
-                      :color="it.mature_score > 0.7 ? 'error' : it.mature_score > 0.4 ? 'warning' : 'success'"
-                      variant="subtle"
-                      size="xs"
+                        :label="`${Math.round(it.mature_score * 100)}%`"
+                        :color="it.mature_score > 0.7 ? 'error' : it.mature_score > 0.4 ? 'warning' : 'success'"
+                        variant="subtle"
+                        size="xs"
                     />
                   </div>
                 </div>

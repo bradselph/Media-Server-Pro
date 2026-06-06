@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 
@@ -302,10 +303,10 @@ func (s *Server) Start() error {
 
 			if CriticalModules[module.Name()] {
 				s.log.Info("Stopping %d already-started modules...", len(started))
-				for i := len(started) - 1; i >= 0; i-- {
+				for _, s0 := range slices.Backward(started) {
 					stopCtx, stopCancel := context.WithTimeout(ctx, 15*time.Second)
-					if stopErr := started[i].Stop(stopCtx); stopErr != nil {
-						s.log.Warn("Failed to stop module %s during rollback: %v", started[i].Name(), stopErr)
+					if stopErr := s0.Stop(stopCtx); stopErr != nil {
+						s.log.Warn("Failed to stop module %s during rollback: %v", s0.Name(), stopErr)
 					}
 					stopCancel()
 				}
@@ -502,8 +503,8 @@ func restartBindDelay() time.Duration {
 
 func (s *Server) shutdownModules(ctx context.Context) {
 	s.log.Info("Stopping modules...")
-	for i := len(s.modules) - 1; i >= 0; i-- {
-		module := s.modules[i]
+	for _, module := range slices.Backward(s.modules) {
+
 		s.log.Info("Stopping module: %s", module.Name())
 		if err := module.Stop(ctx); err != nil {
 			s.log.Error("Failed to stop module %s: %v", module.Name(), err)
@@ -517,7 +518,7 @@ func (s *Server) saveConfigWithRetry() {
 	// Save configuration with retry logic (graceful degradation on failure)
 	// Retry up to 3 times with 100ms delay to handle temporary filesystem issues
 	saved := false
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := s.config.Save(); err != nil {
 			s.log.Warn("Failed to save configuration (attempt %d/3): %v", i+1, err)
 			if i < 2 {

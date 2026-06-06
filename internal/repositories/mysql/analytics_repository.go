@@ -35,7 +35,7 @@ func (r *AnalyticsRepository) Create(ctx context.Context, event *models.Analytic
 type listWhereSpec struct {
 	ok     bool
 	clause string
-	value  interface{}
+	value  any
 }
 
 // applyListFilter applies optional filter conditions to the query via a single loop to keep cyclomatic complexity low.

@@ -2,13 +2,11 @@ package handlers
 
 import (
 	"net/http"
-	"sort"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
-	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/thumbnails"
 )
@@ -92,9 +90,8 @@ func (h *Handler) GetContinueWatching(c *gin.Context) {
 	if !h.requireSuggestions(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -113,9 +110,8 @@ func (h *Handler) GetPersonalizedSuggestions(c *gin.Context) {
 	if !h.requireSuggestionsCatalogue(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 	h.respondSuggestions(c, session.UserID, 10, 100)
@@ -126,9 +122,8 @@ func (h *Handler) RecordRating(c *gin.Context) {
 	if !h.requireSuggestions(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -163,9 +158,8 @@ func (h *Handler) GetMyProfile(c *gin.Context) {
 	if !h.requireSuggestions(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 	profile := h.suggestions.GetUserProfile(session.UserID)
@@ -189,9 +183,8 @@ func (h *Handler) ResetMyProfile(c *gin.Context) {
 	if !h.requireSuggestions(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 	if err := h.suggestions.ResetUserProfile(session.UserID); err != nil {
@@ -215,9 +208,8 @@ func (h *Handler) GetMyRatings(c *gin.Context) {
 	if !h.requireSuggestions(c) {
 		return
 	}
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -318,9 +310,8 @@ type mediaRecentItem struct {
 // GetNewSinceLastVisit returns media added since the user's previous login.
 // Requires auth. Falls back to a 7-day window if previous_last_login is not set.
 func (h *Handler) GetNewSinceLastVisit(c *gin.Context) {
-	session := getSession(c)
+	session := RequireSession(c)
 	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
 		return
 	}
 
@@ -361,168 +352,5 @@ func (h *Handler) GetNewSinceLastVisit(c *gin.Context) {
 		"items": results,
 		"since": cutoff,
 		"total": len(results),
-	})
-}
-
-// onDeckItem is the response shape for GetOnDeck.
-type onDeckItem struct {
-	MediaID      string  `json:"media_id"`
-	Name         string  `json:"name"`
-	ShowName     string  `json:"show_name"`
-	Season       int     `json:"season"`
-	Episode      int     `json:"episode"`
-	Category     string  `json:"category"`
-	Duration     float64 `json:"duration,omitempty"`
-	ThumbnailURL string  `json:"thumbnail_url,omitempty"`
-}
-
-// episodeKey is used to sort episodes within a show.
-type episodeKey struct {
-	Season  int
-	Episode int
-	Path    string
-	ID      string
-	Name    string
-	Cat     string
-}
-
-// GetOnDeck returns the next unwatched episode per TV show / Anime series
-// for the authenticated user. Shows where the user has not watched any episode
-// are excluded (use the browse/categories page for discovery).
-func (h *Handler) GetOnDeck(c *gin.Context) {
-	if !h.requireSuggestions(c) {
-		return
-	}
-	session := getSession(c)
-	if session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
-		return
-	}
-	if !h.requireCategorizer(c) {
-		return
-	}
-
-	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 10, Min: 1, Max: 50})
-	canViewMature := h.canViewMatureContent(c)
-
-	// Build watched-path set + last-viewed time from suggestion profile.
-	profile := h.suggestions.GetUserProfile(session.UserID)
-	watchedPaths := make(map[string]time.Time) // path → last viewed
-	if profile != nil {
-		for _, vh := range profile.ViewHistory {
-			watchedPaths[vh.MediaPath] = vh.LastViewed
-		}
-	}
-
-	// Gather TV and Anime items from categorizer.
-	tvItems := h.categorizer.GetByCategory(categorizer.CategoryTVShows)
-	tvItems = append(tvItems, h.categorizer.GetByCategory(categorizer.CategoryAnime)...)
-
-	// Group episodes by show name.
-	type showEpisodes struct {
-		episodes    []episodeKey
-		lastWatched time.Time // most recent watch time for any ep in this show
-	}
-	shows := make(map[string]*showEpisodes)
-	for _, item := range tvItems {
-		if item.DetectedInfo == nil || item.DetectedInfo.ShowName == "" {
-			continue
-		}
-		showName := item.DetectedInfo.ShowName
-		if _, ok := shows[showName]; !ok {
-			shows[showName] = &showEpisodes{}
-		}
-		shows[showName].episodes = append(shows[showName].episodes, episodeKey{
-			Season:  item.DetectedInfo.Season,
-			Episode: item.DetectedInfo.Episode,
-			Path:    item.Path,
-			ID:      item.ID,
-			Name:    item.Name,
-			Cat:     string(item.Category),
-		})
-		// Track the most recent watch time for this show (for ranking).
-		if t, ok := watchedPaths[item.Path]; ok {
-			if t.After(shows[showName].lastWatched) {
-				shows[showName].lastWatched = t
-			}
-		}
-	}
-
-	// For each show, sort episodes and find the next unwatched one.
-	type showCandidate struct {
-		item        onDeckItem
-		lastWatched time.Time
-	}
-	var candidates []showCandidate
-
-	for showName, show := range shows {
-		// Skip shows the user has never touched.
-		hasWatched := false
-		for _, ep := range show.episodes {
-			if _, ok := watchedPaths[ep.Path]; ok {
-				hasWatched = true
-				break
-			}
-		}
-		if !hasWatched {
-			continue
-		}
-
-		// Sort episodes: season asc, then episode asc.
-		sort.Slice(show.episodes, func(i, j int) bool {
-			if show.episodes[i].Season != show.episodes[j].Season {
-				return show.episodes[i].Season < show.episodes[j].Season
-			}
-			return show.episodes[i].Episode < show.episodes[j].Episode
-		})
-
-		// Walk sorted episodes to find the first unwatched one.
-		for _, ep := range show.episodes {
-			if _, watched := watchedPaths[ep.Path]; watched {
-				continue
-			}
-			// Mature-content gate + duration lookup: look up the media item.
-			var epDuration float64
-			if h.media != nil && ep.Path != "" {
-				if mi, err := h.media.GetMedia(ep.Path); err == nil && mi != nil {
-					if mi.IsMature && !canViewMature {
-						continue
-					}
-					epDuration = mi.Duration
-				}
-			}
-			item := onDeckItem{
-				MediaID:  ep.ID,
-				Name:     ep.Name,
-				ShowName: showName,
-				Season:   ep.Season,
-				Episode:  ep.Episode,
-				Category: ep.Cat,
-				Duration: epDuration,
-			}
-			if h.thumbnails != nil && ep.ID != "" {
-				item.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(ep.ID))
-			}
-			candidates = append(candidates, showCandidate{item: item, lastWatched: show.lastWatched})
-			break // only one "next episode" per show
-		}
-	}
-
-	// Sort candidates by most-recently-watched show first.
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].lastWatched.After(candidates[j].lastWatched)
-	})
-
-	items := make([]onDeckItem, 0, limit)
-	for i := range candidates {
-		if i >= limit {
-			break
-		}
-		items = append(items, candidates[i].item)
-	}
-
-	writeSuccess(c, map[string]any{
-		"items": items,
-		"total": len(items),
 	})
 }

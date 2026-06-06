@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -219,8 +220,8 @@ func TestGetRetentionGrid_UpperTriangular(t *testing.T) {
 			continue
 		}
 		age := 0
-		for i := len(g.Weeks) - 1; i >= 0; i-- {
-			if g.Weeks[i].CohortStart == c.CohortStart {
+		for i, v := range slices.Backward(g.Weeks) {
+			if v.CohortStart == c.CohortStart {
 				age = len(g.Weeks) - 1 - i
 				break
 			}
@@ -401,7 +402,7 @@ func TestGetPeriodComparison_ComputesDelta(t *testing.T) {
 	m := moduleWithEvents(t, nil)
 	now := time.Now()
 	// Seed dailyStats with synthetic numbers spanning two windows of 3 days.
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		date := now.AddDate(0, 0, -i).Format(dateFormat)
 		m.dailyStats[date] = &models.DailyStats{Date: date, TotalViews: 20}
 	}
@@ -450,7 +451,7 @@ func TestGetMetricTimeline_GapFills(t *testing.T) {
 		t.Errorf("expected today's value=99, got %f", tl[6].Value)
 	}
 	// Days with no DailyStats entry must come back as 0, not omitted.
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		if tl[i].Value != 0 {
 			t.Errorf("expected gap day %s to be 0, got %f", tl[i].Date, tl[i].Value)
 		}
@@ -478,7 +479,7 @@ func TestGetMetricForecast_TrendDirection(t *testing.T) {
 	m := moduleWithEvents(t, nil)
 	now := time.Now()
 	// Strictly increasing values over 7 days → forecast should call this "up".
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		date := now.AddDate(0, 0, -i).Format(dateFormat)
 		// Today (i=0) is the highest, going back gets smaller.
 		m.dailyStats[date] = &models.DailyStats{Date: date, TotalViews: 100 - i*10}
@@ -496,7 +497,7 @@ func TestGetMetricForecast_FlatSeriesIsFlat(t *testing.T) {
 	m := moduleWithEvents(t, nil)
 	now := time.Now()
 	// Constant value → slope ~0 → direction "flat".
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		date := now.AddDate(0, 0, -i).Format(dateFormat)
 		m.dailyStats[date] = &models.DailyStats{Date: date, TotalViews: 50}
 	}
@@ -512,7 +513,7 @@ func TestGetMetricForecast_NegativeProjectionClampedToZero(t *testing.T) {
 	// A line so steep downward that the projection would naturally land
 	// below zero. Forecast must clamp to 0 — negative event counts are
 	// nonsense and would render as a confusing "-12 views tomorrow".
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		date := now.AddDate(0, 0, -i).Format(dateFormat)
 		m.dailyStats[date] = &models.DailyStats{Date: date, TotalViews: i * 5}
 	}

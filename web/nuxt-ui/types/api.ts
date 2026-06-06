@@ -1228,16 +1228,10 @@ export interface CategoryBrowseResponse {
 // Generated from api_spec/openapi.yaml — do not edit manually
 export type RatedItem = components['schemas']['RatedItem']
 export type RecentItem = components['schemas']['RecentItem']
-export type OnDeckItem = components['schemas']['OnDeckItem']
 
 export interface NewSinceResponse {
     items: RecentItem[]
     since: string
-    total: number
-}
-
-export interface OnDeckResponse {
-    items: OnDeckItem[]
     total: number
 }
 

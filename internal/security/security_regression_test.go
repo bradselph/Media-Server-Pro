@@ -108,8 +108,8 @@ func TestFND0016_IPEntry_ExpiresAt_InList(t *testing.T) {
 
 	beforeAdd := time.Now()
 
-	// Create an expiry time (simulating the IIFE pattern from line 215)
-	expiryPtr := func() *time.Time { t := time.Now().Add(duration); return &t }()
+	// Create an expiry time (simulating the pattern from line 215)
+	expiryPtr := new(time.Now().Add(duration))
 
 	err := list.Add(value, comment, addedBy, expiryPtr)
 	if err != nil {

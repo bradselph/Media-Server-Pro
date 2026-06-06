@@ -18,32 +18,40 @@ defineProps<{
 
 <template>
   <div
-    class="audio-bars flex items-end justify-center gap-0.5"
-    :class="[
+      class="audio-bars flex items-end justify-center gap-0.5"
+      :class="[
       size === 'xs' ? 'h-5' : size === 'lg' ? 'h-16' : size === 'md' ? 'h-10' : 'h-8',
       color || 'text-primary',
     ]"
-    aria-hidden="true"
+      aria-hidden="true"
   >
     <span
-      v-for="i in (bars ?? 5)"
-      :key="i"
-      class="audio-bar inline-block rounded-full bg-current opacity-80"
-      :class="[
+        v-for="i in (bars ?? 5)"
+        :key="i"
+        class="audio-bar inline-block rounded-full bg-current opacity-80"
+        :class="[
         size === 'xs' ? 'w-0.75' : size === 'lg' ? 'w-2' : 'w-1.5',
         animate !== false ? 'animate-audio-bar' : '',
       ]"
-      :style="{ animationDelay: `${(i - 1) * 120}ms`, height: animate !== false ? undefined : `${20 + ((i * 37) % 60)}%` }"
+        :style="{ animationDelay: `${(i - 1) * 120}ms`, height: animate !== false ? undefined : `${20 + ((i * 37) % 60)}%` }"
     />
   </div>
 </template>
 
 <style scoped>
 @keyframes audio-bar {
-  0%, 100% { height: 15%; }
-  25% { height: 80%; }
-  50% { height: 35%; }
-  75% { height: 65%; }
+  0%, 100% {
+    height: 15%;
+  }
+  25% {
+    height: 80%;
+  }
+  50% {
+    height: 35%;
+  }
+  75% {
+    height: 65%;
+  }
 }
 
 .animate-audio-bar {

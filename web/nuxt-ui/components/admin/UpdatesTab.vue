@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { UpdateInfo, UpdateStatus } from '~/types/api'
-import { useAdminFeedback } from '~/composables/useAdminFeedback'
+import type {UpdateInfo, UpdateStatus} from '~/types/api'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const { notifyError, notifySuccess, notifyInfo } = useAdminFeedback()
+const {notifyError, notifySuccess, notifyInfo} = useAdminFeedback()
 
 // ── Update config ─────────────────────────────────────────────────────────────
 const updateMethod = ref<'source' | 'binary'>('binary')
@@ -19,20 +19,23 @@ async function loadUpdateConfig() {
     updateBranch.value = cfg.branch
   } catch (e: unknown) {
     notifyError(e, 'Failed to load config')
+  } finally {
+    configLoading.value = false
   }
-  finally { configLoading.value = false }
 }
 
 async function saveUpdateConfig() {
   configSaving.value = true
   try {
-    const cfg = await adminApi.setUpdateConfig({ update_method: updateMethod.value, branch: updateBranch.value })
+    const cfg = await adminApi.setUpdateConfig({update_method: updateMethod.value, branch: updateBranch.value})
     updateMethod.value = cfg.update_method
     updateBranch.value = cfg.branch
     notifySuccess('Update config saved')
   } catch (e: unknown) {
     notifyError(e, 'Failed to save config')
-  } finally { configSaving.value = false }
+  } finally {
+    configSaving.value = false
+  }
 }
 
 // ── Binary update ─────────────────────────────────────────────────────────────
@@ -53,6 +56,7 @@ function stopPolling() {
     pollInterval.value = null
   }
 }
+
 function stopSourcePolling() {
   if (sourcePollInterval.value !== null) {
     clearInterval(sourcePollInterval.value)
@@ -61,7 +65,11 @@ function stopSourcePolling() {
 }
 
 let destroyed = false
-onUnmounted(() => { destroyed = true; stopPolling(); stopSourcePolling() })
+onUnmounted(() => {
+  destroyed = true;
+  stopPolling();
+  stopSourcePolling()
+})
 
 async function checkForUpdates() {
   checking.value = true
@@ -89,14 +97,22 @@ async function applyUpdate() {
     if (status.value?.in_progress) {
       stopPolling()
       pollInterval.value = setInterval(async () => {
-        if (destroyed) { stopPolling(); applying.value = false; return }
+        if (destroyed) {
+          stopPolling();
+          applying.value = false;
+          return
+        }
         try {
           const s = await adminApi.getUpdateStatus()
           status.value = s
-          if (!s.in_progress) { stopPolling(); applying.value = false }
+          if (!s.in_progress) {
+            stopPolling();
+            applying.value = false
+          }
         } catch (e: unknown) {
           notifyError(e, 'Status polling failed')
-          stopPolling(); applying.value = false
+          stopPolling();
+          applying.value = false
         }
       }, 3000)
     } else {
@@ -120,7 +136,9 @@ async function checkSourceUpdates() {
     sourceInfo.value = await adminApi.checkSourceUpdates()
   } catch (e: unknown) {
     notifyError(e, 'Source check failed')
-  } finally { sourceChecking.value = false }
+  } finally {
+    sourceChecking.value = false
+  }
 }
 
 async function applySourceUpdate() {
@@ -138,14 +156,22 @@ async function applySourceUpdate() {
     if (status.value?.in_progress) {
       stopSourcePolling()
       sourcePollInterval.value = setInterval(async () => {
-        if (destroyed) { stopSourcePolling(); sourceApplying.value = false; return }
+        if (destroyed) {
+          stopSourcePolling();
+          sourceApplying.value = false;
+          return
+        }
         try {
           const s = await adminApi.getSourceUpdateProgress()
           status.value = s
-          if (!s.in_progress) { stopSourcePolling(); sourceApplying.value = false }
+          if (!s.in_progress) {
+            stopSourcePolling();
+            sourceApplying.value = false
+          }
         } catch (e: unknown) {
           notifyError(e, 'Progress polling failed')
-          stopSourcePolling(); sourceApplying.value = false
+          stopSourcePolling();
+          sourceApplying.value = false
         }
       }, 3000)
     } else {
@@ -170,26 +196,27 @@ onMounted(async () => {
     <UCard>
       <template #header>
         <div class="font-semibold flex items-center gap-2">
-          <UIcon name="i-lucide-settings-2" class="size-4" />
+          <UIcon name="i-lucide-settings-2" class="size-4"/>
           Update Configuration
         </div>
       </template>
       <div v-if="configLoading" class="flex justify-center py-3">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
       </div>
       <div v-else class="space-y-3">
         <div class="flex flex-wrap gap-3 items-end">
           <UFormField label="Update Method">
             <USelect
-              v-model="updateMethod"
-              :items="[{ label: 'Binary (GitHub release)', value: 'binary' }, { label: 'Source (git pull)', value: 'source' }]"
-              class="w-52"
+                v-model="updateMethod"
+                :items="[{ label: 'Binary (GitHub release)', value: 'binary' }, { label: 'Source (git pull)', value: 'source' }]"
+                class="w-52"
             />
           </UFormField>
           <UFormField label="Branch">
-            <UInput v-model="updateBranch" placeholder="main" class="w-36" />
+            <UInput v-model="updateBranch" placeholder="main" class="w-36"/>
           </UFormField>
-          <UButton :loading="configSaving" icon="i-lucide-save" label="Save" size="sm" variant="outline" color="neutral" @click="saveUpdateConfig" />
+          <UButton :loading="configSaving" icon="i-lucide-save" label="Save" size="sm" variant="outline" color="neutral"
+                   @click="saveUpdateConfig"/>
         </div>
         <p class="text-xs text-muted">
           <span v-if="updateMethod === 'source'">Source mode: pulls latest code from git and rebuilds.</span>
@@ -203,7 +230,7 @@ onMounted(async () => {
       <UCard>
         <template #header>
           <div class="font-semibold flex items-center gap-2">
-            <UIcon name="i-lucide-package" class="size-4" />
+            <UIcon name="i-lucide-package" class="size-4"/>
             Version Info
           </div>
         </template>
@@ -215,8 +242,9 @@ onMounted(async () => {
           <div class="flex items-center gap-2">
             <span class="text-muted">Latest:</span>
             <span class="font-mono">{{ info?.latest_version || '—' }}</span>
-            <UBadge v-if="info?.update_available" label="Update Available" color="warning" variant="subtle" size="xs" />
-            <UBadge v-else-if="info && !info.update_available" label="Up to date" color="success" variant="subtle" size="xs" />
+            <UBadge v-if="info?.update_available" label="Update Available" color="warning" variant="subtle" size="xs"/>
+            <UBadge v-else-if="info && !info.update_available" label="Up to date" color="success" variant="subtle"
+                    size="xs"/>
           </div>
           <div v-if="info?.published_at" class="flex items-center gap-2">
             <span class="text-muted">Released:</span>
@@ -226,19 +254,24 @@ onMounted(async () => {
       </UCard>
 
       <UCard v-if="info?.release_notes">
-        <template #header><div class="font-semibold">Release Notes</div></template>
+        <template #header>
+          <div class="font-semibold">Release Notes</div>
+        </template>
         <pre class="text-sm whitespace-pre-wrap text-muted">{{ info.release_notes }}</pre>
       </UCard>
 
       <div class="flex gap-2">
-        <UButton icon="i-lucide-refresh-cw" label="Check for Updates" :loading="checking" variant="outline" color="neutral" @click="checkForUpdates" />
-        <UButton v-if="info?.update_available" icon="i-lucide-download" label="Apply Update" :loading="applying" color="primary" @click="confirmOpen = true" />
+        <UButton icon="i-lucide-refresh-cw" label="Check for Updates" :loading="checking" variant="outline"
+                 color="neutral" @click="checkForUpdates"/>
+        <UButton v-if="info?.update_available" icon="i-lucide-download" label="Apply Update" :loading="applying"
+                 color="primary" @click="confirmOpen = true"/>
       </div>
 
-      <UModal v-model:open="confirmOpen" title="Apply Update" description="This will restart the server. Active streams will be interrupted.">
+      <UModal v-model:open="confirmOpen" title="Apply Update"
+              description="This will restart the server. Active streams will be interrupted.">
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmOpen = false" />
-          <UButton color="warning" label="Apply Update" @click="applyUpdate" />
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmOpen = false"/>
+          <UButton color="warning" label="Apply Update" @click="applyUpdate"/>
         </template>
       </UModal>
     </template>
@@ -248,17 +281,18 @@ onMounted(async () => {
       <UCard>
         <template #header>
           <div class="font-semibold flex items-center gap-2">
-            <UIcon name="i-lucide-git-pull-request" class="size-4" />
+            <UIcon name="i-lucide-git-pull-request" class="size-4"/>
             Source Update Status
           </div>
         </template>
         <div v-if="sourceChecking" class="flex justify-center py-3">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
         </div>
         <div v-else-if="sourceInfo" class="space-y-2 text-sm">
           <div class="flex items-center gap-2">
-            <UBadge v-if="sourceInfo.updates_available" label="Updates Available" color="warning" variant="subtle" size="xs" />
-            <UBadge v-else label="Up to date" color="success" variant="subtle" size="xs" />
+            <UBadge v-if="sourceInfo.updates_available" label="Updates Available" color="warning" variant="subtle"
+                    size="xs"/>
+            <UBadge v-else label="Up to date" color="success" variant="subtle" size="xs"/>
           </div>
           <div v-if="sourceInfo.remote_commit" class="flex items-center gap-2">
             <span class="text-muted">Remote commit:</span>
@@ -269,30 +303,35 @@ onMounted(async () => {
       </UCard>
 
       <div class="flex gap-2">
-        <UButton icon="i-lucide-refresh-cw" label="Check for Updates" :loading="sourceChecking" variant="outline" color="neutral" @click="checkSourceUpdates" />
-        <UButton v-if="sourceInfo?.updates_available" icon="i-lucide-git-pull-request" label="Apply Source Update" :loading="sourceApplying" color="primary" @click="sourceConfirmOpen = true" />
+        <UButton icon="i-lucide-refresh-cw" label="Check for Updates" :loading="sourceChecking" variant="outline"
+                 color="neutral" @click="checkSourceUpdates"/>
+        <UButton v-if="sourceInfo?.updates_available" icon="i-lucide-git-pull-request" label="Apply Source Update"
+                 :loading="sourceApplying" color="primary" @click="sourceConfirmOpen = true"/>
       </div>
 
-      <UModal v-model:open="sourceConfirmOpen" title="Apply Source Update" description="This will pull from git and rebuild. The server will restart. Active streams will be interrupted.">
+      <UModal v-model:open="sourceConfirmOpen" title="Apply Source Update"
+              description="This will pull from git and rebuild. The server will restart. Active streams will be interrupted.">
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="sourceConfirmOpen = false" />
-          <UButton color="warning" label="Pull & Rebuild" @click="applySourceUpdate" />
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="sourceConfirmOpen = false"/>
+          <UButton color="warning" label="Pull & Rebuild" @click="applySourceUpdate"/>
         </template>
       </UModal>
     </template>
 
     <!-- Shared update status (shown during both binary and source updates) -->
     <UCard v-if="status && (status.in_progress || status.error || status.stage)">
-      <template #header><div class="font-semibold">Update Progress</div></template>
+      <template #header>
+        <div class="font-semibold">Update Progress</div>
+      </template>
       <div class="space-y-2">
         <div class="flex items-center gap-2">
           <UIcon
-            :name="status.error ? 'i-lucide-x-circle' : !status.in_progress ? 'i-lucide-check-circle' : 'i-lucide-loader-2'"
-            :class="[status.error ? 'text-error' : !status.in_progress ? 'text-success' : 'text-info animate-spin', 'size-4']"
+              :name="status.error ? 'i-lucide-x-circle' : !status.in_progress ? 'i-lucide-check-circle' : 'i-lucide-loader-2'"
+              :class="[status.error ? 'text-error' : !status.in_progress ? 'text-success' : 'text-info animate-spin', 'size-4']"
           />
           <span class="text-sm capitalize">{{ status.stage || (status.in_progress ? 'In Progress' : 'Done') }}</span>
         </div>
-        <UProgress v-if="status.progress != null" :value="status.progress" size="sm" />
+        <UProgress v-if="status.progress != null" :value="status.progress" size="sm"/>
         <p v-if="status.error" class="text-sm text-error">{{ status.error }}</p>
       </div>
     </UCard>

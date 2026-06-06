@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ title: '18 U.S.C. § 2257 Compliance Statement' })
+definePageMeta({title: '18 U.S.C. § 2257 Compliance Statement'})
 
 const brand = useBrandConfig()
 

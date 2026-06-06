@@ -542,9 +542,7 @@ func TestMigrateHLSCleanupEnabled_RespectsExplicitOptIn(t *testing.T) {
 func TestTaskOverride_RoundTripJSON(t *testing.T) {
 	// Pointer-typed fields must round-trip through JSON so the absent-vs-false
 	// distinction survives a save/load cycle.
-	enabled := false
-	secs := 1800
-	in := TaskOverride{Enabled: &enabled, ScheduleSecs: &secs}
+	in := TaskOverride{Enabled: new(false), ScheduleSecs: new(1800)}
 
 	blob, err := json.Marshal(in)
 	if err != nil {

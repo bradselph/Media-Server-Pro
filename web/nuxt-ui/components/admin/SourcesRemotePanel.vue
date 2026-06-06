@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import type { RemoteSourceState, RemoteStats, RemoteMediaItem } from '~/types/api'
-import { formatBytes } from '~/utils/format'
-import { useAdminFeedback } from '~/composables/useAdminFeedback'
+import type {RemoteMediaItem, RemoteSourceState, RemoteStats} from '~/types/api'
+import {formatBytes} from '~/utils/format'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const mediaApi = useMediaApi()
-const { notifyError, notifySuccess } = useAdminFeedback()
+const {notifyError, notifySuccess} = useAdminFeedback()
 
 let destroyed = false
-onUnmounted(() => { destroyed = true })
+onUnmounted(() => {
+  destroyed = true
+})
 
 const remoteStats = ref<RemoteStats | null>(null)
 const remoteSources = ref<RemoteSourceState[]>([])
@@ -43,7 +45,9 @@ async function loadRemote() {
     remoteSources.value = sources ?? []
   } catch (e: unknown) {
     notifyError(e, 'Failed to load remote sources', 'i-lucide-alert-circle')
-  } finally { remoteLoading.value = false }
+  } finally {
+    remoteLoading.value = false
+  }
 }
 
 async function addRemoteSource() {
@@ -57,12 +61,17 @@ async function addRemoteSource() {
       password: newRemotePass.value || undefined,
     })
     if (destroyed) return
-    newRemoteName.value = ''; newRemoteUrl.value = ''; newRemoteUser.value = ''; newRemotePass.value = ''
+    newRemoteName.value = '';
+    newRemoteUrl.value = '';
+    newRemoteUser.value = '';
+    newRemotePass.value = ''
     notifySuccess('Remote source added')
     await loadRemote()
   } catch (e: unknown) {
     notifyError(e, 'Failed')
-  } finally { addingRemote.value = false }
+  } finally {
+    addingRemote.value = false
+  }
 }
 
 // Tracks per-source actions in flight so a rapid double-click can't fire a
@@ -117,7 +126,9 @@ async function loadAllRemoteMedia() {
     remoteMedia.value = media ?? []
   } catch (e: unknown) {
     notifyError(e, 'Failed to load remote media')
-  } finally { remoteMediaLoading.value = false }
+  } finally {
+    remoteMediaLoading.value = false
+  }
 }
 
 async function loadSourceMedia(name: string) {
@@ -130,7 +141,9 @@ async function loadSourceMedia(name: string) {
     remoteMedia.value = media ?? []
   } catch (e: unknown) {
     notifyError(e, 'Failed to load source media')
-  } finally { remoteMediaLoading.value = false }
+  } finally {
+    remoteMediaLoading.value = false
+  }
 }
 
 async function cacheRemoteItem(url: string, sourceName: string) {
@@ -171,25 +184,26 @@ onMounted(loadRemote)
     <UCard>
       <template #header>
         <div class="font-semibold flex items-center gap-2">
-          <UIcon name="i-lucide-plus" class="size-4" />
+          <UIcon name="i-lucide-plus" class="size-4"/>
           Add Remote Source
         </div>
       </template>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <UInput v-model="newRemoteName" placeholder="Name" />
-        <UInput v-model="newRemoteUrl" placeholder="URL (http://...)" />
-        <UInput v-model="newRemoteUser" placeholder="Username (optional)" />
-        <UInput v-model="newRemotePass" type="password" placeholder="Password (optional)" />
+        <UInput v-model="newRemoteName" placeholder="Name"/>
+        <UInput v-model="newRemoteUrl" placeholder="URL (http://...)"/>
+        <UInput v-model="newRemoteUser" placeholder="Username (optional)"/>
+        <UInput v-model="newRemotePass" type="password" placeholder="Password (optional)"/>
       </div>
       <div class="flex justify-end mt-3 gap-2">
         <UButton
-          :loading="addingRemote"
-          icon="i-lucide-plus"
-          label="Add Source"
-          :disabled="!newRemoteName.trim() || !newRemoteUrl.trim()"
-          @click="addRemoteSource"
+            :loading="addingRemote"
+            icon="i-lucide-plus"
+            label="Add Source"
+            :disabled="!newRemoteName.trim() || !newRemoteUrl.trim()"
+            @click="addRemoteSource"
         />
-        <UButton icon="i-lucide-trash-2" label="Clean Cache" color="warning" variant="outline" @click="cleanRemoteCache" />
+        <UButton icon="i-lucide-trash-2" label="Clean Cache" color="warning" variant="outline"
+                 @click="cleanRemoteCache"/>
       </div>
     </UCard>
 
@@ -198,11 +212,12 @@ onMounted(loadRemote)
       <template #header>
         <div class="flex items-center justify-between">
           <span class="font-semibold">Sources ({{ remoteSources.length }})</span>
-          <UButton icon="i-lucide-refresh-cw" aria-label="Refresh sources" variant="ghost" color="neutral" size="xs" @click="loadRemote" />
+          <UButton icon="i-lucide-refresh-cw" aria-label="Refresh sources" variant="ghost" color="neutral" size="xs"
+                   @click="loadRemote"/>
         </div>
       </template>
       <div v-if="remoteLoading" class="flex justify-center py-6">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
       </div>
       <div v-else-if="remoteSources.length === 0" class="text-center py-6 text-muted text-sm">
         No remote sources configured.
@@ -213,16 +228,21 @@ onMounted(loadRemote)
             <p class="font-medium text-sm">{{ s.source.name }}</p>
             <p class="text-xs text-muted truncate">{{ s.source.url }}</p>
             <div class="flex items-center gap-2 mt-1">
-              <UBadge :label="s.status" :color="statusColor(s.status)" variant="subtle" size="xs" />
+              <UBadge :label="s.status" :color="statusColor(s.status)" variant="subtle" size="xs"/>
               <span class="text-xs text-muted">{{ s.media_count }} items</span>
-              <span v-if="s.last_sync" class="text-xs text-muted">· synced {{ new Date(s.last_sync).toLocaleDateString() }}</span>
+              <span v-if="s.last_sync" class="text-xs text-muted">· synced {{
+                  new Date(s.last_sync).toLocaleDateString()
+                }}</span>
               <span v-if="s.error" class="text-xs text-error truncate">{{ s.error }}</span>
             </div>
           </div>
           <div class="flex gap-1">
-            <UButton icon="i-lucide-list" aria-label="Browse media" size="xs" variant="ghost" color="neutral" title="Browse media" @click="loadSourceMedia(s.source.name)" />
-            <UButton icon="i-lucide-refresh-cw" aria-label="Sync source" size="xs" variant="ghost" color="neutral" @click="syncRemote(s.source.name)" />
-            <UButton icon="i-lucide-trash-2" aria-label="Delete source" size="xs" variant="ghost" color="error" @click="deleteRemote(s.source.name)" />
+            <UButton icon="i-lucide-list" aria-label="Browse media" size="xs" variant="ghost" color="neutral"
+                     title="Browse media" @click="loadSourceMedia(s.source.name)"/>
+            <UButton icon="i-lucide-refresh-cw" aria-label="Sync source" size="xs" variant="ghost" color="neutral"
+                     @click="syncRemote(s.source.name)"/>
+            <UButton icon="i-lucide-trash-2" aria-label="Delete source" size="xs" variant="ghost" color="error"
+                     @click="deleteRemote(s.source.name)"/>
           </div>
         </div>
       </div>
@@ -231,13 +251,13 @@ onMounted(loadRemote)
     <!-- Remote media browser -->
     <div class="flex justify-end gap-2">
       <UButton
-        icon="i-lucide-film"
-        :label="showRemoteMedia ? 'Hide Remote Media' : 'Browse All Remote Media'"
-        size="sm"
-        variant="outline"
-        color="neutral"
-        :loading="remoteMediaLoading && remoteMediaSource === null"
-        @click="showRemoteMedia && remoteMediaSource === null ? showRemoteMedia = false : loadAllRemoteMedia()"
+          icon="i-lucide-film"
+          :label="showRemoteMedia ? 'Hide Remote Media' : 'Browse All Remote Media'"
+          size="sm"
+          variant="outline"
+          color="neutral"
+          :loading="remoteMediaLoading && remoteMediaSource === null"
+          @click="showRemoteMedia && remoteMediaSource === null ? showRemoteMedia = false : loadAllRemoteMedia()"
       />
     </div>
     <UCard v-if="showRemoteMedia">
@@ -249,13 +269,16 @@ onMounted(loadRemote)
             <span class="text-muted font-normal text-sm ml-2">({{ remoteMedia.length }})</span>
           </span>
           <div class="flex gap-2">
-            <UButton icon="i-lucide-refresh-cw" aria-label="Refresh" size="xs" variant="ghost" color="neutral" :loading="remoteMediaLoading" @click="remoteMediaSource ? loadSourceMedia(remoteMediaSource) : loadAllRemoteMedia()" />
-            <UButton icon="i-lucide-x" aria-label="Close" size="xs" variant="ghost" color="neutral" @click="showRemoteMedia = false" />
+            <UButton icon="i-lucide-refresh-cw" aria-label="Refresh" size="xs" variant="ghost" color="neutral"
+                     :loading="remoteMediaLoading"
+                     @click="remoteMediaSource ? loadSourceMedia(remoteMediaSource) : loadAllRemoteMedia()"/>
+            <UButton icon="i-lucide-x" aria-label="Close" size="xs" variant="ghost" color="neutral"
+                     @click="showRemoteMedia = false"/>
           </div>
         </div>
       </template>
       <div v-if="remoteMediaLoading" class="flex justify-center py-6">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
       </div>
       <div v-else-if="remoteMedia.length === 0" class="text-center py-4 text-muted text-sm">No remote media found.</div>
       <div v-else class="divide-y divide-default max-h-80 overflow-y-auto">
@@ -265,24 +288,24 @@ onMounted(loadRemote)
             <p class="text-xs text-muted">{{ m.source_name }} · {{ m.content_type }} · {{ formatBytes(m.size) }}</p>
           </div>
           <UButton
-            tag="a"
-            :href="mediaApi.getRemoteStreamUrl(m.url, m.source_name)"
-            icon="i-lucide-play"
-            aria-label="Stream"
-            size="xs"
-            variant="ghost"
-            color="primary"
-            title="Stream"
-            target="_blank"
+              tag="a"
+              :href="mediaApi.getRemoteStreamUrl(m.url, m.source_name)"
+              icon="i-lucide-play"
+              aria-label="Stream"
+              size="xs"
+              variant="ghost"
+              color="primary"
+              title="Stream"
+              target="_blank"
           />
           <UButton
-            icon="i-lucide-hard-drive"
-            aria-label="Cache locally"
-            size="xs"
-            variant="ghost"
-            color="neutral"
-            title="Cache locally"
-            @click="cacheRemoteItem(m.url, m.source_name)"
+              icon="i-lucide-hard-drive"
+              aria-label="Cache locally"
+              size="xs"
+              variant="ghost"
+              color="neutral"
+              title="Cache locally"
+              @click="cacheRemoteItem(m.url, m.source_name)"
           />
         </div>
       </div>

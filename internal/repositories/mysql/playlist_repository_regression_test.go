@@ -36,16 +36,12 @@ func TestNewPlaylistRepository_FND0643_ValidDBDoesNotPanic(t *testing.T) {
 	// Create a minimal mock DB
 	db := &gorm.DB{}
 
-	// This should not panic
-	repo := NewPlaylistRepository(db)
+	// This should not panic. The explicit interface type also makes "constructor
+	// returns the interface" a compile-time guarantee.
+	var repo repositories.PlaylistRepository = NewPlaylistRepository(db)
 
 	if repo == nil {
 		t.Error("NewPlaylistRepository returned nil")
-	}
-
-	// Verify it returns the right type
-	if _, ok := repo.(repositories.PlaylistRepository); !ok {
-		t.Error("returned value is not a PlaylistRepository")
 	}
 }
 

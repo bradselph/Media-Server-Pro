@@ -12,7 +12,7 @@
 // the automatic page_view (send_page_view: false) and emit our own from
 // plugins/analytics.client.ts whenever the route changes.
 
-import { consentFor, onConsentChanged } from './useConsent'
+import {consentFor, onConsentChanged} from './useConsent'
 
 declare global {
     interface Window {
@@ -75,7 +75,7 @@ export function initGA(): void {
     gtag('js', new Date())
     // send_page_view:false → emitted manually from the analytics plugin
     // on every route change.
-    gtag('config', gaId, { send_page_view: false })
+    gtag('config', gaId, {send_page_view: false})
 }
 
 export function pageview(path?: string): void {
@@ -85,13 +85,4 @@ export function pageview(path?: string): void {
         page_location: window.location.href,
         page_title: document.title,
     })
-}
-
-export function event(name: string, params?: Record<string, unknown>): void {
-    if (typeof window === 'undefined' || !window.gtag) return
-    window.gtag('event', name, params || {})
-}
-
-export function useAnalytics() {
-    return { initGA, pageview, event }
 }

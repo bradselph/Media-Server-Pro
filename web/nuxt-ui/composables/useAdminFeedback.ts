@@ -1,4 +1,4 @@
-import type { ModuleHealth } from '~/types/api'
+import type {ModuleHealth} from '~/types/api'
 
 type BulkResult = { success: number; failed: number }
 
@@ -22,24 +22,24 @@ export function useAdminFeedback() {
     function notifyError(errOrMsg: unknown, fallback = 'Error', icon = 'i-lucide-x') {
         const title =
             typeof errOrMsg === 'string' ? errOrMsg
-            : errOrMsg instanceof Error ? errOrMsg.message
-            : fallback
-        toast.add({ title, color: 'error', icon })
+                : errOrMsg instanceof Error ? errOrMsg.message
+                    : fallback
+        toast.add({title, color: 'error', icon})
     }
 
     /** Show a success toast. */
     function notifySuccess(title: string) {
-        toast.add({ title, color: 'success', icon: 'i-lucide-check' })
+        toast.add({title, color: 'success', icon: 'i-lucide-check'})
     }
 
     /** Show a warning toast. */
     function notifyWarning(title: string) {
-        toast.add({ title, color: 'warning', icon: 'i-lucide-alert-triangle' })
+        toast.add({title, color: 'warning', icon: 'i-lucide-alert-triangle'})
     }
 
     /** Show an info toast. */
     function notifyInfo(title: string) {
-        toast.add({ title, color: 'info', icon: 'i-lucide-info' })
+        toast.add({title, color: 'info', icon: 'i-lucide-info'})
     }
 
     /**
@@ -55,7 +55,7 @@ export function useAdminFeedback() {
         })
     }
 
-    return { notifyError, notifySuccess, notifyWarning, notifyInfo, notifyBulkResult }
+    return {notifyError, notifySuccess, notifyWarning, notifyInfo, notifyBulkResult}
 }
 
 /**

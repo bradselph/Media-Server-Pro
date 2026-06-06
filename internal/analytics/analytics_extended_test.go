@@ -68,7 +68,7 @@ func TestGenerateEventID_Length(t *testing.T) {
 
 func TestGenerateEventID_Unique(t *testing.T) {
 	ids := make(map[string]bool)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		id := generateEventID()
 		if ids[id] {
 			t.Fatalf("duplicate event ID: %s", id)

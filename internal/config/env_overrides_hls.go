@@ -56,7 +56,7 @@ func (m *Manager) applyHLSQualityOverrides() {
 		return
 	}
 	nameSet := make(map[string]bool)
-	for _, name := range strings.Split(raw, ",") {
+	for name := range strings.SplitSeq(raw, ",") {
 		nameSet[strings.TrimSpace(name)] = true
 	}
 	filtered := make([]HLSQuality, 0, len(m.config.HLS.QualityProfiles))

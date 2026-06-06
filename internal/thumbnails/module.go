@@ -39,10 +39,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	currentConfig := cfg.Get()
 
 	// Use configured queue size with minimum of 100
-	queueSize := currentConfig.Thumbnails.QueueSize
-	if queueSize < 100 {
-		queueSize = 100
-	}
+	queueSize := max(currentConfig.Thumbnails.QueueSize, 100)
 
 	m := &Module{
 		log:          log,
@@ -109,20 +106,14 @@ func (m *Module) Start(ctx context.Context) error {
 
 	// Use configured worker count with minimum of 2
 	cfg := m.config.Get()
-	workerCount := cfg.Thumbnails.WorkerCount
-	if workerCount < 2 {
-		workerCount = 2
-	}
+	workerCount := max(cfg.Thumbnails.WorkerCount, 2)
 
 	// Get queue size for logging
-	queueSize := cfg.Thumbnails.QueueSize
-	if queueSize < 100 {
-		queueSize = 100
-	}
+	queueSize := max(cfg.Thumbnails.QueueSize, 100)
 
 	m.log.Info("Starting %d thumbnail worker(s) with queue size %d...", workerCount, queueSize)
 
-	for i := 0; i < workerCount; i++ {
+	for i := range workerCount {
 		m.wg.Add(1)
 		go m.worker(i)
 	}

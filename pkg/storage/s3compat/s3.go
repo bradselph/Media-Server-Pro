@@ -55,8 +55,8 @@ func New(_ context.Context, cfg Config) (*Backend, error) {
 	// Strip scheme — minio.New takes the bare host[:port].
 	secure := true
 	endpoint := cfg.Endpoint
-	if strings.HasPrefix(endpoint, "http://") {
-		endpoint = strings.TrimPrefix(endpoint, "http://")
+	if after, ok := strings.CutPrefix(endpoint, "http://"); ok {
+		endpoint = after
 		secure = false
 	} else {
 		endpoint = strings.TrimPrefix(endpoint, "https://")

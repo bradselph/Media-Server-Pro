@@ -1,12 +1,9 @@
 <script setup lang="ts">
-import type {
-  CrawlerTarget, CrawlerDiscovery, CrawlerStats,
-  ExtractorItem, ExtractorStats,
-} from '~/types/api'
-import { useAdminFeedback } from '~/composables/useAdminFeedback'
+import type {CrawlerDiscovery, CrawlerStats, CrawlerTarget, ExtractorItem, ExtractorStats,} from '~/types/api'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const { notifyError, notifySuccess } = useAdminFeedback()
+const {notifyError, notifySuccess} = useAdminFeedback()
 
 // ── Crawler ────────────────────────────────────────────────────────────────────
 const crawlerStats = ref<CrawlerStats | null>(null)
@@ -31,7 +28,9 @@ async function loadCrawler() {
     crawlerDiscoveries.value = discoveries ?? []
   } catch (e: unknown) {
     notifyError(e, 'Failed to load crawler', 'i-lucide-alert-circle')
-  } finally { crawlerLoading.value = false }
+  } finally {
+    crawlerLoading.value = false
+  }
 }
 
 async function addCrawlTarget() {
@@ -39,12 +38,15 @@ async function addCrawlTarget() {
   addingCrawl.value = true
   try {
     await adminApi.addCrawlerTarget(newCrawlUrl.value.trim(), newCrawlName.value.trim() || undefined)
-    newCrawlUrl.value = ''; newCrawlName.value = ''
+    newCrawlUrl.value = '';
+    newCrawlName.value = ''
     notifySuccess('Crawler target added')
     await loadCrawler()
   } catch (e: unknown) {
     notifyError(e, 'Failed')
-  } finally { addingCrawl.value = false }
+  } finally {
+    addingCrawl.value = false
+  }
 }
 
 async function startCrawl(targetId: string) {
@@ -134,7 +136,9 @@ async function loadExtractor() {
     extractorItems.value = items ?? []
   } catch (e: unknown) {
     notifyError(e, 'Failed to load extractor', 'i-lucide-alert-circle')
-  } finally { extractorLoading.value = false }
+  } finally {
+    extractorLoading.value = false
+  }
 }
 
 async function addExtractorUrl() {
@@ -147,7 +151,9 @@ async function addExtractorUrl() {
     await loadExtractor()
   } catch (e: unknown) {
     notifyError(e, 'Failed')
-  } finally { addingExtract.value = false }
+  } finally {
+    addingExtract.value = false
+  }
 }
 
 async function deleteExtractorItem(id: string) {
@@ -183,7 +189,8 @@ onMounted(() => {
     <!-- ── Crawler ────────────────────────────────────────────────────────── -->
     <div class="space-y-4">
       <h3 class="text-sm font-semibold text-muted uppercase tracking-wide flex items-center gap-2">
-        <UIcon name="i-lucide-globe" class="size-4" /> Crawler
+        <UIcon name="i-lucide-globe" class="size-4"/>
+        Crawler
       </h3>
 
       <!-- Stats -->
@@ -210,14 +217,15 @@ onMounted(() => {
       <UCard>
         <template #header>
           <div class="font-semibold flex items-center gap-2">
-            <UIcon name="i-lucide-plus" class="size-4" />
+            <UIcon name="i-lucide-plus" class="size-4"/>
             Add Crawler Target
           </div>
         </template>
         <div class="flex flex-wrap gap-2">
-          <UInput v-model="newCrawlUrl" placeholder="URL to crawl" class="flex-1 min-w-48" />
-          <UInput v-model="newCrawlName" placeholder="Name (optional)" class="w-40" />
-          <UButton :loading="addingCrawl" icon="i-lucide-plus" label="Add" :disabled="!newCrawlUrl.trim()" @click="addCrawlTarget" />
+          <UInput v-model="newCrawlUrl" placeholder="URL to crawl" class="flex-1 min-w-48"/>
+          <UInput v-model="newCrawlName" placeholder="Name (optional)" class="w-40"/>
+          <UButton :loading="addingCrawl" icon="i-lucide-plus" label="Add" :disabled="!newCrawlUrl.trim()"
+                   @click="addCrawlTarget"/>
         </div>
       </UCard>
 
@@ -226,11 +234,12 @@ onMounted(() => {
         <template #header>
           <div class="flex items-center justify-between">
             <span class="font-semibold">Targets ({{ crawlerTargets.length }})</span>
-            <UButton icon="i-lucide-refresh-cw" aria-label="Refresh crawler" variant="ghost" color="neutral" size="xs" @click="loadCrawler" />
+            <UButton icon="i-lucide-refresh-cw" aria-label="Refresh crawler" variant="ghost" color="neutral" size="xs"
+                     @click="loadCrawler"/>
           </div>
         </template>
         <div v-if="crawlerLoading" class="flex justify-center py-6">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
         </div>
         <div v-else-if="crawlerTargets.length === 0" class="text-center py-4 text-muted text-sm">No targets.</div>
         <div v-else class="divide-y divide-default">
@@ -239,14 +248,19 @@ onMounted(() => {
               <p class="font-medium text-sm">{{ t.name || t.url }}</p>
               <p v-if="t.name" class="text-xs text-muted truncate">{{ t.url }}</p>
               <div class="flex items-center gap-2 mt-1">
-                <UBadge :label="t.enabled ? 'enabled' : 'disabled'" :color="t.enabled ? 'success' : 'neutral'" variant="subtle" size="xs" />
+                <UBadge :label="t.enabled ? 'enabled' : 'disabled'" :color="t.enabled ? 'success' : 'neutral'"
+                        variant="subtle" size="xs"/>
                 <span v-if="t.site" class="text-xs text-muted">{{ t.site }}</span>
-                <span v-if="t.last_crawled" class="text-xs text-muted">· Last crawled {{ new Date(t.last_crawled).toLocaleDateString() }}</span>
+                <span v-if="t.last_crawled" class="text-xs text-muted">· Last crawled {{
+                    new Date(t.last_crawled).toLocaleDateString()
+                  }}</span>
               </div>
             </div>
             <div class="flex gap-1">
-              <UButton icon="i-lucide-play" aria-label="Start crawl" size="xs" variant="ghost" color="success" @click="startCrawl(t.id)" />
-              <UButton icon="i-lucide-trash-2" aria-label="Delete target" size="xs" variant="ghost" color="error" @click="deleteCrawlTarget(t.id)" />
+              <UButton icon="i-lucide-play" aria-label="Start crawl" size="xs" variant="ghost" color="success"
+                       @click="startCrawl(t.id)"/>
+              <UButton icon="i-lucide-trash-2" aria-label="Delete target" size="xs" variant="ghost" color="error"
+                       @click="deleteCrawlTarget(t.id)"/>
             </div>
           </div>
         </div>
@@ -255,30 +269,37 @@ onMounted(() => {
       <!-- Discoveries -->
       <UCard v-if="crawlerDiscoveries.length > 0">
         <template #header>
-          <span class="font-semibold">Pending Discoveries ({{ crawlerDiscoveries.filter(d => d.status === 'pending').length }})</span>
+          <span class="font-semibold">Pending Discoveries ({{
+              crawlerDiscoveries.filter(d => d.status === 'pending').length
+            }})</span>
         </template>
         <div class="divide-y divide-default max-h-64 overflow-y-auto">
-          <div v-for="d in crawlerDiscoveries.filter(d => d.status === 'pending')" :key="d.id" class="flex items-center gap-3 py-2">
+          <div v-for="d in crawlerDiscoveries.filter(d => d.status === 'pending')" :key="d.id"
+               class="flex items-center gap-3 py-2">
             <div class="flex-1 min-w-0">
               <p class="text-sm truncate">{{ d.title || d.page_url }}</p>
               <p class="text-xs text-muted truncate">{{ d.page_url }}</p>
             </div>
             <div class="flex gap-1">
-              <UButton icon="i-lucide-check" aria-label="Approve discovery" size="xs" variant="ghost" color="success" @click="approveDiscovery(d.id)" />
-              <UButton icon="i-lucide-ban" aria-label="Ignore discovery" size="xs" variant="ghost" color="warning" title="Ignore" @click="ignoreDiscovery(d.id)" />
-              <UButton icon="i-lucide-trash-2" aria-label="Delete discovery" size="xs" variant="ghost" color="error" title="Delete" @click="deleteDiscovery(d.id)" />
+              <UButton icon="i-lucide-check" aria-label="Approve discovery" size="xs" variant="ghost" color="success"
+                       @click="approveDiscovery(d.id)"/>
+              <UButton icon="i-lucide-ban" aria-label="Ignore discovery" size="xs" variant="ghost" color="warning"
+                       title="Ignore" @click="ignoreDiscovery(d.id)"/>
+              <UButton icon="i-lucide-trash-2" aria-label="Delete discovery" size="xs" variant="ghost" color="error"
+                       title="Delete" @click="deleteDiscovery(d.id)"/>
             </div>
           </div>
         </div>
       </UCard>
     </div>
 
-    <USeparator />
+    <USeparator/>
 
     <!-- ── Extractor ──────────────────────────────────────────────────────── -->
     <div class="space-y-4">
       <h3 class="text-sm font-semibold text-muted uppercase tracking-wide flex items-center gap-2">
-        <UIcon name="i-lucide-download-cloud" class="size-4" /> Extractor
+        <UIcon name="i-lucide-download-cloud" class="size-4"/>
+        Extractor
       </h3>
 
       <!-- Stats -->
@@ -301,13 +322,14 @@ onMounted(() => {
       <UCard>
         <template #header>
           <div class="font-semibold flex items-center gap-2">
-            <UIcon name="i-lucide-plus" class="size-4" />
+            <UIcon name="i-lucide-plus" class="size-4"/>
             Extract from URL
           </div>
         </template>
         <div class="flex gap-2">
-          <UInput v-model="newExtractUrl" placeholder="URL to extract media from" class="flex-1" />
-          <UButton :loading="addingExtract" icon="i-lucide-download-cloud" label="Extract" :disabled="!newExtractUrl.trim()" @click="addExtractorUrl" />
+          <UInput v-model="newExtractUrl" placeholder="URL to extract media from" class="flex-1"/>
+          <UButton :loading="addingExtract" icon="i-lucide-download-cloud" label="Extract"
+                   :disabled="!newExtractUrl.trim()" @click="addExtractorUrl"/>
         </div>
       </UCard>
 
@@ -316,17 +338,19 @@ onMounted(() => {
         <template #header>
           <div class="flex items-center justify-between">
             <span class="font-semibold">Items ({{ extractorItems.length }})</span>
-            <UButton icon="i-lucide-refresh-cw" aria-label="Refresh extractor" variant="ghost" color="neutral" size="xs" @click="loadExtractor" />
+            <UButton icon="i-lucide-refresh-cw" aria-label="Refresh extractor" variant="ghost" color="neutral" size="xs"
+                     @click="loadExtractor"/>
           </div>
         </template>
         <div v-if="extractorLoading" class="flex justify-center py-6">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
         </div>
-        <div v-else-if="extractorItems.length === 0" class="text-center py-4 text-muted text-sm">No extractor items.</div>
+        <div v-else-if="extractorItems.length === 0" class="text-center py-4 text-muted text-sm">No extractor items.
+        </div>
         <UTable
-          v-else
-          :data="extractorItems"
-          :columns="[
+            v-else
+            :data="extractorItems"
+            :columns="[
             { accessorKey: 'title', header: 'Title' },
             { accessorKey: 'status', header: 'Status' },
             { accessorKey: 'actions', header: '' },
@@ -340,12 +364,15 @@ onMounted(() => {
           </template>
           <template #status-cell="{ row }">
             <div>
-              <UBadge :label="row.original.status" :color="statusColor(row.original.status)" variant="subtle" size="xs" />
-              <p v-if="row.original.error_message" class="text-xs text-error mt-0.5 truncate">{{ row.original.error_message }}</p>
+              <UBadge :label="row.original.status" :color="statusColor(row.original.status)" variant="subtle"
+                      size="xs"/>
+              <p v-if="row.original.error_message" class="text-xs text-error mt-0.5 truncate">
+                {{ row.original.error_message }}</p>
             </div>
           </template>
           <template #actions-cell="{ row }">
-            <UButton icon="i-lucide-trash-2" aria-label="Delete extractor item" size="xs" variant="ghost" color="error" @click="deleteExtractorItem(row.original.id)" />
+            <UButton icon="i-lucide-trash-2" aria-label="Delete extractor item" size="xs" variant="ghost" color="error"
+                     @click="deleteExtractorItem(row.original.id)"/>
           </template>
         </UTable>
       </UCard>

@@ -197,12 +197,9 @@ func tryConnect(ctx context.Context, dsn string, gormLog gormlogger.Interface, t
 // connectWithRetry opens a GORM connection with retries and ping; returns gorm.DB, sql.DB, and error.
 func connectWithRetry(ctx context.Context, dsn string, dbCfg config.DatabaseConfig, log *logger.Logger) (db *gorm.DB, sqlDB *sql.DB, err error) {
 	gormLog := newGORMLogger(log, dbCfg.SlowQueryThreshold)
-	maxRetries := dbCfg.MaxRetries
-	if maxRetries < 1 {
-		maxRetries = 1
-	}
+	maxRetries := max(dbCfg.MaxRetries, 1)
 	var lastErr error
-	for i := 0; i < maxRetries; i++ {
+	for i := range maxRetries {
 		db, sqlDB, err := tryConnect(ctx, dsn, gormLog, dbCfg.Timeout)
 		if err == nil {
 			return db, sqlDB, nil
@@ -246,7 +243,6 @@ func (w *gormLogWriter) Printf(format string, args ...any) {
 	w.log.Info(format, args...)
 }
 
-// Stop closes the database connection
 // Stop closes the database connection.
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping database module...")

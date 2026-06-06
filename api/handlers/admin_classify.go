@@ -196,7 +196,7 @@ func (h *Handler) runClassifyDirectoryBackground(dirPath string) {
 		}
 	}()
 	// Use context.Background() intentionally: this goroutine outlives the HTTP request and
-	// should not be cancelled when the request context is cancelled.
+	// should not be canceled when the request context is canceled.
 	ctx := context.Background()
 	results, err := h.scanner.ClassifyMatureDirectory(ctx, dirPath)
 	if err != nil {
@@ -287,7 +287,7 @@ func (h *Handler) runClassifyAllPendingBackground(paths []string) {
 		}
 	}()
 	// Use context.Background() intentionally: this goroutine outlives the HTTP request and
-	// should not be cancelled when the request context is cancelled.
+	// should not be canceled when the request context is canceled.
 	ctx := context.Background()
 	results := make(map[string][]string, len(paths))
 	for _, path := range paths {

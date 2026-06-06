@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -129,10 +130,8 @@ func (m *Module) corsOrigin(r *http.Request) string {
 	if !cfg.Security.CORSEnabled || len(cfg.Security.CORSOrigins) == 0 {
 		return "*"
 	}
-	for _, o := range cfg.Security.CORSOrigins {
-		if o == "*" {
-			return "*"
-		}
+	if slices.Contains(cfg.Security.CORSOrigins, "*") {
+		return "*"
 	}
 	requestOrigin := r.Header.Get("Origin")
 	if requestOrigin == "" {

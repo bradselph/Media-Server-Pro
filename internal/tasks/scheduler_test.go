@@ -81,7 +81,7 @@ func TestRegisterTask(t *testing.T) {
 
 func TestRegisterTask_Multiple(t *testing.T) {
 	m := newTestModule(t)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		m.RegisterTask(TaskRegistration{
 			ID:       fmt.Sprintf("task-%d", i),
 			Name:     fmt.Sprintf("Task %d", i),
@@ -208,25 +208,25 @@ func TestRunNow(t *testing.T) {
 	m.Start(context.Background())
 	defer m.Stop(context.Background())
 
-	var ran int32
+	var ran atomic.Int32
 	m.RegisterTask(TaskRegistration{
 		ID:       "run-now-test",
 		Name:     "Run Now Test",
 		Schedule: 1 * time.Hour,
 		Func: func(_ context.Context) error {
-			atomic.AddInt32(&ran, 1)
+			ran.Add(1)
 			return nil
 		},
 	})
 	// Wait for initial run from registration
 	time.Sleep(100 * time.Millisecond)
-	before := atomic.LoadInt32(&ran)
+	before := ran.Load()
 
 	if err := m.RunNow("run-now-test"); err != nil {
 		t.Fatalf("RunNow error: %v", err)
 	}
 	time.Sleep(100 * time.Millisecond)
-	after := atomic.LoadInt32(&ran)
+	after := ran.Load()
 	if after <= before {
 		t.Error("task should have run after RunNow")
 	}

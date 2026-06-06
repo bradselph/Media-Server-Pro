@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
-	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 
 	ffmpeg "github.com/u2takey/ffmpeg-go"
@@ -118,7 +117,7 @@ func (m *Module) finalizeJobCompleted(job *models.HLSJob) {
 	m.jobsMu.Lock()
 	job.Status = models.HLSStatusCompleted
 	job.Progress = 100
-	job.CompletedAt = helpers.Ptr(time.Now())
+	job.CompletedAt = new(time.Now())
 	if cancel, ok := m.jobCancels[job.ID]; ok {
 		cancel()
 		delete(m.jobCancels, job.ID)
@@ -372,8 +371,8 @@ func (m *Module) monitorProgress(jobID string, stderr io.Reader, run *qualityRun
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if idx := strings.Index(line, "time="); idx >= 0 {
-			m.handleProgressUpdate(jobID, line[idx+5:], run)
+		if _, after, ok := strings.Cut(line, "time="); ok {
+			m.handleProgressUpdate(jobID, after, run)
 		}
 	}
 	if err := scanner.Err(); err != nil {

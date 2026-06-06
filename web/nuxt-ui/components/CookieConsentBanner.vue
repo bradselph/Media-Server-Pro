@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { setConsent } from '~/composables/useConsent'
+import {setConsent} from '~/composables/useConsent'
 
 const cookieConsentApi = useCookieConsentApi()
 
@@ -16,7 +16,8 @@ async function checkStatus() {
       // composable can gate gtag.js synchronously without a network call.
       setConsent({analytics: status.analytics_accepted, advertising: false})
     }
-  } catch { /* non-critical */ }
+  } catch { /* non-critical */
+  }
 }
 
 async function accept(analytics: boolean) {
@@ -29,7 +30,8 @@ async function accept(analytics: boolean) {
     // gtag.js when analytics flips to true.
     setConsent({analytics, advertising: false})
     visible.value = false
-  } catch { /* keep banner visible on failure */ } finally {
+  } catch { /* keep banner visible on failure */
+  } finally {
     accepting.value = false
   }
 }
@@ -39,18 +41,18 @@ onMounted(checkStatus)
 
 <template>
   <Transition
-    enter-active-class="transition-transform duration-300 ease-out"
-    enter-from-class="translate-y-full"
-    enter-to-class="translate-y-0"
-    leave-active-class="transition-transform duration-200 ease-in"
-    leave-from-class="translate-y-0"
-    leave-to-class="translate-y-full"
+      enter-active-class="transition-transform duration-300 ease-out"
+      enter-from-class="translate-y-full"
+      enter-to-class="translate-y-0"
+      leave-active-class="transition-transform duration-200 ease-in"
+      leave-from-class="translate-y-0"
+      leave-to-class="translate-y-full"
   >
     <div
-      v-if="visible"
-      role="region"
-      aria-label="Cookie consent"
-      class="fixed bottom-0 left-0 right-0 z-50 border-t border-default bg-elevated shadow-lg"
+        v-if="visible"
+        role="region"
+        aria-label="Cookie consent"
+        class="fixed bottom-0 left-0 right-0 z-50 border-t border-default bg-elevated shadow-lg"
     >
       <UContainer class="py-4">
         <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -62,24 +64,25 @@ onMounted(checkStatus)
               By continuing you agree to our
               <NuxtLink to="/privacy" class="underline hover:text-default">Privacy Policy</NuxtLink>
               and
-              <NuxtLink to="/terms" class="underline hover:text-default">Terms of Service</NuxtLink>.
+              <NuxtLink to="/terms" class="underline hover:text-default">Terms of Service</NuxtLink>
+              .
             </p>
           </div>
           <div class="flex items-center gap-2 shrink-0 flex-wrap">
             <UButton
-              variant="outline"
-              color="neutral"
-              size="sm"
-              label="Essential only"
-              :loading="accepting"
-              @click="accept(false)"
+                variant="outline"
+                color="neutral"
+                size="sm"
+                label="Essential only"
+                :loading="accepting"
+                @click="accept(false)"
             />
             <UButton
-              color="primary"
-              size="sm"
-              label="Accept all"
-              :loading="accepting"
-              @click="accept(true)"
+                color="primary"
+                size="sm"
+                label="Accept all"
+                :loading="accepting"
+                @click="accept(true)"
             />
           </div>
         </div>

@@ -1,55 +1,50 @@
 <script setup lang="ts">
-import type { MediaItem, MediaCategory, Suggestion, RecentItem, NewSinceResponse, OnDeckItem, Playlist, MediaStats } from '~/types/api'
-import { getDisplayTitle } from '~/utils/mediaTitle'
-import { useApiEndpoints, useFavoritesApi, usePlaylistApi, useSavedSearchesApi } from '~/composables/useApiEndpoints'
-import type { SavedSearch } from '~/composables/useApiEndpoints'
-import { resolveComponent } from 'vue'
-import { formatDuration, formatBytes, formatRelativeDate, formatResolution } from '~/utils/format'
-import { blurHashToDataUrl } from '~/utils/blurhash'
-import { useQueueStore } from '~/stores/queue'
-
-const PALETTES: [string, string][] = [
-  ['#1a0835','#9333ea'],['#081530','#2563eb'],['#1a0808','#dc2626'],
-  ['#081508','#16a34a'],['#1a1208','#d97706'],['#081515','#0891b2'],
-  ['#150815','#db2777'],['#0a0815','#6366f1'],['#150a0a','#ea580c'],
-  ['#0a1515','#059669'],['#0f0a20','#a855f7'],['#1a1000','#ca8a04'],
-]
-
-function getItemGradient(id: string): string {
-  let hash = 0
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffff
-  const [c1, c2] = PALETTES[hash % PALETTES.length]
-  return `linear-gradient(135deg, ${c1}, ${c2})`
-}
+import type {
+  MediaCategory,
+  MediaItem,
+  MediaStats,
+  NewSinceResponse,
+  Playlist,
+  RecentItem,
+  Suggestion
+} from '~/types/api'
+import {getDisplayTitle} from '~/utils/mediaTitle'
+import type {SavedSearch} from '~/composables/useApiEndpoints'
+import {useApiEndpoints, useFavoritesApi, usePlaylistApi, useSavedSearchesApi} from '~/composables/useApiEndpoints'
+import {resolveComponent} from 'vue'
+import {formatBytes, formatDuration, formatRelativeDate, formatResolution} from '~/utils/format'
+import {blurHashToDataUrl} from '~/utils/blurhash'
+import {getMediaGradient} from '~/utils/gradient'
+import {useQueueStore} from '~/stores/queue'
 
 const TYPE_OPTIONS = [
-  { label: 'All Types', value: 'all' },
-  { label: 'Video', value: 'video' },
-  { label: 'Audio', value: 'audio' },
-  { label: 'Image', value: 'image' },
+  {label: 'All Types', value: 'all'},
+  {label: 'Video', value: 'video'},
+  {label: 'Audio', value: 'audio'},
+  {label: 'Image', value: 'image'},
 ]
 
 const MIN_RATING_OPTIONS = [
-  { label: 'Any Rating', value: 0 },
-  { label: '★ 1+', value: 1 },
-  { label: '★★ 2+', value: 2 },
-  { label: '★★★ 3+', value: 3 },
-  { label: '★★★★ 4+', value: 4 },
-  { label: '★★★★★ 5', value: 5 },
+  {label: 'Any Rating', value: 0},
+  {label: '★ 1+', value: 1},
+  {label: '★★ 2+', value: 2},
+  {label: '★★★ 3+', value: 3},
+  {label: '★★★★ 4+', value: 4},
+  {label: '★★★★★ 5', value: 5},
 ]
 
 const SORT_OPTIONS_BASE = [
-  { label: 'Name', value: 'name' },
-  { label: 'Date Added', value: 'date_added' },
-  { label: 'Size', value: 'size' },
-  { label: 'Duration', value: 'duration' },
-  { label: 'Bitrate', value: 'bitrate' },
-  { label: 'Codec', value: 'codec' },
-  { label: 'Views', value: 'views' },
+  {label: 'Name', value: 'name'},
+  {label: 'Date Added', value: 'date_added'},
+  {label: 'Size', value: 'size'},
+  {label: 'Duration', value: 'duration'},
+  {label: 'Bitrate', value: 'bitrate'},
+  {label: 'Codec', value: 'codec'},
+  {label: 'Views', value: 'views'},
 ]
-const SORT_OPTION_MY_RATING = { label: 'My Rating', value: 'my_rating' }
+const SORT_OPTION_MY_RATING = {label: 'My Rating', value: 'my_rating'}
 
-definePageMeta({ title: 'Media Library' })
+definePageMeta({title: 'Media Library'})
 
 const mediaApi = useMediaApi()
 const suggestionsApi = useSuggestionsApi()
@@ -65,19 +60,21 @@ const toast = useToast()
 const libraryStats = ref<MediaStats | null>(null)
 const libraryStatsFailed = ref(false)
 mediaApi.getStats()
-  .then(s => { libraryStats.value = s })
-  .catch(err => {
-    // Stats are public + best-effort; we deliberately don't surface a toast
-    // (a logged-out home page shouldn't blow up with errors if the API is
-    // briefly unavailable). But silently swallowing was masking real outages
-    // -- log it so it shows up in browser devtools and let the template
-    // hide the stats strip via libraryStatsFailed instead of rendering an
-    // empty "0 / 0" placeholder.
-    libraryStatsFailed.value = true
-    if (typeof console !== 'undefined') {
-      console.warn('[index] library stats fetch failed:', err)
-    }
-  })
+    .then(s => {
+      libraryStats.value = s
+    })
+    .catch(err => {
+      // Stats are public + best-effort; we deliberately don't surface a toast
+      // (a logged-out home page shouldn't blow up with errors if the API is
+      // briefly unavailable). But silently swallowing was masking real outages
+      // -- log it so it shows up in browser devtools and let the template
+      // hide the stats strip via libraryStatsFailed instead of rendering an
+      // empty "0 / 0" placeholder.
+      libraryStatsFailed.value = true
+      if (typeof console !== 'undefined') {
+        console.warn('[index] library stats fetch failed:', err)
+      }
+    })
 
 // Multi-select / bulk-add-to-playlist
 const selectionMode = ref(false)
@@ -109,7 +106,8 @@ async function loadMyPlaylists() {
   try {
     const result = await playlistApi.list()
     if (indexMounted) myPlaylists.value = result
-  } catch { /* non-critical */ }
+  } catch { /* non-critical */
+  }
 }
 
 async function bulkAddToPlaylist() {
@@ -118,31 +116,47 @@ async function bulkAddToPlaylist() {
   const ids = [...selectedIds.value]
   let added = 0
   for (const id of ids) {
-    try { await playlistApi.addItem(bulkAddPlaylistId.value, id); added++ } catch { /* skip duplicates */ }
+    try {
+      await playlistApi.addItem(bulkAddPlaylistId.value, id);
+      added++
+    } catch { /* skip duplicates */
+    }
   }
   bulkAdding.value = false
-  toast.add({ title: `Added ${added} of ${ids.length} items to playlist`, color: added > 0 ? 'success' : 'warning', icon: 'i-lucide-list-music' })
+  toast.add({
+    title: `Added ${added} of ${ids.length} items to playlist`,
+    color: added > 0 ? 'success' : 'warning',
+    icon: 'i-lucide-list-music'
+  })
   toggleSelectionMode()
   bulkAddPlaylistId.value = undefined
 }
 
-watch(selectionMode, (on) => { if (on) loadMyPlaylists() })
+watch(selectionMode, (on) => {
+  if (on) loadMyPlaylists()
+})
 
 // Per-card quick "add to playlist" (does not navigate, keeps playback running)
 async function quickAddToPlaylist(itemId: string, playlistId: string) {
   try {
     await playlistApi.addItem(playlistId, itemId)
-    toast.add({ title: 'Added to playlist', color: 'success', icon: 'i-lucide-list-music' })
+    toast.add({title: 'Added to playlist', color: 'success', icon: 'i-lucide-list-music'})
   } catch {
-    toast.add({ title: 'Already in playlist or failed to add', color: 'warning', icon: 'i-lucide-list-x' })
+    toast.add({title: 'Already in playlist or failed to add', color: 'warning', icon: 'i-lucide-list-x'})
   }
 }
 
 const queueStore = useQueueStore()
 
 function addToQueue(item: MediaItem) {
-  queueStore.addToQueue({ id: item.id, name: item.name, type: item.type, duration: item.duration, thumbnail_url: item.thumbnail_url })
-  toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })
+  queueStore.addToQueue({
+    id: item.id,
+    name: item.name,
+    type: item.type,
+    duration: item.duration,
+    thumbnail_url: item.thumbnail_url
+  })
+  toast.add({title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered'})
 }
 
 function playlistMenuItemsFor(itemId: string) {
@@ -151,22 +165,26 @@ function playlistMenuItemsFor(itemId: string) {
     icon: 'i-lucide-list-music',
     click: () => quickAddToPlaylist(itemId, pl.id),
   }))
-  const newPl = [{ label: 'New Playlist…', icon: 'i-lucide-plus', to: '/playlists' }]
+  const newPl = [{label: 'New Playlist…', icon: 'i-lucide-plus', to: '/playlists'}]
   return plItems.length > 0 ? [plItems, newPl] : [newPl]
 }
 
 const sortOptions = computed(() =>
-  authStore.isLoggedIn ? [...SORT_OPTIONS_BASE, SORT_OPTION_MY_RATING] : SORT_OPTIONS_BASE
+    authStore.isLoggedIn ? [...SORT_OPTIONS_BASE, SORT_OPTION_MY_RATING] : SORT_OPTIONS_BASE
 )
-const { updatePreferences } = useApiEndpoints()
+const {updatePreferences} = useApiEndpoints()
 
 // Favorite media IDs for the current user
 const favoriteIds = ref<Set<string>>(new Set())
 const togglingIds = ref(new Set<string>())
 
 let indexMounted = false
-onMounted(() => { indexMounted = true })
-onUnmounted(() => { indexMounted = false })
+onMounted(() => {
+  indexMounted = true
+})
+onUnmounted(() => {
+  indexMounted = false
+})
 
 async function loadFavorites() {
   if (!authStore.isLoggedIn) return
@@ -174,33 +192,52 @@ async function loadFavorites() {
     const recs = await favoritesApi.list()
     if (!indexMounted) return
     favoriteIds.value = new Set((recs ?? []).map(r => r.media_id))
-  } catch { /* non-critical */ }
+  } catch { /* non-critical */
+  }
 }
 
-async function toggleFavorite(e: Event, item: MediaItem) {
-  e.preventDefault()
-  e.stopPropagation()
-  if (!authStore.isLoggedIn) { router.push('/login'); return }
-  if (togglingIds.value.has(item.id)) return
-  const wasFav = favoriteIds.value.has(item.id)
+async function toggleFavoriteId(id: string) {
+  if (!authStore.isLoggedIn) {
+    router.push('/login');
+    return
+  }
+  if (togglingIds.value.has(id)) return
+  const wasFav = favoriteIds.value.has(id)
   // Optimistic update
   const next = new Set(favoriteIds.value)
-  if (wasFav) { next.delete(item.id) } else { next.add(item.id) }
+  if (wasFav) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
   favoriteIds.value = next
-  togglingIds.value.add(item.id)
+  togglingIds.value.add(id)
   try {
-    if (wasFav) { await favoritesApi.remove(item.id) }
-    else { await favoritesApi.add(item.id) }
+    if (wasFav) {
+      await favoritesApi.remove(id)
+    } else {
+      await favoritesApi.add(id)
+    }
     if (!indexMounted) return
   } catch {
     if (!indexMounted) return
     // Revert on error
     const reverted = new Set(favoriteIds.value)
-    if (wasFav) { reverted.add(item.id) } else { reverted.delete(item.id) }
+    if (wasFav) {
+      reverted.add(id)
+    } else {
+      reverted.delete(id)
+    }
     favoriteIds.value = reverted
   } finally {
-    togglingIds.value.delete(item.id)
+    togglingIds.value.delete(id)
   }
+}
+
+async function toggleFavorite(e: Event, item: MediaItem) {
+  e.preventDefault()
+  e.stopPropagation()
+  await toggleFavoriteId(item.id)
 }
 
 // Playback progress (ratio 0-1) per media ID — for progress bar overlays
@@ -215,7 +252,6 @@ const trending = ref<Suggestion[]>([])
 const recommended = ref<Suggestion[]>([])
 const recentlyAdded = ref<RecentItem[]>([])
 const newSinceLastVisit = ref<NewSinceResponse | null>(null)
-const onDeck = ref<OnDeckItem[]>([])
 // General suggestions (shown to logged-out users — public endpoint)
 const general = ref<Suggestion[]>([])
 
@@ -254,7 +290,8 @@ async function loadGeneralSuggestions() {
   try {
     const result = await suggestionsApi.get()
     if (indexMounted) general.value = result ?? []
-  } catch { /* non-critical */ }
+  } catch { /* non-critical */
+  }
 }
 
 // Recommendation rows render skeletons during the initial fan-out so the
@@ -265,18 +302,18 @@ async function loadRecommendations() {
   if (!authStore.isLoggedIn) return
   recsLoading.value = true
   try {
-    const [cw, tr, rec, recent, newSince, deck] = await Promise.allSettled([
+    const [cw, tr, rec, recent, newSince] = await Promise.allSettled([
       suggestionsApi.getContinueWatching(20),
       suggestionsApi.getTrending(20),
       suggestionsApi.getPersonalized(12),
       suggestionsApi.getRecent(14, 20),
       suggestionsApi.getNewSinceLastVisit(20),
-      suggestionsApi.getOnDeck(10),
     ])
     if (!indexMounted) return
     // Deduplicate across rows: higher-priority rows "claim" their IDs so lower-priority
-    // rows don't show the same item twice. Priority: continueWatching > onDeck > trending > recommended > recent.
+    // rows don't show the same item twice. Priority: continueWatching > trending > recommended > recent.
     const seenIds = new Set<string>()
+
     function dedup<T extends { id?: string; media_id?: string }>(items: T[]): T[] {
       return items.filter(item => {
         const id = item.id ?? item.media_id ?? ''
@@ -285,8 +322,8 @@ async function loadRecommendations() {
         return true
       })
     }
+
     if (cw.status === 'fulfilled') continueWatching.value = dedup(cw.value ?? [])
-    if (deck.status === 'fulfilled') onDeck.value = dedup((deck.value?.items ?? []) as Parameters<typeof dedup>[0]) as typeof onDeck.value
     if (tr.status === 'fulfilled') trending.value = dedup(tr.value ?? [])
     if (rec.status === 'fulfilled') recommended.value = dedup(rec.value ?? [])
     if (recent.status === 'fulfilled') recentlyAdded.value = dedup(recent.value ?? [])
@@ -295,8 +332,10 @@ async function loadRecommendations() {
     // hero can show "Resume X:XX / Y:YY". The Suggestion type doesn't carry
     // playback position itself — it's derived from /api/playback/batch.
     void loadResumePositions()
-  } catch { /* non-critical */ }
-  finally { if (indexMounted) recsLoading.value = false }
+  } catch { /* non-critical */
+  } finally {
+    if (indexMounted) recsLoading.value = false
+  }
 }
 
 // Resume-as-hero — playback positions for continueWatching items so the
@@ -314,25 +353,34 @@ async function loadResumePositions() {
   const ids: string[] = []
   // Suggestion uses media_id; RecentItem uses id — normalise per row.
   type Row = { media_id?: string; id?: string }
+
   function pushId(s: Row) {
     const id = s.media_id ?? s.id ?? ''
     if (!id || seen.has(id)) return
     seen.add(id)
     ids.push(id)
   }
+
   for (const row of [continueWatching.value, trending.value, recommended.value]) {
-    for (const s of row) { pushId(s as Row); if (ids.length >= 120) break }
+    for (const s of row) {
+      pushId(s as Row);
+      if (ids.length >= 120) break
+    }
     if (ids.length >= 120) break
   }
   if (ids.length < 120) {
-    for (const s of recentlyAdded.value) { pushId(s as Row); if (ids.length >= 120) break }
+    for (const s of recentlyAdded.value) {
+      pushId(s as Row);
+      if (ids.length >= 120) break
+    }
   }
   if (ids.length === 0) return
   try {
     const r = await playbackApi.getBatchPositions(ids)
     if (!indexMounted) return
     resumePositions.value = r?.positions ?? {}
-  } catch { /* non-critical */ }
+  } catch { /* non-critical */
+  }
 }
 
 // Derived map of mediaId → progress fraction [0..1] for every suggestion
@@ -366,7 +414,7 @@ const resumeHero = computed(() => {
     const dur = s.duration ?? 0
     if (!pos || pos <= 30) continue
     if (dur > 0 && pos >= dur - 60) continue
-    return { suggestion: s, position: pos, duration: dur }
+    return {suggestion: s, position: pos, duration: dur}
   }
   return null
 })
@@ -405,16 +453,21 @@ async function loadSavedSearches() {
           return new Date(i.date_added).getTime() > cutoff
         })
         if (recent.length > 0) matches[s.id] = recent
-      } catch { /* per-search failure ignored */ }
+      } catch { /* per-search failure ignored */
+      }
     }))
     if (indexMounted) savedSearchMatches.value = matches
-  } catch { /* non-critical */ }
+  } catch { /* non-critical */
+  }
 }
 
 async function dismissSavedSearchRow(id: string) {
   // Touch the row server-side so it stops appearing until new matches show up.
-  try { await savedSearchesApi.touch(id) } catch { /* non-critical */ }
-  const next = { ...savedSearchMatches.value }
+  try {
+    await savedSearchesApi.touch(id)
+  } catch { /* non-critical */
+  }
+  const next = {...savedSearchMatches.value}
   delete next[id]
   savedSearchMatches.value = next
 }
@@ -441,19 +494,21 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
     recommended.value = []
     recentlyAdded.value = []
     newSinceLastVisit.value = null
-    onDeck.value = []
     userRatings.value = {}
     savedSearches.value = []
     savedSearchMatches.value = {}
     loadGeneralSuggestions()
   }
-}, { immediate: false })
+}, {immediate: false})
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 
 function onSearchInput() {
   if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => { params.page = 1; load() }, 300)
+  searchTimer = setTimeout(() => {
+    params.page = 1;
+    load()
+  }, 300)
 }
 
 // Play All — queue the current grid and start playing the first item. The
@@ -464,9 +519,15 @@ function playAll() {
   const [first, ...rest] = items.value
   queueStore.clear()
   for (const it of rest) {
-    queueStore.addToQueue({ id: it.id, name: it.name, type: it.type, duration: it.duration, thumbnail_url: it.thumbnail_url })
+    queueStore.addToQueue({
+      id: it.id,
+      name: it.name,
+      type: it.type,
+      duration: it.duration,
+      thumbnail_url: it.thumbnail_url
+    })
   }
-  toast.add({ title: `Playing all ${items.value.length} items`, color: 'success', icon: 'i-lucide-list-video' })
+  toast.add({title: `Playing all ${items.value.length} items`, color: 'success', icon: 'i-lucide-list-video'})
   router.push(`/player?id=${encodeURIComponent(first.id)}`)
 }
 
@@ -475,8 +536,8 @@ async function surpriseMe() {
   try {
     // Prefer personalized/trending suggestions for logged-in users, fall back to library
     const pool = authStore.isLoggedIn
-      ? [...recommended.value, ...trending.value, ...general.value]
-      : general.value
+        ? [...recommended.value, ...trending.value, ...general.value]
+        : general.value
     if (pool.length > 0) {
       const pick = pool[Math.floor(Math.random() * pool.length)]
       router.push(`/player?id=${encodeURIComponent(pick.media_id)}`)
@@ -487,20 +548,19 @@ async function surpriseMe() {
       const pick = items.value[Math.floor(Math.random() * items.value.length)]
       router.push(`/player?id=${encodeURIComponent(pick.id)}`)
     }
-  } catch { /* non-critical */ }
+  } catch { /* non-critical */
+  }
 }
 
 // Tag filter — supports both single-click-on-card (sets one tag, OR mode)
 // AND the /browse tag-cloud flow which deep-links here via ?tags=a,b,c&tag_mode=and.
-// `filterTags` is the authoritative set; `filterTag` (computed) preserves the
-// pre-existing "first active tag" semantics that other call sites read.
+// `filterTags` is the authoritative set of active tag filters.
 const initialTagsFromQuery = ((route.query.tags as string | undefined) ?? '')
-  .split(',')
-  .map(s => s.trim())
-  .filter(Boolean)
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
 const filterTags = ref<Set<string>>(new Set(initialTagsFromQuery))
 const tagMode = ref<'and' | 'or'>(route.query.tag_mode === 'and' ? 'and' : 'or')
-const filterTag = computed(() => [...filterTags.value][0] ?? '')
 
 // Hide watched toggle — only active for logged-in users
 const hideWatched = ref(route.query.hide_watched === 'true')
@@ -510,13 +570,6 @@ function setTagFilter(tag: string) {
   // OR mode so accidental AND mode from the previous nav doesn't filter
   // everything away on the next click.
   filterTags.value = new Set([tag])
-  tagMode.value = 'or'
-  params.page = 1
-  load()
-}
-
-function clearTagFilter() {
-  filterTags.value = new Set()
   tagMode.value = 'or'
   params.page = 1
   load()
@@ -546,14 +599,14 @@ function togglePreset(preset: 'trending' | 'new') {
 }
 
 const hasActiveFilters = computed(() =>
-  params.type !== 'all' ||
-  params.category !== 'all' ||
-  params.sort_by !== 'name' ||
-  params.sort_order !== 'asc' ||
-  params.min_rating > 0 ||
-  !!params.search ||
-  filterTags.value.size > 0 ||
-  hideWatched.value,
+    params.type !== 'all' ||
+    params.category !== 'all' ||
+    params.sort_by !== 'name' ||
+    params.sort_order !== 'asc' ||
+    params.min_rating > 0 ||
+    !!params.search ||
+    filterTags.value.size > 0 ||
+    hideWatched.value,
 )
 
 function clearAllFilters() {
@@ -569,8 +622,14 @@ function clearAllFilters() {
   params.page = 1
 }
 
-watch(hideWatched, () => { params.page = 1; load() })
-watch(() => params.min_rating, () => { params.page = 1; load() })
+watch(hideWatched, () => {
+  params.page = 1;
+  load()
+})
+watch(() => params.min_rating, () => {
+  params.page = 1;
+  load()
+})
 
 // Sync nav-bar search into params when the route query is updated while on this page
 watch(() => route.query.search, (q) => {
@@ -586,27 +645,27 @@ watch(() => route.query.search, (q) => {
 // Uses router.replace so the browser back button is not polluted.
 let urlSyncTimer: ReturnType<typeof setTimeout> | null = null
 watch(
-  [() => params.type, () => params.category, () => params.sort_by, () => params.sort_order, () => params.min_rating, () => params.search, () => params.page, hideWatched, filterTags, tagMode],
-  () => {
-    if (urlSyncTimer) clearTimeout(urlSyncTimer)
-    urlSyncTimer = setTimeout(() => {
-      const query: Record<string, string> = {}
-      if (params.type !== 'all') query.type = params.type
-      if (params.category !== 'all') query.category = params.category
-      if (params.sort_by !== 'name') query.sort_by = params.sort_by
-      if (params.sort_order !== 'asc') query.sort_order = params.sort_order
-      if (params.min_rating > 0) query.min_rating = String(params.min_rating)
-      if (params.search) query.search = params.search
-      if (params.page > 1) query.page = String(params.page)
-      if (hideWatched.value) query.hide_watched = 'true'
-      if (filterTags.value.size > 0) {
-        query.tags = [...filterTags.value].join(',')
-        if (tagMode.value === 'and') query.tag_mode = 'and'
-      }
-      router.replace({ query })
-    }, 300)
-  },
-  { deep: true },
+    [() => params.type, () => params.category, () => params.sort_by, () => params.sort_order, () => params.min_rating, () => params.search, () => params.page, hideWatched, filterTags, tagMode],
+    () => {
+      if (urlSyncTimer) clearTimeout(urlSyncTimer)
+      urlSyncTimer = setTimeout(() => {
+        const query: Record<string, string> = {}
+        if (params.type !== 'all') query.type = params.type
+        if (params.category !== 'all') query.category = params.category
+        if (params.sort_by !== 'name') query.sort_by = params.sort_by
+        if (params.sort_order !== 'asc') query.sort_order = params.sort_order
+        if (params.min_rating > 0) query.min_rating = String(params.min_rating)
+        if (params.search) query.search = params.search
+        if (params.page > 1) query.page = String(params.page)
+        if (hideWatched.value) query.hide_watched = 'true'
+        if (filterTags.value.size > 0) {
+          query.tags = [...filterTags.value].join(',')
+          if (tagMode.value === 'and') query.tag_mode = 'and'
+        }
+        router.replace({query})
+      }, 300)
+    },
+    {deep: true},
 )
 
 // React to deep-link changes from the /browse page: when the user clicks
@@ -641,16 +700,16 @@ async function load() {
     // NOT be forwarded to the backend (the backend would treat min_rating=0 as a
     // real filter condition and return only media with ≥0 stars, which skips
     // unrated items depending on backend implementation).
-    const { min_rating: _minRating, ...paramsWithoutRating } = params
+    const {min_rating: _minRating, ...paramsWithoutRating} = params
     const apiParams = {
       ...paramsWithoutRating,
       type: params.type === 'all' ? '' : params.type,
       category: params.category === 'all' ? '' : params.category,
       ...(filterTags.value.size > 0
-        ? { tags: [...filterTags.value], ...(tagMode.value === 'and' ? { tag_mode: 'and' as const } : {}) }
-        : {}),
-      ...(hideWatched.value && authStore.isLoggedIn ? { hide_watched: true } : {}),
-      ...(params.min_rating > 0 && authStore.isLoggedIn ? { min_rating: params.min_rating } : {}),
+          ? {tags: [...filterTags.value], ...(tagMode.value === 'and' ? {tag_mode: 'and' as const} : {})}
+          : {}),
+      ...(hideWatched.value && authStore.isLoggedIn ? {hide_watched: true} : {}),
+      ...(params.min_rating > 0 && authStore.isLoggedIn ? {min_rating: params.min_rating} : {}),
     }
     const res = await mediaApi.list(apiParams)
     // Discard response if a newer load() has already been dispatched.
@@ -672,7 +731,8 @@ async function load() {
           const img = new Image()
           img.src = url
         }
-      }).catch(() => {})
+      }).catch(() => {
+      })
     }
     // Batch-fetch playback positions for logged-in users to show progress bars.
     if (authStore.isLoggedIn && batchIds.length > 0) {
@@ -687,12 +747,13 @@ async function load() {
           }
         }
         playbackProgress.value = newProgress
-      }).catch(() => {})
+      }).catch(() => {
+      })
     }
   } catch (e: unknown) {
     if (seq !== loadSeq) return
     loadError.value = e instanceof Error ? e.message : 'Failed to load media'
-    toast.add({ title: loadError.value, color: 'error', icon: 'i-lucide-alert-circle' })
+    toast.add({title: loadError.value, color: 'error', icon: 'i-lucide-alert-circle'})
   } finally {
     if (seq === loadSeq) loading.value = false
   }
@@ -702,7 +763,8 @@ async function loadCategories() {
   try {
     const result = await mediaApi.getCategories()
     if (indexMounted) categories.value = result ?? []
-  } catch { /* categories are non-critical; silently skip */ }
+  } catch { /* categories are non-critical; silently skip */
+  }
 }
 
 watch([() => params.type, () => params.category, () => params.sort_by, () => params.sort_order], () => {
@@ -720,7 +782,8 @@ watch([() => params.type, () => params.category], ([newType, newCategory]) => {
     updatePreferences({
       filter_media_type: newType,
       filter_category: newCategory,
-    }).catch(() => { /* non-critical */ })
+    }).catch(() => { /* non-critical */
+    })
   }, 1000)
 })
 
@@ -753,7 +816,8 @@ onMounted(() => {
           })
           localStorage.setItem('msp-welcomed', 'done')
         }
-      } catch { /* private mode */ }
+      } catch { /* private mode */
+      }
     }
   } else {
     loadGeneralSuggestions()
@@ -763,16 +827,16 @@ onMounted(() => {
 // View mode — initialized from user preference; supports 'grid', 'list', and 'compact'
 type ViewMode = 'grid' | 'list' | 'compact'
 const viewMode = ref<ViewMode>(
-  (['grid', 'list', 'compact'] as ViewMode[]).includes(authStore.user?.preferences?.view_mode as ViewMode)
-    ? (authStore.user?.preferences?.view_mode as ViewMode)
-    : 'grid'
+    (['grid', 'list', 'compact'] as ViewMode[]).includes(authStore.user?.preferences?.view_mode as ViewMode)
+        ? (authStore.user?.preferences?.view_mode as ViewMode)
+        : 'grid'
 )
 
 // Mature content gate — true only when logged in, show_mature enabled, and can_view_mature permission granted
 const canViewMature = computed(() =>
-  authStore.isLoggedIn &&
-  (authStore.user?.preferences?.show_mature ?? false) &&
-  (authStore.user?.permissions?.can_view_mature ?? false),
+    authStore.isLoggedIn &&
+    (authStore.user?.preferences?.show_mature ?? false) &&
+    (authStore.user?.permissions?.can_view_mature ?? false),
 )
 
 function matureGateHref(item: MediaItem): string {
@@ -790,6 +854,7 @@ const totalPages = computed(() => Math.ceil(total.value / params.limit))
 // reactive() is used so that Vue's dependency tracking picks up .add() calls
 // and re-evaluates the v-if guards that hide broken images.
 const failedSuggestions = reactive(new Set<string>())
+
 function onSuggestionThumbnailError(id: string) {
   failedSuggestions.add(id)
   scheduleThumbnailRetry(id, failedSuggestions)
@@ -829,6 +894,7 @@ function scheduleThumbnailRetry(id: string, failedSet: Set<string>) {
   }, RETRY_DELAYS_MS[attempt])
   retryTimers.set(id, timer)
 }
+
 const hoverItemId = ref<string | null>(null)
 const hoverFrameIdx = ref(0)
 let hoverCycleTimer: ReturnType<typeof setInterval> | null = null
@@ -852,7 +918,8 @@ async function onMediaHoverEnter(id: string, isAudio: boolean) {
     try {
       const result = await mediaApi.getThumbnailPreviews(id)
       if (result?.previews?.length > 1) previewCache.set(id, result.previews)
-    } catch { /* no previews — stay on default */ }
+    } catch { /* no previews — stay on default */
+    }
   }
 
   const frames = previewCache.get(id)
@@ -867,7 +934,10 @@ async function onMediaHoverEnter(id: string, isAudio: boolean) {
 function onMediaHoverLeave() {
   hoverItemId.value = null
   hoverFrameIdx.value = 0
-  if (hoverCycleTimer) { clearInterval(hoverCycleTimer); hoverCycleTimer = null }
+  if (hoverCycleTimer) {
+    clearInterval(hoverCycleTimer);
+    hoverCycleTimer = null
+  }
 }
 
 function getThumbnailUrl(id: string): string {
@@ -914,41 +984,45 @@ onUnmounted(() => {
        top-trending / general suggestion. -->
   <template v-if="resumeHero || (authStore.isLoggedIn ? trending.length > 0 : general.length > 0)">
     <div
-      class="relative overflow-hidden min-h-[240px] flex items-end"
-      :style="{ background: getItemGradient((resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).media_id) }"
+        class="relative overflow-hidden min-h-[240px] flex items-end"
+        :style="{ background: getMediaGradient((resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).media_id) }"
     >
       <!-- Actual media thumbnail as background -->
       <img
-        :src="mediaApi.getThumbnailUrl((resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).media_id)"
-        class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
-        aria-hidden="true"
-        @error="($event.target as HTMLImageElement).style.display='none'"
+          :src="mediaApi.getThumbnailUrl((resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).media_id)"
+          class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+          aria-hidden="true"
+          @error="($event.target as HTMLImageElement).style.display='none'"
       />
       <!-- Scanline texture -->
-      <div class="absolute inset-0 pointer-events-none scanline-thumb" />
+      <div class="absolute inset-0 pointer-events-none scanline-thumb"/>
       <!-- Bottom gradient fade to page bg -->
-      <div class="absolute bottom-0 inset-x-0 h-[70%] pointer-events-none bg-gradient-to-t from-[var(--surface-page)] to-transparent" />
+      <div
+          class="absolute bottom-0 inset-x-0 h-[70%] pointer-events-none bg-gradient-to-t from-[var(--surface-page)] to-transparent"/>
       <div class="relative z-10 max-w-[1400px] mx-auto px-5 pb-6 w-full">
         <div class="flex items-end gap-4 flex-wrap">
           <div class="flex-1 min-w-0 space-y-2.5">
-            <span class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">
+            <span
+                class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">
               {{ resumeHero ? 'Resume where you left off' : 'Featured' }}
             </span>
             <h1
-              class="font-extrabold text-white leading-tight line-clamp-2"
-              style="font-size: clamp(28px, 4vw, 44px); text-wrap: pretty;"
+                class="font-extrabold text-white leading-tight line-clamp-2"
+                style="font-size: clamp(28px, 4vw, 44px); text-wrap: pretty;"
             >
-              {{ getDisplayTitle(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])) }}
+              {{
+                getDisplayTitle(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0]))
+              }}
             </h1>
             <!-- Resume progress bar — only on the resume variant. -->
             <div
-              v-if="resumeHero && resumeHero.duration > 0"
-              class="h-1 max-w-md rounded-full bg-white/15 overflow-hidden"
-              aria-hidden="true"
+                v-if="resumeHero && resumeHero.duration > 0"
+                class="h-1 max-w-md rounded-full bg-white/15 overflow-hidden"
+                aria-hidden="true"
             >
               <div
-                class="h-full bg-[var(--accent)] rounded-full"
-                :style="{ width: `${Math.min(100, (resumeHero.position / resumeHero.duration) * 100)}%` }"
+                  class="h-full bg-[var(--accent)] rounded-full"
+                  :style="{ width: `${Math.min(100, (resumeHero.position / resumeHero.duration) * 100)}%` }"
               />
             </div>
             <!-- Tag chips — pulled from the suggestion's reasons (max 3) so
@@ -956,39 +1030,45 @@ onUnmounted(() => {
                  server is using; if reasons aren't available we fall back
                  to the single category label. No emoji per plan §3.1. -->
             <div class="flex gap-1.5 flex-wrap">
-              <template v-if="(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).reasons?.length">
+              <template
+                  v-if="(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).reasons?.length">
                 <span
-                  v-for="r in (resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).reasons!.slice(0, 3)"
-                  :key="r"
-                  class="inline-flex items-center gap-1 bg-white/10 border border-white/15 backdrop-blur-md rounded-full px-2 py-0.5 text-[10px] font-semibold text-white/85"
+                    v-for="r in (resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).reasons!.slice(0, 3)"
+                    :key="r"
+                    class="inline-flex items-center gap-1 bg-white/10 border border-white/15 backdrop-blur-md rounded-full px-2 py-0.5 text-[10px] font-semibold text-white/85"
                 >{{ r }}</span>
               </template>
               <span
-                v-else-if="(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).category"
-                class="inline-flex items-center gap-1 bg-white/10 border border-white/15 backdrop-blur-md rounded-full px-2 py-0.5 text-[10px] font-semibold text-white/85"
-              >{{ (resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).category }}</span>
+                  v-else-if="(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).category"
+                  class="inline-flex items-center gap-1 bg-white/10 border border-white/15 backdrop-blur-md rounded-full px-2 py-0.5 text-[10px] font-semibold text-white/85"
+              >{{
+                  (resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).category
+                }}</span>
             </div>
           </div>
           <div class="flex gap-2 flex-wrap shrink-0">
             <NuxtLink
-              v-if="resumeHero"
-              :to="`/player?id=${encodeURIComponent(resumeHero.suggestion.media_id)}&t=${Math.floor(resumeHero.position)}`"
-              class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-5 py-2.5 text-[13px] font-bold no-underline hover:brightness-110 transition-all"
+                v-if="resumeHero"
+                :to="`/player?id=${encodeURIComponent(resumeHero.suggestion.media_id)}&t=${Math.floor(resumeHero.position)}`"
+                class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-5 py-2.5 text-[13px] font-bold no-underline hover:brightness-110 transition-all"
             >
-              <UIcon name="i-lucide-play" class="size-4" />
-              Resume {{ formatDuration(Math.floor(resumeHero.position)) }}<span v-if="resumeHero.duration > 0"> / {{ formatDuration(resumeHero.duration) }}</span>
+              <UIcon name="i-lucide-play" class="size-4"/>
+              Resume {{ formatDuration(Math.floor(resumeHero.position)) }}<span
+                v-if="resumeHero.duration > 0"> / {{ formatDuration(resumeHero.duration) }}</span>
             </NuxtLink>
             <NuxtLink
-              v-else
-              :to="`/player?id=${encodeURIComponent((authStore.isLoggedIn ? trending[0] : general[0]).media_id)}`"
-              class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-5 py-2.5 text-[13px] font-bold no-underline hover:brightness-110 transition-all"
+                v-else
+                :to="`/player?id=${encodeURIComponent((authStore.isLoggedIn ? trending[0] : general[0]).media_id)}`"
+                class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-5 py-2.5 text-[13px] font-bold no-underline hover:brightness-110 transition-all"
             >
-              <UIcon name="i-lucide-play" class="size-4" />Play now
+              <UIcon name="i-lucide-play" class="size-4"/>
+              Play now
             </NuxtLink>
             <NuxtLink
-              to="/categories"
-              class="inline-flex items-center bg-white/10 border border-white/20 backdrop-blur-md text-white rounded-[7px] px-4 py-2.5 text-[13px] font-medium no-underline hover:bg-white/15 transition-all"
-            >Browse</NuxtLink>
+                to="/categories"
+                class="inline-flex items-center bg-white/10 border border-white/20 backdrop-blur-md text-white rounded-[7px] px-4 py-2.5 text-[13px] font-medium no-underline hover:bg-white/15 transition-all"
+            >Browse
+            </NuxtLink>
           </div>
         </div>
       </div>
@@ -999,15 +1079,16 @@ onUnmounted(() => {
        the hero data arrives. Logged-out users see the fallback below
        directly (their `general` fetch isn't gated by recsLoading). -->
   <template v-else-if="recsLoading">
-    <div class="relative overflow-hidden min-h-[240px] flex items-end animate-pulse" style="background: linear-gradient(135deg, var(--accent-bg-weak) 0%, var(--surface-page) 100%);">
+    <div class="relative overflow-hidden min-h-[240px] flex items-end animate-pulse"
+         style="background: linear-gradient(135deg, var(--accent-bg-weak) 0%, var(--surface-page) 100%);">
       <div class="relative z-10 max-w-[1400px] mx-auto px-5 pb-6 w-full">
         <div class="space-y-3">
-          <div class="h-3 w-20 rounded-full bg-white/15" />
-          <div class="h-8 w-2/3 max-w-md rounded bg-white/15" />
-          <div class="h-3 w-1/3 max-w-xs rounded bg-white/10" />
+          <div class="h-3 w-20 rounded-full bg-white/15"/>
+          <div class="h-8 w-2/3 max-w-md rounded bg-white/15"/>
+          <div class="h-3 w-1/3 max-w-xs rounded bg-white/10"/>
           <div class="flex gap-2 pt-1">
-            <div class="h-9 w-28 rounded-[7px] bg-white/15" />
-            <div class="h-9 w-24 rounded-[7px] bg-white/10" />
+            <div class="h-9 w-28 rounded-[7px] bg-white/15"/>
+            <div class="h-9 w-24 rounded-[7px] bg-white/10"/>
           </div>
         </div>
       </div>
@@ -1019,20 +1100,22 @@ onUnmounted(() => {
        falls through to the library grid when suggestions are empty. -->
   <template v-else>
     <div
-      class="relative overflow-hidden min-h-[240px] flex items-end"
-      style="background: linear-gradient(135deg, var(--accent-bg-weak) 0%, var(--surface-page) 100%);"
+        class="relative overflow-hidden min-h-[240px] flex items-end"
+        style="background: linear-gradient(135deg, var(--accent-bg-weak) 0%, var(--surface-page) 100%);"
     >
-      <div class="absolute inset-0 pointer-events-none scanline-thumb" />
-      <div class="absolute bottom-0 inset-x-0 h-[70%] pointer-events-none bg-gradient-to-t from-[var(--surface-page)] to-transparent" />
+      <div class="absolute inset-0 pointer-events-none scanline-thumb"/>
+      <div
+          class="absolute bottom-0 inset-x-0 h-[70%] pointer-events-none bg-gradient-to-t from-[var(--surface-page)] to-transparent"/>
       <div class="relative z-10 max-w-[1400px] mx-auto px-5 pb-6 w-full">
         <div class="flex items-end gap-4 flex-wrap">
           <div class="flex-1 min-w-0 space-y-2.5">
-            <span class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">
+            <span
+                class="inline-block bg-white/10 backdrop-blur-md border border-white/15 rounded-full px-2.5 py-0.5 text-[9px] font-bold text-[var(--accent-soft)] uppercase tracking-[1.5px]">
               Welcome
             </span>
             <h1
-              class="font-extrabold text-white leading-tight"
-              style="font-size: clamp(28px, 4vw, 44px); text-wrap: pretty;"
+                class="font-extrabold text-white leading-tight"
+                style="font-size: clamp(28px, 4vw, 44px); text-wrap: pretty;"
             >
               Nothing playing yet
             </h1>
@@ -1042,16 +1125,18 @@ onUnmounted(() => {
           </div>
           <div class="flex gap-2 flex-wrap shrink-0">
             <button
-              type="button"
-              class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-5 py-2.5 text-[13px] font-bold hover:brightness-110 transition-all"
-              @click="surpriseMe"
+                type="button"
+                class="inline-flex items-center gap-1.5 bg-[var(--accent)] text-white rounded-[7px] px-5 py-2.5 text-[13px] font-bold hover:brightness-110 transition-all"
+                @click="surpriseMe"
             >
-              <UIcon name="i-lucide-shuffle" class="size-4" />Surprise me
+              <UIcon name="i-lucide-shuffle" class="size-4"/>
+              Surprise me
             </button>
             <NuxtLink
-              to="/categories"
-              class="inline-flex items-center bg-white/10 border border-white/20 backdrop-blur-md text-white rounded-[7px] px-4 py-2.5 text-[13px] font-medium no-underline hover:bg-white/15 transition-all"
-            >Browse categories</NuxtLink>
+                to="/categories"
+                class="inline-flex items-center bg-white/10 border border-white/20 backdrop-blur-md text-white rounded-[7px] px-4 py-2.5 text-[13px] font-medium no-underline hover:bg-white/15 transition-all"
+            >Browse categories
+            </NuxtLink>
           </div>
         </div>
       </div>
@@ -1064,104 +1149,62 @@ onUnmounted(() => {
     <template v-if="authStore.isLoggedIn">
       <!-- Continue Watching -->
       <RecommendationRow
-        v-if="authStore.user?.preferences?.show_continue_watching !== false"
-        title="Continue Watching"
-        icon="i-lucide-play-circle"
-        :items="continueWatching"
-        :failed-ids="failedSuggestions"
-        :loading="recsLoading"
-        :progress="suggestionProgress"
-        @thumbnail-error="onSuggestionThumbnailError"
+          v-if="authStore.user?.preferences?.show_continue_watching !== false"
+          title="Continue Watching"
+          icon="i-lucide-play-circle"
+          :items="continueWatching"
+          :favorite-ids="favoriteIds"
+          :playlist-menu-items="playlistMenuItemsFor"
+          :failed-ids="failedSuggestions"
+          @toggle-favorite="toggleFavoriteId"
+          :loading="recsLoading"
+          :progress="suggestionProgress"
+          @thumbnail-error="onSuggestionThumbnailError"
       />
-
-      <!-- On Deck — next entry in a series. The backend keys items by series
-           (show_name + season/episode) so a viewer who finished S01E03 sees
-           S01E04 as the natural next pickup. Naming kept neutral; the
-           feature applies to any episodic content. -->
-      <div v-if="onDeck.length > 0" class="space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
-            <UIcon name="i-lucide-list-video" class="size-4 text-[var(--accent)]" />
-            On Deck
-          </h2>
-          <div class="flex items-center gap-2">
-            <NuxtLink to="/history" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
-            <div class="flex gap-1">
-              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
-              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.onDeckScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
-            </div>
-          </div>
-        </div>
-        <div ref="onDeckScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-          <NuxtLink
-            v-for="ep in onDeck"
-            :key="ep.media_id"
-            :to="`/player?id=${encodeURIComponent(ep.media_id)}`"
-            class="group shrink-0 w-40"
-          >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
-              <img
-                v-if="ep.thumbnail_url"
-                :src="ep.thumbnail_url"
-                :alt="getDisplayTitle(ep)"
-                width="320"
-                height="180"
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                loading="lazy"
-              />
-              <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-list-video" class="size-6 text-muted" />
-              </div>
-              <div v-if="ep.season > 0 || ep.episode > 0" class="absolute bottom-1 left-1 text-[10px] font-bold text-white bg-black/60 rounded px-1">
-                {{ ep.season > 0 ? `S${String(ep.season).padStart(2,'0')}` : '' }}{{ ep.episode > 0 ? `E${String(ep.episode).padStart(2,'0')}` : '' }}
-              </div>
-              <div v-if="ep.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
-                {{ formatDuration(ep.duration) }}
-              </div>
-            </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors leading-tight" :title="ep.show_name">{{ ep.show_name }}</p>
-            <p class="text-[10px] text-muted truncate" :title="getDisplayTitle(ep)">{{ getDisplayTitle(ep) }}</p>
-          </NuxtLink>
-        </div>
-      </div>
 
       <!-- Trending -->
       <RecommendationRow
-        v-if="authStore.user?.preferences?.show_trending !== false"
-        title="Trending"
-        icon="i-lucide-flame"
-        :items="trending"
-        :failed-ids="failedSuggestions"
-        :loading="recsLoading"
-        :progress="suggestionProgress"
-        to="/categories"
-        @thumbnail-error="onSuggestionThumbnailError"
+          v-if="authStore.user?.preferences?.show_trending !== false"
+          title="Trending"
+          icon="i-lucide-flame"
+          :items="trending"
+          :favorite-ids="favoriteIds"
+          :playlist-menu-items="playlistMenuItemsFor"
+          :failed-ids="failedSuggestions"
+          @toggle-favorite="toggleFavoriteId"
+          :loading="recsLoading"
+          :progress="suggestionProgress"
+          to="/categories"
+          @thumbnail-error="onSuggestionThumbnailError"
       />
 
       <!-- Recommended For You -->
       <RecommendationRow
-        v-if="authStore.user?.preferences?.show_recommended !== false"
-        title="Recommended For You"
-        icon="i-lucide-thumbs-up"
-        :items="recommended"
-        :failed-ids="failedSuggestions"
-        :loading="recsLoading"
-        :progress="suggestionProgress"
-        to="/"
-        @thumbnail-error="onSuggestionThumbnailError"
+          v-if="authStore.user?.preferences?.show_recommended !== false"
+          title="Recommended For You"
+          icon="i-lucide-thumbs-up"
+          :items="recommended"
+          :favorite-ids="favoriteIds"
+          :playlist-menu-items="playlistMenuItemsFor"
+          :failed-ids="failedSuggestions"
+          @toggle-favorite="toggleFavoriteId"
+          :loading="recsLoading"
+          :progress="suggestionProgress"
+          to="/"
+          @thumbnail-error="onSuggestionThumbnailError"
       />
 
       <!-- Saved-search empty hint — only for likely new users (no saved
            searches AND no Continue Watching history). Once the user has any
            activity the hint disappears so it stays out of regulars' way. -->
       <NuxtLink
-        v-if="!recsLoading && savedSearches.length === 0 && continueWatching.length === 0"
-        to="/browse"
-        class="flex items-center gap-3 rounded-lg border border-dashed border-[var(--hairline)] bg-[var(--surface-card)] px-4 py-3 text-sm text-muted hover:border-[var(--accent)] hover:text-default transition-colors no-underline"
+          v-if="!recsLoading && savedSearches.length === 0 && continueWatching.length === 0"
+          to="/browse"
+          class="flex items-center gap-3 rounded-lg border border-dashed border-[var(--hairline)] bg-[var(--surface-card)] px-4 py-3 text-sm text-muted hover:border-[var(--accent)] hover:text-default transition-colors no-underline"
       >
-        <UIcon name="i-lucide-bookmark-plus" class="size-5 text-[var(--accent-soft)] shrink-0" />
+        <UIcon name="i-lucide-bookmark-plus" class="size-5 text-[var(--accent-soft)] shrink-0"/>
         <span class="flex-1">Save a search in Browse and new matches will surface right here.</span>
-        <UIcon name="i-lucide-arrow-right" class="size-4 shrink-0" />
+        <UIcon name="i-lucide-arrow-right" class="size-4 shrink-0"/>
       </NuxtLink>
 
       <!-- Saved-search rows (retention plan B.5).
@@ -1172,36 +1215,37 @@ onUnmounted(() => {
         <div v-if="savedSearchMatches[s.id]?.length" class="space-y-3">
           <div class="flex items-center justify-between">
             <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
-              <UIcon name="i-lucide-bookmark-check" class="size-4 text-[var(--accent)]" />
+              <UIcon name="i-lucide-bookmark-check" class="size-4 text-[var(--accent)]"/>
               New for: {{ s.name }}
               <span class="text-xs font-mono text-muted">({{ savedSearchMatches[s.id]?.length ?? 0 }})</span>
             </h2>
             <UButton
-              icon="i-lucide-check"
-              label="Mark seen"
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              @click="dismissSavedSearchRow(s.id)"
+                icon="i-lucide-check"
+                label="Mark seen"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                @click="dismissSavedSearchRow(s.id)"
             />
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
             <NuxtLink
-              v-for="item in savedSearchMatches[s.id]"
-              :key="item.id"
-              :to="`/player?id=${encodeURIComponent(item.id)}`"
-              class="group block"
+                v-for="item in savedSearchMatches[s.id]"
+                :key="item.id"
+                :to="`/player?id=${encodeURIComponent(item.id)}`"
+                class="group block"
             >
               <div class="relative aspect-video rounded-lg overflow-hidden bg-muted media-card-lift scanline-thumb">
                 <HoverPreviewImg
-                  :media-id="item.id"
-                  :src="mediaApi.getThumbnailUrl(item.id)"
-                  :alt="getDisplayTitle(item)"
-                  :width="320"
-                  :height="180"
-                  img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                    :media-id="item.id"
+                    :src="mediaApi.getThumbnailUrl(item.id)"
+                    :alt="getDisplayTitle(item)"
+                    :width="320"
+                    :height="180"
+                    img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 />
-                <div v-if="item.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
+                <div v-if="item.duration"
+                     class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
                   {{ formatDuration(item.duration) }}
                 </div>
               </div>
@@ -1220,47 +1264,58 @@ onUnmounted(() => {
            Falls back to recentlyAdded for first-time logins (no prior visit
            on record). -->
       <div
-        v-if="(newSinceLastVisit && newSinceLastVisit.items.length > 0) || (!newSinceLastVisit && recentlyAdded.length > 0)"
-        class="space-y-3"
+          v-if="(newSinceLastVisit && newSinceLastVisit.items.length > 0) || (!newSinceLastVisit && recentlyAdded.length > 0)"
+          class="space-y-3"
       >
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-bold text-[var(--text-strong)] flex items-center gap-2">
-            <UIcon name="i-lucide-sparkle" class="size-4 text-[var(--accent)]" />
-            {{ newSinceLastVisit && newSinceLastVisit.items.length > 0 ? 'Recently added since your last visit' : 'Recently added' }}
+            <UIcon name="i-lucide-sparkle" class="size-4 text-[var(--accent)]"/>
+            {{
+              newSinceLastVisit && newSinceLastVisit.items.length > 0 ? 'Recently added since your last visit' : 'Recently added'
+            }}
           </h2>
           <div class="flex items-center gap-2">
-            <NuxtLink to="/?sort_by=date_added&sort_order=desc" class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See all <UIcon name="i-lucide-arrow-right" class="size-3" /></NuxtLink>
+            <NuxtLink to="/?sort_by=date_added&sort_order=desc"
+                      class="text-xs font-medium text-[var(--accent-soft)] hover:underline flex items-center gap-1">See
+              all
+              <UIcon name="i-lucide-arrow-right" class="size-3"/>
+            </NuxtLink>
             <div class="flex gap-1">
-              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })" />
-              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right" @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })" />
+              <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" aria-label="Scroll left"
+                       @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: -320, behavior: 'smooth' })"/>
+              <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" aria-label="Scroll right"
+                       @click="($refs.recentScroll as HTMLElement)?.scrollBy({ left: 320, behavior: 'smooth' })"/>
             </div>
           </div>
         </div>
         <div ref="recentScroll" class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
           <NuxtLink
-            v-for="r in (newSinceLastVisit && newSinceLastVisit.items.length > 0 ? newSinceLastVisit.items : recentlyAdded)"
-            :key="r.id"
-            :to="`/player?id=${encodeURIComponent(r.id)}`"
-            class="group shrink-0 w-40"
+              v-for="r in (newSinceLastVisit && newSinceLastVisit.items.length > 0 ? newSinceLastVisit.items : recentlyAdded)"
+              :key="r.id"
+              :to="`/player?id=${encodeURIComponent(r.id)}`"
+              class="group shrink-0 w-40"
           >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
+            <div
+                class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
               <HoverPreviewImg
-                v-if="r.thumbnail_url"
-                :media-id="r.id"
-                :src="r.thumbnail_url"
-                :alt="getDisplayTitle(r)"
-                :width="320"
-                :height="180"
-                img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                  v-if="r.thumbnail_url"
+                  :media-id="r.id"
+                  :src="r.thumbnail_url"
+                  :alt="getDisplayTitle(r)"
+                  :width="320"
+                  :height="180"
+                  img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-film" class="size-6 text-muted" />
+                <UIcon name="i-lucide-film" class="size-6 text-muted"/>
               </div>
-              <div v-if="r.duration" class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
+              <div v-if="r.duration"
+                   class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1 rounded">
                 {{ formatDuration(r.duration) }}
               </div>
             </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(r)">{{ getDisplayTitle(r) }}</p>
+            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors"
+               :title="getDisplayTitle(r)">{{ getDisplayTitle(r) }}</p>
             <p class="text-xs text-muted truncate">{{ r.category || r.type }}</p>
           </NuxtLink>
         </div>
@@ -1270,26 +1325,29 @@ onUnmounted(() => {
     <!-- Popular suggestions (logged-out users only) -->
     <template v-else>
       <RecommendationRow
-        title="Popular"
-        icon="i-lucide-star"
-        :items="general"
-        :failed-ids="failedSuggestions"
-        to="/categories"
-        @thumbnail-error="onSuggestionThumbnailError"
+          title="Popular"
+          icon="i-lucide-star"
+          :items="general"
+          :favorite-ids="favoriteIds"
+          :playlist-menu-items="playlistMenuItemsFor"
+          :failed-ids="failedSuggestions"
+          @toggle-favorite="toggleFavoriteId"
+          to="/categories"
+          @thumbnail-error="onSuggestionThumbnailError"
       />
       <!-- Top categories chip strip — guest-only discovery nudge. Sorted by
            item count, capped at 8 so it stays on one row on most viewports. -->
       <div v-if="categories.length > 0" class="space-y-2">
         <h2 class="text-sm font-bold text-[var(--text-strong)] flex items-center gap-2">
-          <UIcon name="i-lucide-tag" class="size-4 text-[var(--accent)]" />
+          <UIcon name="i-lucide-tag" class="size-4 text-[var(--accent)]"/>
           Top categories
         </h2>
         <div class="flex flex-wrap gap-1.5">
           <NuxtLink
-            v-for="c in [...categories].sort((a, b) => b.count - a.count).slice(0, 8)"
-            :key="c.name"
-            :to="`/browse?category=${encodeURIComponent(c.name)}`"
-            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--hairline)] bg-[var(--surface-card)] hover:border-[var(--accent)] hover:text-default text-xs text-muted no-underline transition-colors"
+              v-for="c in [...categories].sort((a, b) => b.count - a.count).slice(0, 8)"
+              :key="c.name"
+              :to="`/browse?category=${encodeURIComponent(c.name)}`"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--hairline)] bg-[var(--surface-card)] hover:border-[var(--accent)] hover:text-default text-xs text-muted no-underline transition-colors"
           >
             {{ c.display_name || c.name }}
             <span class="text-[10px] font-mono opacity-70">{{ c.count.toLocaleString() }}</span>
@@ -1300,10 +1358,18 @@ onUnmounted(() => {
 
     <!-- Library stats (public) -->
     <div v-if="libraryStats && !authStore.isLoggedIn" class="flex items-center gap-4 text-xs text-muted">
-      <span class="flex items-center gap-1"><UIcon name="i-lucide-database" class="size-3.5" />{{ libraryStats.total_count.toLocaleString() }} items</span>
-      <span v-if="libraryStats.video_count" class="flex items-center gap-1"><UIcon name="i-lucide-film" class="size-3.5" />{{ libraryStats.video_count.toLocaleString() }} videos</span>
-      <span v-if="libraryStats.audio_count" class="flex items-center gap-1"><UIcon name="i-lucide-music" class="size-3.5" />{{ libraryStats.audio_count.toLocaleString() }} audio</span>
-      <span class="flex items-center gap-1"><UIcon name="i-lucide-hard-drive" class="size-3.5" />{{ formatBytes(libraryStats.total_size) }}</span>
+      <span class="flex items-center gap-1"><UIcon name="i-lucide-database"
+                                                   class="size-3.5"/>{{ libraryStats.total_count.toLocaleString() }} items</span>
+      <span v-if="libraryStats.video_count" class="flex items-center gap-1"><UIcon name="i-lucide-film"
+                                                                                   class="size-3.5"/>{{
+          libraryStats.video_count.toLocaleString()
+        }} videos</span>
+      <span v-if="libraryStats.audio_count" class="flex items-center gap-1"><UIcon name="i-lucide-music"
+                                                                                   class="size-3.5"/>{{
+          libraryStats.audio_count.toLocaleString()
+        }} audio</span>
+      <span class="flex items-center gap-1"><UIcon name="i-lucide-hard-drive"
+                                                   class="size-3.5"/>{{ formatBytes(libraryStats.total_size) }}</span>
     </div>
 
     <!-- Filters -->
@@ -1311,336 +1377,372 @@ onUnmounted(() => {
       <!-- Type chips (desktop) + search row -->
       <div class="flex flex-wrap gap-2 items-center">
         <button
-          v-for="opt in TYPE_OPTIONS"
-          v-show="opt.value === 'all' || params.type === opt.value || typeCounts[opt.value] === undefined || typeCounts[opt.value] > 0"
-          :key="opt.value"
-          :class="[
+            v-for="opt in TYPE_OPTIONS"
+            v-show="opt.value === 'all' || params.type === opt.value || typeCounts[opt.value] === undefined || typeCounts[opt.value] > 0"
+            :key="opt.value"
+            :class="[
             'hidden md:inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
             params.type === opt.value
               ? 'bg-primary text-white border-primary'
               : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
           ]"
-          @click="params.type = opt.value"
+            @click="params.type = opt.value"
         >
           <span>{{ opt.label }}</span>
           <span
-            v-if="opt.value !== 'all' && typeCounts[opt.value] !== undefined"
-            class="font-mono opacity-70 text-[10px]"
+              v-if="opt.value !== 'all' && typeCounts[opt.value] !== undefined"
+              class="font-mono opacity-70 text-[10px]"
           >{{ typeCounts[opt.value] }}</span>
         </button>
         <!-- Preset chips — design handoff §6.3 chip strip of curation presets -->
-        <span class="hidden md:inline-block h-[22px] w-px bg-[var(--hairline-strong)] mx-1" aria-hidden="true" />
+        <span class="hidden md:inline-block h-[22px] w-px bg-[var(--hairline-strong)] mx-1" aria-hidden="true"/>
         <button
-          :class="[
+            :class="[
             'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
             activePreset === 'trending'
               ? 'bg-[var(--accent-bg-med)] text-[var(--accent-soft)] border-[var(--accent-border)]'
               : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
           ]"
-          aria-label="Filter by trending (most viewed)"
-          :aria-pressed="activePreset === 'trending'"
-          @click="togglePreset('trending')"
+            aria-label="Filter by trending (most viewed)"
+            :aria-pressed="activePreset === 'trending'"
+            @click="togglePreset('trending')"
         >
-          <UIcon name="i-lucide-flame" class="size-3.5" />Trending
+          <UIcon name="i-lucide-flame" class="size-3.5"/>
+          Trending
         </button>
         <button
-          :class="[
+            :class="[
             'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
             activePreset === 'new'
               ? 'bg-[var(--accent-bg-med)] text-[var(--accent-soft)] border-[var(--accent-border)]'
               : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
           ]"
-          aria-label="Filter by new (recently added)"
-          :aria-pressed="activePreset === 'new'"
-          @click="togglePreset('new')"
+            aria-label="Filter by new (recently added)"
+            :aria-pressed="activePreset === 'new'"
+            @click="togglePreset('new')"
         >
-          <UIcon name="i-lucide-sparkle" class="size-3.5" />New
+          <UIcon name="i-lucide-sparkle" class="size-3.5"/>
+          New
         </button>
         <!-- Clear all filters (shown only when anything is active) -->
         <button
-          v-if="hasActiveFilters"
-          class="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-muted hover:text-default transition-colors"
-          aria-label="Clear all filters"
-          @click="clearAllFilters"
+            v-if="hasActiveFilters"
+            class="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-muted hover:text-default transition-colors"
+            aria-label="Clear all filters"
+            @click="clearAllFilters"
         >
-          <UIcon name="i-lucide-x" class="size-3.5" />Clear
+          <UIcon name="i-lucide-x" class="size-3.5"/>
+          Clear
         </button>
         <UInput
-          v-model="params.search"
-          icon="i-lucide-search"
-          placeholder="Search media…"
-          autocomplete="on"
-          name="media-search"
-          class="w-64 ml-auto"
-          @input="onSearchInput"
+            v-model="params.search"
+            icon="i-lucide-search"
+            placeholder="Search media…"
+            autocomplete="on"
+            name="media-search"
+            class="w-64 ml-auto"
+            @input="onSearchInput"
         />
       </div>
       <!-- Secondary filters row -->
       <div class="flex flex-wrap gap-3 items-center">
-      <!-- Type select (mobile only) -->
-      <USelect
-        v-model="params.type"
-        :items="TYPE_OPTIONS.filter(opt => opt.value === 'all' || params.type === opt.value || !typeCounts[opt.value] || typeCounts[opt.value] > 0)"
-        class="w-36 md:hidden"
-      />
-      <USelect
-        v-if="categories.length > 0"
-        v-model="params.category"
-        :items="[{ label: 'All Categories', value: 'all' }, ...categories.map(c => ({ label: `${c.name} (${c.count})`, value: c.name }))]"
-        class="w-48"
-      />
-      <USelect
-        v-model="params.sort_by"
-        :items="sortOptions"
-        class="w-36"
-      />
-      <UButton
-        :icon="params.sort_order === 'asc' ? 'i-lucide-arrow-up-az' : 'i-lucide-arrow-down-az'"
-        :aria-label="params.sort_order === 'asc' ? 'Sort descending' : 'Sort ascending'"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        @click="params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc'"
-      />
-      <!-- Action cluster — visually separated so the filter selects above
-           read as filters, not as a wall of mixed controls. -->
-      <span class="hidden md:inline-block h-[22px] w-px bg-[var(--hairline-strong)] mx-1" aria-hidden="true" />
-      <UButton
-        icon="i-lucide-play-circle"
-        label="Play All"
-        variant="soft"
-        color="primary"
-        size="sm"
-        aria-label="Play all items"
-        :disabled="items.length === 0"
-        @click="playAll"
-      />
-      <UButton
-        icon="i-lucide-shuffle"
-        label="Surprise Me"
-        variant="soft"
-        color="primary"
-        size="sm"
-        aria-label="Pick a random item to watch"
-        @click="surpriseMe"
-      />
-      <!-- Active tag filter chips. Single-tag flows (card click) show one
-           chip; the tag-cloud flow from /browse shows one chip per tag plus
-           an AND/OR pill so the user can see and clear the active filter. -->
-      <template v-if="filterTags.size > 0">
+        <!-- Type select (mobile only) -->
+        <USelect
+            v-model="params.type"
+            :items="TYPE_OPTIONS.filter(opt => opt.value === 'all' || params.type === opt.value || !typeCounts[opt.value] || typeCounts[opt.value] > 0)"
+            class="w-36 md:hidden"
+        />
+        <USelect
+            v-if="categories.length > 0"
+            v-model="params.category"
+            :items="[{ label: 'All Categories', value: 'all' }, ...categories.map(c => ({ label: `${c.name} (${c.count})`, value: c.name }))]"
+            class="w-48"
+        />
+        <USelect
+            v-model="params.sort_by"
+            :items="sortOptions"
+            class="w-36"
+        />
+        <UButton
+            :icon="params.sort_order === 'asc' ? 'i-lucide-arrow-up-az' : 'i-lucide-arrow-down-az'"
+            :aria-label="params.sort_order === 'asc' ? 'Sort descending' : 'Sort ascending'"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            @click="params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc'"
+        />
+        <!-- Action cluster — visually separated so the filter selects above
+             read as filters, not as a wall of mixed controls. -->
+        <span class="hidden md:inline-block h-[22px] w-px bg-[var(--hairline-strong)] mx-1" aria-hidden="true"/>
+        <UButton
+            icon="i-lucide-play-circle"
+            label="Play All"
+            variant="soft"
+            color="primary"
+            size="sm"
+            aria-label="Play all items"
+            :disabled="items.length === 0"
+            @click="playAll"
+        />
+        <UButton
+            icon="i-lucide-shuffle"
+            label="Surprise Me"
+            variant="soft"
+            color="primary"
+            size="sm"
+            aria-label="Pick a random item to watch"
+            @click="surpriseMe"
+        />
+        <!-- Active tag filter chips. Single-tag flows (card click) show one
+             chip; the tag-cloud flow from /browse shows one chip per tag plus
+             an AND/OR pill so the user can see and clear the active filter. -->
+        <template v-if="filterTags.size > 0">
         <span
-          v-if="filterTags.size > 1"
-          class="inline-flex items-center gap-1 rounded-full bg-[var(--accent-bg-weak)] text-[var(--accent-soft)] border border-[var(--accent-border)] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-          :title="`Tag match mode: ${tagMode}`"
+            v-if="filterTags.size > 1"
+            class="inline-flex items-center gap-1 rounded-full bg-[var(--accent-bg-weak)] text-[var(--accent-soft)] border border-[var(--accent-border)] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+            :title="`Tag match mode: ${tagMode}`"
         >
           {{ tagMode === 'and' ? 'AND' : 'OR' }}
         </span>
-        <UButton
-          v-for="t in [...filterTags]"
-          :key="t"
-          :label="t"
-          icon="i-lucide-tag"
-          trailing-icon="i-lucide-x"
-          variant="soft"
-          color="primary"
-          size="sm"
-          :aria-label="`Remove tag filter ${t}`"
-          @click="() => {
+          <UButton
+              v-for="t in [...filterTags]"
+              :key="t"
+              :label="t"
+              icon="i-lucide-tag"
+              trailing-icon="i-lucide-x"
+              variant="soft"
+              color="primary"
+              size="sm"
+              :aria-label="`Remove tag filter ${t}`"
+              @click="() => {
             const next = new Set(filterTags); next.delete(t); filterTags = next
             params.page = 1; load()
           }"
-        />
-      </template>
-      <!-- Hide watched toggle (logged-in users only) -->
-      <UButton
-        v-if="authStore.isLoggedIn"
-        :icon="hideWatched ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-        :label="hideWatched ? 'Showing unwatched' : 'Hide watched'"
-        :variant="hideWatched ? 'solid' : 'ghost'"
-        :color="hideWatched ? 'primary' : 'neutral'"
-        size="sm"
-        :aria-label="hideWatched ? 'Show all items' : 'Hide completed items'"
-        @click="hideWatched = !hideWatched"
-      />
-      <!-- Min rating filter (logged-in users only) -->
-      <USelect
-        v-if="authStore.isLoggedIn"
-        v-model="params.min_rating"
-        :items="MIN_RATING_OPTIONS"
-        class="w-32"
-        aria-label="Minimum rating filter"
-      />
-      <!-- RSS subscribe link -->
-      <UButton
-        v-if="authStore.isLoggedIn"
-        icon="i-lucide-rss"
-        aria-label="Subscribe via RSS"
-        variant="ghost"
-        color="neutral"
-        size="sm"
-        to="/api/feed"
-        target="_blank"
-        external
-      />
-      <div class="ml-auto flex items-center gap-1">
-        <p class="text-sm text-muted mr-2" aria-live="polite" aria-atomic="true">{{ total.toLocaleString() }} items</p>
-        <UButtonGroup>
-          <UButton
-            icon="i-lucide-grid-2x2"
-            aria-label="Grid view"
-            :variant="viewMode === 'grid' ? 'solid' : 'ghost'"
-            :color="viewMode === 'grid' ? 'primary' : 'neutral'"
-            size="sm"
-            @click="viewMode = 'grid'"
           />
-          <UButton
-            icon="i-lucide-list"
-            aria-label="List view"
-            :variant="viewMode === 'list' ? 'solid' : 'ghost'"
-            :color="viewMode === 'list' ? 'primary' : 'neutral'"
-            size="sm"
-            @click="viewMode = 'list'"
-          />
-          <UButton
-            icon="i-lucide-rows-3"
-            aria-label="Compact view"
-            :variant="viewMode === 'compact' ? 'solid' : 'ghost'"
-            :color="viewMode === 'compact' ? 'primary' : 'neutral'"
-            size="sm"
-            @click="viewMode = 'compact'"
-          />
-        </UButtonGroup>
+        </template>
+        <!-- Active type filter chip — gives a removable summary + one-tap clear
+             (the type selector chips are desktop-only, so this also surfaces the
+             active type on mobile). -->
         <UButton
-          v-if="authStore.isLoggedIn"
-          :icon="selectionMode ? 'i-lucide-x' : 'i-lucide-check-square'"
-          :label="selectionMode ? 'Cancel' : 'Select'"
-          :color="selectionMode ? 'neutral' : 'neutral'"
-          variant="ghost"
-          size="sm"
-          @click="toggleSelectionMode"
+            v-if="params.type && params.type !== 'all'"
+            :label="TYPE_OPTIONS.find(o => o.value === params.type)?.label ?? params.type"
+            icon="i-lucide-shapes"
+            trailing-icon="i-lucide-x"
+            variant="soft"
+            color="primary"
+            size="sm"
+            aria-label="Clear type filter"
+            @click="params.type = 'all'"
         />
-      </div>
+        <!-- Active minimum-rating filter chip -->
+        <UButton
+            v-if="(params.min_rating ?? 0) > 0"
+            :label="MIN_RATING_OPTIONS.find(o => o.value === params.min_rating)?.label ?? `★ ${params.min_rating}+`"
+            icon="i-lucide-star"
+            trailing-icon="i-lucide-x"
+            variant="soft"
+            color="primary"
+            size="sm"
+            aria-label="Clear rating filter"
+            @click="params.min_rating = 0"
+        />
+        <!-- Hide watched toggle (logged-in users only) -->
+        <UButton
+            v-if="authStore.isLoggedIn"
+            :icon="hideWatched ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+            :label="hideWatched ? 'Showing unwatched' : 'Hide watched'"
+            :variant="hideWatched ? 'solid' : 'ghost'"
+            :color="hideWatched ? 'primary' : 'neutral'"
+            size="sm"
+            :aria-label="hideWatched ? 'Show all items' : 'Hide completed items'"
+            @click="hideWatched = !hideWatched"
+        />
+        <!-- Min rating filter (logged-in users only) -->
+        <USelect
+            v-if="authStore.isLoggedIn"
+            v-model="params.min_rating"
+            :items="MIN_RATING_OPTIONS"
+            class="w-32"
+            aria-label="Minimum rating filter"
+        />
+        <!-- RSS subscribe link -->
+        <UButton
+            v-if="authStore.isLoggedIn"
+            icon="i-lucide-rss"
+            aria-label="Subscribe via RSS"
+            variant="ghost"
+            color="neutral"
+            size="sm"
+            to="/api/feed"
+            target="_blank"
+            external
+        />
+        <div class="ml-auto flex items-center gap-1">
+          <p class="text-sm text-muted mr-2" aria-live="polite" aria-atomic="true">{{ total.toLocaleString() }}
+            items</p>
+          <UButtonGroup>
+            <UButton
+                icon="i-lucide-grid-2x2"
+                aria-label="Grid view"
+                :variant="viewMode === 'grid' ? 'solid' : 'ghost'"
+                :color="viewMode === 'grid' ? 'primary' : 'neutral'"
+                size="sm"
+                @click="viewMode = 'grid'"
+            />
+            <UButton
+                icon="i-lucide-list"
+                aria-label="List view"
+                :variant="viewMode === 'list' ? 'solid' : 'ghost'"
+                :color="viewMode === 'list' ? 'primary' : 'neutral'"
+                size="sm"
+                @click="viewMode = 'list'"
+            />
+            <UButton
+                icon="i-lucide-rows-3"
+                aria-label="Compact view"
+                :variant="viewMode === 'compact' ? 'solid' : 'ghost'"
+                :color="viewMode === 'compact' ? 'primary' : 'neutral'"
+                size="sm"
+                @click="viewMode = 'compact'"
+            />
+          </UButtonGroup>
+          <UButton
+              v-if="authStore.isLoggedIn"
+              :icon="selectionMode ? 'i-lucide-x' : 'i-lucide-check-square'"
+              :label="selectionMode ? 'Cancel' : 'Select'"
+              :color="selectionMode ? 'neutral' : 'neutral'"
+              variant="ghost"
+              size="sm"
+              @click="toggleSelectionMode"
+          />
+        </div>
       </div><!-- end secondary filters row -->
     </div><!-- end filter card -->
 
     <!-- Bulk action bar -->
-    <div v-if="selectionMode && authStore.isLoggedIn" class="sticky top-14 z-30 bg-elevated border-b border-default py-2">
+    <div v-if="selectionMode && authStore.isLoggedIn"
+         class="sticky top-14 z-30 bg-elevated border-b border-default py-2">
       <UContainer class="flex items-center gap-3 flex-wrap">
         <span class="text-sm text-muted">{{ selectedIds.size }} selected</span>
         <template v-if="selectedIds.size > 0">
           <USelect
-            v-model="bulkAddPlaylistId"
-            :items="myPlaylists.map(p => ({ label: p.name, value: p.id }))"
-            placeholder="Choose playlist…"
-            size="sm"
-            class="min-w-40"
+              v-model="bulkAddPlaylistId"
+              :items="myPlaylists.map(p => ({ label: p.name, value: p.id }))"
+              placeholder="Choose playlist…"
+              size="sm"
+              class="min-w-40"
           />
           <UButton
-            :loading="bulkAdding"
-            :disabled="!bulkAddPlaylistId || selectedIds.size === 0"
-            icon="i-lucide-list-plus"
-            label="Add to Playlist"
-            color="primary"
-            size="sm"
-            @click="bulkAddToPlaylist"
+              :loading="bulkAdding"
+              :disabled="!bulkAddPlaylistId || selectedIds.size === 0"
+              icon="i-lucide-list-plus"
+              label="Add to Playlist"
+              color="primary"
+              size="sm"
+              @click="bulkAddToPlaylist"
           />
         </template>
-        <UButton variant="ghost" color="neutral" size="sm" label="Select All" @click="selectedIds = new Set(items.map(i => i.id))" />
-        <UButton v-if="selectedIds.size > 0" variant="ghost" color="neutral" size="sm" label="Clear" @click="selectedIds = new Set()" />
+        <UButton variant="ghost" color="neutral" size="sm" label="Select All"
+                 @click="selectedIds = new Set(items.map(i => i.id))"/>
+        <UButton v-if="selectedIds.size > 0" variant="ghost" color="neutral" size="sm" label="Clear"
+                 @click="selectedIds = new Set()"/>
       </UContainer>
     </div>
 
     <!-- Server initializing / scanning banner -->
     <UAlert
-      v-if="initializing && !loading"
-      title="Server is initializing"
-      description="The media library is starting up. Some items may not appear yet."
-      color="info"
-      variant="soft"
-      icon="i-lucide-loader-2"
-      class="mb-2"
+        v-if="initializing && !loading"
+        title="Server is initializing"
+        description="The media library is starting up. Some items may not appear yet."
+        color="info"
+        variant="soft"
+        icon="i-lucide-loader-2"
+        class="mb-2"
     />
     <UAlert
-      v-else-if="scanning && !loading"
-      title="Media scan in progress"
-      description="New files may appear shortly as the library scan completes."
-      color="info"
-      variant="soft"
-      icon="i-lucide-scan"
-      class="mb-2"
+        v-else-if="scanning && !loading"
+        title="Media scan in progress"
+        description="New files may appear shortly as the library scan completes."
+        color="info"
+        variant="soft"
+        icon="i-lucide-scan"
+        class="mb-2"
     />
 
     <!-- Error -->
     <UAlert
-      v-if="loadError && !loading"
-      :title="loadError"
-      color="error"
-      variant="soft"
-      icon="i-lucide-alert-circle"
-      class="mb-2"
+        v-if="loadError && !loading"
+        :title="loadError"
+        color="error"
+        variant="soft"
+        icon="i-lucide-alert-circle"
+        class="mb-2"
     />
 
     <!-- Loading -->
-    <MediaCardSkeleton v-if="loading" :count="12" />
+    <MediaCardSkeleton v-if="loading" :count="12"/>
 
     <!-- Grid view -->
     <div
-      v-else-if="viewMode === 'grid'"
-      class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4"
+        v-else-if="viewMode === 'grid'"
+        class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4"
     >
       <component
-        :is="selectionMode ? 'div' : resolveComponent('NuxtLink')"
-        v-for="item in items"
-        :key="item.id"
-        :to="selectionMode ? undefined : matureGateHref(item)"
-        :class="['group block cursor-pointer', selectionMode && selectedIds.has(item.id) ? 'ring-2 ring-primary rounded-lg' : '']"
-        @mouseenter="!selectionMode && onMediaHoverEnter(item.id, item.type === 'audio')"
-        @mouseleave="!selectionMode && onMediaHoverLeave()"
-        @click="selectionMode ? toggleSelect(item.id, $event) : undefined"
+          :is="selectionMode ? 'div' : resolveComponent('NuxtLink')"
+          v-for="item in items"
+          :key="item.id"
+          :to="selectionMode ? undefined : matureGateHref(item)"
+          :class="['group block cursor-pointer', selectionMode && selectedIds.has(item.id) ? 'ring-2 ring-primary rounded-lg' : '']"
+          @mouseenter="!selectionMode && onMediaHoverEnter(item.id, item.type === 'audio')"
+          @mouseleave="!selectionMode && onMediaHoverLeave()"
+          @click="selectionMode ? toggleSelect(item.id, $event) : undefined"
       >
         <div
-          class="relative aspect-video rounded-lg overflow-hidden mb-2 media-card-lift scanline-thumb"
-          :style="item.blur_hash && item.type !== 'audio' ? { backgroundImage: `url(${blurHashToDataUrl(item.blur_hash)})`, backgroundSize: 'cover' } : {}"
+            class="relative aspect-video rounded-lg overflow-hidden mb-2 media-card-lift scanline-thumb"
+            :style="item.blur_hash && item.type !== 'audio' ? { backgroundImage: `url(${blurHashToDataUrl(item.blur_hash)})`, backgroundSize: 'cover' } : {}"
         >
           <!-- Gradient fallback layer (always present for video/image, sits beneath thumbnail) -->
           <div
-            v-if="item.type !== 'audio'"
-            class="absolute inset-0"
-            :style="{ background: getItemGradient(item.id) }"
+              v-if="item.type !== 'audio'"
+              class="absolute inset-0"
+              :style="{ background: getMediaGradient(item.id) }"
           />
           <!-- Selection checkbox -->
           <div v-if="selectionMode" class="absolute top-1.5 left-1.5 z-10">
-            <div :class="['w-5 h-5 rounded border-2 flex items-center justify-center', selectedIds.has(item.id) ? 'bg-primary border-primary' : 'bg-black/40 border-white/70']">
-              <UIcon v-if="selectedIds.has(item.id)" name="i-lucide-check" class="size-3 text-white" />
+            <div
+                :class="['w-5 h-5 rounded border-2 flex items-center justify-center', selectedIds.has(item.id) ? 'bg-primary border-primary' : 'bg-black/40 border-white/70']">
+              <UIcon v-if="selectedIds.has(item.id)" name="i-lucide-check" class="size-3 text-white"/>
             </div>
           </div>
           <img
-            v-if="item.type !== 'audio' && !failedThumbnails.has(item.id)"
-            :src="getThumbSrc(item.id)"
-            :alt="getDisplayTitle(item)"
-            width="320"
-            height="180"
-            :class="['absolute inset-0 w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-2xl scale-125 saturate-0' : '']"
-            loading="lazy"
-            @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, item.id)"
+              v-if="item.type !== 'audio' && !failedThumbnails.has(item.id)"
+              :src="getThumbSrc(item.id)"
+              :alt="getDisplayTitle(item)"
+              width="320"
+              height="180"
+              :class="['absolute inset-0 w-full h-full object-cover transition-all duration-200 group-hover:scale-105', item.is_mature && !canViewMature ? 'blur-2xl scale-125 saturate-0' : '']"
+              loading="lazy"
+              @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, item.id)"
           />
           <div
-            v-else-if="item.type === 'audio'"
-            class="w-full h-full flex flex-col items-center justify-center gap-2"
-            :style="{ background: getItemGradient(item.id) }"
+              v-else-if="item.type === 'audio'"
+              class="w-full h-full flex flex-col items-center justify-center gap-2"
+              :style="{ background: getMediaGradient(item.id) }"
           >
-            <AudioBars size="lg" :bars="7" class="opacity-70 group-hover:opacity-100 transition-opacity" />
-            <span class="text-[10px] font-medium text-white/60 uppercase tracking-wider">{{ item.codec || 'Audio' }}</span>
+            <AudioBars size="lg" :bars="7" class="opacity-70 group-hover:opacity-100 transition-opacity"/>
+            <span class="text-[10px] font-medium text-white/60 uppercase tracking-wider">{{
+                item.codec || 'Audio'
+              }}</span>
           </div>
           <div v-else class="w-full h-full flex items-center justify-center">
-            <UIcon name="i-lucide-film" class="size-8 text-muted" />
+            <UIcon name="i-lucide-film" class="size-8 text-muted"/>
           </div>
           <!-- Mature gate overlay (guests + users with show_mature disabled) -->
           <div
-            v-if="item.is_mature && !canViewMature"
-            class="absolute inset-0 flex flex-col items-center justify-center bg-black/85 gap-1.5 px-2 text-center"
+              v-if="item.is_mature && !canViewMature"
+              class="absolute inset-0 flex flex-col items-center justify-center bg-black/85 gap-1.5 px-2 text-center"
           >
-            <UIcon name="i-lucide-lock" class="size-5 text-white" />
+            <UIcon name="i-lucide-lock" class="size-5 text-white"/>
             <p class="text-white text-xs font-semibold leading-tight">
               {{ authStore.isLoggedIn ? 'Enable mature content\nin profile settings' : 'Sign in to view' }}
             </p>
@@ -1649,12 +1751,13 @@ onUnmounted(() => {
                devices since hover never fires there; a persistent mobile chip
                (below) provides the affordance instead. -->
           <div
-            v-if="!selectionMode && !(item.is_mature && !canViewMature)"
-            class="absolute inset-0 hidden items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none [@media(hover:hover)]:flex"
+              v-if="!selectionMode && !(item.is_mature && !canViewMature)"
+              class="absolute inset-0 hidden items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none [@media(hover:hover)]:flex"
           >
             <!-- 42px glass circle per handoff §6.5 hover play overlay. -->
-            <div class="w-[42px] h-[42px] rounded-full bg-white/18 backdrop-blur-sm border-2 border-white/45 flex items-center justify-center">
-              <UIcon name="i-lucide-play" class="size-4 text-white ml-0.5" />
+            <div
+                class="w-[42px] h-[42px] rounded-full bg-white/18 backdrop-blur-sm border-2 border-white/45 flex items-center justify-center">
+              <UIcon name="i-lucide-play" class="size-4 text-white ml-0.5"/>
             </div>
           </div>
           <!-- Mobile play hint per handoff §6.5 — small always-on chip in the
@@ -1663,193 +1766,206 @@ onUnmounted(() => {
                Tailwind variant. Sits above the duration badge (bottom-1 right-1
                is reserved for duration, so we offset to bottom-7). -->
           <div
-            v-if="!selectionMode && !(item.is_mature && !canViewMature)"
-            class="absolute bottom-7 right-1 hidden [@media(pointer:coarse)]:flex items-center justify-center w-6 h-6 rounded-full bg-black/60 backdrop-blur-sm border border-white/30 pointer-events-none"
-            aria-hidden="true"
+              v-if="!selectionMode && !(item.is_mature && !canViewMature)"
+              class="absolute bottom-7 right-1 hidden [@media(pointer:coarse)]:flex items-center justify-center w-6 h-6 rounded-full bg-black/60 backdrop-blur-sm border border-white/30 pointer-events-none"
+              aria-hidden="true"
           >
-            <UIcon name="i-lucide-play" class="size-3 text-white ml-0.5" />
+            <UIcon name="i-lucide-play" class="size-3 text-white ml-0.5"/>
           </div>
           <!-- Playback progress bar (logged-in, partially watched, not gated) -->
           <div
-            v-if="authStore.isLoggedIn && playbackProgress[item.id] && !(item.is_mature && !canViewMature) && (playbackProgress[item.id] ?? 0) < 0.9"
-            class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"
+              v-if="authStore.isLoggedIn && playbackProgress[item.id] && !(item.is_mature && !canViewMature) && (playbackProgress[item.id] ?? 0) < 0.9"
+              class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"
           >
             <div
-              class="h-full bg-primary"
-              :style="{ width: `${Math.min(100, Math.round((playbackProgress[item.id] ?? 0) * 100))}%` }"
+                class="h-full bg-primary"
+                :style="{ width: `${Math.min(100, Math.round((playbackProgress[item.id] ?? 0) * 100))}%` }"
             />
           </div>
           <!-- Watched checkmark — replaces progress bar once user crosses 90% (checklist §6) -->
           <div
-            v-if="authStore.isLoggedIn && (playbackProgress[item.id] ?? 0) >= 0.9 && !(item.is_mature && !canViewMature)"
-            class="absolute bottom-1 left-1 flex items-center gap-1 bg-emerald-600/85 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm"
-            :title="`Watched (${Math.round((playbackProgress[item.id] ?? 0) * 100)}%)`"
+              v-if="authStore.isLoggedIn && (playbackProgress[item.id] ?? 0) >= 0.9 && !(item.is_mature && !canViewMature)"
+              class="absolute bottom-1 left-1 flex items-center gap-1 bg-emerald-600/85 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded shadow-sm"
+              :title="`Watched (${Math.round((playbackProgress[item.id] ?? 0) * 100)}%)`"
           >
-            <UIcon name="i-lucide-check" class="size-3" />
+            <UIcon name="i-lucide-check" class="size-3"/>
             <span>Watched</span>
           </div>
           <!-- Duration badge (hidden when gated) -->
           <div
-            v-if="item.duration && !(item.is_mature && !canViewMature)"
-            class="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1 rounded font-mono"
+              v-if="item.duration && !(item.is_mature && !canViewMature)"
+              class="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1 rounded font-mono"
           >
             {{ formatDuration(item.duration) }}
           </div>
           <!-- Type badge -->
           <div class="absolute top-1 left-1">
             <UBadge
-              v-if="item.type !== 'video'"
-              :label="item.type"
-              color="neutral"
-              variant="solid"
-              size="xs"
-              class="bg-black/70"
+                v-if="item.type !== 'video'"
+                :label="item.type"
+                color="neutral"
+                variant="solid"
+                size="xs"
+                class="bg-black/70"
             />
           </div>
           <!-- Mature badge (only when user can view it) -->
           <div v-if="item.is_mature && canViewMature" class="absolute top-1 right-1">
-            <UBadge label="18+" color="error" variant="solid" size="xs" />
+            <UBadge label="18+" color="error" variant="solid" size="xs"/>
           </div>
           <!-- User star rating badge (hidden when mature badge occupies the same corner) -->
           <div
-            v-if="userRatings[item.id] && !(item.is_mature && canViewMature)"
-            class="absolute top-1 right-1 flex items-center gap-0.5 bg-black/70 text-[var(--rating-star)] text-xs px-1 rounded"
+              v-if="userRatings[item.id] && !(item.is_mature && canViewMature)"
+              class="absolute top-1 right-1 flex items-center gap-0.5 bg-black/70 text-[var(--rating-star)] text-xs px-1 rounded"
           >
-            <UIcon name="i-lucide-star" class="size-3 fill-current" />
+            <UIcon name="i-lucide-star" class="size-3 fill-current"/>
             <span>{{ userRatings[item.id] }}</span>
           </div>
           <!-- Favorite button -->
           <button
-            v-if="authStore.isLoggedIn"
-            class="absolute bottom-6 right-1 p-0.5 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
-            :aria-label="favoriteIds.has(item.id) ? 'Remove from favorites' : 'Add to favorites'"
-            @click.prevent.stop="toggleFavorite($event, item)"
+              v-if="authStore.isLoggedIn"
+              class="absolute bottom-6 right-1 p-0.5 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+              :aria-label="favoriteIds.has(item.id) ? 'Remove from favorites' : 'Add to favorites'"
+              @click.prevent.stop="toggleFavorite($event, item)"
           >
             <UIcon
-              name="i-lucide-heart"
-              :class="favoriteIds.has(item.id) ? 'size-4 text-red-400 [&>svg]:fill-current' : 'size-4 text-white'"
+                name="i-lucide-heart"
+                :class="favoriteIds.has(item.id) ? 'size-4 text-red-400 [&>svg]:fill-current' : 'size-4 text-white'"
             />
           </button>
           <!-- Quick add to queue button (hover only) -->
           <button
-            v-if="authStore.isLoggedIn"
-            class="absolute bottom-6 right-14 p-0.5 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
-            aria-label="Add to queue"
-            @click.prevent.stop="addToQueue(item)"
+              v-if="authStore.isLoggedIn"
+              class="absolute bottom-6 right-14 p-0.5 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label="Add to queue"
+              @click.prevent.stop="addToQueue(item)"
           >
-            <UIcon name="i-lucide-list-ordered" class="size-4 text-white" />
+            <UIcon name="i-lucide-list-ordered" class="size-4 text-white"/>
           </button>
           <!-- Quick add to playlist button (hover only, does not interrupt playback) -->
           <div
-            v-if="authStore.isLoggedIn"
-            class="absolute bottom-6 right-7 opacity-0 group-hover:opacity-100 transition-opacity"
-            @click.prevent.stop
+              v-if="authStore.isLoggedIn"
+              class="absolute bottom-6 right-7 opacity-0 group-hover:opacity-100 transition-opacity"
+              @click.prevent.stop
           >
             <UDropdownMenu :items="playlistMenuItemsFor(item.id)">
               <button
-                class="p-0.5 rounded-full bg-black/50"
-                aria-label="Add to playlist"
+                  class="p-0.5 rounded-full bg-black/50"
+                  aria-label="Add to playlist"
               >
-                <UIcon name="i-lucide-list-plus" class="size-4 text-white" />
+                <UIcon name="i-lucide-list-plus" class="size-4 text-white"/>
               </button>
             </UDropdownMenu>
           </div>
         </div>
-        <p class="text-sm font-semibold text-default truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
+        <p class="text-sm font-semibold text-default truncate group-hover:text-primary transition-colors"
+           :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}
         </p>
-        <p v-if="!(item.is_mature && !canViewMature) && (item.category || item.codec || item.height || item.size || item.views)" class="text-xs text-muted truncate">
-          {{ [
-            item.category,
-            item.type === 'audio' && item.codec ? item.codec.toUpperCase() : null,
-            item.type === 'video' && item.height ? formatResolution(item.width, item.height) : null,
-            !item.category && !item.codec && !item.height && item.size ? formatBytes(item.size) : null,
-            item.views > 0 ? item.views.toLocaleString() + (item.views === 1 ? ' view' : ' views') : null,
-          ].filter(Boolean).join(' · ') }}
+        <p v-if="!(item.is_mature && !canViewMature) && (item.category || item.codec || item.height || item.size || item.views)"
+           class="text-xs text-muted truncate">
+          {{
+            [
+              item.category,
+              item.type === 'audio' && item.codec ? item.codec.toUpperCase() : null,
+              item.type === 'video' && item.height ? formatResolution(item.width, item.height) : null,
+              !item.category && !item.codec && !item.height && item.size ? formatBytes(item.size) : null,
+              item.views > 0 ? item.views.toLocaleString() + (item.views === 1 ? ' view' : ' views') : null,
+            ].filter(Boolean).join(' · ')
+          }}
         </p>
         <!-- Tag chips — click to filter by tag (hidden for gated items) -->
         <div
-          v-if="item.tags?.length && !(item.is_mature && !canViewMature)"
-          class="flex gap-1 flex-wrap mt-0.5"
+            v-if="item.tags?.length && !(item.is_mature && !canViewMature)"
+            class="flex gap-1 flex-wrap mt-0.5"
         >
           <button
-            v-for="tag in item.tags.slice(0, 2)"
-            :key="tag"
-            class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted hover:bg-primary/20 hover:text-primary transition-colors"
-            :aria-label="`Filter by tag: ${tag}`"
-            @click.prevent.stop="setTagFilter(tag)"
-          >{{ tag }}</button>
+              v-for="tag in item.tags.slice(0, 2)"
+              :key="tag"
+              class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted hover:bg-primary/20 hover:text-primary transition-colors"
+              :aria-label="`Filter by tag: ${tag}`"
+              @click.prevent.stop="setTagFilter(tag)"
+          >{{ tag }}
+          </button>
         </div>
       </component>
       <div v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
-        <UIcon :name="hasActiveFilters ? 'i-lucide-search-x' : 'i-lucide-library'" class="size-10 mx-auto mb-3 opacity-40" />
-        <p class="font-medium">{{ hasActiveFilters ? 'No media match the current filters.' : 'Your library is empty here. Try browsing categories to get started.' }}</p>
+        <UIcon :name="hasActiveFilters ? 'i-lucide-search-x' : 'i-lucide-library'"
+               class="size-10 mx-auto mb-3 opacity-40"/>
+        <p class="font-medium">{{
+            hasActiveFilters ? 'No media match the current filters.' : 'Your library is empty here. Try browsing categories to get started.'
+          }}</p>
         <UButton
-          v-if="hasActiveFilters"
-          icon="i-lucide-x"
-          label="Clear filters"
-          variant="outline"
-          color="neutral"
-          size="sm"
-          class="mt-3"
-          @click="clearAllFilters"
+            v-if="hasActiveFilters"
+            icon="i-lucide-x"
+            label="Clear filters"
+            variant="outline"
+            color="neutral"
+            size="sm"
+            class="mt-3"
+            @click="clearAllFilters"
         />
         <UButton
-          v-else
-          to="/categories"
-          icon="i-lucide-arrow-right"
-          label="Browse categories"
-          variant="outline"
-          color="neutral"
-          size="sm"
-          class="mt-3"
+            v-else
+            to="/categories"
+            icon="i-lucide-arrow-right"
+            label="Browse categories"
+            variant="outline"
+            color="neutral"
+            size="sm"
+            class="mt-3"
         />
       </div>
     </div>
 
     <!-- Compact view -->
     <div
-      v-else-if="viewMode === 'compact'"
-      class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-1.5"
+        v-else-if="viewMode === 'compact'"
+        class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-1.5"
     >
       <NuxtLink
-        v-for="item in items"
-        :key="item.id"
-        :to="matureGateHref(item)"
-        class="flex items-center gap-2 px-2.5 py-1.5 rounded-md hover:bg-muted/50 transition-colors group"
+          v-for="item in items"
+          :key="item.id"
+          :to="matureGateHref(item)"
+          class="flex items-center gap-2 px-2.5 py-1.5 rounded-md hover:bg-muted/50 transition-colors group"
       >
         <UIcon
-          :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'"
-          :class="['size-4 shrink-0', item.type === 'audio' ? 'text-primary' : 'text-muted']"
+            :name="item.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'"
+            :class="['size-4 shrink-0', item.type === 'audio' ? 'text-primary' : 'text-muted']"
         />
         <span class="text-sm truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}
         </span>
         <span v-if="item.codec" class="text-[10px] text-muted/60 shrink-0 uppercase">{{ item.codec }}</span>
-        <span class="text-xs text-muted shrink-0 ml-auto font-mono tabular-nums">{{ formatDuration(item.duration) || formatBytes(item.size) }}</span>
+        <span class="text-xs text-muted shrink-0 ml-auto font-mono tabular-nums">{{
+            formatDuration(item.duration) || formatBytes(item.size)
+          }}</span>
       </NuxtLink>
       <div v-if="items.length === 0" class="col-span-full text-center py-12 text-muted">
-        <UIcon :name="hasActiveFilters ? 'i-lucide-search-x' : 'i-lucide-library'" class="size-10 mx-auto mb-3 opacity-40" />
-        <p class="font-medium">{{ hasActiveFilters ? 'No media match the current filters.' : 'Your library is empty here. Try browsing categories to get started.' }}</p>
+        <UIcon :name="hasActiveFilters ? 'i-lucide-search-x' : 'i-lucide-library'"
+               class="size-10 mx-auto mb-3 opacity-40"/>
+        <p class="font-medium">{{
+            hasActiveFilters ? 'No media match the current filters.' : 'Your library is empty here. Try browsing categories to get started.'
+          }}</p>
         <UButton
-          v-if="hasActiveFilters"
-          icon="i-lucide-x"
-          label="Clear filters"
-          variant="outline"
-          color="neutral"
-          size="sm"
-          class="mt-3"
-          @click="clearAllFilters"
+            v-if="hasActiveFilters"
+            icon="i-lucide-x"
+            label="Clear filters"
+            variant="outline"
+            color="neutral"
+            size="sm"
+            class="mt-3"
+            @click="clearAllFilters"
         />
         <UButton
-          v-else
-          to="/categories"
-          icon="i-lucide-arrow-right"
-          label="Browse categories"
-          variant="outline"
-          color="neutral"
-          size="sm"
-          class="mt-3"
+            v-else
+            to="/categories"
+            icon="i-lucide-arrow-right"
+            label="Browse categories"
+            variant="outline"
+            color="neutral"
+            size="sm"
+            class="mt-3"
         />
       </div>
     </div>
@@ -1857,8 +1973,8 @@ onUnmounted(() => {
     <!-- List view -->
     <UCard v-else>
       <UTable
-        :data="items"
-        :columns="[
+          :data="items"
+          :columns="[
           { accessorKey: 'name', header: 'Name' },
           { accessorKey: 'type', header: 'Type' },
           { accessorKey: 'duration', header: 'Duration' },
@@ -1871,27 +1987,29 @@ onUnmounted(() => {
         <template #name-cell="{ row }">
           <NuxtLink :to="matureGateHref(row.original)" class="flex items-center gap-3 hover:text-primary">
             <div
-              class="relative w-16 h-9 rounded overflow-hidden bg-muted shrink-0"
-              :style="row.original.blur_hash ? { backgroundImage: `url(${blurHashToDataUrl(row.original.blur_hash)})`, backgroundSize: 'cover' } : {}"
+                class="relative w-16 h-9 rounded overflow-hidden bg-muted shrink-0"
+                :style="row.original.blur_hash ? { backgroundImage: `url(${blurHashToDataUrl(row.original.blur_hash)})`, backgroundSize: 'cover' } : {}"
             >
               <img
-                v-if="row.original.type !== 'audio' && !failedThumbnails.has(row.original.id)"
-                :src="getThumbnailUrl(row.original.id)"
-                :alt="getDisplayTitle(row.original)"
-                width="64"
-                height="36"
-                :class="['w-full h-full object-cover', row.original.is_mature && !canViewMature ? 'blur-xl saturate-0' : '']"
-                loading="lazy"
-                @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, row.original.id)"
+                  v-if="row.original.type !== 'audio' && !failedThumbnails.has(row.original.id)"
+                  :src="getThumbnailUrl(row.original.id)"
+                  :alt="getDisplayTitle(row.original)"
+                  width="64"
+                  height="36"
+                  :class="['w-full h-full object-cover', row.original.is_mature && !canViewMature ? 'blur-xl saturate-0' : '']"
+                  loading="lazy"
+                  @error="($event.target as HTMLImageElement).style.display = 'none'; onThumbnailError($event, row.original.id)"
               />
-              <div v-else-if="row.original.type === 'audio'" class="w-full h-full flex items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
-                <AudioBars size="xs" :bars="5" />
+              <div v-else-if="row.original.type === 'audio'"
+                   class="w-full h-full flex items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
+                <AudioBars size="xs" :bars="5"/>
               </div>
               <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-film" class="size-4 text-muted" />
+                <UIcon name="i-lucide-film" class="size-4 text-muted"/>
               </div>
-              <div v-if="row.original.is_mature && !canViewMature" class="absolute inset-0 flex items-center justify-center bg-black/80">
-                <UIcon name="i-lucide-lock" class="size-3 text-white" />
+              <div v-if="row.original.is_mature && !canViewMature"
+                   class="absolute inset-0 flex items-center justify-center bg-black/80">
+                <UIcon name="i-lucide-lock" class="size-3 text-white"/>
               </div>
             </div>
             <div class="min-w-0">
@@ -1902,10 +2020,10 @@ onUnmounted(() => {
         </template>
         <template #type-cell="{ row }">
           <UBadge
-            :label="row.original.type"
-            :color="row.original.type === 'audio' ? 'info' : 'neutral'"
-            variant="subtle"
-            size="xs"
+              :label="row.original.type"
+              :color="row.original.type === 'audio' ? 'info' : 'neutral'"
+              variant="subtle"
+              size="xs"
           />
         </template>
         <template #duration-cell="{ row }">
@@ -1916,33 +2034,37 @@ onUnmounted(() => {
         </template>
         <template #views-cell="{ row }">{{ (row.original.views ?? 0).toLocaleString() }}</template>
         <template #date_added-cell="{ row }">
-          <span class="text-sm text-muted" :title="row.original.date_added ? new Date(row.original.date_added).toLocaleString() : ''">
+          <span class="text-sm text-muted"
+                :title="row.original.date_added ? new Date(row.original.date_added).toLocaleString() : ''">
             {{ formatRelativeDate(row.original.date_added) }}
           </span>
         </template>
       </UTable>
       <div v-if="items.length === 0" class="text-center py-8 text-muted">
-        <UIcon :name="hasActiveFilters ? 'i-lucide-search-x' : 'i-lucide-library'" class="size-10 mx-auto mb-3 opacity-40" />
-        <p class="font-medium">{{ hasActiveFilters ? 'No media match the current filters.' : 'Your library is empty here. Try browsing categories to get started.' }}</p>
+        <UIcon :name="hasActiveFilters ? 'i-lucide-search-x' : 'i-lucide-library'"
+               class="size-10 mx-auto mb-3 opacity-40"/>
+        <p class="font-medium">{{
+            hasActiveFilters ? 'No media match the current filters.' : 'Your library is empty here. Try browsing categories to get started.'
+          }}</p>
         <UButton
-          v-if="hasActiveFilters"
-          icon="i-lucide-x"
-          label="Clear filters"
-          variant="outline"
-          color="neutral"
-          size="sm"
-          class="mt-3"
-          @click="clearAllFilters"
+            v-if="hasActiveFilters"
+            icon="i-lucide-x"
+            label="Clear filters"
+            variant="outline"
+            color="neutral"
+            size="sm"
+            class="mt-3"
+            @click="clearAllFilters"
         />
         <UButton
-          v-else
-          to="/categories"
-          icon="i-lucide-arrow-right"
-          label="Browse categories"
-          variant="outline"
-          color="neutral"
-          size="sm"
-          class="mt-3"
+            v-else
+            to="/categories"
+            icon="i-lucide-arrow-right"
+            label="Browse categories"
+            variant="outline"
+            color="neutral"
+            size="sm"
+            class="mt-3"
         />
       </div>
     </UCard>
@@ -1950,10 +2072,10 @@ onUnmounted(() => {
     <!-- Pagination -->
     <div v-if="totalPages > 1" class="flex justify-center">
       <UPagination
-        v-model:page="params.page"
-        :total="total"
-        :items-per-page="params.limit"
-        @update:page="load"
+          v-model:page="params.page"
+          :total="total"
+          :items-per-page="params.limit"
+          @update:page="load"
       />
     </div>
   </UContainer>

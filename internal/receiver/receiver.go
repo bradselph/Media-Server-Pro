@@ -70,8 +70,8 @@ type CatalogItem struct {
 	Category           string    `json:"category,omitempty"`
 	Tags               []string  `json:"tags,omitempty"`
 	BlurHash           string    `json:"blur_hash,omitempty"`
-	DateAdded          time.Time `json:"date_added,omitempty"`
-	DateModified       time.Time `json:"date_modified,omitempty"`
+	DateAdded          time.Time `json:"date_added,omitzero"`
+	DateModified       time.Time `json:"date_modified,omitzero"`
 	IsMature           bool      `json:"is_mature,omitempty"`
 }
 
@@ -112,8 +112,8 @@ type MediaItem struct {
 	Category           string    `json:"category,omitempty"`
 	Tags               []string  `json:"tags,omitempty"`
 	BlurHash           string    `json:"blur_hash,omitempty"`
-	DateAdded          time.Time `json:"date_added,omitempty"`
-	DateModified       time.Time `json:"date_modified,omitempty"`
+	DateAdded          time.Time `json:"date_added,omitzero"`
+	DateModified       time.Time `json:"date_modified,omitzero"`
 	IsMature           bool      `json:"is_mature,omitempty"`
 }
 
@@ -1016,7 +1016,7 @@ func nodeToSlaveRecord(node *SlaveNode) *repositories.ReceiverSlaveRecord {
 func mediaRecordToItem(rec *repositories.ReceiverMediaRecord) *MediaItem {
 	var tags []string
 	if rec.Tags != "" {
-		for _, t := range strings.Split(rec.Tags, ",") {
+		for t := range strings.SplitSeq(rec.Tags, ",") {
 			if v := strings.TrimSpace(t); v != "" {
 				tags = append(tags, v)
 			}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/gin-contrib/gzip"
@@ -43,10 +44,10 @@ func ginAnalyticsErrorTracker(analyticsMod *analytics.Module) gin.HandlerFunc {
 			return
 		}
 		path := c.Request.URL.Path
-		for _, p := range skipPrefixes {
-			if strings.HasPrefix(path, p) {
-				return
-			}
+		if slices.ContainsFunc(skipPrefixes, func(p string) bool {
+			return strings.HasPrefix(path, p)
+		}) {
+			return
 		}
 		userID, sessionID := "", ""
 		if v, ok := c.Get("session"); ok {
@@ -682,7 +683,6 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.DELETE("/suggestions/profile", requireAuth(), h.ResetMyProfile)
 	api.GET("/suggestions/recent", requireAuth(), h.GetRecentContent)
 	api.GET("/suggestions/new", requireAuth(), h.GetNewSinceLastVisit)
-	api.GET("/suggestions/on-deck", requireAuth(), h.GetOnDeck)
 	api.POST("/ratings", requireAuth(), h.RecordRating)
 	api.GET("/ratings", requireAuth(), h.GetMyRatings)
 

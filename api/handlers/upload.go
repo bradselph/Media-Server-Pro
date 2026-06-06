@@ -153,54 +153,7 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 
 	category := c.Request.FormValue("category")
 
-	type uploadedEntry struct {
-		UploadID string `json:"upload_id"`
-		Filename string `json:"filename"`
-		Size     int64  `json:"size"`
-	}
-	type errorEntry struct {
-		Filename string `json:"filename"`
-		Error    string `json:"error"`
-	}
-	type postEntry struct {
-		path    string
-		size    int64
-		isLocal bool
-	}
-
-	uploaded := make([]uploadedEntry, 0, len(fileHeaders))
-	uploadErrors := make([]errorEntry, 0)
-	var totalAdded int64
-	// uploadedPaths tracks every path that was physically written (local or remote)
-	// so the quota rollback can delete them all.
-	var uploadedPaths []string
-	var postProcess []postEntry
-
-	for _, fh := range fileHeaders {
-		userID := ""
-		if session != nil {
-			userID = session.UserID
-		}
-		result, err := h.upload.ProcessFileHeader(fh, upload.UploadScope{UserID: userID, Category: category})
-		if err != nil {
-			h.log.Error("Upload failed for %s: %v", fh.Filename, err)
-			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: userUploadError(err)})
-			continue
-		}
-		if result == nil {
-			h.log.Error("Upload returned nil result for %s", fh.Filename)
-			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: "Upload failed"})
-			continue
-		}
-		uploaded = append(uploaded, uploadedEntry{UploadID: string(result.UploadID), Filename: result.Filename, Size: result.Size})
-		totalAdded += result.Size
-
-		if result.Path != "" {
-			uploadedPaths = append(uploadedPaths, result.Path)
-			_, statErr := os.Stat(result.Path)
-			postProcess = append(postProcess, postEntry{path: result.Path, size: result.Size, isLocal: statErr == nil})
-		}
-	}
+	uploaded, uploadErrors, totalAdded, uploadedPaths, postProcess := h.processUploadFiles(fileHeaders, session, category)
 
 	// Post-upload quota check using actual bytes written.
 	// Skipped for anonymous uploads (user == nil) and the admin account.
@@ -282,6 +235,62 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 			}
 		}()
 	}
+}
+
+// uploadedEntry, errorEntry, and postEntry are the per-file outcomes collected
+// by processUploadFiles: response payload rows for successes and failures, and
+// the queue of written files awaiting post-response registration/scanning.
+type uploadedEntry struct {
+	UploadID string `json:"upload_id"`
+	Filename string `json:"filename"`
+	Size     int64  `json:"size"`
+}
+
+type errorEntry struct {
+	Filename string `json:"filename"`
+	Error    string `json:"error"`
+}
+
+type postEntry struct {
+	path    string
+	size    int64
+	isLocal bool
+}
+
+// processUploadFiles runs the upload pipeline on each file header and collects
+// the outcomes: successful uploads, per-file errors, total bytes written, every
+// physically written path (for quota rollback), and post-processing entries.
+func (h *Handler) processUploadFiles(fileHeaders []*multipart.FileHeader, session *models.Session, category string) (uploaded []uploadedEntry, uploadErrors []errorEntry, totalAdded int64, uploadedPaths []string, postProcess []postEntry) {
+	uploaded = make([]uploadedEntry, 0, len(fileHeaders))
+	uploadErrors = make([]errorEntry, 0)
+	// uploadedPaths tracks every path that was physically written (local or remote)
+	// so the quota rollback can delete them all.
+	for _, fh := range fileHeaders {
+		userID := ""
+		if session != nil {
+			userID = session.UserID
+		}
+		result, err := h.upload.ProcessFileHeader(fh, upload.UploadScope{UserID: userID, Category: category})
+		if err != nil {
+			h.log.Error("Upload failed for %s: %v", fh.Filename, err)
+			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: userUploadError(err)})
+			continue
+		}
+		if result == nil {
+			h.log.Error("Upload returned nil result for %s", fh.Filename)
+			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: "Upload failed"})
+			continue
+		}
+		uploaded = append(uploaded, uploadedEntry{UploadID: string(result.UploadID), Filename: result.Filename, Size: result.Size})
+		totalAdded += result.Size
+
+		if result.Path != "" {
+			uploadedPaths = append(uploadedPaths, result.Path)
+			_, statErr := os.Stat(result.Path)
+			postProcess = append(postProcess, postEntry{path: result.Path, size: result.Size, isLocal: statErr == nil})
+		}
+	}
+	return uploaded, uploadErrors, totalAdded, uploadedPaths, postProcess
 }
 
 // GetUploadProgress returns upload progress

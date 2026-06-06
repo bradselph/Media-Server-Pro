@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -358,12 +359,9 @@ func (m *Module) isMobileDevice(userAgent string) bool {
 		"mobile", "android", "iphone", "ipad", "ipod",
 		"blackberry", "windows phone", "opera mini", "opera mobi",
 	}
-	for _, indicator := range mobileIndicators {
-		if strings.Contains(ua, indicator) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(mobileIndicators, func(indicator string) bool {
+		return strings.Contains(ua, indicator)
+	})
 }
 
 // generateSessionID creates a unique session ID using crypto/rand to avoid collisions.
@@ -454,6 +452,12 @@ func (m *Module) setHeaders(w http.ResponseWriter, contentType string, fileSize,
 
 // streamFromReader streams content from an io.Reader (e.g., S3 ranged GET response)
 // to the response writer. Used when the backend supports efficient range reads.
+//
+// NOTE: streamFromReader, streamContentSeeker, and streamContent deliberately
+// share an identical inner loop (read → write → accumulate → flush) but differ
+// in seek handling and byte accounting. Keeping them separate avoids an
+// unverified must-seek-first precondition and an extra call per chunk that a
+// shared helper would introduce on this hot path — do not dedup.
 func (m *Module) streamFromReader(w http.ResponseWriter, reader io.Reader, totalBytes, chunkSize int64, session *models.StreamSession) error {
 	bufInterface := m.bufferPool.Get()
 	buf := bufInterface.([]byte) //nolint:errcheck // pool invariant: only []byte stored
@@ -673,8 +677,7 @@ func (m *Module) startSession(req StreamRequest, position int64) *models.StreamS
 	if hook := m.onSessionStart; hook != nil {
 		// Pass a copy so the analytics layer can't accidentally mutate the
 		// session struct that the streaming module is still tracking.
-		snap := *session
-		go m.runSessionHook("onSessionStart", hook, &snap)
+		go m.runSessionHook("onSessionStart", hook, new(*session))
 	}
 	return session
 }
@@ -701,8 +704,7 @@ func (m *Module) endSession(sessionID string) {
 	m.sessionMu.Unlock()
 	if exists {
 		if hook := m.onSessionEnd; hook != nil {
-			snap := *session
-			go m.runSessionHook("onSessionEnd", hook, &snap)
+			go m.runSessionHook("onSessionEnd", hook, new(*session))
 		}
 	}
 }
@@ -730,8 +732,7 @@ func (m *Module) GetActiveSessions() []*models.StreamSession {
 
 	sessions := make([]*models.StreamSession, 0, len(m.activeSessions))
 	for _, session := range m.activeSessions {
-		cp := *session
-		sessions = append(sessions, &cp)
+		sessions = append(sessions, new(*session))
 	}
 	return sessions
 }

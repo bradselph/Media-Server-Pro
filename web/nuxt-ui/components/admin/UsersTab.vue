@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type { User, UserSession, UserAnalytics } from '~/types/api'
-import { formatWatchTime } from '~/utils/format'
-import { useAdminFeedback } from '~/composables/useAdminFeedback'
+import type {User, UserAnalytics, UserSession} from '~/types/api'
+import {formatWatchTime} from '~/utils/format'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const analyticsApi = useAnalyticsApi()
-const { notifyError, notifySuccess, notifyBulkResult } = useAdminFeedback()
-const { user: currentUser } = useAuthStore()
+const {notifyError, notifySuccess, notifyBulkResult} = useAdminFeedback()
+const {user: currentUser} = useAuthStore()
 
 const users = ref<User[]>([])
 const loading = ref(true)
@@ -55,7 +55,7 @@ async function openSessions(user: User) {
 }
 
 // Create form
-const createForm = reactive({ username: '', password: '', email: '', role: 'viewer' as 'admin' | 'viewer' })
+const createForm = reactive({username: '', password: '', email: '', role: 'viewer' as 'admin' | 'viewer'})
 const createLoading = ref(false)
 const createError = ref('')
 
@@ -80,6 +80,7 @@ const editForm = reactive({
 // Pulled from the configured Auth.UserTypes list so the dropdown stays in sync
 // with whatever tiers the admin has defined (defaults: premium, standard, basic, guest).
 const userTypeOptions = ref<Array<{ label: string; value: string }>>([])
+
 async function loadUserTypeOptions() {
   try {
     const cfg = await adminApi.getConfig() as { auth?: { user_types?: Array<{ name: string }> } }
@@ -91,27 +92,28 @@ async function loadUserTypeOptions() {
   } catch {
     // Fallback to the built-in defaults if config fetch fails
     userTypeOptions.value = [
-      { label: 'Premium', value: 'premium' },
-      { label: 'Standard', value: 'standard' },
-      { label: 'Basic', value: 'basic' },
-      { label: 'Guest', value: 'guest' },
+      {label: 'Premium', value: 'premium'},
+      {label: 'Standard', value: 'standard'},
+      {label: 'Basic', value: 'basic'},
+      {label: 'Guest', value: 'guest'},
     ]
   }
 }
+
 const editLoading = ref(false)
 const editError = ref('')
 
 const roleFilter = ref('all')
 const ROLE_FILTER_OPTIONS = [
-  { label: 'All Roles', value: 'all' },
-  { label: 'Admin', value: 'admin' },
-  { label: 'Viewer', value: 'viewer' },
+  {label: 'All Roles', value: 'all'},
+  {label: 'Admin', value: 'admin'},
+  {label: 'Viewer', value: 'viewer'},
 ]
 const statusFilter = ref('all')
 const STATUS_FILTER_OPTIONS = [
-  { label: 'All Status', value: 'all' },
-  { label: 'Enabled', value: 'enabled' },
-  { label: 'Disabled', value: 'disabled' },
+  {label: 'All Status', value: 'all'},
+  {label: 'Enabled', value: 'enabled'},
+  {label: 'Disabled', value: 'disabled'},
 ]
 
 const filtered = computed(() => {
@@ -161,6 +163,7 @@ async function bulkAction(action: 'delete' | 'enable' | 'disable') {
   }
   await executeBulkAction(action)
 }
+
 async function executeBulkAction(action: 'delete' | 'enable' | 'disable') {
   if (selectedUsernames.value.length === 0) return
   bulkLoading.value = true
@@ -179,9 +182,13 @@ async function executeBulkAction(action: 'delete' | 'enable' | 'disable') {
 
 async function load() {
   loading.value = true
-  try { users.value = (await adminApi.listUsers()) ?? [] }
-  catch (e: unknown) { notifyError(e, 'Failed') }
-  finally { loading.value = false }
+  try {
+    users.value = (await adminApi.listUsers()) ?? []
+  } catch (e: unknown) {
+    notifyError(e, 'Failed')
+  } finally {
+    loading.value = false
+  }
 }
 
 async function handleCreate() {
@@ -208,7 +215,7 @@ async function handleCreate() {
     await adminApi.createUser(createForm)
     notifySuccess(`User ${createForm.username} created`)
     createOpen.value = false
-    Object.assign(createForm, { username: '', password: '', email: '', role: 'viewer' })
+    Object.assign(createForm, {username: '', password: '', email: '', role: 'viewer'})
     await load()
   } catch (e: unknown) {
     createError.value = e instanceof Error ? e.message : 'Failed to create user'
@@ -259,7 +266,7 @@ async function handleSave() {
       enabled: editForm.enabled,
       email: editForm.email || undefined,
       type: editForm.type,
-      permissions: { ...editForm.permissions },
+      permissions: {...editForm.permissions},
     })
   } catch (e: unknown) {
     editError.value = e instanceof Error ? e.message : 'Failed to update user profile'
@@ -274,7 +281,7 @@ async function handleSave() {
     } catch (e: unknown) {
       editForm.newPassword = ''
       editError.value = (e instanceof Error ? e.message : 'Password change failed') +
-        ' (profile changes were saved)'
+          ' (profile changes were saved)'
       editLoading.value = false
       return
     }
@@ -311,28 +318,31 @@ onMounted(() => {
     <!-- Header -->
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div class="flex items-center gap-2 flex-wrap">
-        <UInput v-model="search" icon="i-lucide-search" placeholder="Search users…" class="w-64" />
-        <USelect v-model="roleFilter" :items="ROLE_FILTER_OPTIONS" class="w-32" />
-        <USelect v-model="statusFilter" :items="STATUS_FILTER_OPTIONS" class="w-32" />
+        <UInput v-model="search" icon="i-lucide-search" placeholder="Search users…" class="w-64"/>
+        <USelect v-model="roleFilter" :items="ROLE_FILTER_OPTIONS" class="w-32"/>
+        <USelect v-model="statusFilter" :items="STATUS_FILTER_OPTIONS" class="w-32"/>
         <template v-if="selectedUsernames.length > 0">
           <span class="text-sm text-muted">{{ selectedUsernames.length }} selected</span>
-          <UButton :loading="bulkLoading" icon="i-lucide-toggle-right" label="Enable" size="sm" variant="outline" color="success" @click="bulkAction('enable')" />
-          <UButton :loading="bulkLoading" icon="i-lucide-toggle-left" label="Disable" size="sm" variant="outline" color="neutral" @click="bulkAction('disable')" />
-          <UButton :loading="bulkLoading" icon="i-lucide-trash-2" label="Delete" size="sm" variant="outline" color="error" @click="bulkAction('delete')" />
+          <UButton :loading="bulkLoading" icon="i-lucide-toggle-right" label="Enable" size="sm" variant="outline"
+                   color="success" @click="bulkAction('enable')"/>
+          <UButton :loading="bulkLoading" icon="i-lucide-toggle-left" label="Disable" size="sm" variant="outline"
+                   color="neutral" @click="bulkAction('disable')"/>
+          <UButton :loading="bulkLoading" icon="i-lucide-trash-2" label="Delete" size="sm" variant="outline"
+                   color="error" @click="bulkAction('delete')"/>
         </template>
       </div>
-      <UButton icon="i-lucide-user-plus" label="Create User" @click="createOpen = true" />
+      <UButton icon="i-lucide-user-plus" label="Create User" @click="createOpen = true"/>
     </div>
 
     <!-- Table -->
     <UCard>
       <div v-if="loading" class="flex justify-center py-8">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary"/>
       </div>
       <UTable
-        v-else
-        :data="filtered"
-        :columns="[
+          v-else
+          :data="filtered"
+          :columns="[
           { accessorKey: 'select', header: '' },
           { accessorKey: 'username', header: 'Username' },
           { accessorKey: 'email', header: 'Email' },
@@ -344,15 +354,15 @@ onMounted(() => {
       >
         <template #select-header>
           <UCheckbox
-            :model-value="filtered.length > 0 && selectedUsernames.length === filtered.length"
-            :indeterminate="selectedUsernames.length > 0 && selectedUsernames.length < filtered.length"
-            @update:model-value="toggleSelectAll"
+              :model-value="filtered.length > 0 && selectedUsernames.length === filtered.length"
+              :indeterminate="selectedUsernames.length > 0 && selectedUsernames.length < filtered.length"
+              @update:model-value="toggleSelectAll"
           />
         </template>
         <template #select-cell="{ row }">
           <UCheckbox
-            :model-value="selectedUsernames.includes(row.original.username)"
-            @update:model-value="toggleSelectUser(row.original.username)"
+              :model-value="selectedUsernames.includes(row.original.username)"
+              @update:model-value="toggleSelectUser(row.original.username)"
           />
         </template>
         <template #username-cell="{ row }">
@@ -363,18 +373,18 @@ onMounted(() => {
         </template>
         <template #role-cell="{ row }">
           <UBadge
-            :label="row.original.role"
-            :color="row.original.role === 'admin' ? 'warning' : 'neutral'"
-            variant="subtle"
-            size="xs"
+              :label="row.original.role"
+              :color="row.original.role === 'admin' ? 'warning' : 'neutral'"
+              variant="subtle"
+              size="xs"
           />
         </template>
         <template #enabled-cell="{ row }">
           <UBadge
-            :label="row.original.enabled ? 'Active' : 'Disabled'"
-            :color="row.original.enabled ? 'success' : 'error'"
-            variant="subtle"
-            size="xs"
+              :label="row.original.enabled ? 'Active' : 'Disabled'"
+              :color="row.original.enabled ? 'success' : 'error'"
+              variant="subtle"
+              size="xs"
           />
         </template>
         <template #created_at-cell="{ row }">
@@ -384,10 +394,14 @@ onMounted(() => {
         </template>
         <template #actions-cell="{ row }">
           <div class="flex items-center gap-1 justify-end">
-            <UButton icon="i-lucide-bar-chart-3" aria-label="View analytics" size="xs" variant="ghost" color="neutral" @click="openUserAnalytics(row.original)" />
-            <UButton icon="i-lucide-monitor" aria-label="View sessions" size="xs" variant="ghost" color="neutral" @click="openSessions(row.original)" />
-            <UButton icon="i-lucide-pencil" aria-label="Edit user" size="xs" variant="ghost" color="neutral" @click="openEdit(row.original)" />
-            <UButton icon="i-lucide-trash-2" aria-label="Delete user" size="xs" variant="ghost" color="error" @click="deleteUser = row.original" />
+            <UButton icon="i-lucide-bar-chart-3" aria-label="View analytics" size="xs" variant="ghost" color="neutral"
+                     @click="openUserAnalytics(row.original)"/>
+            <UButton icon="i-lucide-monitor" aria-label="View sessions" size="xs" variant="ghost" color="neutral"
+                     @click="openSessions(row.original)"/>
+            <UButton icon="i-lucide-pencil" aria-label="Edit user" size="xs" variant="ghost" color="neutral"
+                     @click="openEdit(row.original)"/>
+            <UButton icon="i-lucide-trash-2" aria-label="Delete user" size="xs" variant="ghost" color="error"
+                     @click="deleteUser = row.original"/>
           </div>
         </template>
       </UTable>
@@ -400,29 +414,29 @@ onMounted(() => {
     <UModal v-model:open="createOpen" title="Create User" description="Add a new user account">
       <template #body>
         <div v-if="createError" class="mb-3">
-          <UAlert :title="createError" color="error" variant="soft" icon="i-lucide-x-circle" />
+          <UAlert :title="createError" color="error" variant="soft" icon="i-lucide-x-circle"/>
         </div>
         <form class="space-y-4" @submit.prevent="handleCreate">
           <UFormField label="Username" required>
-            <UInput v-model="createForm.username" placeholder="username" required />
+            <UInput v-model="createForm.username" placeholder="username" required/>
           </UFormField>
           <UFormField label="Password" required>
-            <UInput v-model="createForm.password" type="password" placeholder="••••••••" required minlength="8" />
+            <UInput v-model="createForm.password" type="password" placeholder="••••••••" required minlength="8"/>
           </UFormField>
           <UFormField label="Email">
-            <UInput v-model="createForm.email" type="email" placeholder="user@example.com" />
+            <UInput v-model="createForm.email" type="email" placeholder="user@example.com"/>
           </UFormField>
           <UFormField label="Role">
             <USelect
-              v-model="createForm.role"
-              :items="[{ label: 'Viewer', value: 'viewer' }, { label: 'Admin', value: 'admin' }]"
+                v-model="createForm.role"
+                :items="[{ label: 'Viewer', value: 'viewer' }, { label: 'Admin', value: 'admin' }]"
             />
           </UFormField>
         </form>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="createOpen = false" />
-        <UButton :loading="createLoading" label="Create User" @click="handleCreate" />
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="createOpen = false"/>
+        <UButton :loading="createLoading" label="Create User" @click="handleCreate"/>
       </template>
     </UModal>
 
@@ -430,79 +444,80 @@ onMounted(() => {
     <UModal v-if="editUser" :open="!!editUser" title="Edit User" @update:open="val => { if (!val) editUser = null }">
       <template #body>
         <div v-if="editError" class="mb-3">
-          <UAlert :title="editError" color="error" variant="soft" icon="i-lucide-x-circle" />
+          <UAlert :title="editError" color="error" variant="soft" icon="i-lucide-x-circle"/>
         </div>
         <div class="space-y-4">
           <p class="text-muted text-sm">Editing: <strong class="text-default">{{ editUser.username }}</strong></p>
           <UFormField label="Email">
-            <UInput v-model="editForm.email" type="email" />
+            <UInput v-model="editForm.email" type="email"/>
           </UFormField>
           <UFormField label="Role">
             <USelect
-              v-model="editForm.role"
-              :items="[{ label: 'Viewer', value: 'viewer' }, { label: 'Admin', value: 'admin' }]"
+                v-model="editForm.role"
+                :items="[{ label: 'Viewer', value: 'viewer' }, { label: 'Admin', value: 'admin' }]"
             />
           </UFormField>
           <UFormField label="User Type" description="Affects feature access and display grouping">
-            <USelect v-model="editForm.type" :items="userTypeOptions" />
+            <USelect v-model="editForm.type" :items="userTypeOptions"/>
           </UFormField>
           <UFormField label="Status">
             <div class="flex items-center gap-2">
-              <USwitch v-model="editForm.enabled" />
+              <USwitch v-model="editForm.enabled"/>
               <span class="text-sm">{{ editForm.enabled ? 'Active' : 'Disabled' }}</span>
             </div>
           </UFormField>
           <UFormField label="Permissions">
             <div class="grid grid-cols-2 gap-2 mt-1">
               <label class="flex items-center gap-2 cursor-pointer text-sm">
-                <UCheckbox v-model="editForm.permissions.can_stream" />
+                <UCheckbox v-model="editForm.permissions.can_stream"/>
                 Stream media
               </label>
               <label class="flex items-center gap-2 cursor-pointer text-sm">
-                <UCheckbox v-model="editForm.permissions.can_download" />
+                <UCheckbox v-model="editForm.permissions.can_download"/>
                 Download
               </label>
               <label class="flex items-center gap-2 cursor-pointer text-sm">
-                <UCheckbox v-model="editForm.permissions.can_upload" />
+                <UCheckbox v-model="editForm.permissions.can_upload"/>
                 Upload
               </label>
               <label class="flex items-center gap-2 cursor-pointer text-sm">
-                <UCheckbox v-model="editForm.permissions.can_delete" />
+                <UCheckbox v-model="editForm.permissions.can_delete"/>
                 Delete media
               </label>
               <label class="flex items-center gap-2 cursor-pointer text-sm">
-                <UCheckbox v-model="editForm.permissions.can_manage" />
+                <UCheckbox v-model="editForm.permissions.can_manage"/>
                 Manage library
               </label>
               <label class="flex items-center gap-2 cursor-pointer text-sm">
-                <UCheckbox v-model="editForm.permissions.can_view_mature" />
+                <UCheckbox v-model="editForm.permissions.can_view_mature"/>
                 View mature
               </label>
               <label class="flex items-center gap-2 cursor-pointer text-sm">
-                <UCheckbox v-model="editForm.permissions.can_create_playlists" />
+                <UCheckbox v-model="editForm.permissions.can_create_playlists"/>
                 Create playlists
               </label>
             </div>
           </UFormField>
           <UFormField label="New Password" description="Leave blank to keep current password">
-            <UInput v-model="editForm.newPassword" type="password" placeholder="••••••••" minlength="8" />
+            <UInput v-model="editForm.newPassword" type="password" placeholder="••••••••" minlength="8"/>
           </UFormField>
         </div>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="editUser = null" />
-        <UButton :loading="editLoading" label="Save Changes" @click="handleSave" />
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="editUser = null"/>
+        <UButton :loading="editLoading" label="Save Changes" @click="handleSave"/>
       </template>
     </UModal>
 
     <!-- Sessions viewer -->
-    <UModal v-if="sessionsUser" :open="!!sessionsUser" title="Active Sessions" @update:open="val => { if (!val) sessionsUser = null }">
+    <UModal v-if="sessionsUser" :open="!!sessionsUser" title="Active Sessions"
+            @update:open="val => { if (!val) sessionsUser = null }">
       <template #description>
         Sessions for <strong>{{ sessionsUser?.username }}</strong>
       </template>
       <template #body>
         <div v-if="sessionsLoading" class="flex justify-center py-6">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
         </div>
         <div v-else-if="sessions.length === 0" class="text-center py-4 text-muted text-sm">
           No active sessions.
@@ -523,7 +538,7 @@ onMounted(() => {
         </ul>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Close" @click="sessionsUser = null" />
+        <UButton variant="ghost" color="neutral" label="Close" @click="sessionsUser = null"/>
       </template>
     </UModal>
 
@@ -531,20 +546,20 @@ onMounted(() => {
          Analytics tab's drill-down, but inline on the user row so admins
          don't have to context-switch to investigate one account. -->
     <UModal
-      v-if="analyticsUser"
-      :open="!!analyticsUser"
-      :title="`Analytics: ${analyticsUser.username}`"
-      description="Aggregate activity across the retention window"
-      @update:open="val => { if (!val) analyticsUser = null }"
+        v-if="analyticsUser"
+        :open="!!analyticsUser"
+        :title="`Analytics: ${analyticsUser.username}`"
+        description="Aggregate activity across the retention window"
+        @update:open="val => { if (!val) analyticsUser = null }"
     >
       <template #body>
         <div v-if="analyticsLoading" class="flex justify-center py-6">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
         </div>
         <div v-else-if="analyticsData" class="space-y-4">
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <UCard
-              v-for="m in [
+                v-for="m in [
                 { label: 'Views', value: analyticsData.total_views, isTime: false },
                 { label: 'Playbacks', value: analyticsData.total_playbacks, isTime: false },
                 { label: 'Completions', value: analyticsData.total_completions, isTime: false },
@@ -561,8 +576,8 @@ onMounted(() => {
                 { label: 'Unique Media', value: analyticsData.unique_media, isTime: false },
                 { label: 'Total Events', value: analyticsData.total_events, isTime: false },
               ]"
-              :key="m.label"
-              :ui="{ body: 'p-2' }"
+                :key="m.label"
+                :ui="{ body: 'p-2' }"
             >
               <p class="text-base font-bold text-highlighted truncate">
                 {{ m.isTime ? formatWatchTime(m.value) : (m.value ?? 0).toLocaleString() }}
@@ -571,8 +586,12 @@ onMounted(() => {
             </UCard>
           </div>
           <div class="text-xs text-muted flex flex-wrap gap-4">
-            <span v-if="analyticsData.first_seen">First seen: {{ new Date(analyticsData.first_seen).toLocaleString() }}</span>
-            <span v-if="analyticsData.last_seen">Last seen: {{ new Date(analyticsData.last_seen).toLocaleString() }}</span>
+            <span v-if="analyticsData.first_seen">First seen: {{
+                new Date(analyticsData.first_seen).toLocaleString()
+              }}</span>
+            <span v-if="analyticsData.last_seen">Last seen: {{
+                new Date(analyticsData.last_seen).toLocaleString()
+              }}</span>
             <span v-if="analyticsData.most_viewed_media_id">
               Most-viewed: <span class="font-mono">{{ analyticsData.most_viewed_media_id.slice(0, 8) }}…</span>
               ({{ analyticsData.most_viewed_count }})
@@ -584,36 +603,41 @@ onMounted(() => {
         </div>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Close" @click="analyticsUser = null" />
+        <UButton variant="ghost" color="neutral" label="Close" @click="analyticsUser = null"/>
       </template>
     </UModal>
 
     <!-- Data Deletion Requests -->
-    <AdminDeletionRequestsPanel class="mt-6" />
+    <AdminDeletionRequestsPanel class="mt-6"/>
 
     <!-- Bulk delete confirmation -->
     <UModal
-      :open="confirmBulkDelete"
-      title="Delete Selected Users"
-      @update:open="val => { if (!val) { confirmBulkDelete = false; selectedUsernames = [] } }"
+        :open="confirmBulkDelete"
+        title="Delete Selected Users"
+        @update:open="val => { if (!val) { confirmBulkDelete = false; selectedUsernames = [] } }"
     >
       <template #body>
-        <p>Are you sure you want to delete <strong>{{ selectedUsernames.length }}</strong> selected user{{ selectedUsernames.length !== 1 ? 's' : '' }}? This action cannot be undone.</p>
+        <p>Are you sure you want to delete <strong>{{ selectedUsernames.length }}</strong> selected
+          user{{ selectedUsernames.length !== 1 ? 's' : '' }}? This action cannot be undone.</p>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false; selectedUsernames = []" />
-        <UButton :loading="bulkLoading" color="error" label="Delete" @click="confirmBulkDelete = false; executeBulkAction('delete')" />
+        <UButton variant="ghost" color="neutral" label="Cancel"
+                 @click="confirmBulkDelete = false; selectedUsernames = []"/>
+        <UButton :loading="bulkLoading" color="error" label="Delete"
+                 @click="confirmBulkDelete = false; executeBulkAction('delete')"/>
       </template>
     </UModal>
 
     <!-- Delete confirmation -->
-    <UModal v-if="deleteUser" :open="!!deleteUser" title="Delete User" @update:open="val => { if (!val) deleteUser = null }">
+    <UModal v-if="deleteUser" :open="!!deleteUser" title="Delete User"
+            @update:open="val => { if (!val) deleteUser = null }">
       <template #body>
-        <p>Are you sure you want to delete <strong>{{ deleteUser?.username }}</strong>? This action cannot be undone.</p>
+        <p>Are you sure you want to delete <strong>{{ deleteUser?.username }}</strong>? This action cannot be undone.
+        </p>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="deleteUser = null" />
-        <UButton :loading="deleting" color="error" label="Delete" @click="handleDelete" />
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="deleteUser = null"/>
+        <UButton :loading="deleting" color="error" label="Delete" @click="handleDelete"/>
       </template>
     </UModal>
   </div>

@@ -1573,27 +1573,6 @@ components:
         thumbnail_url:
           type: string
 
-    OnDeckItem:
-      type: object
-      required: [ media_id, name, show_name, season, episode, category ]
-      properties:
-        media_id:
-          type: string
-        name:
-          type: string
-        show_name:
-          type: string
-        season:
-          type: integer
-        episode:
-          type: integer
-        category:
-          type: string
-        duration:
-          type: number
-        thumbnail_url:
-          type: string
-
     RatedItem:
       type: object
       required: [ media_id, name, category, media_type, rating ]
@@ -3952,39 +3931,6 @@ paths:
                           since:
                             type: string
                             format: date-time
-                          total:
-                            type: integer
-
-  /api/suggestions/on-deck:
-    get:
-      tags: [ suggestions ]
-      summary: Get on-deck content (next episodes, etc.)
-      security:
-        - sessionCookie: [ ]
-      parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 10
-            maximum: 50
-      responses:
-        '200':
-          description: On-deck items
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/APIEnvelope'
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          items:
-                            type: array
-                            items:
-                              $ref: '#/components/schemas/OnDeckItem'
                           total:
                             type: integer
 
@@ -7286,7 +7232,7 @@ paths:
       tags: [ media ]
       summary: Create chapter
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
@@ -7312,7 +7258,7 @@ paths:
       tags: [ media ]
       summary: Update chapter
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7339,7 +7285,7 @@ paths:
       tags: [ media ]
       summary: Delete chapter
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7375,7 +7321,7 @@ paths:
       tags: [ media ]
       summary: Create collection
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
@@ -7397,7 +7343,7 @@ paths:
       tags: [ media ]
       summary: Update collection
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7417,7 +7363,7 @@ paths:
       tags: [ media ]
       summary: Delete collection
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7433,7 +7379,7 @@ paths:
       tags: [ playlists ]
       summary: List smart playlists
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Smart playlists list
@@ -7441,7 +7387,7 @@ paths:
       tags: [ playlists ]
       summary: Create smart playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
@@ -7463,7 +7409,7 @@ paths:
       tags: [ playlists ]
       summary: Update smart playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7483,7 +7429,7 @@ paths:
       tags: [ playlists ]
       summary: Delete smart playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7499,7 +7445,7 @@ paths:
       tags: [ playlists ]
       summary: Preview smart playlist results
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7538,7 +7484,7 @@ paths:
       tags: [ admin ]
       summary: List auto-tag rules
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Auto-tag rules list
@@ -7546,7 +7492,7 @@ paths:
       tags: [ admin ]
       summary: Create auto-tag rule
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
@@ -7562,7 +7508,7 @@ paths:
       tags: [ admin ]
       summary: Update auto-tag rule
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7582,7 +7528,7 @@ paths:
       tags: [ admin ]
       summary: Delete auto-tag rule
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7598,7 +7544,7 @@ paths:
       tags: [ admin ]
       summary: Apply auto-tag rule immediately
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7614,7 +7560,7 @@ paths:
       tags: [ admin-media ]
       summary: Regenerate thumbnail for media item
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7630,7 +7576,7 @@ paths:
       tags: [ admin-duplicates ]
       summary: Trigger duplicate scan
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Scan started
