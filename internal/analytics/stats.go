@@ -101,7 +101,7 @@ func (m *Module) updateStats(event models.AnalyticsEvent, delta float64, isNewMe
 	// or bulk-imported) are bucketed to the correct day, not always "today".
 	today := event.Timestamp.Format(dateFormat)
 	m.updateDailyStatsLocked(event, today, delta)
-	m.updateMediaStatsLocked(event, delta, isNewMedia, isFirstCompletion)
+	m.updateMediaStatsLocked(event, isNewMedia, isFirstCompletion)
 	m.statsMu.Unlock()
 	// Persistence happens out-of-band on the flush ticker; here we just record
 	// the date as dirty so the flush picks it up. Done outside statsMu because
@@ -218,11 +218,11 @@ func (m *Module) applyPlaybackToDailyStatsLocked(delta float64, daily *models.Da
 	}
 }
 
-func (m *Module) updateMediaStatsLocked(event models.AnalyticsEvent, delta float64, isNewMedia, isFirstCompletion bool) {
-	m.applyMediaEventLocked(event, delta, isNewMedia, isFirstCompletion)
+func (m *Module) updateMediaStatsLocked(event models.AnalyticsEvent, isNewMedia, isFirstCompletion bool) {
+	m.applyMediaEventLocked(event, isNewMedia, isFirstCompletion)
 }
 
-func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent, delta float64, isNewMedia, isFirstCompletion bool) {
+func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent, isNewMedia, isFirstCompletion bool) {
 	if event.MediaID == "" {
 		return
 	}
@@ -231,7 +231,7 @@ func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent, delta float6
 	case "view":
 		m.applyViewToMediaStatsLocked(event, stats)
 	case "playback":
-		m.applyPlaybackToMediaStatsLocked(event, stats, delta, isNewMedia, isFirstCompletion)
+		m.applyPlaybackToMediaStatsLocked(event, stats, isNewMedia, isFirstCompletion)
 	}
 }
 
@@ -245,7 +245,7 @@ func (m *Module) applyViewToMediaStatsLocked(event models.AnalyticsEvent, stats 
 	}
 }
 
-func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, stats *models.ViewStats, delta float64, isNewMedia, isFirstCompletion bool) {
+func (m *Module) applyPlaybackToMediaStatsLocked(event models.AnalyticsEvent, stats *models.ViewStats, isNewMedia, isFirstCompletion bool) {
 	pos, _ := event.Data["position"].(float64)
 	dur, _ := event.Data["duration"].(float64)
 	if dur > 0 {
@@ -1560,7 +1560,7 @@ type AnalyticsHealth struct {
 	CheckedAt         time.Time `json:"checked_at"`
 }
 
-// Health returns a compact module-health snapshot. See AnalyticsHealth.
+// AnalyticsHealth returns a compact module-health snapshot.
 //
 // Cheap — all reads are in-memory under existing fine-grained locks. Safe to
 // call from a public route (no DB I/O), so no rate limiting is required.

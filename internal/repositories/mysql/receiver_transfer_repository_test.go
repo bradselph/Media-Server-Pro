@@ -206,7 +206,7 @@ func TestRowToSlaveRecord_FND0465_ValidParseSucceeds(t *testing.T) {
 	if rec.ID != "slave-1" {
 		t.Errorf("ID = %s, want slave-1", rec.ID)
 	}
-	if rec.LastSeen == (time.Time{}) {
+	if rec.LastSeen.IsZero() {
 		t.Error("LastSeen should be parsed, not zero-value")
 	}
 	expectedTime, _ := parseTime("2026-01-15 10:30:45")
@@ -242,7 +242,7 @@ func TestRowToMediaRecord_FND0466_ValidParseSucceeds(t *testing.T) {
 	if rec.ID != "media-1" {
 		t.Error("ID mismatch")
 	}
-	if rec.UpdatedAt == (time.Time{}) {
+	if rec.UpdatedAt.IsZero() {
 		t.Error("UpdatedAt should be parsed, not zero-value")
 	}
 	expectedTime, _ := parseTime("2026-01-20 15:45:30")
