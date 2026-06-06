@@ -766,8 +766,7 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 			item.Category = meta.Category
 		}
 		if meta.LastPlayed != nil {
-			t := *meta.LastPlayed
-			item.LastPlayed = &t
+			item.LastPlayed = new(*meta.LastPlayed)
 		}
 		item.DateAdded = meta.DateAdded
 		m.mu.Unlock()
@@ -906,8 +905,7 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		m.mu.RLock()
 		item.Views = meta.Views
 		if meta.LastPlayed != nil {
-			t := *meta.LastPlayed
-			item.LastPlayed = &t
+			item.LastPlayed = new(*meta.LastPlayed)
 		}
 		item.DateAdded = meta.DateAdded
 		item.IsMature = meta.IsMature

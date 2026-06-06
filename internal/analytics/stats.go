@@ -2591,8 +2591,7 @@ func (m *Module) GetMediaStats(mediaID string) *models.ViewStats {
 	defer m.statsMu.RUnlock()
 
 	if stats, ok := m.mediaStats[mediaID]; ok {
-		s := *stats
-		return &s
+		return new(*stats)
 	}
 	return &models.ViewStats{}
 }

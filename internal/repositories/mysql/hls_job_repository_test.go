@@ -189,7 +189,6 @@ func TestRowToJob_WithOptionalFields(t *testing.T) {
 
 func TestJobToRow_RoundTrip(t *testing.T) {
 	repo := &HLSJobRepository{}
-	completedAt := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 	original := &models.HLSJob{
 		ID:          "roundtrip-1",
 		MediaPath:   "/test/video.mkv",
@@ -198,7 +197,7 @@ func TestJobToRow_RoundTrip(t *testing.T) {
 		Progress:    100.0,
 		Qualities:   []string{"480p", "720p", "1080p"},
 		StartedAt:   time.Date(2026, 6, 15, 11, 0, 0, 0, time.UTC),
-		CompletedAt: &completedAt,
+		CompletedAt: new(time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)),
 		HLSUrl:      "https://example.com/hls/master.m3u8",
 		FailCount:   1,
 		Available:   true,

@@ -67,7 +67,7 @@ func TestFND0016_Discovery_TimestampForFiltering(t *testing.T) {
 		{
 			ID:         "disc2",
 			Title:      "Older discovery",
-			ReviewedAt: func() *time.Time { t := now.Add(-24 * time.Hour); return &t }(),
+			ReviewedAt: new(now.Add(-24 * time.Hour)),
 		},
 		{
 			ID:         "disc3",

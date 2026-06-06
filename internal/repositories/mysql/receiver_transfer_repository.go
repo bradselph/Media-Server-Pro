@@ -163,8 +163,7 @@ func formatNullableTime(t time.Time) *string {
 	if t.IsZero() {
 		return nil
 	}
-	s := t.Format(sqlTimeFormat)
-	return &s
+	return new(t.Format(sqlTimeFormat))
 }
 
 // buildReceiverMediaRow projects a domain ReceiverMediaRecord into a GORM row

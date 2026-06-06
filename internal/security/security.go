@@ -76,14 +76,14 @@ var authPaths = map[string]struct{}{
 
 // Module handles security controls
 type Module struct {
-	config          *config.Manager
-	log             *logger.Logger
-	dbModule        *database.Module
-	repo            repositories.IPListRepository
-	whitelist       *IPList
-	blacklist       *IPList
-	rateLimiter     *RateLimiter
-	authRateLimiter *RateLimiter // stricter limits for auth endpoints
+	config           *config.Manager
+	log              *logger.Logger
+	dbModule         *database.Module
+	repo             repositories.IPListRepository
+	whitelist        *IPList
+	blacklist        *IPList
+	rateLimiter      *RateLimiter
+	authRateLimiter  *RateLimiter // stricter limits for auth endpoints
 	healthy          bool
 	healthMsg        string
 	totalBlocked     atomic.Int64

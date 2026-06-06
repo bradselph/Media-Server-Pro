@@ -39,8 +39,7 @@ func (r *trackingUserRepo) GetByUsername(_ context.Context, username string) (*m
 	defer r.mu.Unlock()
 	for _, u := range r.listUsers {
 		if u.Username == username {
-			cp := *u
-			return &cp, nil
+			return new(*u), nil
 		}
 	}
 	return nil, repositories.ErrUserNotFound

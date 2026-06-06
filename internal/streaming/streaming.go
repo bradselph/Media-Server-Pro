@@ -677,8 +677,7 @@ func (m *Module) startSession(req StreamRequest, position int64) *models.StreamS
 	if hook := m.onSessionStart; hook != nil {
 		// Pass a copy so the analytics layer can't accidentally mutate the
 		// session struct that the streaming module is still tracking.
-		snap := *session
-		go m.runSessionHook("onSessionStart", hook, &snap)
+		go m.runSessionHook("onSessionStart", hook, new(*session))
 	}
 	return session
 }
@@ -705,8 +704,7 @@ func (m *Module) endSession(sessionID string) {
 	m.sessionMu.Unlock()
 	if exists {
 		if hook := m.onSessionEnd; hook != nil {
-			snap := *session
-			go m.runSessionHook("onSessionEnd", hook, &snap)
+			go m.runSessionHook("onSessionEnd", hook, new(*session))
 		}
 	}
 }
@@ -734,8 +732,7 @@ func (m *Module) GetActiveSessions() []*models.StreamSession {
 
 	sessions := make([]*models.StreamSession, 0, len(m.activeSessions))
 	for _, session := range m.activeSessions {
-		cp := *session
-		sessions = append(sessions, &cp)
+		sessions = append(sessions, new(*session))
 	}
 	return sessions
 }

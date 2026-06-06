@@ -71,14 +71,12 @@ func (m *Module) GetActiveSessions(username string) []*models.Session {
 	sessions := make([]*models.Session, 0)
 	for _, session := range m.sessions {
 		if session.Username == username && !session.IsExpired() {
-			tmp := *session
-			sessions = append(sessions, &tmp)
+			sessions = append(sessions, new(*session))
 		}
 	}
 	for _, admin := range m.adminSessions {
 		if admin.Username == username && !admin.IsExpired() {
-			tmp := admin.Session
-			sessions = append(sessions, &tmp)
+			sessions = append(sessions, new(admin.Session))
 		}
 	}
 	return sessions
@@ -94,14 +92,12 @@ func (m *Module) GetActiveSessionsByUserID(userID string) []*models.Session {
 	sessions := make([]*models.Session, 0)
 	for _, session := range m.sessions {
 		if session.UserID == userID && !session.IsExpired() {
-			tmp := *session
-			sessions = append(sessions, &tmp)
+			sessions = append(sessions, new(*session))
 		}
 	}
 	for _, admin := range m.adminSessions {
 		if admin.UserID == userID && !admin.IsExpired() {
-			tmp := admin.Session
-			sessions = append(sessions, &tmp)
+			sessions = append(sessions, new(admin.Session))
 		}
 	}
 	return sessions

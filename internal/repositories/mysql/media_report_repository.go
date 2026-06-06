@@ -87,8 +87,7 @@ func (r *MediaReportRepository) List(ctx context.Context, status string, limit, 
 func (r *MediaReportRepository) UpdateStatus(ctx context.Context, id, status, resolvedBy string) error {
 	updates := map[string]any{"status": status, "resolved_by": resolvedBy}
 	if status == "resolved" || status == "dismissed" {
-		now := time.Now().UTC()
-		updates["resolved_at"] = &now
+		updates["resolved_at"] = new(time.Now().UTC())
 	}
 	result := r.db.WithContext(ctx).
 		Model(&mediaReportRow{}).

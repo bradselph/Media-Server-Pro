@@ -162,8 +162,7 @@ func (h *Handler) AdminUpdateTaskSchedule(c *gin.Context) {
 	}
 
 	if err := persistTaskOverride(h.config, taskID, func(o *config.TaskOverride) {
-		secs := req.ScheduleSecs
-		o.ScheduleSecs = &secs
+		o.ScheduleSecs = new(req.ScheduleSecs)
 	}); err != nil {
 		h.log.Error("Failed to persist schedule override for task %s: %v", taskID, err)
 		writeError(c, http.StatusInternalServerError, "Task schedule updated but failed to persist configuration")

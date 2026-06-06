@@ -446,8 +446,7 @@ func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *reposito
 		metadata.LastPlayed = new(row.LastPlayed.Format(time.RFC3339))
 	}
 	if row.ProbeModTime != nil {
-		t := *row.ProbeModTime
-		metadata.ProbeModTime = &t
+		metadata.ProbeModTime = new(*row.ProbeModTime)
 	}
 	metadata.BlurHash = row.BlurHash
 	metadata.Duration = row.Duration

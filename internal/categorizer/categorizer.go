@@ -688,8 +688,7 @@ func (m *Module) saveItems(ctx context.Context) error {
 	m.mu.RLock()
 	snapshot := make(map[string]*CategorizedItem, len(m.items))
 	for k, v := range m.items {
-		cp := *v
-		snapshot[k] = &cp
+		snapshot[k] = new(*v)
 	}
 	m.mu.RUnlock()
 	for path, item := range snapshot {

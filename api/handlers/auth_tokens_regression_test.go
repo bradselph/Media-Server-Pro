@@ -97,14 +97,11 @@ func TestFND0016_TokenView_BothTimestamps(t *testing.T) {
 
 	// Create token with both timestamps
 	now := time.Now()
-	oneHourAgo := now.Add(-1 * time.Hour)
-	oneHourLater := now.Add(1 * time.Hour)
-
 	token := &mockTokenRecord{
 		ID:         "token-123",
 		Name:       "Test Token",
-		LastUsedAt: &oneHourAgo,
-		ExpiresAt:  &oneHourLater,
+		LastUsedAt: new(now.Add(-1 * time.Hour)),
+		ExpiresAt:  new(now.Add(1 * time.Hour)),
 	}
 	_ = now
 

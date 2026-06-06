@@ -286,11 +286,12 @@ func GinCORSDynamic(getOrigins func() []string, methods, headers []string) gin.H
 			cachedRaw = append(cachedRaw[:0], raw...)
 			cachedSet = parseOriginSet(raw)
 		}
-		set := cachedSet
+		// Copy under the lock so a concurrent cachedSet rebuild can't race us.
+		set := new(cachedSet)
 		mu.Unlock()
 
 		if len(raw) > 0 {
-			writeCORSHeaders(c, &set, methodsStr, headersStr)
+			writeCORSHeaders(c, set, methodsStr, headersStr)
 		}
 
 		if c.Request.Method == http.MethodOptions {

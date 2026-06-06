@@ -46,8 +46,7 @@ func (r *fnd0041UserRepo) Create(ctx context.Context, user *models.User) error {
 	}
 
 	// Insert the user
-	cp := *user
-	r.users[user.Username] = &cp
+	r.users[user.Username] = new(*user)
 	r.createCount++
 	return nil
 }
@@ -57,8 +56,7 @@ func (r *fnd0041UserRepo) GetByID(ctx context.Context, id string) (*models.User,
 	defer r.mu.Unlock()
 	for _, u := range r.users {
 		if u.ID == id {
-			cp := *u
-			return &cp, nil
+			return new(*u), nil
 		}
 	}
 	return nil, repositories.ErrUserNotFound
@@ -75,8 +73,7 @@ func (r *fnd0041UserRepo) GetByUsername(ctx context.Context, username string) (*
 		return nil, repositories.ErrUserNotFound
 	}
 
-	cp := *user
-	return &cp, nil
+	return new(*user), nil
 }
 
 func (r *fnd0041UserRepo) Update(ctx context.Context, user *models.User) error {
@@ -85,8 +82,7 @@ func (r *fnd0041UserRepo) Update(ctx context.Context, user *models.User) error {
 	if _, exists := r.users[user.Username]; !exists {
 		return repositories.ErrUserNotFound
 	}
-	cp := *user
-	r.users[user.Username] = &cp
+	r.users[user.Username] = new(*user)
 	return nil
 }
 
@@ -119,8 +115,7 @@ func (r *fnd0041UserRepo) List(ctx context.Context) ([]*models.User, error) {
 	defer r.mu.Unlock()
 	var list []*models.User
 	for _, u := range r.users {
-		cp := *u
-		list = append(list, &cp)
+		list = append(list, new(*u))
 	}
 	return list, nil
 }

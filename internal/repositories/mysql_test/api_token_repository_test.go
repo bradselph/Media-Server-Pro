@@ -59,14 +59,12 @@ func TestFND0050_DeleteAPIToken_WrongUserID(t *testing.T) {
 	user1ID := "user-001"
 	tokenID := "token-abc123"
 	tokenHash := "hash_of_token_value"
-	expiresAt := time.Now().Add(1 * time.Hour)
-
 	token := &repositories.APITokenRecord{
 		ID:        tokenID,
 		UserID:    user1ID,
 		Name:      "Test Token",
 		TokenHash: tokenHash,
-		ExpiresAt: &expiresAt,
+		ExpiresAt: new(time.Now().Add(1 * time.Hour)),
 		CreatedAt: time.Now(),
 	}
 
@@ -124,14 +122,12 @@ func TestFND0050_DeleteAPIToken_Success(t *testing.T) {
 	userID := "user-success"
 	tokenID := "token-success-123"
 	tokenHash := "hash_success"
-	expiresAt := time.Now().Add(1 * time.Hour)
-
 	token := &repositories.APITokenRecord{
 		ID:        tokenID,
 		UserID:    userID,
 		Name:      "Success Token",
 		TokenHash: tokenHash,
-		ExpiresAt: &expiresAt,
+		ExpiresAt: new(time.Now().Add(1 * time.Hour)),
 		CreatedAt: time.Now(),
 	}
 
