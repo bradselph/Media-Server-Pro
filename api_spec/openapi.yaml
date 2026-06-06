@@ -7232,7 +7232,7 @@ paths:
       tags: [ media ]
       summary: Create chapter
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
@@ -7258,7 +7258,7 @@ paths:
       tags: [ media ]
       summary: Update chapter
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7285,7 +7285,7 @@ paths:
       tags: [ media ]
       summary: Delete chapter
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7321,7 +7321,7 @@ paths:
       tags: [ media ]
       summary: Create collection
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
@@ -7343,7 +7343,7 @@ paths:
       tags: [ media ]
       summary: Update collection
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7363,7 +7363,7 @@ paths:
       tags: [ media ]
       summary: Delete collection
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7379,7 +7379,7 @@ paths:
       tags: [ playlists ]
       summary: List smart playlists
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Smart playlists list
@@ -7387,7 +7387,7 @@ paths:
       tags: [ playlists ]
       summary: Create smart playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
@@ -7409,7 +7409,7 @@ paths:
       tags: [ playlists ]
       summary: Update smart playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7429,7 +7429,7 @@ paths:
       tags: [ playlists ]
       summary: Delete smart playlist
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7445,7 +7445,7 @@ paths:
       tags: [ playlists ]
       summary: Preview smart playlist results
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7484,7 +7484,7 @@ paths:
       tags: [ admin ]
       summary: List auto-tag rules
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Auto-tag rules list
@@ -7492,7 +7492,7 @@ paths:
       tags: [ admin ]
       summary: Create auto-tag rule
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       requestBody:
         required: true
         content:
@@ -7508,7 +7508,7 @@ paths:
       tags: [ admin ]
       summary: Update auto-tag rule
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7528,7 +7528,7 @@ paths:
       tags: [ admin ]
       summary: Delete auto-tag rule
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7544,7 +7544,7 @@ paths:
       tags: [ admin ]
       summary: Apply auto-tag rule immediately
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7560,7 +7560,7 @@ paths:
       tags: [ admin-media ]
       summary: Regenerate thumbnail for media item
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       parameters:
         - name: id
           in: path
@@ -7576,7 +7576,7 @@ paths:
       tags: [ admin-duplicates ]
       summary: Trigger duplicate scan
       security:
-        - sessionCookie: []
+        - sessionCookie: [ ]
       responses:
         '200':
           description: Scan started

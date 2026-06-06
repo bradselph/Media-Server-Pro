@@ -1,9 +1,9 @@
 <script setup lang="ts">
 const subTab = ref('remote')
 const subTabs = [
-  { label: 'Remote Sources', value: 'remote', icon: 'i-lucide-server' },
-  { label: 'Crawler & Extractor', value: 'crawler', icon: 'i-lucide-globe' },
-  { label: 'Receiver', value: 'receiver', icon: 'i-lucide-radio-tower' },
+  {label: 'Remote Sources', value: 'remote', icon: 'i-lucide-server'},
+  {label: 'Crawler & Extractor', value: 'crawler', icon: 'i-lucide-globe'},
+  {label: 'Receiver', value: 'receiver', icon: 'i-lucide-radio-tower'},
 ]
 </script>
 
@@ -12,9 +12,9 @@ const subTabs = [
     <UTabs v-model="subTab" :items="subTabs" orientation="horizontal" class="w-full">
       <template #content="{ item }">
         <div class="pt-3">
-          <AdminSourcesRemotePanel v-if="item.value === 'remote'" />
-          <AdminSourcesCrawlerPanel v-else-if="item.value === 'crawler'" />
-          <AdminSourcesReceiverPanel v-else-if="item.value === 'receiver'" />
+          <AdminSourcesRemotePanel v-if="item.value === 'remote'"/>
+          <AdminSourcesCrawlerPanel v-else-if="item.value === 'crawler'"/>
+          <AdminSourcesReceiverPanel v-else-if="item.value === 'receiver'"/>
         </div>
       </template>
     </UTabs>

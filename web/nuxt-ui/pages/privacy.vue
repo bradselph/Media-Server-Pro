@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePageMeta({ title: 'Privacy Policy' })
+definePageMeta({title: 'Privacy Policy'})
 </script>
 
 <template>
@@ -21,12 +21,24 @@ definePageMeta({ title: 'Privacy Policy' })
       <section>
         <h2 class="text-base font-semibold text-highlighted mb-2">2. Information We Collect</h2>
         <ul class="list-disc pl-5 space-y-1">
-          <li><strong>Account data:</strong> username, hashed password (never stored in plain text), and optional email address provided during registration.</li>
-          <li><strong>Session data:</strong> a temporary session identifier stored in an HttpOnly cookie to keep you logged in.</li>
-          <li><strong>Usage data:</strong> watch history, favorites, and playback preferences you create while using the service.</li>
-          <li><strong>Analytics data</strong> (only with your consent): aggregate usage statistics such as page views and playback events. This data does not identify you personally.</li>
-          <li><strong>Age verification:</strong> a cookie confirming you have verified you are 18 or older. No date of birth or government ID is stored.</li>
-          <li><strong>Technical data:</strong> IP address, browser type, and request timestamps — used solely for security, rate limiting, and abuse prevention.</li>
+          <li><strong>Account data:</strong> username, hashed password (never stored in plain text), and optional email
+            address provided during registration.
+          </li>
+          <li><strong>Session data:</strong> a temporary session identifier stored in an HttpOnly cookie to keep you
+            logged in.
+          </li>
+          <li><strong>Usage data:</strong> watch history, favorites, and playback preferences you create while using the
+            service.
+          </li>
+          <li><strong>Analytics data</strong> (only with your consent): aggregate usage statistics such as page views
+            and playback events. This data does not identify you personally.
+          </li>
+          <li><strong>Age verification:</strong> a cookie confirming you have verified you are 18 or older. No date of
+            birth or government ID is stored.
+          </li>
+          <li><strong>Technical data:</strong> IP address, browser type, and request timestamps — used solely for
+            security, rate limiting, and abuse prevention.
+          </li>
         </ul>
       </section>
 
@@ -36,38 +48,38 @@ definePageMeta({ title: 'Privacy Policy' })
         <div class="overflow-x-auto">
           <table class="w-full text-xs border-collapse">
             <thead>
-              <tr class="border-b border-default text-left">
-                <th class="py-1.5 pr-4 font-semibold">Cookie</th>
-                <th class="py-1.5 pr-4 font-semibold">Purpose</th>
-                <th class="py-1.5 pr-4 font-semibold">Duration</th>
-                <th class="py-1.5 font-semibold">Required</th>
-              </tr>
+            <tr class="border-b border-default text-left">
+              <th class="py-1.5 pr-4 font-semibold">Cookie</th>
+              <th class="py-1.5 pr-4 font-semibold">Purpose</th>
+              <th class="py-1.5 pr-4 font-semibold">Duration</th>
+              <th class="py-1.5 font-semibold">Required</th>
+            </tr>
             </thead>
             <tbody class="divide-y divide-default">
-              <tr>
-                <td class="py-1.5 pr-4 font-mono">session_id</td>
-                <td class="py-1.5 pr-4">Maintains your login session</td>
-                <td class="py-1.5 pr-4">Session / 30 days</td>
-                <td class="py-1.5">Yes</td>
-              </tr>
-              <tr>
-                <td class="py-1.5 pr-4 font-mono">age_verified</td>
-                <td class="py-1.5 pr-4">Records that you have passed age verification</td>
-                <td class="py-1.5 pr-4">1 year</td>
-                <td class="py-1.5">Yes (if age gate enabled)</td>
-              </tr>
-              <tr>
-                <td class="py-1.5 pr-4 font-mono">cookie_consent</td>
-                <td class="py-1.5 pr-4">Stores your cookie preference choice</td>
-                <td class="py-1.5 pr-4">1 year</td>
-                <td class="py-1.5">Yes</td>
-              </tr>
-              <tr>
-                <td class="py-1.5 pr-4 font-mono">Analytics</td>
-                <td class="py-1.5 pr-4">Aggregate, anonymous usage statistics</td>
-                <td class="py-1.5 pr-4">Session</td>
-                <td class="py-1.5">No (optional)</td>
-              </tr>
+            <tr>
+              <td class="py-1.5 pr-4 font-mono">session_id</td>
+              <td class="py-1.5 pr-4">Maintains your login session</td>
+              <td class="py-1.5 pr-4">Session / 30 days</td>
+              <td class="py-1.5">Yes</td>
+            </tr>
+            <tr>
+              <td class="py-1.5 pr-4 font-mono">age_verified</td>
+              <td class="py-1.5 pr-4">Records that you have passed age verification</td>
+              <td class="py-1.5 pr-4">1 year</td>
+              <td class="py-1.5">Yes (if age gate enabled)</td>
+            </tr>
+            <tr>
+              <td class="py-1.5 pr-4 font-mono">cookie_consent</td>
+              <td class="py-1.5 pr-4">Stores your cookie preference choice</td>
+              <td class="py-1.5 pr-4">1 year</td>
+              <td class="py-1.5">Yes</td>
+            </tr>
+            <tr>
+              <td class="py-1.5 pr-4 font-mono">Analytics</td>
+              <td class="py-1.5 pr-4">Aggregate, anonymous usage statistics</td>
+              <td class="py-1.5 pr-4">Session</td>
+              <td class="py-1.5">No (optional)</td>
+            </tr>
             </tbody>
           </table>
         </div>
@@ -93,10 +105,14 @@ definePageMeta({ title: 'Privacy Policy' })
         <h2 class="text-base font-semibold text-highlighted mb-2">5. Legal Basis for Processing (GDPR)</h2>
         <p>Where the GDPR applies, we process your data under the following legal bases:</p>
         <ul class="list-disc pl-5 space-y-1 mt-2">
-          <li><strong>Contract:</strong> processing necessary to provide the service you requested (account, session, playback).</li>
+          <li><strong>Contract:</strong> processing necessary to provide the service you requested (account, session,
+            playback).
+          </li>
           <li><strong>Legitimate interest:</strong> security logging, rate limiting, and abuse prevention.</li>
           <li><strong>Consent:</strong> optional analytics cookies, which you can withdraw at any time.</li>
-          <li><strong>Legal obligation:</strong> age verification requirements under applicable laws governing adult content.</li>
+          <li><strong>Legal obligation:</strong> age verification requirements under applicable laws governing adult
+            content.
+          </li>
         </ul>
       </section>
 
@@ -123,7 +139,8 @@ definePageMeta({ title: 'Privacy Policy' })
         <p>
           California residents have additional rights under the California Consumer Privacy Act, including the right
           to know what personal information is collected, to delete it, and to opt out of its sale.
-          We do not sell personal information. To exercise your rights, use the Profile page or contact the administrator.
+          We do not sell personal information. To exercise your rights, use the Profile page or contact the
+          administrator.
         </p>
       </section>
 

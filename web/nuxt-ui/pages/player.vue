@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import type { MediaItem, MediaChapter, Suggestion, Playlist, PlaylistItem, MediaCollection } from '~/types/api'
-import { getDisplayTitle } from '~/utils/mediaTitle'
-import { formatDuration, formatBytes, formatBitrate, formatRelativeDate } from '~/utils/format'
-import { safeJsonLD } from '~/utils/jsonld'
-import { getMediaGradient } from '~/utils/gradient'
-import { useQueueStore } from '~/stores/queue'
-import { useCollectionsApi } from '~/composables/useApiEndpoints'
+import type {MediaChapter, MediaCollection, MediaItem, Playlist, PlaylistItem, Suggestion} from '~/types/api'
+import {getDisplayTitle} from '~/utils/mediaTitle'
+import {formatBitrate, formatBytes, formatDuration, formatRelativeDate} from '~/utils/format'
+import {safeJsonLD} from '~/utils/jsonld'
+import {getMediaGradient} from '~/utils/gradient'
+import {useQueueStore} from '~/stores/queue'
+import {useCollectionsApi} from '~/composables/useApiEndpoints'
 
-definePageMeta({ layout: 'default', title: 'Player' })
+definePageMeta({layout: 'default', title: 'Player'})
 
 const route = useRoute()
 const mediaApi = useMediaApi()
@@ -20,7 +20,7 @@ const chaptersApi = useChaptersApi()
 const playbackStore = usePlaybackStore()
 const authStore = useAuthStore()
 const queueStore = useQueueStore()
-const { updatePreferences } = useApiEndpoints()
+const {updatePreferences} = useApiEndpoints()
 const toast = useToast()
 
 const userPrefs = computed(() => authStore.user?.preferences)
@@ -36,7 +36,11 @@ async function openAddToPlaylist() {
     try {
       playlists.value = (await playlistApi.list()) ?? []
     } catch (e: unknown) {
-      toast.add({ title: e instanceof Error ? e.message : 'Failed to load playlists', color: 'error', icon: 'i-lucide-alert-circle' })
+      toast.add({
+        title: e instanceof Error ? e.message : 'Failed to load playlists',
+        color: 'error',
+        icon: 'i-lucide-alert-circle'
+      })
     }
   }
 }
@@ -46,11 +50,13 @@ async function addToPlaylist(playlistId: string) {
   addingToPlaylist.value = true
   try {
     await playlistApi.addItem(playlistId, mediaId.value)
-    toast.add({ title: 'Added to playlist', color: 'success', icon: 'i-lucide-check' })
+    toast.add({title: 'Added to playlist', color: 'success', icon: 'i-lucide-check'})
     playlistOpen.value = false
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
-  } finally { addingToPlaylist.value = false }
+    toast.add({title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x'})
+  } finally {
+    addingToPlaylist.value = false
+  }
 }
 
 const mediaId = computed(() => route.query.id as string | undefined)
@@ -76,6 +82,7 @@ function absUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path
   return globalThis.location.origin + (path.startsWith('/') ? path : '/' + path)
 }
+
 const playerCanonicalUrl = computed(() => {
   if (typeof globalThis === 'undefined' || !globalThis.location) return ''
   return globalThis.location.origin + globalThis.location.pathname + (mediaId.value ? `?id=${encodeURIComponent(mediaId.value)}` : '')
@@ -126,6 +133,7 @@ function toISODuration(seconds: number): string {
   if (s > 0 || (h === 0 && m === 0)) out += `${s}S`
   return out
 }
+
 useHead(computed(() => {
   const item = media.value
   if (!item) return {}
@@ -152,7 +160,7 @@ useHead(computed(() => {
       // than stack multiple copies into the document head.
       hid: 'media-jsonld',
     }],
-    link: [{ rel: 'canonical', href: playerCanonicalUrl.value }],
+    link: [{rel: 'canonical', href: playerCanonicalUrl.value}],
   }
 }))
 
@@ -175,13 +183,13 @@ const autoPlay = computed(() => userPrefs.value?.auto_play ?? false)
 // the values are applied synchronously before first playback, so a user with a
 // non-default volume (e.g. 0/muted) does not hear audio on the initial tick.
 watch(
-  userPrefs,
-  (p) => {
-    if (p == null) return
-    if (typeof p.volume === 'number') volume.value = p.volume
-    if (typeof p.playback_speed === 'number') playbackSpeed.value = p.playback_speed
-  },
-  { deep: true, immediate: true },
+    userPrefs,
+    (p) => {
+      if (p == null) return
+      if (typeof p.volume === 'number') volume.value = p.volume
+      if (typeof p.playback_speed === 'number') playbackSpeed.value = p.playback_speed
+    },
+    {deep: true, immediate: true},
 )
 
 // Skip interval from preferences (default 10s)
@@ -198,7 +206,9 @@ function mobileSkip(delta: number) {
   resetControlsTimer()
   mobileSkipDir.value = delta < 0 ? 'back' : 'forward'
   if (mobileSkipTimer) clearTimeout(mobileSkipTimer)
-  mobileSkipTimer = setTimeout(() => { mobileSkipDir.value = null }, 600)
+  mobileSkipTimer = setTimeout(() => {
+    mobileSkipDir.value = null
+  }, 600)
 }
 
 // Autoplay-similar (retention plan B.3): when the queue empties and the
@@ -213,8 +223,10 @@ const autoNextEnabled = ref(authStore.user?.preferences?.autoplay_similar ?? tru
 // while the player is open. We don't auto-save here — that's done at the
 // click handler so anonymous viewers never get a server round-trip.
 watch(
-  () => authStore.user?.preferences?.autoplay_similar,
-  (v) => { if (typeof v === 'boolean') autoNextEnabled.value = v },
+    () => authStore.user?.preferences?.autoplay_similar,
+    (v) => {
+      if (typeof v === 'boolean') autoNextEnabled.value = v
+    },
 )
 
 function toggleAutoNext() {
@@ -222,8 +234,9 @@ function toggleAutoNext() {
   // Persist the choice for logged-in users so it survives a reload. Errors
   // are non-critical — the toggle still works for this session.
   if (authStore.isLoggedIn) {
-    const { updatePreferences } = useApiEndpoints()
-    updatePreferences({ autoplay_similar: autoNextEnabled.value }).catch(() => {})
+    const {updatePreferences} = useApiEndpoints()
+    updatePreferences({autoplay_similar: autoNextEnabled.value}).catch(() => {
+    })
     if (authStore.user) {
       authStore.user.preferences = {
         ...authStore.user.preferences,
@@ -241,13 +254,21 @@ function toggleAutoNext() {
 // past end-of-stream): clears the indicator after 8s no matter what.
 const videoStalled = ref(false)
 let stallTimer: ReturnType<typeof setTimeout> | null = null
+
 function onVideoWaiting() {
   videoStalled.value = true
   if (stallTimer) clearTimeout(stallTimer)
-  stallTimer = setTimeout(() => { videoStalled.value = false; stallTimer = null }, 8000)
+  stallTimer = setTimeout(() => {
+    videoStalled.value = false;
+    stallTimer = null
+  }, 8000)
 }
+
 function onVideoPlaying() {
-  if (stallTimer) { clearTimeout(stallTimer); stallTimer = null }
+  if (stallTimer) {
+    clearTimeout(stallTimer);
+    stallTimer = null
+  }
   videoStalled.value = false
 }
 
@@ -293,12 +314,14 @@ function copyTimestampLink() {
   const t = Math.floor(currentTime.value)
   const origin = globalThis.location.origin
   const path = globalThis.location.pathname
-  const params = new URLSearchParams({ id: mediaId.value })
+  const params = new URLSearchParams({id: mediaId.value})
   if (t > 0) params.set('t', String(t))
   navigator.clipboard.writeText(`${origin}${path}?${params.toString()}`)
   linkCopied.value = true
   clearTimeout(linkCopiedTimer)
-  linkCopiedTimer = setTimeout(() => { linkCopied.value = false }, 1800)
+  linkCopiedTimer = setTimeout(() => {
+    linkCopied.value = false
+  }, 1800)
 }
 
 // Watchlist (favorites) — toggling fires favoritesApi.add/.remove and
@@ -317,7 +340,8 @@ async function refreshWatchlist() {
   try {
     const r = await favoritesApi.check(mediaId.value)
     isInWatchlist.value = !!r?.is_favorite
-  } catch { /* not fatal */ }
+  } catch { /* not fatal */
+  }
 }
 
 async function toggleWatchlist() {
@@ -346,7 +370,9 @@ async function toggleWatchlist() {
   }
 }
 
-watch(mediaId, () => { refreshWatchlist() }, { immediate: true })
+watch(mediaId, () => {
+  refreshWatchlist()
+}, {immediate: true})
 
 // Report — moderation report modal state. submitReport() POSTs the
 // chosen reason + free-form notes to /api/media/:id/report.
@@ -356,11 +382,11 @@ const reportNotes = ref('')
 const reportSubmitting = ref(false)
 
 const REPORT_REASONS = [
-  { value: 'inappropriate', label: 'Inappropriate content' },
-  { value: 'broken',        label: 'Broken / unplayable' },
-  { value: 'spam',          label: 'Spam or misleading' },
-  { value: 'copyright',     label: 'Copyright concern' },
-  { value: 'other',         label: 'Other' },
+  {value: 'inappropriate', label: 'Inappropriate content'},
+  {value: 'broken', label: 'Broken / unplayable'},
+  {value: 'spam', label: 'Spam or misleading'},
+  {value: 'copyright', label: 'Copyright concern'},
+  {value: 'other', label: 'Other'},
 ] as const
 
 async function submitReport() {
@@ -380,16 +406,14 @@ async function submitReport() {
       color: 'success',
       icon: 'i-lucide-check',
     })
-  }
-  catch (e: unknown) {
+  } catch (e: unknown) {
     toast.add({
       title: 'Could not submit report',
       description: e instanceof Error ? e.message : 'Please try again later.',
       color: 'error',
       icon: 'i-lucide-alert-circle',
     })
-  }
-  finally {
+  } finally {
     reportSubmitting.value = false
   }
 }
@@ -399,16 +423,16 @@ const eqEnabled = ref(false)
 const eqBands = ref([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
 const EQ_PRESETS: Record<string, number[]> = {
-  flat:       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   bass_boost: [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
-  treble:     [0, 0, 0, 0, 0, 1, 2, 4, 5, 6],
-  vocal:      [-2, -1, 0, 2, 4, 4, 3, 1, 0, -1],
-  rock:       [4, 3, 1, 0, -1, 0, 1, 3, 4, 4],
+  treble: [0, 0, 0, 0, 0, 1, 2, 4, 5, 6],
+  vocal: [-2, -1, 0, 2, 4, 4, 3, 1, 0, -1],
+  rock: [4, 3, 1, 0, -1, 0, 1, 3, 4, 4],
   electronic: [4, 3, 1, 0, -2, 0, 1, 2, 4, 5],
-  acoustic:   [3, 2, 1, 0, 1, 1, 2, 3, 3, 2],
-  jazz:       [2, 1, 0, 1, 2, 2, 1, 1, 2, 3],
-  classical:  [3, 2, 1, 0, 0, 0, 0, 1, 2, 3],
-  loudness:   [4, 3, 0, 0, -2, 0, -1, -3, 4, 2],
+  acoustic: [3, 2, 1, 0, 1, 1, 2, 3, 3, 2],
+  jazz: [2, 1, 0, 1, 2, 2, 1, 1, 2, 3],
+  classical: [3, 2, 1, 0, 0, 0, 0, 1, 2, 3],
+  loudness: [4, 3, 0, 0, -2, 0, -1, -3, 4, 2],
 }
 let audioCtx: AudioContext | null = null
 let eqFilters: BiquadFilterNode[] = []
@@ -478,7 +502,8 @@ function applyEqPreset(name: string) {
   if (!preset) return
   if (!eqEnabled.value) initEqualizer()
   preset.forEach((gain, i) => setEqBand(i, gain))
-  if (authStore.isLoggedIn) updatePreferences({ equalizer_preset: name }).catch(() => {})
+  if (authStore.isLoggedIn) updatePreferences({equalizer_preset: name}).catch(() => {
+  })
 }
 
 function toggleEqualizer() {
@@ -513,7 +538,7 @@ const {
   activateHLS,
   jobProgress,
   jobRunning,
-} = useHLS(videoRef, mediaIdRef, { defaultQuality: () => userPrefs.value?.default_quality })
+} = useHLS(videoRef, mediaIdRef, {defaultQuality: () => userPrefs.value?.default_quality})
 
 // Request on-demand HLS generation
 const hlsApi = useHlsApi()
@@ -524,10 +549,16 @@ async function requestHlsGeneration() {
   requestingHls.value = true
   try {
     await hlsApi.generate(mediaId.value)
-    toast.add({ title: 'HLS generation started', color: 'info', icon: 'i-lucide-info' })
+    toast.add({title: 'HLS generation started', color: 'info', icon: 'i-lucide-info'})
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to start HLS generation', color: 'error', icon: 'i-lucide-x' })
-  } finally { requestingHls.value = false }
+    toast.add({
+      title: e instanceof Error ? e.message : 'Failed to start HLS generation',
+      color: 'error',
+      icon: 'i-lucide-x'
+    })
+  } finally {
+    requestingHls.value = false
+  }
 }
 
 // Seek bar thumbnail previews
@@ -543,18 +574,20 @@ const mediaCollections = ref<MediaCollection[]>([])
 
 // Mature content gate
 const canViewMature = computed(() =>
-  authStore.isLoggedIn &&
-  (authStore.user?.preferences?.show_mature ?? false) &&
-  (authStore.user?.permissions?.can_view_mature ?? false),
+    authStore.isLoggedIn &&
+    (authStore.user?.preferences?.show_mature ?? false) &&
+    (authStore.user?.permissions?.can_view_mature ?? false),
 )
 const matureGated = computed(() => !!(media.value?.is_mature && !canViewMature.value))
 
 // Star rating (1-5). Optimistic update — fire and forget.
 const userRating = ref(0)
+
 function submitRating(star: number) {
   if (!mediaId.value || !authStore.isLoggedIn) return
   userRating.value = star
-  ratingsApi.record(mediaId.value, star).catch(() => {})
+  ratingsApi.record(mediaId.value, star).catch(() => {
+  })
 }
 
 let controlsTimer: ReturnType<typeof setTimeout> | null = null
@@ -565,13 +598,19 @@ let positionRestored = false
 function resetControlsTimer() {
   showControls.value = true
   if (controlsTimer) clearTimeout(controlsTimer)
-  controlsTimer = setTimeout(() => { if (isPlaying.value) showControls.value = false }, 3000)
+  controlsTimer = setTimeout(() => {
+    if (isPlaying.value) showControls.value = false
+  }, 3000)
 }
 
 let loadGeneration = 0
 let playerMounted = false
-onMounted(() => { playerMounted = true })
-onUnmounted(() => { playerMounted = false })
+onMounted(() => {
+  playerMounted = true
+})
+onUnmounted(() => {
+  playerMounted = false
+})
 
 async function loadMedia(id: string) {
   // Only show loading spinner on initial load — switching media keeps the video element
@@ -588,10 +627,20 @@ async function loadMedia(id: string) {
     eqFilters.forEach(f => f.disconnect())
     eqFilters = []
     eqEnabled.value = false
-    if (sourceNode) { sourceNode.disconnect(); sourceNode = null }
-    if (analyserNode) { analyserNode.disconnect(); analyserNode = null }
+    if (sourceNode) {
+      sourceNode.disconnect();
+      sourceNode = null
+    }
+    if (analyserNode) {
+      analyserNode.disconnect();
+      analyserNode = null
+    }
     visualizerAnalyser.value = null
-    if (audioCtx && audioCtx.state !== 'closed') { audioCtx.close().catch(() => {}); audioCtx = null }
+    if (audioCtx && audioCtx.state !== 'closed') {
+      audioCtx.close().catch(() => {
+      });
+      audioCtx = null
+    }
   }
   error.value = ''
   similar.value = []
@@ -610,13 +659,31 @@ async function loadMedia(id: string) {
       thumbnail_url: media.value ? mediaApi.getThumbnailUrl(id) : undefined,
       duration: media.value?.duration ?? 0,
     })
-    loadChapters(id).catch((e: unknown) => { console.warn('[player] chapters load failed:', e) })
-    suggestionsApi.getSimilar(id).then(r => { if (playerMounted && gen === loadGeneration) similar.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] similar load failed:', e) })
-    collectionsApi.getForMedia(id).then(r => { if (playerMounted && gen === loadGeneration) mediaCollections.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] collections load failed:', e) })
+    loadChapters(id).catch((e: unknown) => {
+      console.warn('[player] chapters load failed:', e)
+    })
+    suggestionsApi.getSimilar(id).then(r => {
+      if (playerMounted && gen === loadGeneration) similar.value = r ?? []
+    }).catch((e: unknown) => {
+      console.warn('[player] similar load failed:', e)
+    })
+    collectionsApi.getForMedia(id).then(r => {
+      if (playerMounted && gen === loadGeneration) mediaCollections.value = r ?? []
+    }).catch((e: unknown) => {
+      console.warn('[player] collections load failed:', e)
+    })
     if (authStore.isLoggedIn) {
-      suggestionsApi.getPersonalized(8).then(r => { if (playerMounted && gen === loadGeneration) personalized.value = r ?? [] }).catch((e: unknown) => { console.warn('[player] personalized load failed:', e) })
+      suggestionsApi.getPersonalized(8).then(r => {
+        if (playerMounted && gen === loadGeneration) personalized.value = r ?? []
+      }).catch((e: unknown) => {
+        console.warn('[player] personalized load failed:', e)
+      })
     }
-    mediaApi.getThumbnailPreviews(id).then(r => { if (playerMounted && gen === loadGeneration) thumbnailPreviews.value = r?.previews ?? [] }).catch((e: unknown) => { console.warn('[player] thumbnail previews load failed:', e) })
+    mediaApi.getThumbnailPreviews(id).then(r => {
+      if (playerMounted && gen === loadGeneration) thumbnailPreviews.value = r?.previews ?? []
+    }).catch((e: unknown) => {
+      console.warn('[player] thumbnail previews load failed:', e)
+    })
   } catch (e: unknown) {
     if (!playerMounted || gen !== loadGeneration) return
     error.value = e instanceof Error ? e.message : 'Failed to load media'
@@ -637,7 +704,7 @@ async function restorePosition() {
   // Respect the user's resume_playback preference (defaults to true when unset)
   if (userPrefs.value?.resume_playback === false) return
   try {
-    const { position } = await playbackApi.getPosition(mediaId.value)
+    const {position} = await playbackApi.getPosition(mediaId.value)
     // Skip restoring if position is 0, within the first 5 seconds (fresh start),
     // or at/near the end (≥95% complete — media was finished, restart from beginning).
     const dur = videoRef.value?.duration
@@ -645,7 +712,8 @@ async function restorePosition() {
     if (position > 5 && !nearEnd && videoRef.value) {
       videoRef.value.currentTime = position
     }
-  } catch {}
+  } catch {
+  }
 }
 
 // Called when media reaches the end. Resets the stored position to 0 so that
@@ -659,7 +727,8 @@ async function onMediaEnded() {
   if (mediaId.value) {
     try {
       await playbackApi.savePosition(mediaId.value, 0, videoRef.value?.duration ?? 0)
-    } catch {}
+    } catch {
+    }
   }
   trackComplete()
   if (loopMode.value === 'off' || loopMode.value === 'all') autoNextFromSuggestions()
@@ -724,14 +793,19 @@ function onVideoLoaded() {
   playbackStore.startAutoSave()
   // Auto-play when preference is enabled
   if (autoPlay.value && videoRef.value && videoRef.value.paused) {
-    videoRef.value.play().catch(() => {})
+    videoRef.value.play().catch(() => {
+    })
   }
   // Restore PiP if we were in PiP before an auto-next transition
   if (_restorePiP && videoRef.value) {
     _restorePiP = false
     videoRef.value.requestPictureInPicture()
-      .then(() => { isPiP.value = true })
-      .catch(() => { _restorePiP = false })
+        .then(() => {
+          isPiP.value = true
+        })
+        .catch(() => {
+          _restorePiP = false
+        })
   }
 }
 
@@ -741,14 +815,18 @@ function autoNextFromSuggestions() {
   // Playlist auto-advance takes priority (including loop-all wrap from last item).
   // navigateToNextItem handles the wrap-to-index-0 logic for loop-all.
   if (nextPlaylistItem.value || (playlistIdParam.value && loopMode.value === 'all')) {
-    startUpNextCountdown(); return
+    startUpNextCountdown();
+    return
   }
 
   // Queue takes priority over suggestions
   if (queueStore.items.length > 0) {
     const queued = queueStore.shift()
     if (queued) {
-      if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null }
+      if (upNextTimer) {
+        clearInterval(upNextTimer);
+        upNextTimer = null
+      }
       showUpNext.value = true
       upNextCountdown.value = 5
       upNextTimer = setInterval(() => {
@@ -765,9 +843,12 @@ function autoNextFromSuggestions() {
 
   // Pick first similar item that is not the current media
   const next = similar.value.find(s => s.media_id !== mediaId.value)
-    ?? personalized.value.find(s => s.media_id !== mediaId.value)
+      ?? personalized.value.find(s => s.media_id !== mediaId.value)
   if (next) {
-    if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null }
+    if (upNextTimer) {
+      clearInterval(upNextTimer);
+      upNextTimer = null
+    }
     showUpNext.value = true
     upNextCountdown.value = 8
     upNextTimer = setInterval(() => {
@@ -782,6 +863,7 @@ function autoNextFromSuggestions() {
 }
 
 let lastTimeUpdateAt = 0
+
 function onTimeUpdate() {
   // Throttle to ~4 updates/sec (250ms) instead of the browser's ~30/sec
   const now = performance.now()
@@ -831,7 +913,8 @@ function setVolume(v: number) {
   if (authStore.isLoggedIn) {
     if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
     volumeSaveTimer = setTimeout(() => {
-      updatePreferences({ volume: v }).catch(() => {})
+      updatePreferences({volume: v}).catch(() => {
+      })
       volumeSaveTimer = null
     }, 1000)
   }
@@ -860,7 +943,7 @@ const playlistIdxParam = computed(() => {
 })
 const playlistItems = ref<PlaylistItem[]>([])
 const nextPlaylistItem = computed(() =>
-  playlistIdxParam.value >= 0 ? (playlistItems.value[playlistIdxParam.value + 1] ?? null) : null,
+    playlistIdxParam.value >= 0 ? (playlistItems.value[playlistIdxParam.value + 1] ?? null) : null,
 )
 const hasPrevItem = computed(() => playlistIdxParam.value > 0)
 const hasNextItem = computed(() => nextPlaylistItem.value != null)
@@ -872,7 +955,10 @@ const upNextCountdown = ref(5)
 function startUpNextCountdown() {
   // Guard: only fire in a playlist context (next item OR loop-all wrap from last item)
   if (!nextPlaylistItem.value && !(playlistIdParam.value && loopMode.value === 'all')) return
-  if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null }
+  if (upNextTimer) {
+    clearInterval(upNextTimer);
+    upNextTimer = null
+  }
   showUpNext.value = true
   upNextCountdown.value = 5
   upNextTimer = setInterval(() => {
@@ -882,7 +968,10 @@ function startUpNextCountdown() {
 }
 
 function cancelUpNext() {
-  if (upNextTimer) { clearInterval(upNextTimer); upNextTimer = null }
+  if (upNextTimer) {
+    clearInterval(upNextTimer);
+    upNextTimer = null
+  }
   showUpNext.value = false
 }
 
@@ -923,8 +1012,13 @@ function navigateToPrevItem() {
   navigateTo(`/player?id=${encodeURIComponent(prev.media_id)}&playlist_id=${encodeURIComponent(plId)}&playlist_idx=${prevIdx}`)
 }
 
-function skipPrevItem() { navigateToPrevItem() }
-function skipNextItem() { navigateToNextItem() }
+function skipPrevItem() {
+  navigateToPrevItem()
+}
+
+function skipNextItem() {
+  navigateToNextItem()
+}
 
 // playlistSeq guards against rapid playlist switches: only the most recent
 // watch fire's response may overwrite playlistItems. Without this, a slow
@@ -933,7 +1027,10 @@ function skipNextItem() { navigateToNextItem() }
 let playlistSeq = 0
 watch(playlistIdParam, async id => {
   const seq = ++playlistSeq
-  if (!id) { playlistItems.value = []; return }
+  if (!id) {
+    playlistItems.value = [];
+    return
+  }
   try {
     const pl = await playlistApi.get(id)
     if (seq !== playlistSeq) return
@@ -941,12 +1038,12 @@ watch(playlistIdParam, async id => {
     // Tell the Now Playing sidebar to pin this playlist so its Playlist tab
     // tracks the source the user is playing from.
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('msp:playlist-context', { detail: { id } }))
+      window.dispatchEvent(new CustomEvent('msp:playlist-context', {detail: {id}}))
     }
   } catch {
     if (seq === playlistSeq) playlistItems.value = []
   }
-}, { immediate: true })
+}, {immediate: true})
 
 // Loop mode: 'off' | 'one' | 'all'
 const loopMode = ref<'off' | 'one' | 'all'>('off')
@@ -962,11 +1059,12 @@ function cycleLoop() {
 const shuffleEnabled = ref(false)
 watch(userPrefs, (p) => {
   if (p?.shuffle_enabled != null) shuffleEnabled.value = p.shuffle_enabled
-}, { immediate: true })
+}, {immediate: true})
 
 function toggleShuffle() {
   shuffleEnabled.value = !shuffleEnabled.value
-  if (authStore.isLoggedIn) updatePreferences({ shuffle_enabled: shuffleEnabled.value }).catch(() => {})
+  if (authStore.isLoggedIn) updatePreferences({shuffle_enabled: shuffleEnabled.value}).catch(() => {
+  })
 }
 
 
@@ -995,7 +1093,10 @@ function onPiPChange() {
 async function exitPiPForTransition() {
   if (document.pictureInPictureElement) {
     _restorePiP = true
-    try { await document.exitPictureInPicture() } catch {}
+    try {
+      await document.exitPictureInPicture()
+    } catch {
+    }
     isPiP.value = false
   }
 }
@@ -1021,15 +1122,16 @@ function changeSpeed(delta: number) {
   const newIdx = Math.max(0, Math.min(SPEED_OPTIONS.length - 1, (curIdx === -1 ? 3 : curIdx) + delta))
   playbackSpeed.value = SPEED_OPTIONS[newIdx]
   if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
-  if (authStore.isLoggedIn) updatePreferences({ playback_speed: playbackSpeed.value }).catch(() => {})
+  if (authStore.isLoggedIn) updatePreferences({playback_speed: playbackSpeed.value}).catch(() => {
+  })
 }
 
 function stepFrame(direction: number) {
   if (!videoRef.value || !videoRef.value.paused) return
   // Approximate frame duration (~30fps = 0.033s)
   videoRef.value.currentTime = Math.max(0, Math.min(
-    videoRef.value.duration,
-    videoRef.value.currentTime + (direction * (1 / 30)),
+      videoRef.value.duration,
+      videoRef.value.currentTime + (direction * (1 / 30)),
   ))
 }
 
@@ -1129,8 +1231,14 @@ function onKeyDown(e: KeyboardEvent) {
       showInfoOverlay.value = !showInfoOverlay.value
       break
     case 'Escape':
-      if (showShortcuts.value) { e.preventDefault(); showShortcuts.value = false }
-      if (showInfoOverlay.value) { e.preventDefault(); showInfoOverlay.value = false }
+      if (showShortcuts.value) {
+        e.preventDefault();
+        showShortcuts.value = false
+      }
+      if (showInfoOverlay.value) {
+        e.preventDefault();
+        showInfoOverlay.value = false
+      }
       break
     default:
       // 0-9: seek to percentage
@@ -1153,8 +1261,8 @@ function onBeforeUnload() {
   const pos = videoRef.value.currentTime
   const dur = videoRef.value.duration || 0
   if (pos > 0) {
-    const body = JSON.stringify({ id: mediaId.value, position: Math.round(pos), duration: Math.round(dur) })
-    navigator.sendBeacon('/api/playback', new Blob([body], { type: 'application/json' }))
+    const body = JSON.stringify({id: mediaId.value, position: Math.round(pos), duration: Math.round(dur)})
+    navigator.sendBeacon('/api/playback', new Blob([body], {type: 'application/json'}))
   }
 }
 
@@ -1167,14 +1275,18 @@ onUnmounted(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   document.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('beforeunload', onBeforeUnload)
-  if (stallTimer) { clearTimeout(stallTimer); stallTimer = null }
+  if (stallTimer) {
+    clearTimeout(stallTimer);
+    stallTimer = null
+  }
 })
 
 function cycleSpeed() {
   const idx = SPEED_OPTIONS.indexOf(playbackSpeed.value)
   playbackSpeed.value = SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length]
   if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
-  if (authStore.isLoggedIn) updatePreferences({ playback_speed: playbackSpeed.value }).catch(() => {})
+  if (authStore.isLoggedIn) updatePreferences({playback_speed: playbackSpeed.value}).catch(() => {
+  })
 }
 
 // formatDuration imported from ~/utils/format
@@ -1196,17 +1308,22 @@ function trackPlay() {
   if (!mediaId.value) return
   if (playEventSent) {
     // Subsequent play after pause = resume
-    analyticsApi.submitEvent({ type: 'resume', media_id: mediaId.value }).catch(() => {})
+    analyticsApi.submitEvent({type: 'resume', media_id: mediaId.value}).catch(() => {
+    })
   } else {
     playEventSent = true
-    analyticsApi.submitEvent({ type: 'play', media_id: mediaId.value }).catch(() => {})
+    analyticsApi.submitEvent({type: 'play', media_id: mediaId.value}).catch(() => {
+    })
   }
 }
+
 function trackPause() {
   // Skip the synthetic pause that fires when the video reaches end (complete handles that)
   if (!mediaId.value || videoRef.value?.ended) return
-  analyticsApi.submitEvent({ type: 'pause', media_id: mediaId.value }).catch(() => {})
+  analyticsApi.submitEvent({type: 'pause', media_id: mediaId.value}).catch(() => {
+  })
 }
+
 function trackSeek() {
   if (!mediaId.value) return
   const seekMediaId = mediaId.value
@@ -1216,16 +1333,20 @@ function trackSeek() {
     analyticsApi.submitEvent({
       type: 'seek',
       media_id: seekMediaId,
-      data: { position: pos === undefined ? 0 : Math.round(pos) },
-    }).catch(() => {})
+      data: {position: pos === undefined ? 0 : Math.round(pos)},
+    }).catch(() => {
+    })
     seekTimer = null
   }, 500)
 }
+
 function trackQualityChange(index: number) {
   if (!mediaId.value) return
   const qLabel = index === -1 ? 'auto' : (qualities.value[index]?.name ?? String(index))
-  analyticsApi.submitEvent({ type: 'quality_change', media_id: mediaId.value, data: { quality: qLabel } }).catch(() => {})
+  analyticsApi.submitEvent({type: 'quality_change', media_id: mediaId.value, data: {quality: qLabel}}).catch(() => {
+  })
 }
+
 function onVideoError(e?: Event) {
   if (!mediaId.value) return
   // Log the underlying MediaError for debugging; otherwise playback failures are invisible.
@@ -1239,19 +1360,33 @@ function onVideoError(e?: Event) {
     if (code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) desc = 'This file format may not be supported by your browser'
     else if (code === MediaError.MEDIA_ERR_NETWORK) desc = 'Network error — check your connection'
     else desc = 'Playback error'
-    toast.add({ title: desc, color: 'error', icon: 'i-lucide-alert-circle' })
+    toast.add({title: desc, color: 'error', icon: 'i-lucide-alert-circle'})
   }
-  analyticsApi.submitEvent({ type: 'error', media_id: mediaId.value }).catch(() => {})
+  analyticsApi.submitEvent({type: 'error', media_id: mediaId.value}).catch(() => {
+  })
 }
+
 function trackComplete() {
   if (!mediaId.value) return
   const dur = videoRef.value?.duration
-  analyticsApi.submitEvent({ type: 'complete', media_id: mediaId.value, duration: dur ? Math.round(dur) : undefined }).catch(() => {})
+  analyticsApi.submitEvent({
+    type: 'complete',
+    media_id: mediaId.value,
+    duration: dur ? Math.round(dur) : undefined
+  }).catch(() => {
+  })
 }
+
 watch(mediaId, () => {
   playEventSent = false
-  if (seekTimer) { clearTimeout(seekTimer); seekTimer = null }
-  if (volumeSaveTimer) { clearTimeout(volumeSaveTimer); volumeSaveTimer = null }
+  if (seekTimer) {
+    clearTimeout(seekTimer);
+    seekTimer = null
+  }
+  if (volumeSaveTimer) {
+    clearTimeout(volumeSaveTimer);
+    volumeSaveTimer = null
+  }
 })
 
 // Save position on pause and unmount
@@ -1273,16 +1408,26 @@ onUnmounted(() => {
   // Tear down the Web Audio graph to prevent AudioContext accumulation across navigations.
   eqFilters.forEach(f => f.disconnect())
   eqFilters = []
-  if (sourceNode) { sourceNode.disconnect(); sourceNode = null }
-  if (analyserNode) { analyserNode.disconnect(); analyserNode = null }
+  if (sourceNode) {
+    sourceNode.disconnect();
+    sourceNode = null
+  }
+  if (analyserNode) {
+    analyserNode.disconnect();
+    analyserNode = null
+  }
   visualizerAnalyser.value = null
-  if (audioCtx && audioCtx.state !== 'closed') { audioCtx.close().catch(() => {}); audioCtx = null }
+  if (audioCtx && audioCtx.state !== 'closed') {
+    audioCtx.close().catch(() => {
+    });
+    audioCtx = null
+  }
 })
 
 watch(mediaId, (id, oldId) => {
   if (oldId && oldId !== id) savePosition()
   if (id) loadMedia(id)
-}, { immediate: true })
+}, {immediate: true})
 </script>
 
 <template>
@@ -1290,8 +1435,8 @@ watch(mediaId, (id, oldId) => {
        and the layout grid below collapses from 1fr+sidebar to a single
        column so the player gets the full width. -->
   <div
-    class="mx-auto w-full"
-    :class="[
+      class="mx-auto w-full"
+      :class="[
       isTheater ? 'max-w-[1700px]' : 'max-w-[1400px]',
       media && mediaId && !loading && !error
         ? 'max-md:px-0 max-md:py-0 md:px-6 md:py-6'
@@ -1300,34 +1445,38 @@ watch(mediaId, (id, oldId) => {
   >
     <!-- No media selected -->
     <div v-if="!mediaId" class="flex flex-col items-center justify-center py-24 gap-4">
-      <UIcon name="i-lucide-film" class="size-16 text-muted" />
-      <p class="text-muted">No media selected. Browse the <NuxtLink to="/" class="text-primary underline">library</NuxtLink> to find something to watch.</p>
+      <UIcon name="i-lucide-film" class="size-16 text-muted"/>
+      <p class="text-muted">No media selected. Browse the
+        <NuxtLink to="/" class="text-primary underline">library</NuxtLink>
+        to find something to watch.
+      </p>
     </div>
 
     <!-- Loading -->
     <div v-else-if="loading" class="flex justify-center py-24">
-      <UIcon name="i-lucide-loader-2" class="animate-spin size-10 text-primary" />
+      <UIcon name="i-lucide-loader-2" class="animate-spin size-10 text-primary"/>
     </div>
 
     <!-- Error -->
     <div v-else-if="error" class="flex flex-col items-center py-16 gap-4">
-      <UIcon name="i-lucide-x-circle" class="size-12 text-error" />
+      <UIcon name="i-lucide-x-circle" class="size-12 text-error"/>
       <p class="text-error">{{ error }}</p>
-      <UButton to="/" variant="outline" label="Back to Library" />
+      <UButton to="/" variant="outline" label="Back to Library"/>
     </div>
 
     <!-- Mature gate -->
-    <div v-else-if="media && matureGated" class="flex flex-col items-center justify-center py-24 gap-4 text-center px-4">
-      <UIcon name="i-lucide-lock" class="size-16 text-muted" />
+    <div v-else-if="media && matureGated"
+         class="flex flex-col items-center justify-center py-24 gap-4 text-center px-4">
+      <UIcon name="i-lucide-lock" class="size-16 text-muted"/>
       <h2 class="text-xl font-semibold">Age-Restricted Content</h2>
       <p class="text-muted max-w-sm">
         <template v-if="!authStore.isLoggedIn">Sign in to access mature content.</template>
         <template v-else>Enable mature content in your profile settings to watch this.</template>
       </p>
       <div class="flex gap-3">
-        <UButton v-if="!authStore.isLoggedIn" to="/login" label="Sign In" color="primary" />
-        <UButton v-else to="/profile" label="Profile Settings" color="primary" />
-        <UButton to="/" variant="outline" color="neutral" label="Back to Library" />
+        <UButton v-if="!authStore.isLoggedIn" to="/login" label="Sign In" color="primary"/>
+        <UButton v-else to="/profile" label="Profile Settings" color="primary"/>
+        <UButton to="/" variant="outline" color="neutral" label="Back to Library"/>
       </div>
     </div>
 
@@ -1336,46 +1485,48 @@ watch(mediaId, (id, oldId) => {
       <div class="xl:col-span-2 flex flex-col gap-0 md:gap-4">
         <!-- Video player -->
         <div
-          v-if="media.type !== 'audio'"
-          class="player-wrapper relative bg-black overflow-hidden group touch-manipulation max-md:rounded-none md:rounded-xl max-md:h-[calc(100dvh-3.5rem-env(safe-area-inset-bottom,0px))] max-md:w-full md:aspect-video"
-          @mousemove="resetControlsTimer"
-          @touchstart="resetControlsTimer"
-          @click="togglePlay"
+            v-if="media.type !== 'audio'"
+            class="player-wrapper relative bg-black overflow-hidden group touch-manipulation max-md:rounded-none md:rounded-xl max-md:h-[calc(100dvh-3.5rem-env(safe-area-inset-bottom,0px))] max-md:w-full md:aspect-video"
+            @mousemove="resetControlsTimer"
+            @touchstart="resetControlsTimer"
+            @click="togglePlay"
         >
           <video
-            ref="videoRef"
-            class="max-md:absolute max-md:inset-0 max-md:h-full max-md:w-full max-md:object-contain md:relative md:inset-auto md:h-auto md:w-full md:aspect-video"
-            :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
-            :poster="mediaApi.getThumbnailUrl(media.id)"
-            preload="auto"
-            @loadedmetadata="onVideoLoaded"
-            @timeupdate="onTimeUpdate"
-            @play="onPlayPause(); trackPlay()"
-            @pause="onPlayPause(); trackPause()"
-            @waiting="onVideoWaiting"
-            @stalled="onVideoWaiting"
-            @playing="onVideoPlaying"
-            @canplay="onVideoPlaying"
-            @ended="onMediaEnded()"
-            @error="onVideoError"
-            @leavepictureinpicture="onPiPChange"
-            @enterpictureinpicture="onPiPChange"
+              ref="videoRef"
+              class="max-md:absolute max-md:inset-0 max-md:h-full max-md:w-full max-md:object-contain md:relative md:inset-auto md:h-auto md:w-full md:aspect-video"
+              :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
+              :poster="mediaApi.getThumbnailUrl(media.id)"
+              preload="auto"
+              @loadedmetadata="onVideoLoaded"
+              @timeupdate="onTimeUpdate"
+              @play="onPlayPause(); trackPlay()"
+              @pause="onPlayPause(); trackPause()"
+              @waiting="onVideoWaiting"
+              @stalled="onVideoWaiting"
+              @playing="onVideoPlaying"
+              @canplay="onVideoPlaying"
+              @ended="onMediaEnded()"
+              @error="onVideoError"
+              @leavepictureinpicture="onPiPChange"
+              @enterpictureinpicture="onPiPChange"
           />
 
           <!-- Up Next overlay (playlist auto-advance or auto-next from suggestions) -->
           <Transition name="fade">
             <div
-              v-if="showUpNext"
-              class="absolute inset-0 flex flex-col items-center justify-center bg-black/75 z-20 gap-4"
-              @click.stop
+                v-if="showUpNext"
+                class="absolute inset-0 flex flex-col items-center justify-center bg-black/75 z-20 gap-4"
+                @click.stop
             >
               <p class="text-white/70 text-sm uppercase tracking-widest">Up Next in {{ upNextCountdown }}s</p>
               <p class="text-white font-semibold text-lg text-center px-8">
                 {{ nextPlaylistItem ? (nextPlaylistItem.title || nextPlaylistItem.media_id) : 'Next recommendation' }}
               </p>
               <div class="flex gap-3 mt-2">
-                <UButton v-if="nextPlaylistItem" label="Play Now" color="primary" size="sm" @click="navigateToNextItem" />
-                <UButton label="Cancel" variant="outline" color="neutral" size="sm" class="text-white border-white/30" @click="cancelUpNext" />
+                <UButton v-if="nextPlaylistItem" label="Play Now" color="primary" size="sm"
+                         @click="navigateToNextItem"/>
+                <UButton label="Cancel" variant="outline" color="neutral" size="sm" class="text-white border-white/30"
+                         @click="cancelUpNext"/>
               </div>
             </div>
           </Transition>
@@ -1383,37 +1534,38 @@ watch(mediaId, (id, oldId) => {
           <!-- Mobile skip buttons (visible on touch devices, single tap).
                bottom-20 keeps the zones above the PlayerControls bar so its
                buttons stay tappable even during the controls fade transition. -->
-          <div class="absolute inset-x-0 top-0 bottom-20 flex items-center justify-between pointer-events-none md:hidden z-10">
+          <div
+              class="absolute inset-x-0 top-0 bottom-20 flex items-center justify-between pointer-events-none md:hidden z-10">
             <!-- Skip back -->
             <button
-              class="pointer-events-auto w-1/4 h-full flex items-center justify-center transition-colors"
-              :class="mobileSkipDir === 'back' ? 'bg-white/15' : ''"
-              :aria-label="`Skip back ${skipInterval} seconds`"
-              @click.stop="mobileSkip(-skipInterval)"
+                class="pointer-events-auto w-1/4 h-full flex items-center justify-center transition-colors"
+                :class="mobileSkipDir === 'back' ? 'bg-white/15' : ''"
+                :aria-label="`Skip back ${skipInterval} seconds`"
+                @click.stop="mobileSkip(-skipInterval)"
             >
               <Transition name="fade">
                 <div v-if="mobileSkipDir === 'back'" class="flex flex-col items-center gap-1 pointer-events-none">
-                  <UIcon name="i-lucide-rewind" class="size-8 text-white" />
+                  <UIcon name="i-lucide-rewind" class="size-8 text-white"/>
                   <span class="text-white text-xs font-semibold">-{{ skipInterval }}s</span>
                 </div>
               </Transition>
             </button>
             <!-- Centre tap: toggle play/pause -->
             <button
-              class="pointer-events-auto w-1/2 h-full"
-              aria-label="Play or pause"
-              @click.stop="togglePlay(); resetControlsTimer()"
+                class="pointer-events-auto w-1/2 h-full"
+                aria-label="Play or pause"
+                @click.stop="togglePlay(); resetControlsTimer()"
             />
             <!-- Skip forward -->
             <button
-              class="pointer-events-auto w-1/4 h-full flex items-center justify-center transition-colors"
-              :class="mobileSkipDir === 'forward' ? 'bg-white/15' : ''"
-              :aria-label="`Skip forward ${skipInterval} seconds`"
-              @click.stop="mobileSkip(skipInterval)"
+                class="pointer-events-auto w-1/4 h-full flex items-center justify-center transition-colors"
+                :class="mobileSkipDir === 'forward' ? 'bg-white/15' : ''"
+                :aria-label="`Skip forward ${skipInterval} seconds`"
+                @click.stop="mobileSkip(skipInterval)"
             >
               <Transition name="fade">
                 <div v-if="mobileSkipDir === 'forward'" class="flex flex-col items-center gap-1 pointer-events-none">
-                  <UIcon name="i-lucide-fast-forward" class="size-8 text-white" />
+                  <UIcon name="i-lucide-fast-forward" class="size-8 text-white"/>
                   <span class="text-white text-xs font-semibold">+{{ skipInterval }}s</span>
                 </div>
               </Transition>
@@ -1422,7 +1574,7 @@ watch(mediaId, (id, oldId) => {
 
           <!-- HLS loading overlay -->
           <div v-if="hlsLoading" class="absolute inset-0 flex items-center justify-center bg-black/60">
-            <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
+            <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary"/>
           </div>
 
           <!-- Buffer-stall spinner — appears mid-playback when the video
@@ -1430,71 +1582,78 @@ watch(mediaId, (id, oldId) => {
                Distinct from hlsLoading so it doesn't darken the video; just
                a centered spinner with no backdrop. -->
           <div
-            v-if="videoStalled && !hlsLoading"
-            class="absolute inset-0 flex items-center justify-center pointer-events-none"
-            aria-live="polite"
+              v-if="videoStalled && !hlsLoading"
+              class="absolute inset-0 flex items-center justify-center pointer-events-none"
+              aria-live="polite"
           >
             <div class="bg-black/55 rounded-full p-3">
-              <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-white" />
+              <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-white"/>
             </div>
           </div>
 
           <!-- Media info overlay (press I) -->
           <Transition name="fade">
             <div
-              v-if="showInfoOverlay && media"
-              class="absolute top-3 left-3 z-20 bg-black/80 text-white text-xs rounded-lg px-3 py-2.5 space-y-1 backdrop-blur-sm max-w-xs pointer-events-none"
+                v-if="showInfoOverlay && media"
+                class="absolute top-3 left-3 z-20 bg-black/80 text-white text-xs rounded-lg px-3 py-2.5 space-y-1 backdrop-blur-sm max-w-xs pointer-events-none"
             >
               <div class="font-semibold text-sm truncate">{{ getDisplayTitle(media) }}</div>
-              <div v-if="media.codec" class="flex gap-1.5"><span class="text-white/50">Codec</span><span class="uppercase font-mono">{{ media.codec }}</span></div>
-              <div v-if="media.width && media.height" class="flex gap-1.5"><span class="text-white/50">Resolution</span><span class="font-mono">{{ media.width }}×{{ media.height }}</span></div>
-              <div v-if="media.bitrate" class="flex gap-1.5"><span class="text-white/50">Bitrate</span><span class="font-mono">{{ (media.bitrate / 1000).toFixed(0) }} kbps</span></div>
-              <div v-if="hlsActivated && currentQuality >= 0 && qualities[currentQuality]" class="flex gap-1.5"><span class="text-white/50">Quality</span><span>{{ qualities[currentQuality]?.name }}</span></div>
-              <div v-if="hlsActivated && bandwidth > 0" class="flex gap-1.5"><span class="text-white/50">Bandwidth</span><span class="font-mono">{{ (bandwidth / 1_000_000).toFixed(1) }} Mbps</span></div>
-              <div v-if="media.size" class="flex gap-1.5"><span class="text-white/50">File size</span><span>{{ formatBytes(media.size) }}</span></div>
+              <div v-if="media.codec" class="flex gap-1.5"><span class="text-white/50">Codec</span><span
+                  class="uppercase font-mono">{{ media.codec }}</span></div>
+              <div v-if="media.width && media.height" class="flex gap-1.5"><span class="text-white/50">Resolution</span><span
+                  class="font-mono">{{ media.width }}×{{ media.height }}</span></div>
+              <div v-if="media.bitrate" class="flex gap-1.5"><span class="text-white/50">Bitrate</span><span
+                  class="font-mono">{{ (media.bitrate / 1000).toFixed(0) }} kbps</span></div>
+              <div v-if="hlsActivated && currentQuality >= 0 && qualities[currentQuality]" class="flex gap-1.5"><span
+                  class="text-white/50">Quality</span><span>{{ qualities[currentQuality]?.name }}</span></div>
+              <div v-if="hlsActivated && bandwidth > 0" class="flex gap-1.5"><span
+                  class="text-white/50">Bandwidth</span><span class="font-mono">{{ (bandwidth / 1_000_000).toFixed(1) }} Mbps</span>
+              </div>
+              <div v-if="media.size" class="flex gap-1.5"><span
+                  class="text-white/50">File size</span><span>{{ formatBytes(media.size) }}</span></div>
               <div class="flex gap-1.5 text-white/40 mt-0.5"><span>Press I to close</span></div>
             </div>
           </Transition>
 
           <!-- Controls + keyboard shortcuts -->
           <PlayerControls
-            :is-playing="isPlaying"
-            :current-time="currentTime"
-            :duration="duration"
-            :volume="volume"
-            :playback-speed="playbackSpeed"
-            :loop-mode="loopMode"
-            :shuffle-enabled="shuffleEnabled"
-            :is-fullscreen="isFullscreen"
-            :is-pi-p="isPiP"
-            :pip-supported="pipSupported"
-            :is-theater="isTheater"
-            :qualities="qualities"
-            :current-quality="currentQuality"
-            :thumbnail-previews="thumbnailPreviews"
-            :show-controls="showControls"
-            :skip-interval="skipInterval"
-            :buffered-fraction="bufferedFraction"
-            :show-buffer-bar="showBufferBar"
-            :chapters="chapters"
-            :has-prev="hasPrevItem"
-            :has-next="hasNextItem"
-            v-model:showShortcuts="showShortcuts"
-            @toggle-play="togglePlay"
-            @seek="seek"
-            @seek-to-fraction="seekToFraction"
-            @set-volume="setVolume"
-            @cycle-speed="cycleSpeed"
-            @quality-select="handleQualitySelect"
-            @toggle-fullscreen="toggleFullscreen"
-            @toggle-pip="togglePiP"
-            @cycle-loop="cycleLoop"
-            @toggle-shuffle="toggleShuffle"
-            @toggle-mute="toggleMute"
-            @toggle-theater="toggleTheater"
-            @seek-to-chapter="seekToChapter"
-            @skip-prev="skipPrevItem"
-            @skip-next="skipNextItem"
+              :is-playing="isPlaying"
+              :current-time="currentTime"
+              :duration="duration"
+              :volume="volume"
+              :playback-speed="playbackSpeed"
+              :loop-mode="loopMode"
+              :shuffle-enabled="shuffleEnabled"
+              :is-fullscreen="isFullscreen"
+              :is-pi-p="isPiP"
+              :pip-supported="pipSupported"
+              :is-theater="isTheater"
+              :qualities="qualities"
+              :current-quality="currentQuality"
+              :thumbnail-previews="thumbnailPreviews"
+              :show-controls="showControls"
+              :skip-interval="skipInterval"
+              :buffered-fraction="bufferedFraction"
+              :show-buffer-bar="showBufferBar"
+              :chapters="chapters"
+              :has-prev="hasPrevItem"
+              :has-next="hasNextItem"
+              v-model:showShortcuts="showShortcuts"
+              @toggle-play="togglePlay"
+              @seek="seek"
+              @seek-to-fraction="seekToFraction"
+              @set-volume="setVolume"
+              @cycle-speed="cycleSpeed"
+              @quality-select="handleQualitySelect"
+              @toggle-fullscreen="toggleFullscreen"
+              @toggle-pip="togglePiP"
+              @cycle-loop="cycleLoop"
+              @toggle-shuffle="toggleShuffle"
+              @toggle-mute="toggleMute"
+              @toggle-theater="toggleTheater"
+              @seek-to-chapter="seekToChapter"
+              @skip-prev="skipPrevItem"
+              @skip-next="skipNextItem"
           />
         </div>
         <div v-else class="max-md:px-4">
@@ -1504,9 +1663,13 @@ watch(mediaId, (id, oldId) => {
                (the native <audio controls> below flows naturally and isn't
                included in the cap). Mobile keeps the spacious stacked layout. -->
           <UCard class="overflow-hidden">
-            <div class="flex flex-col items-center justify-center px-4 bg-linear-to-b from-primary/8 to-transparent py-8 md:py-3 md:max-h-[260px]">
-              <AudioVisualizer :analyser-node="visualizerAnalyser" :bars="48" :height="160" class="w-full max-w-md mb-4 md:h-[100px] md:mb-2" />
-              <p class="font-bold text-xl md:text-base text-highlighted text-center max-w-md">{{ getDisplayTitle(media) }}</p>
+            <div
+                class="flex flex-col items-center justify-center px-4 bg-linear-to-b from-primary/8 to-transparent py-8 md:py-3 md:max-h-[260px]">
+              <AudioVisualizer :analyser-node="visualizerAnalyser" :bars="48" :height="160"
+                               class="w-full max-w-md mb-4 md:h-[100px] md:mb-2"/>
+              <p class="font-bold text-xl md:text-base text-highlighted text-center max-w-md">{{
+                  getDisplayTitle(media)
+                }}</p>
               <div class="flex items-center gap-2 mt-1.5 text-xs text-muted">
                 <span v-if="media.codec" class="uppercase font-medium">{{ media.codec }}</span>
                 <span v-if="media.codec && media.bitrate">·</span>
@@ -1515,408 +1678,422 @@ watch(mediaId, (id, oldId) => {
                 <span v-if="media.size">{{ formatBytes(media.size) }}</span>
               </div>
               <div v-if="media.category" class="mt-2">
-                <UBadge :label="media.category" color="primary" variant="subtle" size="xs" />
+                <UBadge :label="media.category" color="primary" variant="subtle" size="xs"/>
               </div>
             </div>
             <audio
-              ref="videoRef"
-              :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
-              preload="auto"
-              controls
-              class="w-full"
-              @loadedmetadata="onVideoLoaded"
-              @timeupdate="onTimeUpdate"
-              @play="onPlayPause(); trackPlay()"
-              @pause="onPlayPause(); trackPause()"
-              @ended="onMediaEnded()"
-              @error="onVideoError"
+                ref="videoRef"
+                :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
+                preload="auto"
+                controls
+                class="w-full"
+                @loadedmetadata="onVideoLoaded"
+                @timeupdate="onTimeUpdate"
+                @play="onPlayPause(); trackPlay()"
+                @pause="onPlayPause(); trackPause()"
+                @ended="onMediaEnded()"
+                @error="onVideoError"
             />
           </UCard>
         </div>
 
         <div class="flex flex-col gap-4 max-md:px-4 max-md:pt-4">
-        <!-- HLS + media meta -->
-        <UAlert
-          v-if="jobRunning"
-          title="Generating HLS stream…"
-          :description="`Progress: ${jobProgress}%`"
-          color="info"
-          variant="soft"
-          icon="i-lucide-loader-2"
-        />
+          <!-- HLS + media meta -->
+          <UAlert
+              v-if="jobRunning"
+              title="Generating HLS stream…"
+              :description="`Progress: ${jobProgress}%`"
+              color="info"
+              variant="soft"
+              icon="i-lucide-loader-2"
+          />
 
-        <!-- HLS available banner -->
-        <UAlert
-          v-else-if="hlsAvailable && !hlsActivated"
-          title="Adaptive HLS streaming available"
-          description="Switch to HLS for adaptive quality and smoother playback."
-          color="info"
-          variant="soft"
-          icon="i-lucide-zap"
-        >
-          <template #actions>
-            <UButton label="Enable HLS" size="xs" :loading="hlsLoading" @click="activateHLS" />
-          </template>
-        </UAlert>
-
-        <!-- HLS reconnecting -->
-        <UAlert
-          v-else-if="hlsReconnecting"
-          title="Stream interrupted — reconnecting…"
-          description="Playback continues from buffer. The player will resume automatically when the server responds."
-          color="warning"
-          variant="soft"
-          icon="i-lucide-wifi-off"
-        />
-
-        <!-- HLS error -->
-        <UAlert
-          v-else-if="hlsError"
-          :title="hlsError"
-          color="error"
-          variant="soft"
-          icon="i-lucide-alert-circle"
-        />
-
-        <!-- Request HLS generation (video only, when HLS not available or running) -->
-        <UAlert
-          v-else-if="media && media.type !== 'audio' && !hlsAvailable && !jobRunning"
-          title="Adaptive streaming not available"
-          description="Generate HLS for adaptive quality and better playback performance."
-          color="neutral"
-          variant="soft"
-          icon="i-lucide-video"
-        >
-          <template #actions>
-            <UButton label="Generate HLS" size="xs" :loading="requestingHls" variant="outline" color="neutral" @click="requestHlsGeneration" />
-          </template>
-        </UAlert>
-
-        <!-- Media info -->
-        <UCard>
-          <!-- Badge row: type, category, mature -->
-          <div class="flex flex-wrap gap-1.5 mb-3">
-            <span v-if="media.type"
-              class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
-              style="background: var(--accent-bg-weak); border: 1px solid var(--accent-border); color: var(--accent-soft);"
-            >{{ media.type }}</span>
-            <span v-if="media.category"
-              class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium text-muted"
-              style="background: rgba(255,255,255,0.07);"
-            >{{ media.category }}</span>
-            <span v-if="media.is_mature"
-              class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold"
-              style="background: rgba(220,38,38,0.12); color: #f87171;"
-            >18+</span>
-          </div>
-          <!-- Title -->
-          <h2 class="font-extrabold text-[var(--text-strong)] leading-tight mb-2" style="font-size: clamp(22px, 3.4vw, 32px); text-wrap: pretty;">{{ getDisplayTitle(media) }}</h2>
-          <!-- Inline metadata row -->
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted mb-3">
-            <span v-if="media.date_added">{{ new Date(media.date_added).getFullYear() }}</span>
-            <template v-if="media.duration || duration">
-              <span class="opacity-30" aria-hidden="true">·</span>
-              <span>{{ formatDuration(media.duration || duration) }}</span>
+          <!-- HLS available banner -->
+          <UAlert
+              v-else-if="hlsAvailable && !hlsActivated"
+              title="Adaptive HLS streaming available"
+              description="Switch to HLS for adaptive quality and smoother playback."
+              color="info"
+              variant="soft"
+              icon="i-lucide-zap"
+          >
+            <template #actions>
+              <UButton label="Enable HLS" size="xs" :loading="hlsLoading" @click="activateHLS"/>
             </template>
-            <template v-if="userRating">
-              <span class="opacity-30" aria-hidden="true">·</span>
-              <span class="text-[var(--rating-star)]">★ {{ userRating }}</span>
+          </UAlert>
+
+          <!-- HLS reconnecting -->
+          <UAlert
+              v-else-if="hlsReconnecting"
+              title="Stream interrupted — reconnecting…"
+              description="Playback continues from buffer. The player will resume automatically when the server responds."
+              color="warning"
+              variant="soft"
+              icon="i-lucide-wifi-off"
+          />
+
+          <!-- HLS error -->
+          <UAlert
+              v-else-if="hlsError"
+              :title="hlsError"
+              color="error"
+              variant="soft"
+              icon="i-lucide-alert-circle"
+          />
+
+          <!-- Request HLS generation (video only, when HLS not available or running) -->
+          <UAlert
+              v-else-if="media && media.type !== 'audio' && !hlsAvailable && !jobRunning"
+              title="Adaptive streaming not available"
+              description="Generate HLS for adaptive quality and better playback performance."
+              color="neutral"
+              variant="soft"
+              icon="i-lucide-video"
+          >
+            <template #actions>
+              <UButton label="Generate HLS" size="xs" :loading="requestingHls" variant="outline" color="neutral"
+                       @click="requestHlsGeneration"/>
             </template>
-            <template v-if="media.views != null">
-              <span class="opacity-30" aria-hidden="true">·</span>
-              <span>{{ media.views.toLocaleString() }} {{ media.views === 1 ? 'view' : 'views' }}</span>
-            </template>
-            <template v-if="media.width && media.height">
-              <span class="opacity-30" aria-hidden="true">·</span>
-              <span>{{ media.width }}×{{ media.height }}</span>
-            </template>
-          </div>
-          <!-- Description -->
-          <template v-if="media.metadata?.description">
-            <h3 class="section-title mb-1.5">About</h3>
-            <p class="text-sm text-[var(--text-med)] leading-[1.75] mb-3" style="text-wrap: pretty;">{{ media.metadata.description }}</p>
-          </template>
-          <!-- Tags -->
-          <template v-if="media.tags && media.tags.length > 0">
-            <h3 class="section-title mb-1.5">Tags</h3>
+          </UAlert>
+
+          <!-- Media info -->
+          <UCard>
+            <!-- Badge row: type, category, mature -->
             <div class="flex flex-wrap gap-1.5 mb-3">
-              <UBadge v-for="tag in media.tags" :key="tag" :label="tag" color="primary" variant="subtle" size="xs" />
+            <span v-if="media.type"
+                  class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
+                  style="background: var(--accent-bg-weak); border: 1px solid var(--accent-border); color: var(--accent-soft);"
+            >{{ media.type }}</span>
+              <span v-if="media.category"
+                    class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium text-muted"
+                    style="background: rgba(255,255,255,0.07);"
+              >{{ media.category }}</span>
+              <span v-if="media.is_mature"
+                    class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold"
+                    style="background: rgba(220,38,38,0.12); color: #f87171;"
+              >18+</span>
             </div>
-          </template>
-          <!-- Chapters grid — per handoff §6.4.6. Each chapter is a click-to-seek
-               button with a monospace timestamp (44px min) + index + label. The
-               active chapter (whose range contains the current playback position)
-               is highlighted with --accent-bg-weak + --accent-soft. -->
-          <template v-if="chapters.length > 0">
-            <h3 class="section-title mb-1.5">Chapters</h3>
-            <div class="grid gap-2 mb-3" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));">
-              <button
-                v-for="(ch, i) in chapters"
-                :key="ch.id"
-                class="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-colors text-sm border border-transparent hover:border-[var(--hairline-strong)]"
-                :class="isActiveChapter(ch, i) ? 'bg-[var(--accent-bg-weak)] text-[var(--accent-soft)]' : 'text-[var(--text-med)] hover:bg-[var(--surface-elev)]'"
-                :aria-current="isActiveChapter(ch, i) ? 'true' : undefined"
-                @click="seekToChapter(ch.start_time)"
-              >
-                <span class="font-mono text-xs tabular-nums min-w-[44px] shrink-0" :class="isActiveChapter(ch, i) ? 'text-[var(--accent-soft)]' : 'text-muted'">{{ formatDuration(ch.start_time) }}</span>
-                <span class="truncate"><span class="text-muted">{{ i + 1 }}.</span> {{ ch.label || `Chapter ${i + 1}` }}</span>
-              </button>
+            <!-- Title -->
+            <h2 class="font-extrabold text-[var(--text-strong)] leading-tight mb-2"
+                style="font-size: clamp(22px, 3.4vw, 32px); text-wrap: pretty;">{{ getDisplayTitle(media) }}</h2>
+            <!-- Inline metadata row -->
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted mb-3">
+              <span v-if="media.date_added">{{ new Date(media.date_added).getFullYear() }}</span>
+              <template v-if="media.duration || duration">
+                <span class="opacity-30" aria-hidden="true">·</span>
+                <span>{{ formatDuration(media.duration || duration) }}</span>
+              </template>
+              <template v-if="userRating">
+                <span class="opacity-30" aria-hidden="true">·</span>
+                <span class="text-[var(--rating-star)]">★ {{ userRating }}</span>
+              </template>
+              <template v-if="media.views != null">
+                <span class="opacity-30" aria-hidden="true">·</span>
+                <span>{{ media.views.toLocaleString() }} {{ media.views === 1 ? 'view' : 'views' }}</span>
+              </template>
+              <template v-if="media.width && media.height">
+                <span class="opacity-30" aria-hidden="true">·</span>
+                <span>{{ media.width }}×{{ media.height }}</span>
+              </template>
             </div>
-          </template>
-          <!-- Technical details (compact secondary row) -->
-          <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted mb-4">
-            <span v-if="media.size">{{ formatBytes(media.size) }}</span>
-            <span v-if="media.codec">{{ media.codec.toUpperCase() }}</span>
-            <span v-if="media.container">{{ media.container.toUpperCase() }}</span>
-            <span v-if="media.bitrate">{{ formatBandwidth(media.bitrate) }}</span>
-            <span v-if="hlsActivated && qualities.length > 0" class="text-primary">{{ currentQualityLabel }}</span>
-            <!-- Relative date per handoff §6.4.2 ("Added 3 days ago"). Tooltip
-                 shows the absolute date for anyone who wants precision. -->
-            <span v-if="media.date_added" :title="new Date(media.date_added).toLocaleString()">Added {{ formatRelativeDate(media.date_added) }}</span>
-          </div>
-          <div class="flex gap-2 mt-4 flex-wrap">
-            <UButton
-              v-if="authStore.isLoggedIn && authStore.user?.permissions?.can_download"
-              icon="i-lucide-download"
-              label="Download"
-              variant="outline"
-              color="neutral"
-              size="sm"
-              @click="downloadPrompt && hlsAvailable ? (downloadModalOpen = true) : navigateTo(mediaApi.getDownloadUrl(media.id), { open: { target: '_blank' } })"
-            />
-            <UButton
-              v-if="authStore.isLoggedIn"
-              icon="i-lucide-list-plus"
-              label="Add to Playlist"
-              variant="outline"
-              color="neutral"
-              size="sm"
-              @click="openAddToPlaylist"
-            />
-            <UButton
-              v-if="authStore.isLoggedIn"
-              icon="i-lucide-list-ordered"
-              :label="queueStore.items.length > 0 ? `Queue (${queueStore.items.length})` : 'Queue'"
-              :variant="showQueuePanel ? 'solid' : 'outline'"
-              :color="showQueuePanel ? 'primary' : 'neutral'"
-              size="sm"
-              @click="showQueuePanel = !showQueuePanel"
-            />
-            <UButton
-              icon="i-lucide-sliders-horizontal"
-              :label="eqEnabled ? 'EQ On' : 'Equalizer'"
-              :variant="eqEnabled ? 'solid' : 'outline'"
-              :color="eqEnabled ? 'primary' : 'neutral'"
-              size="sm"
-              @click="showEqualizer = !showEqualizer; if (!eqEnabled) toggleEqualizer()"
-            />
-            <UButton
-              :icon="autoNextEnabled ? 'i-lucide-skip-forward' : 'i-lucide-circle-stop'"
-              :label="autoNextEnabled ? 'Auto-Next' : 'Auto-Next Off'"
-              :variant="autoNextEnabled ? 'solid' : 'outline'"
-              :color="autoNextEnabled ? 'primary' : 'neutral'"
-              size="sm"
-              @click="toggleAutoNext"
-            />
-            <UButton
-              v-if="authStore.isLoggedIn"
-              :icon="isInWatchlist ? 'i-lucide-bookmark-check' : 'i-lucide-bookmark-plus'"
-              :label="isInWatchlist ? 'In Watchlist' : 'Watchlist'"
-              :variant="isInWatchlist ? 'solid' : 'outline'"
-              :color="isInWatchlist ? 'primary' : 'neutral'"
-              :loading="watchlistBusy"
-              size="sm"
-              @click="toggleWatchlist"
-            />
-            <UButton
-              icon="i-lucide-share-2"
-              :label="shareLabel"
-              :variant="linkCopied ? 'solid' : 'outline'"
-              :color="linkCopied ? 'success' : 'neutral'"
-              size="sm"
-              @click="copyTimestampLink"
-            />
-            <UButton
-              v-if="authStore.isLoggedIn"
-              icon="i-lucide-flag"
-              label="Report"
-              variant="outline"
-              color="neutral"
-              size="sm"
-              @click="reportModalOpen = true"
-            />
-            <UButton
-              v-if="authStore.isAdmin"
-              icon="i-lucide-pencil"
-              label="Edit"
-              variant="outline"
-              color="neutral"
-              size="sm"
-              :to="`/admin?tab=media&edit=${encodeURIComponent(media.id)}`"
-            />
-          </div>
-
-          <!-- Graphic Equalizer -->
-          <div v-if="showEqualizer" class="mt-4 p-4 rounded-lg bg-muted/50 space-y-3">
-            <div class="flex items-center justify-between">
-              <h4 class="section-title">Equalizer</h4>
-              <div class="flex gap-1.5">
-                <UButton
-                  v-for="(_, name) in EQ_PRESETS"
-                  :key="name"
-                  :label="String(name).replace('_', ' ')"
-                  size="xs"
+            <!-- Description -->
+            <template v-if="media.metadata?.description">
+              <h3 class="section-title mb-1.5">About</h3>
+              <p class="text-sm text-[var(--text-med)] leading-[1.75] mb-3" style="text-wrap: pretty;">
+                {{ media.metadata.description }}</p>
+            </template>
+            <!-- Tags -->
+            <template v-if="media.tags && media.tags.length > 0">
+              <h3 class="section-title mb-1.5">Tags</h3>
+              <div class="flex flex-wrap gap-1.5 mb-3">
+                <UBadge v-for="tag in media.tags" :key="tag" :label="tag" color="primary" variant="subtle" size="xs"/>
+              </div>
+            </template>
+            <!-- Chapters grid — per handoff §6.4.6. Each chapter is a click-to-seek
+                 button with a monospace timestamp (44px min) + index + label. The
+                 active chapter (whose range contains the current playback position)
+                 is highlighted with --accent-bg-weak + --accent-soft. -->
+            <template v-if="chapters.length > 0">
+              <h3 class="section-title mb-1.5">Chapters</h3>
+              <div class="grid gap-2 mb-3" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));">
+                <button
+                    v-for="(ch, i) in chapters"
+                    :key="ch.id"
+                    class="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-colors text-sm border border-transparent hover:border-[var(--hairline-strong)]"
+                    :class="isActiveChapter(ch, i) ? 'bg-[var(--accent-bg-weak)] text-[var(--accent-soft)]' : 'text-[var(--text-med)] hover:bg-[var(--surface-elev)]'"
+                    :aria-current="isActiveChapter(ch, i) ? 'true' : undefined"
+                    @click="seekToChapter(ch.start_time)"
+                >
+                  <span class="font-mono text-xs tabular-nums min-w-[44px] shrink-0"
+                        :class="isActiveChapter(ch, i) ? 'text-[var(--accent-soft)]' : 'text-muted'">{{
+                      formatDuration(ch.start_time)
+                    }}</span>
+                  <span class="truncate"><span class="text-muted">{{ i + 1 }}.</span> {{
+                      ch.label || `Chapter ${i + 1}`
+                    }}</span>
+                </button>
+              </div>
+            </template>
+            <!-- Technical details (compact secondary row) -->
+            <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted mb-4">
+              <span v-if="media.size">{{ formatBytes(media.size) }}</span>
+              <span v-if="media.codec">{{ media.codec.toUpperCase() }}</span>
+              <span v-if="media.container">{{ media.container.toUpperCase() }}</span>
+              <span v-if="media.bitrate">{{ formatBandwidth(media.bitrate) }}</span>
+              <span v-if="hlsActivated && qualities.length > 0" class="text-primary">{{ currentQualityLabel }}</span>
+              <!-- Relative date per handoff §6.4.2 ("Added 3 days ago"). Tooltip
+                   shows the absolute date for anyone who wants precision. -->
+              <span v-if="media.date_added" :title="new Date(media.date_added).toLocaleString()">Added {{
+                  formatRelativeDate(media.date_added)
+                }}</span>
+            </div>
+            <div class="flex gap-2 mt-4 flex-wrap">
+              <UButton
+                  v-if="authStore.isLoggedIn && authStore.user?.permissions?.can_download"
+                  icon="i-lucide-download"
+                  label="Download"
                   variant="outline"
                   color="neutral"
-                  class="capitalize text-xs"
-                  @click="applyEqPreset(String(name))"
-                />
-              </div>
-            </div>
-            <div class="flex items-end justify-between gap-1.5 h-32">
-              <div v-for="(freq, i) in EQ_FREQUENCIES" :key="freq" class="flex flex-col items-center flex-1 gap-1">
-                <input
-                  type="range"
-                  min="-12"
-                  max="12"
-                  step="1"
-                  :value="eqBands[i]"
-                  class="w-full accent-primary appearance-none [writing-mode:vertical-lr] h-24 rotate-180"
-                  :aria-label="`${freq >= 1000 ? (freq / 1000) + 'k' : freq} Hz`"
-                  @input="setEqBand(i, +($event.target as HTMLInputElement).value)"
-                />
-                <span class="text-[10px] text-muted">{{ freq >= 1000 ? (freq / 1000) + 'k' : freq }}</span>
-              </div>
-            </div>
-            <div class="flex justify-between items-center">
-              <UButton label="Flat" size="xs" variant="ghost" color="neutral" @click="applyEqPreset('flat')" />
+                  size="sm"
+                  @click="downloadPrompt && hlsAvailable ? (downloadModalOpen = true) : navigateTo(mediaApi.getDownloadUrl(media.id), { open: { target: '_blank' } })"
+              />
               <UButton
-                :label="eqEnabled ? 'Bypass EQ' : 'Enable EQ'"
-                size="xs"
-                :variant="eqEnabled ? 'outline' : 'solid'"
-                :color="eqEnabled ? 'neutral' : 'primary'"
-                @click="toggleEqualizer"
+                  v-if="authStore.isLoggedIn"
+                  icon="i-lucide-list-plus"
+                  label="Add to Playlist"
+                  variant="outline"
+                  color="neutral"
+                  size="sm"
+                  @click="openAddToPlaylist"
+              />
+              <UButton
+                  v-if="authStore.isLoggedIn"
+                  icon="i-lucide-list-ordered"
+                  :label="queueStore.items.length > 0 ? `Queue (${queueStore.items.length})` : 'Queue'"
+                  :variant="showQueuePanel ? 'solid' : 'outline'"
+                  :color="showQueuePanel ? 'primary' : 'neutral'"
+                  size="sm"
+                  @click="showQueuePanel = !showQueuePanel"
+              />
+              <UButton
+                  icon="i-lucide-sliders-horizontal"
+                  :label="eqEnabled ? 'EQ On' : 'Equalizer'"
+                  :variant="eqEnabled ? 'solid' : 'outline'"
+                  :color="eqEnabled ? 'primary' : 'neutral'"
+                  size="sm"
+                  @click="showEqualizer = !showEqualizer; if (!eqEnabled) toggleEqualizer()"
+              />
+              <UButton
+                  :icon="autoNextEnabled ? 'i-lucide-skip-forward' : 'i-lucide-circle-stop'"
+                  :label="autoNextEnabled ? 'Auto-Next' : 'Auto-Next Off'"
+                  :variant="autoNextEnabled ? 'solid' : 'outline'"
+                  :color="autoNextEnabled ? 'primary' : 'neutral'"
+                  size="sm"
+                  @click="toggleAutoNext"
+              />
+              <UButton
+                  v-if="authStore.isLoggedIn"
+                  :icon="isInWatchlist ? 'i-lucide-bookmark-check' : 'i-lucide-bookmark-plus'"
+                  :label="isInWatchlist ? 'In Watchlist' : 'Watchlist'"
+                  :variant="isInWatchlist ? 'solid' : 'outline'"
+                  :color="isInWatchlist ? 'primary' : 'neutral'"
+                  :loading="watchlistBusy"
+                  size="sm"
+                  @click="toggleWatchlist"
+              />
+              <UButton
+                  icon="i-lucide-share-2"
+                  :label="shareLabel"
+                  :variant="linkCopied ? 'solid' : 'outline'"
+                  :color="linkCopied ? 'success' : 'neutral'"
+                  size="sm"
+                  @click="copyTimestampLink"
+              />
+              <UButton
+                  v-if="authStore.isLoggedIn"
+                  icon="i-lucide-flag"
+                  label="Report"
+                  variant="outline"
+                  color="neutral"
+                  size="sm"
+                  @click="reportModalOpen = true"
+              />
+              <UButton
+                  v-if="authStore.isAdmin"
+                  icon="i-lucide-pencil"
+                  label="Edit"
+                  variant="outline"
+                  color="neutral"
+                  size="sm"
+                  :to="`/admin?tab=media&edit=${encodeURIComponent(media.id)}`"
               />
             </div>
-          </div>
 
-          <!-- Star rating (logged-in users only) -->
-          <div v-if="authStore.isLoggedIn" class="flex items-center gap-1.5 mt-3">
-            <span class="text-sm text-muted">Rate:</span>
-            <button
-              v-for="star in 5"
-              :key="star"
-              class="text-2xl leading-none transition-colors focus:outline-none"
-              :class="star <= userRating ? 'text-[var(--rating-star)]' : 'text-muted hover:text-[var(--rating-star)]/70'"
-              :aria-label="`Rate ${star} star${star > 1 ? 's' : ''}`"
-              @click="submitRating(star)"
-            >★</button>
-          </div>
-
-          <!-- Add to playlist modal -->
-          <!-- Queue panel -->
-          <div v-if="showQueuePanel && authStore.isLoggedIn" class="mt-4 border-t border-default pt-4 space-y-2">
-            <div class="flex items-center justify-between">
-              <h4 class="section-title flex items-center gap-1.5">
-                <UIcon name="i-lucide-list-ordered" class="size-4 text-[var(--accent)]" />
-                Up Next ({{ queueStore.items.length }})
-              </h4>
-              <UButton
-                v-if="queueStore.items.length > 0"
-                icon="i-lucide-trash-2"
-                label="Clear"
-                variant="ghost"
-                color="neutral"
-                size="xs"
-                @click="queueStore.clear()"
-              />
-            </div>
-            <p v-if="queueStore.items.length === 0" class="text-xs text-muted py-2">Queue is empty. Add items from the library.</p>
-            <div v-else class="space-y-1">
-              <div
-                v-for="(qi, qIdx) in queueStore.items"
-                :key="qi.id"
-                class="flex items-center gap-2 group rounded-lg px-1 py-1 hover:bg-muted/50"
-              >
-                <span class="text-xs text-muted w-5 text-right shrink-0">{{ qIdx + 1 }}</span>
-                <div class="w-14 h-8 rounded overflow-hidden bg-muted shrink-0">
-                  <img
-                    v-if="qi.thumbnail_url"
-                    :src="qi.thumbnail_url"
-                    :alt="qi.name"
-                    class="w-full h-full object-cover"
-                    loading="lazy"
+            <!-- Graphic Equalizer -->
+            <div v-if="showEqualizer" class="mt-4 p-4 rounded-lg bg-muted/50 space-y-3">
+              <div class="flex items-center justify-between">
+                <h4 class="section-title">Equalizer</h4>
+                <div class="flex gap-1.5">
+                  <UButton
+                      v-for="(_, name) in EQ_PRESETS"
+                      :key="name"
+                      :label="String(name).replace('_', ' ')"
+                      size="xs"
+                      variant="outline"
+                      color="neutral"
+                      class="capitalize text-xs"
+                      @click="applyEqPreset(String(name))"
                   />
-                  <div v-else class="w-full h-full flex items-center justify-center">
-                    <UIcon :name="qi.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'" class="size-3 text-muted" />
+                </div>
+              </div>
+              <div class="flex items-end justify-between gap-1.5 h-32">
+                <div v-for="(freq, i) in EQ_FREQUENCIES" :key="freq" class="flex flex-col items-center flex-1 gap-1">
+                  <input
+                      type="range"
+                      min="-12"
+                      max="12"
+                      step="1"
+                      :value="eqBands[i]"
+                      class="w-full accent-primary appearance-none [writing-mode:vertical-lr] h-24 rotate-180"
+                      :aria-label="`${freq >= 1000 ? (freq / 1000) + 'k' : freq} Hz`"
+                      @input="setEqBand(i, +($event.target as HTMLInputElement).value)"
+                  />
+                  <span class="text-[10px] text-muted">{{ freq >= 1000 ? (freq / 1000) + 'k' : freq }}</span>
+                </div>
+              </div>
+              <div class="flex justify-between items-center">
+                <UButton label="Flat" size="xs" variant="ghost" color="neutral" @click="applyEqPreset('flat')"/>
+                <UButton
+                    :label="eqEnabled ? 'Bypass EQ' : 'Enable EQ'"
+                    size="xs"
+                    :variant="eqEnabled ? 'outline' : 'solid'"
+                    :color="eqEnabled ? 'neutral' : 'primary'"
+                    @click="toggleEqualizer"
+                />
+              </div>
+            </div>
+
+            <!-- Star rating (logged-in users only) -->
+            <div v-if="authStore.isLoggedIn" class="flex items-center gap-1.5 mt-3">
+              <span class="text-sm text-muted">Rate:</span>
+              <button
+                  v-for="star in 5"
+                  :key="star"
+                  class="text-2xl leading-none transition-colors focus:outline-none"
+                  :class="star <= userRating ? 'text-[var(--rating-star)]' : 'text-muted hover:text-[var(--rating-star)]/70'"
+                  :aria-label="`Rate ${star} star${star > 1 ? 's' : ''}`"
+                  @click="submitRating(star)"
+              >★
+              </button>
+            </div>
+
+            <!-- Add to playlist modal -->
+            <!-- Queue panel -->
+            <div v-if="showQueuePanel && authStore.isLoggedIn" class="mt-4 border-t border-default pt-4 space-y-2">
+              <div class="flex items-center justify-between">
+                <h4 class="section-title flex items-center gap-1.5">
+                  <UIcon name="i-lucide-list-ordered" class="size-4 text-[var(--accent)]"/>
+                  Up Next ({{ queueStore.items.length }})
+                </h4>
+                <UButton
+                    v-if="queueStore.items.length > 0"
+                    icon="i-lucide-trash-2"
+                    label="Clear"
+                    variant="ghost"
+                    color="neutral"
+                    size="xs"
+                    @click="queueStore.clear()"
+                />
+              </div>
+              <p v-if="queueStore.items.length === 0" class="text-xs text-muted py-2">Queue is empty. Add items from the
+                library.</p>
+              <div v-else class="space-y-1">
+                <div
+                    v-for="(qi, qIdx) in queueStore.items"
+                    :key="qi.id"
+                    class="flex items-center gap-2 group rounded-lg px-1 py-1 hover:bg-muted/50"
+                >
+                  <span class="text-xs text-muted w-5 text-right shrink-0">{{ qIdx + 1 }}</span>
+                  <div class="w-14 h-8 rounded overflow-hidden bg-muted shrink-0">
+                    <img
+                        v-if="qi.thumbnail_url"
+                        :src="qi.thumbnail_url"
+                        :alt="qi.name"
+                        class="w-full h-full object-cover"
+                        loading="lazy"
+                    />
+                    <div v-else class="w-full h-full flex items-center justify-center">
+                      <UIcon :name="qi.type === 'audio' ? 'i-lucide-music' : 'i-lucide-film'"
+                             class="size-3 text-muted"/>
+                    </div>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-xs font-medium truncate" :title="getDisplayTitle(qi)">{{ getDisplayTitle(qi) }}</p>
+                    <p v-if="qi.duration" class="text-[10px] text-muted font-mono">{{ formatDuration(qi.duration) }}</p>
+                  </div>
+                  <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <button
+                        class="p-1 rounded hover:bg-muted"
+                        aria-label="Move up"
+                        :disabled="qIdx === 0"
+                        @click="queueStore.moveUp(qi.id)"
+                    >
+                      <UIcon name="i-lucide-chevron-up" class="size-3 text-muted"/>
+                    </button>
+                    <button
+                        class="p-1 rounded hover:bg-muted"
+                        aria-label="Move down"
+                        :disabled="qIdx === queueStore.items.length - 1"
+                        @click="queueStore.moveDown(qi.id)"
+                    >
+                      <UIcon name="i-lucide-chevron-down" class="size-3 text-muted"/>
+                    </button>
+                    <NuxtLink
+                        class="p-1 rounded hover:bg-muted"
+                        :to="`/player?id=${encodeURIComponent(qi.id)}`"
+                        :aria-label="`Play ${qi.name} now`"
+                        @click="queueStore.remove(qi.id)"
+                    >
+                      <UIcon name="i-lucide-play" class="size-3 text-primary"/>
+                    </NuxtLink>
+                    <button
+                        class="p-1 rounded hover:bg-muted"
+                        :aria-label="`Remove ${qi.name} from queue`"
+                        @click="queueStore.remove(qi.id)"
+                    >
+                      <UIcon name="i-lucide-x" class="size-3 text-muted"/>
+                    </button>
                   </div>
                 </div>
-                <div class="flex-1 min-w-0">
-                  <p class="text-xs font-medium truncate" :title="getDisplayTitle(qi)">{{ getDisplayTitle(qi) }}</p>
-                  <p v-if="qi.duration" class="text-[10px] text-muted font-mono">{{ formatDuration(qi.duration) }}</p>
-                </div>
-                <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                  <button
-                    class="p-1 rounded hover:bg-muted"
-                    aria-label="Move up"
-                    :disabled="qIdx === 0"
-                    @click="queueStore.moveUp(qi.id)"
-                  >
-                    <UIcon name="i-lucide-chevron-up" class="size-3 text-muted" />
-                  </button>
-                  <button
-                    class="p-1 rounded hover:bg-muted"
-                    aria-label="Move down"
-                    :disabled="qIdx === queueStore.items.length - 1"
-                    @click="queueStore.moveDown(qi.id)"
-                  >
-                    <UIcon name="i-lucide-chevron-down" class="size-3 text-muted" />
-                  </button>
-                  <NuxtLink
-                    class="p-1 rounded hover:bg-muted"
-                    :to="`/player?id=${encodeURIComponent(qi.id)}`"
-                    :aria-label="`Play ${qi.name} now`"
-                    @click="queueStore.remove(qi.id)"
-                  >
-                    <UIcon name="i-lucide-play" class="size-3 text-primary" />
-                  </NuxtLink>
-                  <button
-                    class="p-1 rounded hover:bg-muted"
-                    :aria-label="`Remove ${qi.name} from queue`"
-                    @click="queueStore.remove(qi.id)"
-                  >
-                    <UIcon name="i-lucide-x" class="size-3 text-muted" />
-                  </button>
-                </div>
               </div>
             </div>
-          </div>
 
-          <UModal v-model:open="playlistOpen" title="Add to Playlist">
-            <template #body>
-              <div v-if="playlists.length === 0" class="text-center py-4 text-muted text-sm">
-                No playlists yet.
-                <NuxtLink to="/playlists" class="text-primary hover:underline ml-1">Create one</NuxtLink>
-              </div>
-              <div v-else class="space-y-1">
-                <UButton
-                  v-for="pl in playlists"
-                  :key="pl.id"
-                  :label="pl.name"
-                  variant="ghost"
-                  color="neutral"
-                  class="w-full justify-start"
-                  :loading="addingToPlaylist"
-                  @click="addToPlaylist(pl.id)"
-                />
-              </div>
-            </template>
-            <template #footer>
-              <UButton to="/playlists" icon="i-lucide-plus" label="New Playlist" variant="outline" color="neutral" size="sm" />
-              <UButton variant="ghost" color="neutral" label="Cancel" @click="playlistOpen = false" />
-            </template>
-          </UModal>
-        </UCard>
+            <UModal v-model:open="playlistOpen" title="Add to Playlist">
+              <template #body>
+                <div v-if="playlists.length === 0" class="text-center py-4 text-muted text-sm">
+                  No playlists yet.
+                  <NuxtLink to="/playlists" class="text-primary hover:underline ml-1">Create one</NuxtLink>
+                </div>
+                <div v-else class="space-y-1">
+                  <UButton
+                      v-for="pl in playlists"
+                      :key="pl.id"
+                      :label="pl.name"
+                      variant="ghost"
+                      color="neutral"
+                      class="w-full justify-start"
+                      :loading="addingToPlaylist"
+                      @click="addToPlaylist(pl.id)"
+                  />
+                </div>
+              </template>
+              <template #footer>
+                <UButton to="/playlists" icon="i-lucide-plus" label="New Playlist" variant="outline" color="neutral"
+                         size="sm"/>
+                <UButton variant="ghost" color="neutral" label="Cancel" @click="playlistOpen = false"/>
+              </template>
+            </UModal>
+          </UCard>
         </div>
       </div>
 
@@ -1926,30 +2103,30 @@ watch(mediaId, (id, oldId) => {
         <div v-if="mediaCollections.length > 0" class="space-y-3">
           <h3 class="section-title">In Collection</h3>
           <div
-            v-for="col in mediaCollections"
-            :key="col.id"
-            class="space-y-1.5"
+              v-for="col in mediaCollections"
+              :key="col.id"
+              class="space-y-1.5"
           >
             <p class="section-title">{{ col.name }}</p>
             <div class="space-y-1">
               <NuxtLink
-                v-for="(item, idx) in (col.items ?? [])"
-                :key="item.media_id"
-                :to="`/player?id=${encodeURIComponent(item.media_id)}`"
-                class="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors text-sm"
-                :class="item.media_id === mediaId ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-muted hover:text-default'"
+                  v-for="(item, idx) in (col.items ?? [])"
+                  :key="item.media_id"
+                  :to="`/player?id=${encodeURIComponent(item.media_id)}`"
+                  class="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors text-sm"
+                  :class="item.media_id === mediaId ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-muted hover:text-default'"
               >
                 <span class="text-xs w-4 text-right shrink-0 opacity-60">{{ idx + 1 }}</span>
                 <div class="w-10 aspect-video rounded overflow-hidden bg-muted shrink-0">
                   <img
-                    :src="`/thumbnail?id=${encodeURIComponent(item.media_id)}`"
-                    class="w-full h-full object-cover"
-                    loading="lazy"
-                    @error="($event.target as HTMLImageElement).style.display = 'none'"
+                      :src="`/thumbnail?id=${encodeURIComponent(item.media_id)}`"
+                      class="w-full h-full object-cover"
+                      loading="lazy"
+                      @error="($event.target as HTMLImageElement).style.display = 'none'"
                   />
                 </div>
                 <span class="flex-1 truncate text-xs">{{ item.media_name || item.media_id }}</span>
-                <UIcon v-if="item.media_id === mediaId" name="i-lucide-play" class="size-3 shrink-0 text-primary" />
+                <UIcon v-if="item.media_id === mediaId" name="i-lucide-play" class="size-3 shrink-0 text-primary"/>
               </NuxtLink>
             </div>
           </div>
@@ -1959,30 +2136,36 @@ watch(mediaId, (id, oldId) => {
         <div v-if="similar.length > 0" class="space-y-3">
           <h3 class="section-title">Up Next</h3>
           <div
-            v-for="item in similar"
-            :key="item.media_id"
-            class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors group"
+              v-for="item in similar"
+              :key="item.media_id"
+              class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors group"
           >
-            <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="flex gap-3 items-center flex-1 min-w-0">
-              <div class="relative w-20 h-12 rounded overflow-hidden shrink-0" :style="{ background: getMediaGradient(item.media_id) }">
-                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="absolute inset-0 w-full h-full object-cover" loading="lazy" @error="($event.target as HTMLImageElement).style.display='none'" />
-                <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
+            <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`"
+                      class="flex gap-3 items-center flex-1 min-w-0">
+              <div class="relative w-20 h-12 rounded overflow-hidden shrink-0"
+                   :style="{ background: getMediaGradient(item.media_id) }">
+                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)"
+                     class="absolute inset-0 w-full h-full object-cover" loading="lazy"
+                     @error="($event.target as HTMLImageElement).style.display='none'"/>
+                <div v-if="item.duration"
+                     class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
                   {{ formatDuration(item.duration) }}
                 </div>
               </div>
               <div class="min-w-0">
                 <p class="text-sm font-semibold truncate">{{ getDisplayTitle(item) }}</p>
                 <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
-                <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
+                <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate"
+                   :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
               </div>
             </NuxtLink>
             <button
-              v-if="authStore.isLoggedIn"
-              class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
-              aria-label="Add to queue"
-              @click="queueStore.addToQueue({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })"
+                v-if="authStore.isLoggedIn"
+                class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+                aria-label="Add to queue"
+                @click="queueStore.addToQueue({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })"
             >
-              <UIcon name="i-lucide-list-ordered" class="size-4 text-muted" />
+              <UIcon name="i-lucide-list-ordered" class="size-4 text-muted"/>
             </button>
           </div>
         </div>
@@ -1991,29 +2174,35 @@ watch(mediaId, (id, oldId) => {
         <div v-if="authStore.isLoggedIn && personalized.length > 0" class="space-y-3">
           <h3 class="section-title">Recommended</h3>
           <div
-            v-for="item in personalized"
-            :key="item.media_id"
-            class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors group"
+              v-for="item in personalized"
+              :key="item.media_id"
+              class="flex gap-3 items-center hover:bg-muted rounded-lg p-2 transition-colors group"
           >
-            <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`" class="flex gap-3 items-center flex-1 min-w-0">
-              <div class="relative w-20 h-12 rounded overflow-hidden shrink-0" :style="{ background: getMediaGradient(item.media_id) }">
-                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)" class="absolute inset-0 w-full h-full object-cover" loading="lazy" @error="($event.target as HTMLImageElement).style.display='none'" />
-                <div v-if="item.duration" class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
+            <NuxtLink :to="`/player?id=${encodeURIComponent(item.media_id)}`"
+                      class="flex gap-3 items-center flex-1 min-w-0">
+              <div class="relative w-20 h-12 rounded overflow-hidden shrink-0"
+                   :style="{ background: getMediaGradient(item.media_id) }">
+                <img :src="mediaApi.getThumbnailUrl(item.media_id)" :alt="getDisplayTitle(item)"
+                     class="absolute inset-0 w-full h-full object-cover" loading="lazy"
+                     @error="($event.target as HTMLImageElement).style.display='none'"/>
+                <div v-if="item.duration"
+                     class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
                   {{ formatDuration(item.duration) }}
                 </div>
               </div>
               <div class="min-w-0">
                 <p class="text-sm font-semibold truncate">{{ getDisplayTitle(item) }}</p>
                 <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
-                <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate" :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
+                <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate"
+                   :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
               </div>
             </NuxtLink>
             <button
-              class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
-              aria-label="Add to queue"
-              @click="queueStore.addToQueue({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })"
+                class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+                aria-label="Add to queue"
+                @click="queueStore.addToQueue({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })"
             >
-              <UIcon name="i-lucide-list-ordered" class="size-4 text-muted" />
+              <UIcon name="i-lucide-list-ordered" class="size-4 text-muted"/>
             </button>
           </div>
         </div>
@@ -2026,28 +2215,28 @@ watch(mediaId, (id, oldId) => {
     <template #body>
       <div class="flex flex-col gap-2 py-2">
         <UButton
-          icon="i-lucide-file-video"
-          label="Original file"
-          variant="outline"
-          color="neutral"
-          class="justify-start"
-          :to="mediaApi.getDownloadUrl(media?.id ?? '')"
-          target="_blank"
-          @click="downloadModalOpen = false"
+            icon="i-lucide-file-video"
+            label="Original file"
+            variant="outline"
+            color="neutral"
+            class="justify-start"
+            :to="mediaApi.getDownloadUrl(media?.id ?? '')"
+            target="_blank"
+            @click="downloadModalOpen = false"
         />
         <template v-if="qualities.length > 0">
           <p class="text-xs text-muted mt-1">HLS renditions</p>
           <UButton
-            v-for="q in qualities"
-            :key="q.index"
-            :label="q.name"
-            icon="i-lucide-layers"
-            variant="outline"
-            color="neutral"
-            class="justify-start"
-            :to="`/download?id=${encodeURIComponent(media?.id ?? '')}&quality=${q.index}`"
-            target="_blank"
-            @click="downloadModalOpen = false"
+              v-for="q in qualities"
+              :key="q.index"
+              :label="q.name"
+              icon="i-lucide-layers"
+              variant="outline"
+              color="neutral"
+              class="justify-start"
+              :to="`/download?id=${encodeURIComponent(media?.id ?? '')}&quality=${q.index}`"
+              target="_blank"
+              @click="downloadModalOpen = false"
           />
         </template>
       </div>
@@ -2056,23 +2245,24 @@ watch(mediaId, (id, oldId) => {
 
   <!-- Report modal. submitReport() POSTs to /api/media/:id/report and
        surfaces a toast on success or failure. -->
-  <UModal v-model:open="reportModalOpen" title="Report this item" description="Tell us what's wrong so a moderator can review.">
+  <UModal v-model:open="reportModalOpen" title="Report this item"
+          description="Tell us what's wrong so a moderator can review.">
     <template #body>
       <div class="space-y-4 py-2">
         <fieldset class="space-y-1.5">
           <legend class="text-xs font-semibold uppercase tracking-wider text-muted mb-1">Reason</legend>
           <label
-            v-for="r in REPORT_REASONS"
-            :key="r.value"
-            class="flex items-center gap-2.5 p-2 rounded-md border border-default cursor-pointer hover:bg-elevated/60 transition-colors"
-            :class="reportReason === r.value ? 'border-primary bg-primary/10' : ''"
+              v-for="r in REPORT_REASONS"
+              :key="r.value"
+              class="flex items-center gap-2.5 p-2 rounded-md border border-default cursor-pointer hover:bg-elevated/60 transition-colors"
+              :class="reportReason === r.value ? 'border-primary bg-primary/10' : ''"
           >
             <input
-              v-model="reportReason"
-              type="radio"
-              name="report-reason"
-              :value="r.value"
-              class="accent-primary"
+                v-model="reportReason"
+                type="radio"
+                name="report-reason"
+                :value="r.value"
+                class="accent-primary"
             />
             <span class="text-sm">{{ r.label }}</span>
           </label>
@@ -2080,23 +2270,23 @@ watch(mediaId, (id, oldId) => {
         <div>
           <label class="text-xs font-semibold uppercase tracking-wider text-muted mb-1 block">Notes (optional)</label>
           <UTextarea
-            v-model="reportNotes"
-            placeholder="Anything else a moderator should know?"
-            :rows="3"
-            class="w-full"
+              v-model="reportNotes"
+              placeholder="Anything else a moderator should know?"
+              :rows="3"
+              class="w-full"
           />
         </div>
       </div>
     </template>
     <template #footer>
       <div class="flex items-center justify-end gap-2 w-full">
-        <UButton label="Cancel" variant="ghost" color="neutral" @click="reportModalOpen = false" />
+        <UButton label="Cancel" variant="ghost" color="neutral" @click="reportModalOpen = false"/>
         <UButton
-          icon="i-lucide-flag"
-          label="Submit report"
-          color="primary"
-          :loading="reportSubmitting"
-          @click="submitReport"
+            icon="i-lucide-flag"
+            label="Submit report"
+            color="primary"
+            :loading="reportSubmitting"
+            @click="submitReport"
         />
       </div>
     </template>
@@ -2112,6 +2302,7 @@ watch(mediaId, (id, oldId) => {
   width: 100vw;
   border-radius: 0;
 }
+
 .player-wrapper:fullscreen video {
   height: 100%;
   width: 100%;

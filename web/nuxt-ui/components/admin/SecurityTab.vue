@@ -1,20 +1,20 @@
 <script setup lang="ts">
-import type { AuditLogEntry, IPListEntry, BannedIP, SecurityStats } from '~/types/api'
-import { asRecord } from '~/utils/typeGuards'
-import { useAdminFeedback } from '~/composables/useAdminFeedback'
+import type {AuditLogEntry, BannedIP, IPListEntry, SecurityStats} from '~/types/api'
+import {asRecord} from '~/utils/typeGuards'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const toast = useToast()
-const { notifyError, notifySuccess } = useAdminFeedback()
+const {notifyError, notifySuccess} = useAdminFeedback()
 
 const subTab = ref('audit')
 const subTabs = [
-  { label: 'Audit Log', value: 'audit', icon: 'i-lucide-scroll-text' },
-  { label: 'IP Whitelist', value: 'whitelist', icon: 'i-lucide-shield-check' },
-  { label: 'IP Blacklist', value: 'blacklist', icon: 'i-lucide-shield-ban' },
-  { label: 'Banned IPs', value: 'banned', icon: 'i-lucide-shield-x' },
-  { label: 'Stats', value: 'stats', icon: 'i-lucide-bar-chart' },
-  { label: 'Settings', value: 'settings', icon: 'i-lucide-settings' },
+  {label: 'Audit Log', value: 'audit', icon: 'i-lucide-scroll-text'},
+  {label: 'IP Whitelist', value: 'whitelist', icon: 'i-lucide-shield-check'},
+  {label: 'IP Blacklist', value: 'blacklist', icon: 'i-lucide-shield-ban'},
+  {label: 'Banned IPs', value: 'banned', icon: 'i-lucide-shield-x'},
+  {label: 'Stats', value: 'stats', icon: 'i-lucide-bar-chart'},
+  {label: 'Settings', value: 'settings', icon: 'i-lucide-settings'},
 ]
 
 // Security config toggles
@@ -50,17 +50,17 @@ async function loadSecurityConfig() {
 }
 
 async function saveSecurityToggle(
-  section: 'security' | 'server',
-  key: string,
-  value: boolean,
+    section: 'security' | 'server',
+    key: string,
+    value: boolean,
 ) {
   configSaving.value = true
   try {
-    const updated: Record<string, unknown> = { ...fullConfig.value }
+    const updated: Record<string, unknown> = {...fullConfig.value}
     if (section === 'security') {
-      updated.security = { ...asRecord(fullConfig.value.security), [key]: value }
+      updated.security = {...asRecord(fullConfig.value.security), [key]: value}
     } else {
-      updated.server = { ...asRecord(fullConfig.value.server), [key]: value }
+      updated.server = {...asRecord(fullConfig.value.server), [key]: value}
     }
     await adminApi.updateConfig(updated)
     fullConfig.value = updated
@@ -80,7 +80,10 @@ async function saveSecurityToggle(
     // Reload from server. If the reload itself fails, refs were never mutated
     // (we only update them in the success path above) so USwitch will continue
     // to render the pre-toggle state via :model-value.
-    try { await loadSecurityConfig() } catch { /* refs already correct */ }
+    try {
+      await loadSecurityConfig()
+    } catch { /* refs already correct */
+    }
   } finally {
     configSaving.value = false
   }
@@ -98,21 +101,24 @@ async function loadAudit() {
   try {
     // Backend reads `offset` (not `page`); offset = (page - 1) * limit
     const offset = (auditPage.value - 1) * auditLimit
-    const res = await adminApi.getAuditLog({ offset, limit: auditLimit })
+    const res = await adminApi.getAuditLog({offset, limit: auditLimit})
     // API returns a paginated object with items and total count
     auditEntries.value = res?.items ?? []
     // Use actual total count from server instead of inferring from response size
     auditTotal.value = res?.total ?? 0
   } catch (e: unknown) {
     notifyError(e, 'Failed to load audit log', 'i-lucide-alert-circle')
-  } finally { auditLoading.value = false }
+  } finally {
+    auditLoading.value = false
+  }
 }
 
 const exportingAudit = ref(false)
+
 async function exportAuditLog() {
   exportingAudit.value = true
   try {
-    const res = await fetch(adminApi.exportAuditLogUrl(), { credentials: 'include' })
+    const res = await fetch(adminApi.exportAuditLogUrl(), {credentials: 'include'})
     if (!res.ok) throw new Error(`Export failed: ${res.status}`)
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
@@ -123,7 +129,9 @@ async function exportAuditLog() {
     URL.revokeObjectURL(url)
   } catch (e: unknown) {
     notifyError(e, 'Export failed', 'i-lucide-alert-circle')
-  } finally { exportingAudit.value = false }
+  } finally {
+    exportingAudit.value = false
+  }
 }
 
 // IP lists
@@ -139,37 +147,59 @@ const ipLoading = ref(false)
 const ipError = ref('')
 
 const IP_V6_RE = /^[0-9a-fA-F:]+(\/\d{1,3})?$/
+
 function isValidIPv4(s: string): boolean {
   const parts = s.split('.')
   if (parts.length !== 4) return false
-  return parts.every(p => { const n = Number(p); return /^\d{1,3}$/.test(p) && n >= 0 && n <= 255 })
+  return parts.every(p => {
+    const n = Number(p);
+    return /^\d{1,3}$/.test(p) && n >= 0 && n <= 255
+  })
 }
+
 function isValidIPCIDR(ip: string): boolean {
   if (IP_V6_RE.test(ip)) return true
   const [addr, cidr, ...rest] = ip.split('/')
   if (rest.length > 0) return false
   if (!isValidIPv4(addr)) return false
-  if (cidr !== undefined) { const n = Number(cidr); if (!/^\d{1,2}$/.test(cidr) || n < 0 || n > 32) return false }
+  if (cidr !== undefined) {
+    const n = Number(cidr);
+    if (!/^\d{1,2}$/.test(cidr) || n < 0 || n > 32) return false
+  }
   return true
 }
 
 async function loadWhitelist() {
   whitelistLoading.value = true
-  try { whitelist.value = (await adminApi.getWhitelist()) ?? [] }
-  catch (e: unknown) { notifyError(e, 'Failed to load whitelist', 'i-lucide-alert-circle') }
-  finally { whitelistLoading.value = false }
+  try {
+    whitelist.value = (await adminApi.getWhitelist()) ?? []
+  } catch (e: unknown) {
+    notifyError(e, 'Failed to load whitelist', 'i-lucide-alert-circle')
+  } finally {
+    whitelistLoading.value = false
+  }
 }
+
 async function loadBlacklist() {
   blacklistLoading.value = true
-  try { blacklist.value = (await adminApi.getBlacklist()) ?? [] }
-  catch (e: unknown) { notifyError(e, 'Failed to load blacklist', 'i-lucide-alert-circle') }
-  finally { blacklistLoading.value = false }
+  try {
+    blacklist.value = (await adminApi.getBlacklist()) ?? []
+  } catch (e: unknown) {
+    notifyError(e, 'Failed to load blacklist', 'i-lucide-alert-circle')
+  } finally {
+    blacklistLoading.value = false
+  }
 }
+
 async function loadBanned() {
   bannedLoading.value = true
-  try { banned.value = (await adminApi.getBannedIPs()) ?? [] }
-  catch (e: unknown) { notifyError(e, 'Failed to load banned IPs', 'i-lucide-alert-circle') }
-  finally { bannedLoading.value = false }
+  try {
+    banned.value = (await adminApi.getBannedIPs()) ?? []
+  } catch (e: unknown) {
+    notifyError(e, 'Failed to load banned IPs', 'i-lucide-alert-circle')
+  } finally {
+    bannedLoading.value = false
+  }
 }
 
 async function addToList(type: 'whitelist' | 'blacklist') {
@@ -185,7 +215,8 @@ async function addToList(type: 'whitelist' | 'blacklist') {
     if (type === 'whitelist') await adminApi.addToWhitelist(newIP.value, newComment.value || undefined)
     else await adminApi.addToBlacklist(newIP.value, newComment.value || undefined)
     notifySuccess(`IP added to ${type}`)
-    newIP.value = ''; newComment.value = ''
+    newIP.value = '';
+    newComment.value = ''
     if (type === 'whitelist') await loadWhitelist(); else await loadBlacklist()
   } catch (e: unknown) {
     notifyError(e, 'Failed')
@@ -252,7 +283,7 @@ async function loadStats() {
     stats.value = await adminApi.getSecurityStats()
   } catch (e: unknown) {
     statsError.value = e instanceof Error ? e.message : 'Failed to load security stats'
-    toast.add({ title: statsError.value, color: 'error', icon: 'i-lucide-alert-circle' })
+    toast.add({title: statsError.value, color: 'error', icon: 'i-lucide-alert-circle'})
   } finally {
     statsLoading.value = false
   }
@@ -265,7 +296,7 @@ watch(subTab, (v) => {
   else if (v === 'banned' && !bannedLoading.value) loadBanned()
   else if (v === 'stats' && !statsLoading.value) loadStats()
   else if (v === 'settings' && !configLoading.value) loadSecurityConfig()
-}, { immediate: true })
+}, {immediate: true})
 </script>
 
 <template>
@@ -274,20 +305,22 @@ watch(subTab, (v) => {
       <template #content="{ item }">
         <div class="pt-3">
 
-    <!-- Audit log -->
-    <div v-if="item.value === 'audit'" class="space-y-3">
-      <div class="flex gap-2 justify-end">
-        <UButton icon="i-lucide-download" label="Export CSV" size="sm" variant="outline" color="neutral" :loading="exportingAudit" @click="exportAuditLog" />
-        <UButton icon="i-lucide-refresh-cw" aria-label="Refresh audit log" variant="ghost" color="neutral" size="sm" @click="loadAudit" />
-      </div>
-      <UCard>
-        <div v-if="auditLoading" class="flex justify-center py-6">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
-        </div>
-        <UTable
-          v-else
-          :data="auditEntries"
-          :columns="[
+          <!-- Audit log -->
+          <div v-if="item.value === 'audit'" class="space-y-3">
+            <div class="flex gap-2 justify-end">
+              <UButton icon="i-lucide-download" label="Export CSV" size="sm" variant="outline" color="neutral"
+                       :loading="exportingAudit" @click="exportAuditLog"/>
+              <UButton icon="i-lucide-refresh-cw" aria-label="Refresh audit log" variant="ghost" color="neutral"
+                       size="sm" @click="loadAudit"/>
+            </div>
+            <UCard>
+              <div v-if="auditLoading" class="flex justify-center py-6">
+                <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
+              </div>
+              <UTable
+                  v-else
+                  :data="auditEntries"
+                  :columns="[
             { accessorKey: 'timestamp', header: 'Time' },
             { accessorKey: 'username', header: 'User' },
             { accessorKey: 'action', header: 'Action' },
@@ -295,106 +328,125 @@ watch(subTab, (v) => {
             { accessorKey: 'ip_address', header: 'IP' },
             { accessorKey: 'success', header: 'Result' },
           ]"
-          class="text-sm"
-        >
-          <template #timestamp-cell="{ row }">
-            <span class="text-xs font-mono">{{ row.original.timestamp ? new Date(row.original.timestamp).toLocaleString() : '—' }}</span>
-          </template>
-          <template #success-cell="{ row }">
-            <UBadge
-              :label="row.original.success ? 'OK' : 'Fail'"
-              :color="row.original.success ? 'success' : 'error'"
-              variant="subtle"
-              size="xs"
-            />
-          </template>
-          <template #resource-cell="{ row }">
-            <span class="font-mono text-xs">{{ row.original.resource }}</span>
-          </template>
-        </UTable>
-        <p v-if="!auditLoading && auditEntries.length === 0" class="text-center py-4 text-muted text-sm">
-          No audit log entries.
-        </p>
-      </UCard>
-      <div v-if="auditTotal > auditLimit" class="flex justify-center">
-        <UPagination v-model:page="auditPage" :total="auditTotal" :items-per-page="auditLimit" @update:page="loadAudit" />
-      </div>
-    </div>
-
-    <!-- IP List management template -->
-    <template v-if="item.value === 'whitelist' || item.value === 'blacklist'">
-      <div class="space-y-4">
-        <!-- Add IP -->
-        <UCard>
-          <template #header>
-            <div class="font-semibold">Add IP to {{ subTab === 'whitelist' ? 'Whitelist' : 'Blacklist' }}</div>
-          </template>
-          <div class="flex flex-wrap gap-2">
-            <UInput v-model="newIP" placeholder="IP address or CIDR" class="w-48" @input="ipError = ''" />
-            <UInput v-model="newComment" placeholder="Comment (optional)" class="flex-1 min-w-40" />
-            <UButton :loading="ipLoading" icon="i-lucide-plus" label="Add" @click="addToList(subTab as 'whitelist' | 'blacklist')" />
+                  class="text-sm"
+              >
+                <template #timestamp-cell="{ row }">
+                  <span class="text-xs font-mono">{{
+                      row.original.timestamp ? new Date(row.original.timestamp).toLocaleString() : '—'
+                    }}</span>
+                </template>
+                <template #success-cell="{ row }">
+                  <UBadge
+                      :label="row.original.success ? 'OK' : 'Fail'"
+                      :color="row.original.success ? 'success' : 'error'"
+                      variant="subtle"
+                      size="xs"
+                  />
+                </template>
+                <template #resource-cell="{ row }">
+                  <span class="font-mono text-xs">{{ row.original.resource }}</span>
+                </template>
+              </UTable>
+              <p v-if="!auditLoading && auditEntries.length === 0" class="text-center py-4 text-muted text-sm">
+                No audit log entries.
+              </p>
+            </UCard>
+            <div v-if="auditTotal > auditLimit" class="flex justify-center">
+              <UPagination v-model:page="auditPage" :total="auditTotal" :items-per-page="auditLimit"
+                           @update:page="loadAudit"/>
+            </div>
           </div>
-          <p v-if="ipError" class="text-sm text-error mt-1">{{ ipError }}</p>
-        </UCard>
 
-        <!-- List -->
-        <UCard>
-          <UTable
-            :data="subTab === 'whitelist' ? whitelist : blacklist"
-            :columns="[{ accessorKey: 'ip', header: 'IP' }, { accessorKey: 'comment', header: 'Comment' }, { accessorKey: 'added_at', header: 'Added' }, { accessorKey: 'actions', header: '' }]"
-          >
-            <template #ip-cell="{ row }"><span class="font-mono text-sm">{{ row.original.ip }}</span></template>
-            <template #comment-cell="{ row }"><span class="text-sm text-muted">{{ row.original.comment || '—' }}</span></template>
-            <template #added_at-cell="{ row }"><span class="text-sm">{{ row.original.added_at ? new Date(row.original.added_at).toLocaleDateString() : '—' }}</span></template>
-            <template #actions-cell="{ row }">
-              <UButton
-                icon="i-lucide-trash-2"
-                aria-label="Remove IP from list"
-                size="xs"
-                variant="ghost"
-                color="error"
-                @click="removeFromList(subTab as 'whitelist' | 'blacklist', row.original.ip)"
-              />
-            </template>
-          </UTable>
-          <p v-if="(subTab === 'whitelist' ? whitelist : blacklist).length === 0" class="text-center py-4 text-muted text-sm">
-            No entries.
-          </p>
-        </UCard>
-      </div>
-    </template>
+          <!-- IP List management template -->
+          <template v-if="item.value === 'whitelist' || item.value === 'blacklist'">
+            <div class="space-y-4">
+              <!-- Add IP -->
+              <UCard>
+                <template #header>
+                  <div class="font-semibold">Add IP to {{ subTab === 'whitelist' ? 'Whitelist' : 'Blacklist' }}</div>
+                </template>
+                <div class="flex flex-wrap gap-2">
+                  <UInput v-model="newIP" placeholder="IP address or CIDR" class="w-48" @input="ipError = ''"/>
+                  <UInput v-model="newComment" placeholder="Comment (optional)" class="flex-1 min-w-40"/>
+                  <UButton :loading="ipLoading" icon="i-lucide-plus" label="Add"
+                           @click="addToList(subTab as 'whitelist' | 'blacklist')"/>
+                </div>
+                <p v-if="ipError" class="text-sm text-error mt-1">{{ ipError }}</p>
+              </UCard>
 
-    <!-- Banned IPs -->
-    <div v-if="item.value === 'banned'" class="space-y-4">
-      <UCard>
-        <template #header><div class="font-semibold">Ban IP Address</div></template>
-        <div class="flex flex-wrap gap-2">
-          <UInput v-model="newBanIP" placeholder="IP address or CIDR" class="w-48" />
-          <UInput v-model="newBanDuration" type="number" placeholder="Duration in minutes (blank = permanent)" class="flex-1 min-w-56" />
-          <UButton :loading="banning" icon="i-lucide-shield-x" label="Ban" color="error" :disabled="!newBanIP" @click="banIPAddress" />
-        </div>
-      </UCard>
-      <UCard>
-        <UTable
-          :data="banned"
-          :columns="[{ accessorKey: 'ip', header: 'IP' }, { accessorKey: 'banned_at', header: 'Banned At' }, { accessorKey: 'reason', header: 'Reason' }, { accessorKey: 'actions', header: '' }]"
-        >
-          <template #ip-cell="{ row }"><span class="font-mono text-sm">{{ row.original.ip }}</span></template>
-          <template #banned_at-cell="{ row }"><span class="text-sm">{{ row.original.banned_at ? new Date(row.original.banned_at).toLocaleString() : '—' }}</span></template>
-          <template #reason-cell="{ row }"><span class="text-sm text-muted">{{ row.original.reason || '—' }}</span></template>
-          <template #actions-cell="{ row }">
-            <UButton icon="i-lucide-shield-off" size="xs" variant="ghost" color="warning" label="Unban" @click="unban(row.original.ip)" />
+              <!-- List -->
+              <UCard>
+                <UTable
+                    :data="subTab === 'whitelist' ? whitelist : blacklist"
+                    :columns="[{ accessorKey: 'ip', header: 'IP' }, { accessorKey: 'comment', header: 'Comment' }, { accessorKey: 'added_at', header: 'Added' }, { accessorKey: 'actions', header: '' }]"
+                >
+                  <template #ip-cell="{ row }"><span class="font-mono text-sm">{{ row.original.ip }}</span></template>
+                  <template #comment-cell="{ row }"><span class="text-sm text-muted">{{
+                      row.original.comment || '—'
+                    }}</span></template>
+                  <template #added_at-cell="{ row }"><span class="text-sm">{{
+                      row.original.added_at ? new Date(row.original.added_at).toLocaleDateString() : '—'
+                    }}</span></template>
+                  <template #actions-cell="{ row }">
+                    <UButton
+                        icon="i-lucide-trash-2"
+                        aria-label="Remove IP from list"
+                        size="xs"
+                        variant="ghost"
+                        color="error"
+                        @click="removeFromList(subTab as 'whitelist' | 'blacklist', row.original.ip)"
+                    />
+                  </template>
+                </UTable>
+                <p v-if="(subTab === 'whitelist' ? whitelist : blacklist).length === 0"
+                   class="text-center py-4 text-muted text-sm">
+                  No entries.
+                </p>
+              </UCard>
+            </div>
           </template>
-        </UTable>
-        <p v-if="banned.length === 0" class="text-center py-4 text-muted text-sm">No banned IPs.</p>
-      </UCard>
-    </div>
 
-    <!-- Stats -->
-    <UAlert v-if="item.value === 'stats' && statsError" :title="statsError" color="error" icon="i-lucide-alert-circle" class="mb-4" />
-    <div v-if="item.value === 'stats' && stats" class="space-y-4">
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <UCard v-for="item in [
+          <!-- Banned IPs -->
+          <div v-if="item.value === 'banned'" class="space-y-4">
+            <UCard>
+              <template #header>
+                <div class="font-semibold">Ban IP Address</div>
+              </template>
+              <div class="flex flex-wrap gap-2">
+                <UInput v-model="newBanIP" placeholder="IP address or CIDR" class="w-48"/>
+                <UInput v-model="newBanDuration" type="number" placeholder="Duration in minutes (blank = permanent)"
+                        class="flex-1 min-w-56"/>
+                <UButton :loading="banning" icon="i-lucide-shield-x" label="Ban" color="error" :disabled="!newBanIP"
+                         @click="banIPAddress"/>
+              </div>
+            </UCard>
+            <UCard>
+              <UTable
+                  :data="banned"
+                  :columns="[{ accessorKey: 'ip', header: 'IP' }, { accessorKey: 'banned_at', header: 'Banned At' }, { accessorKey: 'reason', header: 'Reason' }, { accessorKey: 'actions', header: '' }]"
+              >
+                <template #ip-cell="{ row }"><span class="font-mono text-sm">{{ row.original.ip }}</span></template>
+                <template #banned_at-cell="{ row }"><span class="text-sm">{{
+                    row.original.banned_at ? new Date(row.original.banned_at).toLocaleString() : '—'
+                  }}</span></template>
+                <template #reason-cell="{ row }"><span class="text-sm text-muted">{{
+                    row.original.reason || '—'
+                  }}</span></template>
+                <template #actions-cell="{ row }">
+                  <UButton icon="i-lucide-shield-off" size="xs" variant="ghost" color="warning" label="Unban"
+                           @click="unban(row.original.ip)"/>
+                </template>
+              </UTable>
+              <p v-if="banned.length === 0" class="text-center py-4 text-muted text-sm">No banned IPs.</p>
+            </UCard>
+          </div>
+
+          <!-- Stats -->
+          <UAlert v-if="item.value === 'stats' && statsError" :title="statsError" color="error"
+                  icon="i-lucide-alert-circle" class="mb-4"/>
+          <div v-if="item.value === 'stats' && stats" class="space-y-4">
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <UCard v-for="item in [
           { label: 'Blocked (Session)', value: stats.total_blocks_today, icon: 'i-lucide-shield-x' },
           { label: 'Rate Limited (Session)', value: stats.total_rate_limited, icon: 'i-lucide-gauge' },
           { label: 'Active Rate Limits', value: stats.active_rate_limits, icon: 'i-lucide-activity' },
@@ -402,80 +454,86 @@ watch(subTab, (v) => {
           { label: 'Whitelisted', value: stats.whitelisted_ips, icon: 'i-lucide-shield-check' },
           { label: 'Blacklisted', value: stats.blacklisted_ips, icon: 'i-lucide-shield-ban' },
         ]" :key="item.label" :ui="{ body: 'p-4' }">
-          <div class="flex items-center gap-2">
-            <UIcon :name="item.icon" class="size-4 text-muted" />
-            <div>
-              <p class="text-lg font-bold text-highlighted">{{ (item.value ?? 0).toLocaleString() }}</p>
-              <p class="text-xs text-muted">{{ item.label }}</p>
+                <div class="flex items-center gap-2">
+                  <UIcon :name="item.icon" class="size-4 text-muted"/>
+                  <div>
+                    <p class="text-lg font-bold text-highlighted">{{ (item.value ?? 0).toLocaleString() }}</p>
+                    <p class="text-xs text-muted">{{ item.label }}</p>
+                  </div>
+                </div>
+              </UCard>
+            </div>
+            <!-- Feature flags -->
+            <div class="flex flex-wrap gap-3">
+              <div class="flex items-center gap-1.5 text-sm">
+                <UIcon name="i-lucide-shield-check" class="size-4 text-muted"/>
+                <span class="text-muted">Whitelist</span>
+                <UBadge :label="stats.whitelist_enabled ? 'On' : 'Off'"
+                        :color="stats.whitelist_enabled ? 'success' : 'neutral'" variant="subtle" size="xs"/>
+              </div>
+              <div class="flex items-center gap-1.5 text-sm">
+                <UIcon name="i-lucide-shield-ban" class="size-4 text-muted"/>
+                <span class="text-muted">Blacklist</span>
+                <UBadge :label="stats.blacklist_enabled ? 'On' : 'Off'"
+                        :color="stats.blacklist_enabled ? 'success' : 'neutral'" variant="subtle" size="xs"/>
+              </div>
+              <div class="flex items-center gap-1.5 text-sm">
+                <UIcon name="i-lucide-gauge" class="size-4 text-muted"/>
+                <span class="text-muted">Rate Limiting</span>
+                <UBadge :label="stats.rate_limit_enabled ? 'On' : 'Off'"
+                        :color="stats.rate_limit_enabled ? 'success' : 'neutral'" variant="subtle" size="xs"/>
+              </div>
             </div>
           </div>
-        </UCard>
-      </div>
-      <!-- Feature flags -->
-      <div class="flex flex-wrap gap-3">
-        <div class="flex items-center gap-1.5 text-sm">
-          <UIcon name="i-lucide-shield-check" class="size-4 text-muted" />
-          <span class="text-muted">Whitelist</span>
-          <UBadge :label="stats.whitelist_enabled ? 'On' : 'Off'" :color="stats.whitelist_enabled ? 'success' : 'neutral'" variant="subtle" size="xs" />
-        </div>
-        <div class="flex items-center gap-1.5 text-sm">
-          <UIcon name="i-lucide-shield-ban" class="size-4 text-muted" />
-          <span class="text-muted">Blacklist</span>
-          <UBadge :label="stats.blacklist_enabled ? 'On' : 'Off'" :color="stats.blacklist_enabled ? 'success' : 'neutral'" variant="subtle" size="xs" />
-        </div>
-        <div class="flex items-center gap-1.5 text-sm">
-          <UIcon name="i-lucide-gauge" class="size-4 text-muted" />
-          <span class="text-muted">Rate Limiting</span>
-          <UBadge :label="stats.rate_limit_enabled ? 'On' : 'Off'" :color="stats.rate_limit_enabled ? 'success' : 'neutral'" variant="subtle" size="xs" />
-        </div>
-      </div>
-    </div>
-    <!-- Security Settings -->
-    <div v-if="item.value === 'settings'" class="space-y-4">
-      <div v-if="configLoading" class="flex justify-center py-8">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
-      </div>
-      <UCard v-else :ui="{ body: 'p-4' }">
-        <div class="divide-y divide-default">
-          <div class="flex items-center justify-between gap-4 py-3 first:pt-0">
-            <div>
-              <p class="font-medium text-sm text-highlighted">Enable HTTPS</p>
-              <p class="text-xs text-muted mt-0.5">Serve the application over TLS (requires cert_file and key_file to be configured)</p>
+          <!-- Security Settings -->
+          <div v-if="item.value === 'settings'" class="space-y-4">
+            <div v-if="configLoading" class="flex justify-center py-8">
+              <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary"/>
             </div>
-            <USwitch
-              :model-value="httpsEnabled"
-              :disabled="configSaving || configLoading"
-              aria-label="Enable HTTPS"
-              @update:model-value="v => saveSecurityToggle('server', 'enable_https', v)"
-            />
+            <UCard v-else :ui="{ body: 'p-4' }">
+              <div class="divide-y divide-default">
+                <div class="flex items-center justify-between gap-4 py-3 first:pt-0">
+                  <div>
+                    <p class="font-medium text-sm text-highlighted">Enable HTTPS</p>
+                    <p class="text-xs text-muted mt-0.5">Serve the application over TLS (requires cert_file and key_file
+                      to be configured)</p>
+                  </div>
+                  <USwitch
+                      :model-value="httpsEnabled"
+                      :disabled="configSaving || configLoading"
+                      aria-label="Enable HTTPS"
+                      @update:model-value="v => saveSecurityToggle('server', 'enable_https', v)"
+                  />
+                </div>
+                <div class="flex items-center justify-between gap-4 py-3">
+                  <div>
+                    <p class="font-medium text-sm text-highlighted">Enable HSTS</p>
+                    <p class="text-xs text-muted mt-0.5">Send Strict-Transport-Security header to force HTTPS on all
+                      future requests</p>
+                  </div>
+                  <USwitch
+                      :model-value="hstsEnabled"
+                      :disabled="configSaving || configLoading"
+                      aria-label="Enable HSTS"
+                      @update:model-value="v => saveSecurityToggle('security', 'hsts_enabled', v)"
+                  />
+                </div>
+                <div class="flex items-center justify-between gap-4 py-3 last:pb-0">
+                  <div>
+                    <p class="font-medium text-sm text-highlighted">Enable CORS</p>
+                    <p class="text-xs text-muted mt-0.5">Allow cross-origin requests (configure allowed origins in
+                      cors_origins)</p>
+                  </div>
+                  <USwitch
+                      :model-value="corsEnabled"
+                      :disabled="configSaving || configLoading"
+                      aria-label="Enable CORS"
+                      @update:model-value="v => saveSecurityToggle('security', 'cors_enabled', v)"
+                  />
+                </div>
+              </div>
+            </UCard>
           </div>
-          <div class="flex items-center justify-between gap-4 py-3">
-            <div>
-              <p class="font-medium text-sm text-highlighted">Enable HSTS</p>
-              <p class="text-xs text-muted mt-0.5">Send Strict-Transport-Security header to force HTTPS on all future requests</p>
-            </div>
-            <USwitch
-              :model-value="hstsEnabled"
-              :disabled="configSaving || configLoading"
-              aria-label="Enable HSTS"
-              @update:model-value="v => saveSecurityToggle('security', 'hsts_enabled', v)"
-            />
-          </div>
-          <div class="flex items-center justify-between gap-4 py-3 last:pb-0">
-            <div>
-              <p class="font-medium text-sm text-highlighted">Enable CORS</p>
-              <p class="text-xs text-muted mt-0.5">Allow cross-origin requests (configure allowed origins in cors_origins)</p>
-            </div>
-            <USwitch
-              :model-value="corsEnabled"
-              :disabled="configSaving || configLoading"
-              aria-label="Enable CORS"
-              @update:model-value="v => saveSecurityToggle('security', 'cors_enabled', v)"
-            />
-          </div>
-        </div>
-      </UCard>
-    </div>
 
         </div>
       </template>

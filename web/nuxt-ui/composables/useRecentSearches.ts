@@ -13,13 +13,17 @@ function read(): string[] {
         return Array.isArray(parsed)
             ? parsed.filter((v): v is string => typeof v === 'string').slice(0, RECENT_MAX)
             : []
-    } catch { return [] }
+    } catch {
+        return []
+    }
 }
 
 function write(list: string[]) {
     if (typeof window === 'undefined') return
-    try { window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX))) }
-    catch { /* quota or storage disabled */ }
+    try {
+        window.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX)))
+    } catch { /* quota or storage disabled */
+    }
 }
 
 export function useRecentSearches() {
@@ -43,5 +47,5 @@ export function useRecentSearches() {
         write([])
     }
 
-    return { recent, push, remove, clear }
+    return {recent, push, remove, clear}
 }

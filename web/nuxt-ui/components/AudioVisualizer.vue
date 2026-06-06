@@ -73,7 +73,8 @@ function disconnectOwn() {
     animationFrame = 0
   }
   if (ownAudioCtx) {
-    ownAudioCtx.close().catch(() => {})
+    ownAudioCtx.close().catch(() => {
+    })
     ownAudioCtx = null
     ownAnalyser = null
     ownSource = null
@@ -122,12 +123,12 @@ function startDraw() {
 
     for (let i = 0; i < numBars; i++) {
       // Frequency range for this bar
-      const freqLow  = Math.pow(10, logFMin + (i / numBars) * (logFMax - logFMin))
+      const freqLow = Math.pow(10, logFMin + (i / numBars) * (logFMax - logFMin))
       const freqHigh = Math.pow(10, logFMin + ((i + 1) / numBars) * (logFMax - logFMin))
 
       // Convert Hz to FFT bin indices
-      const binLow  = Math.floor(freqLow  / nyquist * bufferLength)
-      const binHigh = Math.ceil(freqHigh  / nyquist * bufferLength)
+      const binLow = Math.floor(freqLow / nyquist * bufferLength)
+      const binHigh = Math.ceil(freqHigh / nyquist * bufferLength)
       const lo = Math.max(0, binLow)
       const hi = Math.min(bufferLength - 1, binHigh)
 
@@ -162,7 +163,7 @@ watch(() => props.analyserNode, (node) => {
     disconnectOwn()
     startDraw()
   }
-}, { immediate: true })
+}, {immediate: true})
 
 // Watch mediaElement prop (fallback)
 watch(() => props.mediaElement, (el) => {
@@ -170,7 +171,7 @@ watch(() => props.mediaElement, (el) => {
     connectMediaElement(el)
     startDraw()
   }
-}, { immediate: true })
+}, {immediate: true})
 
 onMounted(() => {
   const canvas = canvasRef.value
@@ -180,7 +181,7 @@ onMounted(() => {
   resizeObserver = new ResizeObserver((entries) => {
     const entry = entries[0]
     if (!entry || !canvas) return
-    const { width, height } = entry.contentRect
+    const {width, height} = entry.contentRect
     canvas.width = Math.round(width)
     canvas.height = Math.round(height)
   })
@@ -205,8 +206,8 @@ onUnmounted(() => {
 <template>
   <div class="audio-visualizer relative overflow-hidden" :style="{ height: `${canvasHeight}px` }">
     <canvas
-      ref="canvasRef"
-      class="w-full h-full"
+        ref="canvasRef"
+        class="w-full h-full"
     />
   </div>
 </template>

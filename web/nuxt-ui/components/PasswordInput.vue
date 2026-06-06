@@ -11,7 +11,7 @@
  * Used by login.vue, signup.vue, admin-login.vue, and profile.vue's
  * password-change form so the toggle UX is consistent everywhere.
  */
-const model = defineModel<string>({ default: '' })
+const model = defineModel<string>({default: ''})
 
 const props = withDefaults(defineProps<{
   name?: string
@@ -35,27 +35,27 @@ const inputType = computed(() => (visible.value ? 'text' : 'password'))
 <template>
   <div class="relative">
     <UInput
-      v-model="model"
-      :name="props.name"
-      :type="inputType"
-      :placeholder="props.placeholder"
-      :autocomplete="props.autocomplete"
-      :required="props.required"
-      :autofocus="props.autofocus"
-      :minlength="props.minlength"
-      class="w-full pr-9"
+        v-model="model"
+        :name="props.name"
+        :type="inputType"
+        :placeholder="props.placeholder"
+        :autocomplete="props.autocomplete"
+        :required="props.required"
+        :autofocus="props.autofocus"
+        :minlength="props.minlength"
+        class="w-full pr-9"
     />
     <UButton
-      type="button"
-      :icon="visible ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-      :aria-label="visible ? 'Hide password' : 'Show password'"
-      :aria-pressed="visible"
-      size="xs"
-      variant="ghost"
-      color="neutral"
-      tabindex="-1"
-      class="absolute right-1.5 top-1/2 -translate-y-1/2"
-      @click="visible = !visible"
+        type="button"
+        :icon="visible ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+        :aria-label="visible ? 'Hide password' : 'Show password'"
+        :aria-pressed="visible"
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        tabindex="-1"
+        class="absolute right-1.5 top-1/2 -translate-y-1/2"
+        @click="visible = !visible"
     />
   </div>
 </template>

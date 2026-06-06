@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MetricTimelineEntry } from '~/types/api'
+import type {MetricTimelineEntry} from '~/types/api'
 
 // Reusable SVG line chart for any per-day metric. Renders one or more
 // gap-filled MetricTimelineEntry[] series so the dashboard can overlay
@@ -53,12 +53,12 @@ function pointsFor(values: MetricTimelineEntry[]): string {
   const n = Math.max(1, xCount.value - 1)
   const stride = (W - 40) / n
   return values
-    .map((entry, i) => {
-      const x = 30 + i * stride
-      const y = H - 20 - (entry.value / maxValue.value) * (H - 40)
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
+      .map((entry, i) => {
+        const x = 30 + i * stride
+        const y = H - 20 - (entry.value / maxValue.value) * (H - 40)
+        return `${x.toFixed(1)},${y.toFixed(1)}`
+      })
+      .join(' ')
 }
 
 function circlesFor(values: MetricTimelineEntry[], color: string, fmt?: (v: number) => string) {
@@ -88,13 +88,13 @@ const xLabels = computed(() => {
   // Aim for ~6 labels regardless of range.
   const skip = Math.max(1, Math.floor(first.length / 6))
   return first
-    .map((entry, i) => ({ entry, i }))
-    .filter(({ i }) => i % skip === 0 || i === first.length - 1)
-    .map(({ entry, i }) => ({
-      x: 30 + i * stride,
-      // "MM-DD" — keeps the X axis readable.
-      label: entry.date.slice(5),
-    }))
+      .map((entry, i) => ({entry, i}))
+      .filter(({i}) => i % skip === 0 || i === first.length - 1)
+      .map(({entry, i}) => ({
+        x: 30 + i * stride,
+        // "MM-DD" — keeps the X axis readable.
+        label: entry.date.slice(5),
+      }))
 })
 </script>
 
@@ -105,7 +105,7 @@ const xLabels = computed(() => {
       <g v-if="showAxis !== false">
         <line v-for="(t, i) in yTicks" :key="i"
               :x1="30" :x2="W" :y1="t.y" :y2="t.y"
-              class="stroke-default" stroke-width="0.5" stroke-dasharray="2 3" />
+              class="stroke-default" stroke-width="0.5" stroke-dasharray="2 3"/>
         <text v-for="(t, i) in yTicks" :key="`tx-${i}`"
               :x="0" :y="t.y + 3" class="fill-muted text-[9px]">
           {{ series[0]?.format ? series[0].format!(t.value) : Math.round(t.value).toLocaleString() }}
@@ -115,21 +115,21 @@ const xLabels = computed(() => {
       <!-- Series lines -->
       <g v-for="(s, idx) in series" :key="idx">
         <polyline
-          :points="pointsFor(s.values)"
-          fill="none"
-          :class="s.color"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+            :points="pointsFor(s.values)"
+            fill="none"
+            :class="s.color"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
         />
         <circle
-          v-for="(c, ci) in circlesFor(s.values, s.color, s.format)"
-          :key="`c-${idx}-${ci}`"
-          :cx="c.cx"
-          :cy="c.cy"
-          r="3"
-          :class="[c.color, 'fill-current cursor-pointer hover:r-4']"
-          @click="emit('pointClick', c.date, idx)"
+            v-for="(c, ci) in circlesFor(s.values, s.color, s.format)"
+            :key="`c-${idx}-${ci}`"
+            :cx="c.cx"
+            :cy="c.cy"
+            r="3"
+            :class="[c.color, 'fill-current cursor-pointer hover:r-4']"
+            @click="emit('pointClick', c.date, idx)"
         >
           <title>{{ c.title }} (click to drill)</title>
         </circle>
@@ -148,7 +148,7 @@ const xLabels = computed(() => {
     <!-- Legend -->
     <div v-if="series.length > 1" class="flex flex-wrap gap-3 mt-1 text-xs">
       <div v-for="(s, idx) in series" :key="`leg-${idx}`" class="flex items-center gap-1">
-        <span :class="['w-3 h-0.5', s.color.replace('stroke-', 'bg-')]" />
+        <span :class="['w-3 h-0.5', s.color.replace('stroke-', 'bg-')]"/>
         <span class="text-muted">{{ s.label }}</span>
       </div>
     </div>

@@ -69,7 +69,7 @@ export default defineNuxtConfig({
             link: [
                 {rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg'},
             ],
-        meta: [
+            meta: [
                 {charset: 'utf-8'},
                 {
                     name: 'viewport',
@@ -118,8 +118,8 @@ export default defineNuxtConfig({
         // referenced by any Tailwind utility or nuxt-ui component — strip them after
         // every prepare/build so the file stays clean.
         async 'prepare:types'() {
-            const { readFileSync, writeFileSync, existsSync } = await import('node:fs')
-            const { resolve } = await import('node:path')
+            const {readFileSync, writeFileSync, existsSync} = await import('node:fs')
+            const {resolve} = await import('node:path')
             const cssFile = resolve('.nuxt/ui.css')
             if (existsSync(cssFile)) {
                 const patched = readFileSync(cssFile, 'utf-8')

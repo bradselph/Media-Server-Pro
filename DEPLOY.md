@@ -36,12 +36,12 @@ gitignored). Knobs are registered in `deploy-knobs.sh` with description,
 default, scope, and section. `deploy-configure.sh` walks newly-added knobs
 on every deploy and forwards them to the VPS:
 
-| Scope       | Where it lives                | When it's read                       |
-| ----------- | ----------------------------- | ------------------------------------ |
-| `vps`       | Local `.deploy.env`           | Consumed by `deploy.sh` itself (SSH, paths) |
-| `toolchain` | Local `.deploy.env`           | Version pins (`MSP_GO_VERSION`, `MSP_NODE_MAJOR`) |
-| `runtime`   | Forwarded to `$DEPLOY_DIR/.env` on the VPS | Read by the Go server on every start |
-| `build`     | Exported into the npm build shell | Baked into the Nuxt bundle (`NUXT_PUBLIC_*`) |
+| Scope       | Where it lives                             | When it's read                                    |
+|-------------|--------------------------------------------|---------------------------------------------------|
+| `vps`       | Local `.deploy.env`                        | Consumed by `deploy.sh` itself (SSH, paths)       |
+| `toolchain` | Local `.deploy.env`                        | Version pins (`MSP_GO_VERSION`, `MSP_NODE_MAJOR`) |
+| `runtime`   | Forwarded to `$DEPLOY_DIR/.env` on the VPS | Read by the Go server on every start              |
+| `build`     | Exported into the npm build shell          | Baked into the Nuxt bundle (`NUXT_PUBLIC_*`)      |
 
 **Safe-by-default**: pressing Enter on a never-seen knob marks it "seen" as
 a commented hint and does **not** push the registry default to the VPS — the
@@ -152,7 +152,7 @@ snapshot before upgrading across major versions.
 ## Security checklist
 
 - [ ] All secrets (`DATABASE_PASSWORD`, `ADMIN_PASSWORD`, `RECEIVER_API_KEYS`,
-      `HUGGINGFACE_API_KEY`) are strong unique values.
+  `HUGGINGFACE_API_KEY`) are strong unique values.
 - [ ] `SERVER_HOST=127.0.0.1` when running behind a reverse proxy.
 - [ ] `AUTH_ALLOW_REGISTRATION=false` unless you intend an open community.
 - [ ] `.env` on the VPS is mode `600`, owned by the `mediaserver` system user.

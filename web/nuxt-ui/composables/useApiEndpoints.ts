@@ -5,13 +5,16 @@ import type {
     AdminPlaylistStats,
     AdminStats,
     AgeGateStatus,
-    CookieConsentStatus,
+    AlertResult,
+    AlertRule,
     AnalyticsEvent,
+    AnalyticsHealth,
     AnalyticsSummary,
+    AnomalyReport,
     APIToken,
     APITokenCreated,
-    AuditLogEntry,
     AuditLogResponse,
+    AutoTagRule,
     BackupEntry,
     BannedIP,
     CategorizedItem,
@@ -19,74 +22,88 @@ import type {
     CategoryStats,
     ClassifyStats,
     ClassifyStatus,
+    CohortMetrics,
     ContentPerformanceItem,
+    CookieConsentStatus,
     CrawlerDiscovery,
     CrawlerStats,
     CrawlerTarget,
     DailyStats,
     DatabaseStatus,
     DataDeletionRequest,
-    MediaReport,
+    DeviceBucket,
     DiscoverySuggestion,
     DownloaderDetectResult,
     DownloaderHealth,
     DownloaderJob,
     DownloaderSettings,
+    ErrorPathEntry,
     EventStats,
     EventTypeCounts,
     ExtractorItem,
     ExtractorStats,
+    FailedLoginEntry,
     FavoriteItem,
-    HLSAvailability,
-    HLSCapabilities,
-    HLSJob,
-    HLSStats,
-    HLSValidationResult,
-    ImportableFile,
-    ImportDestination,
-    ImportResult,
-    IPListEntry,
-    LogEntry,
-    LoginResponse,
-    MediaCategory,
-    MediaChapter,
-    MediaItem,
-    MediaListParams,
-    MediaListResponse,
-    MediaStats,
-    ModuleHealth,
-    NewSinceResponse,
-    PermissionsInfo,
-    Playlist,
-    PlaylistItem,
-    QueryResult,
-    RatedItem,
     FollowerSaveResult,
     FollowerSettings,
     FollowerSettingsUpdate,
     FollowerStatus,
     FollowerTestResult,
+    Funnel,
+    HLSAvailability,
+    HLSCapabilities,
+    HLSJob,
+    HLSStats,
+    HLSValidationResult,
+    HourlyHeatmapCell,
+    ImportableFile,
+    ImportDestination,
+    ImportResult,
+    IPListEntry,
+    IPSummary,
+    LogEntry,
+    LoginResponse,
+    MediaCategory,
+    MediaChapter,
+    MediaCollection,
+    MediaDetail,
+    MediaItem,
+    MediaListParams,
+    MediaListResponse,
+    MediaReport,
+    MediaStats,
+    MetricForecast,
+    MetricTimelineEntry,
+    ModuleDiagnostics,
+    ModuleHealth,
+    NewSinceResponse,
+    PeriodComparison,
+    PermissionsInfo,
+    Playlist,
+    QualityBucket,
+    QueryResult,
+    RangeComparison,
+    RatedItem,
+    ReceiverAdminSettings,
     ReceiverDuplicate,
     ReceiverMedia,
-    ReceiverAdminSettings,
     ReceiverStats,
     RecentItem,
     RemoteMediaItem,
     RemoteSourceResponse,
     RemoteSourceState,
     RemoteStats,
+    RetentionGrid,
     ReviewQueueItem,
     ScannerStats,
     ScheduledTask,
+    SearchQueryEntry,
     SecurityStats,
-    AutoTagRule,
-    MediaCollection,
-    MediaCollectionItem,
-    SmartPlaylist,
     ServerSettings,
     ServerStatus,
     SessionCheckResponse,
     SlaveNode,
+    SmartPlaylist,
     StorageUsage,
     StreamSession,
     Suggestion,
@@ -96,32 +113,12 @@ import type {
     ThumbnailStats,
     TopMediaItem,
     TopUserEntry,
-    SearchQueryEntry,
-    FailedLoginEntry,
-    ErrorPathEntry,
-    MetricTimelineEntry,
-    CohortMetrics,
-    HourlyHeatmapCell,
-    QualityBucket,
-    PeriodComparison,
-    Funnel,
-    DeviceBucket,
-    MediaDetail,
-    RetentionGrid,
-    AnomalyReport,
-    IPSummary,
-    ModuleDiagnostics,
-    AnalyticsHealth,
-    MetricForecast,
-    RangeComparison,
-    AlertRule,
-    AlertResult,
     UpdateInfo,
-    UserAnalytics,
     UpdateStatus,
     UploadProgress,
     UploadResult,
     User,
+    UserAnalytics,
     UserPreferences,
     UserProfile,
     UserSession,
@@ -130,7 +127,6 @@ import type {
     WatchHistoryItem,
 } from '~/types/api'
 import {normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch} from '~/utils/apiCompat'
-import {redirectToLogin} from '~/composables/useApi'
 // Explicit import — bypasses Nuxt's #imports virtual module so this file does
 // NOT participate in the #imports circular dependency graph.
 // useApiEndpoints.ts is in composables/ and is re-exported by #imports.  Any
@@ -216,8 +212,17 @@ async function updatePreferences(prefs: Partial<UserPreferences>): Promise<UserP
 
 export function useApiEndpoints() {
     return {
-        login, logout, register, getRegistrationToken, getSession, changePassword, adminChangePassword, requestDataDeletion, deleteAccount,
-        getPreferences, updatePreferences,
+        login,
+        logout,
+        register,
+        getRegistrationToken,
+        getSession,
+        changePassword,
+        adminChangePassword,
+        requestDataDeletion,
+        deleteAccount,
+        getPreferences,
+        updatePreferences,
     }
 }
 
@@ -331,7 +336,10 @@ export function useSuggestionsApi() {
         getMyProfile: () => api.get<UserProfile>('/api/suggestions/profile'),
         resetMyProfile: () => api.delete<void>('/api/suggestions/profile'),
         getRecent: (days?: number, limit?: number) =>
-            api.get<RecentItem[]>(`/api/suggestions/recent${buildQS({days: days || undefined, limit: limit || undefined})}`),
+            api.get<RecentItem[]>(`/api/suggestions/recent${buildQS({
+                days: days || undefined,
+                limit: limit || undefined
+            })}`),
         getNewSinceLastVisit: (limit?: number) =>
             api.get<NewSinceResponse>(`/api/suggestions/new${buildQS({limit: limit || undefined})}`),
     }
@@ -572,9 +580,21 @@ export function useAdminApi() {
 
         // Auto-tag rules
         listAutoTagRules: () => api.get<AutoTagRule[]>(`${base}/auto-tag-rules`),
-        createAutoTagRule: (data: { name: string; pattern: string; tags: string; priority?: number; enabled?: boolean }) =>
+        createAutoTagRule: (data: {
+            name: string;
+            pattern: string;
+            tags: string;
+            priority?: number;
+            enabled?: boolean
+        }) =>
             api.post<AutoTagRule>(`${base}/auto-tag-rules`, data),
-        updateAutoTagRule: (id: string, data: Partial<{ name: string; pattern: string; tags: string; priority: number; enabled: boolean }>) =>
+        updateAutoTagRule: (id: string, data: Partial<{
+            name: string;
+            pattern: string;
+            tags: string;
+            priority: number;
+            enabled: boolean
+        }>) =>
             api.put<AutoTagRule>(`${base}/auto-tag-rules/${encodeURIComponent(id)}`, data),
         deleteAutoTagRule: (id: string) => api.delete<void>(`${base}/auto-tag-rules/${encodeURIComponent(id)}`),
         applyAutoTagRules: () => api.post<{ applied: number; items_affected: number }>(`${base}/auto-tag-rules/apply`),
@@ -585,7 +605,10 @@ export function useAdminApi() {
         deleteHLSJob: (id: string) => api.delete<void>(`${base}/hls/jobs/${encodeURIComponent(id)}`),
         validateHLS: (id: string) => api.get<HLSValidationResult>(`${base}/hls/validate/${encodeURIComponent(id)}`),
         cleanHLSStaleLocks: () => api.post<{ removed: number }>(`${base}/hls/clean/locks`),
-        cleanHLSInactive: (maxAgeHours?: number) => api.post<{ removed: number; threshold: string }>(`${base}/hls/clean/inactive`, maxAgeHours ? { max_age_hours: maxAgeHours } : {}),
+        cleanHLSInactive: (maxAgeHours?: number) => api.post<{
+            removed: number;
+            threshold: string
+        }>(`${base}/hls/clean/inactive`, maxAgeHours ? {max_age_hours: maxAgeHours} : {}),
 
         // Validator
         validateMedia: (id: string) => api.post<ValidationResult>(`${base}/validator/validate`, {id}),
@@ -603,7 +626,7 @@ export function useAdminApi() {
         updateTaskSchedule: (id: string, scheduleSecs: number) =>
             api.post<{ message: string; schedule_secs: number }>(
                 `${base}/tasks/${encodeURIComponent(id)}/schedule`,
-                { schedule_secs: scheduleSecs },
+                {schedule_secs: scheduleSecs},
             ),
 
         // Audit log
@@ -752,7 +775,7 @@ export function useAdminApi() {
             api.post<{ paired: boolean; peer_url: string; our_url: string }>(`${base}/peer/connect`, {
                 peer_url: peerUrl,
                 peer_api_key: peerApiKey,
-                ...(ourUrl ? { our_url: ourUrl } : {}),
+                ...(ourUrl ? {our_url: ourUrl} : {}),
             }),
 
         // Follower (this server pairing as a slave to another master)
@@ -761,7 +784,7 @@ export function useAdminApi() {
             api.post<FollowerSaveResult>(`${base}/follower/settings`, body),
         getFollowerStatus: () => api.get<FollowerStatus>(`${base}/follower/status`),
         testFollowerPairing: (master_url: string, api_key: string) =>
-            api.post<FollowerTestResult>(`${base}/follower/test`, { master_url, api_key }),
+            api.post<FollowerTestResult>(`${base}/follower/test`, {master_url, api_key}),
 
         // Crawler
         listCrawlerTargets: () => api.get<CrawlerTarget[]>(`${base}/crawler/targets`),
@@ -880,7 +903,7 @@ export function useAdminApi() {
             return api.get<{ reports: MediaReport[]; open_count: number }>(`${base}/media/reports?${qs}`)
         },
         updateMediaReportStatus: (id: string, status: 'open' | 'resolved' | 'dismissed') =>
-            api.patch<{ id: string; status: string }>(`${base}/media/reports/${encodeURIComponent(id)}`, { status }),
+            api.patch<{ id: string; status: string }>(`${base}/media/reports/${encodeURIComponent(id)}`, {status}),
     }
 }
 
@@ -909,9 +932,15 @@ export function useAnalyticsApi() {
             return api.get<AnalyticsEvent[]>(`/api/analytics/events/by-type?${qs}`)
         },
         getEventsByMedia: (mediaId: string, limit?: number) =>
-            api.get<AnalyticsEvent[]>(`/api/analytics/events/by-media${buildQS({media_id: mediaId, limit: limit || undefined})}`),
+            api.get<AnalyticsEvent[]>(`/api/analytics/events/by-media${buildQS({
+                media_id: mediaId,
+                limit: limit || undefined
+            })}`),
         getEventsByUser: (userId: string, limit?: number) =>
-            api.get<AnalyticsEvent[]>(`/api/analytics/events/by-user${buildQS({user_id: userId, limit: limit || undefined})}`),
+            api.get<AnalyticsEvent[]>(`/api/analytics/events/by-user${buildQS({
+                user_id: userId,
+                limit: limit || undefined
+            })}`),
         getEventTypeCounts: () => api.get<EventTypeCounts>('/api/analytics/events/counts'),
         getContentPerformance: (limit?: number) =>
             api.get<ContentPerformanceItem[]>(`/api/analytics/content${buildQS({limit: limit || undefined})}`),
@@ -923,19 +952,35 @@ export function useAnalyticsApi() {
         // days narrows the time window (default = retention window). Optional
         // since/until ISO timestamps override days.
         getTopUsers: (metric?: string, limit?: number, days?: number) =>
-            api.get<TopUserEntry[]>(`/api/admin/analytics/top-users${buildQS({metric: metric || undefined, limit: limit || undefined, days: days || undefined})}`),
+            api.get<TopUserEntry[]>(`/api/admin/analytics/top-users${buildQS({
+                metric: metric || undefined,
+                limit: limit || undefined,
+                days: days || undefined
+            })}`),
         // Top search queries with empty-result share.
         getTopSearches: (limit?: number, days?: number) =>
-            api.get<SearchQueryEntry[]>(`/api/admin/analytics/top-searches${buildQS({limit: limit || undefined, days: days || undefined})}`),
+            api.get<SearchQueryEntry[]>(`/api/admin/analytics/top-searches${buildQS({
+                limit: limit || undefined,
+                days: days || undefined
+            })}`),
         // Recent failed login events (security review).
         getFailedLogins: (limit?: number, days?: number) =>
-            api.get<FailedLoginEntry[]>(`/api/admin/analytics/failed-logins${buildQS({limit: limit || undefined, days: days || undefined})}`),
+            api.get<FailedLoginEntry[]>(`/api/admin/analytics/failed-logins${buildQS({
+                limit: limit || undefined,
+                days: days || undefined
+            })}`),
         // 5xx grouped by (method, path, status).
         getErrorPaths: (limit?: number, days?: number) =>
-            api.get<ErrorPathEntry[]>(`/api/admin/analytics/error-paths${buildQS({limit: limit || undefined, days: days || undefined})}`),
+            api.get<ErrorPathEntry[]>(`/api/admin/analytics/error-paths${buildQS({
+                limit: limit || undefined,
+                days: days || undefined
+            })}`),
         // Gap-filled per-day timeline for any DailyStats metric.
         getMetricTimeline: (metric: string, days?: number) =>
-            api.get<MetricTimelineEntry[]>(`/api/admin/analytics/timeline${buildQS({metric, days: days || undefined})}`),
+            api.get<MetricTimelineEntry[]>(`/api/admin/analytics/timeline${buildQS({
+                metric,
+                days: days || undefined
+            })}`),
         // DAU / WAU / MAU + stickiness.
         getCohortMetrics: () =>
             api.get<CohortMetrics>('/api/admin/analytics/cohorts'),
@@ -947,7 +992,10 @@ export function useAnalyticsApi() {
             api.get<QualityBucket[]>(`/api/admin/analytics/quality${buildQS({days: days || undefined})}`),
         // Popular-but-unanswered searches.
         getContentGaps: (days?: number, limit?: number) =>
-            api.get<SearchQueryEntry[]>(`/api/admin/analytics/content-gaps${buildQS({days: days || undefined, limit: limit || undefined})}`),
+            api.get<SearchQueryEntry[]>(`/api/admin/analytics/content-gaps${buildQS({
+                days: days || undefined,
+                limit: limit || undefined
+            })}`),
         // Current-vs-previous-window totals for one metric.
         getPeriodComparison: (metric: string, days?: number) =>
             api.get<PeriodComparison>(`/api/admin/analytics/comparison${buildQS({metric, days: days || undefined})}`),
@@ -956,7 +1004,10 @@ export function useAnalyticsApi() {
             api.get<Funnel>(`/api/admin/analytics/funnel${buildQS({days: days || undefined})}`),
         // Device + browser breakdown (parsed from User-Agent).
         getDeviceBreakdown: (days?: number) =>
-            api.get<{ devices: DeviceBucket[]; browsers: DeviceBucket[] }>(`/api/admin/analytics/devices${buildQS({days: days || undefined})}`),
+            api.get<{
+                devices: DeviceBucket[];
+                browsers: DeviceBucket[]
+            }>(`/api/admin/analytics/devices${buildQS({days: days || undefined})}`),
         // Per-media analytics drill-down.
         getMediaAnalytics: (mediaId: string, days?: number) =>
             api.get<MediaDetail>(`/api/admin/analytics/media/${encodeURIComponent(mediaId)}${buildQS({days: days || undefined})}`),
@@ -965,10 +1016,16 @@ export function useAnalyticsApi() {
             api.get<RetentionGrid>(`/api/admin/analytics/retention${buildQS({weeks: weeks || undefined})}`),
         // Daily metric spikes / dips beyond a rolling baseline.
         getAnomalies: (z?: number, window?: number) =>
-            api.get<AnomalyReport>(`/api/admin/analytics/anomalies${buildQS({z: z || undefined, window: window || undefined})}`),
+            api.get<AnomalyReport>(`/api/admin/analytics/anomalies${buildQS({
+                z: z || undefined,
+                window: window || undefined
+            })}`),
         // Per-IP traffic — unique IPs + top by events / bytes.
         getIPSummary: (days?: number, limit?: number) =>
-            api.get<IPSummary>(`/api/admin/analytics/ips${buildQS({days: days || undefined, limit: limit || undefined})}`),
+            api.get<IPSummary>(`/api/admin/analytics/ips${buildQS({
+                days: days || undefined,
+                limit: limit || undefined
+            })}`),
         // Analytics module's internal diagnostics counters.
         getDiagnostics: () =>
             api.get<ModuleDiagnostics>('/api/admin/analytics/diagnostics'),
@@ -983,12 +1040,17 @@ export function useAnalyticsApi() {
         exportAllUrl: () => '/api/admin/analytics/export-all',
         // A/B comparison across two arbitrary date ranges.
         getRangeComparison: (aStart: string, aEnd: string, bStart: string, bEnd: string) =>
-            api.get<RangeComparison>(`/api/admin/analytics/range-compare${buildQS({a_start: aStart, a_end: aEnd, b_start: bStart, b_end: bEnd})}`),
+            api.get<RangeComparison>(`/api/admin/analytics/range-compare${buildQS({
+                a_start: aStart,
+                a_end: aEnd,
+                b_start: bStart,
+                b_end: bEnd
+            })}`),
         // Evaluate a set of alert rules against today's stats. Rules
         // themselves live in browser localStorage; the backend just runs
         // the comparisons.
         evaluateAlerts: (rules: AlertRule[]) =>
-            api.post<AlertResult[]>('/api/admin/analytics/evaluate-alerts', { rules }),
+            api.post<AlertResult[]>('/api/admin/analytics/evaluate-alerts', {rules}),
         // Recompute a single date's DailyStats from raw events. Use when
         // the persisted values look wrong (drift, partial flush, etc.).
         backfillDailyStats: (date: string) =>
@@ -999,7 +1061,18 @@ export function useAnalyticsApi() {
             `/api/admin/analytics/export-panel${buildQS({panel, format, ...extra})}`,
         // Live snapshot of active streaming sessions (already enriched with filename).
         getActiveStreams: () =>
-            api.get<Array<{ id: string; media_id: string; filename: string; user_id: string; ip_address: string; quality: string; position: number; started_at: number; last_update: number; bytes_sent: number }>>(`/api/admin/streams`),
+            api.get<Array<{
+                id: string;
+                media_id: string;
+                filename: string;
+                user_id: string;
+                ip_address: string;
+                quality: string;
+                position: number;
+                started_at: number;
+                last_update: number;
+                bytes_sent: number
+            }>>(`/api/admin/streams`),
         exportCsv: (period?: string) => {
             const today = new Date()
             const fmt = (d: Date) => d.toISOString().slice(0, 10)
@@ -1093,7 +1166,10 @@ export function useCollectionsApi() {
             api.put<MediaCollection>(`${adminBase}/collections/${encodeURIComponent(id)}`, data),
         delete: (id: string) => api.delete<void>(`${adminBase}/collections/${encodeURIComponent(id)}`),
         addItems: (collectionId: string, mediaIds: string[], positionStart = 0) =>
-            api.post<{ message: string; count: number }>(`${adminBase}/collections/${encodeURIComponent(collectionId)}/items`, {
+            api.post<{
+                message: string;
+                count: number
+            }>(`${adminBase}/collections/${encodeURIComponent(collectionId)}/items`, {
                 media_ids: mediaIds,
                 position_start: positionStart,
             }),

@@ -9,8 +9,8 @@
 // 3. Re-attempts init when the cookie banner reports a change, so the
 //    user can opt in mid-session without a refresh.
 
-import { initGA, pageview } from '~/composables/useAnalytics'
-import { onConsentChanged } from '~/composables/useConsent'
+import {initGA, pageview} from '~/composables/useAnalytics'
+import {onConsentChanged} from '~/composables/useConsent'
 
 export default defineNuxtPlugin(() => {
     if (!import.meta.client) return

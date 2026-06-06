@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type { HLSJob, HLSStats, HLSCapabilities, HLSValidationResult } from '~/types/api'
-import { formatBytes } from '~/utils/format'
-import { asRecord } from '~/utils/typeGuards'
-import { useAdminFeedback } from '~/composables/useAdminFeedback'
+import type {HLSCapabilities, HLSJob, HLSStats, HLSValidationResult} from '~/types/api'
+import {formatBytes} from '~/utils/format'
+import {asRecord} from '~/utils/typeGuards'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
-const { notifyError, notifySuccess, notifyWarning } = useAdminFeedback()
+const {notifyError, notifySuccess, notifyWarning} = useAdminFeedback()
 
 const jobs = ref<HLSJob[]>([])
 const stats = ref<HLSStats | null>(null)
@@ -25,13 +25,13 @@ let destroyed = false
 let loadSeq = 0
 
 const INTERVAL_OPTIONS = [
-  { label: '15 minutes', value: 0 },
-  { label: '1 hour', value: 1 },
-  { label: '2 hours', value: 2 },
-  { label: '4 hours', value: 4 },
-  { label: '6 hours', value: 6 },
-  { label: '12 hours', value: 12 },
-  { label: '24 hours', value: 24 },
+  {label: '15 minutes', value: 0},
+  {label: '1 hour', value: 1},
+  {label: '2 hours', value: 2},
+  {label: '4 hours', value: 4},
+  {label: '6 hours', value: 6},
+  {label: '12 hours', value: 12},
+  {label: '24 hours', value: 24},
 ]
 
 async function load() {
@@ -53,8 +53,8 @@ async function load() {
       const hls = asRecord(cfg.value.hls)
       autoGenerate.value = hls?.auto_generate === true
       const intervalValue = typeof hls?.pre_generate_interval_hours === 'number'
-        ? hls.pre_generate_interval_hours
-        : 1
+          ? hls.pre_generate_interval_hours
+          : 1
       const validValues = INTERVAL_OPTIONS.map(o => o.value)
       pregenIntervalHours.value = validValues.includes(intervalValue) ? intervalValue : 1
     }
@@ -127,7 +127,7 @@ async function cleanInactive() {
 
 
 function statusColor(status: HLSJob['status']): 'neutral' | 'info' | 'success' | 'error' | 'warning' {
-  const map = { pending: 'neutral', running: 'info', completed: 'success', failed: 'error', canceled: 'warning' } as const
+  const map = {pending: 'neutral', running: 'info', completed: 'success', failed: 'error', canceled: 'warning'} as const
   return map[status] ?? 'neutral'
 }
 
@@ -150,7 +150,9 @@ async function refreshJobStatus(id: string) {
     if (idx !== -1) jobs.value = jobs.value.map((j, i) => i === idx ? updated : j)
   } catch (e: unknown) {
     notifyError(e, 'Failed to refresh status')
-  } finally { if (!destroyed) jobRefreshing.value = null }
+  } finally {
+    if (!destroyed) jobRefreshing.value = null
+  }
 }
 
 async function validateJob(id: string) {
@@ -163,7 +165,9 @@ async function validateJob(id: string) {
     else notifyWarning('HLS validation failed')
   } catch (e: unknown) {
     notifyError(e, 'Validation failed')
-  } finally { if (!destroyed) validating.value = null }
+  } finally {
+    if (!destroyed) validating.value = null
+  }
 }
 
 // Pagination
@@ -195,7 +199,7 @@ onUnmounted(() => {
             <p class="font-medium text-sm text-highlighted">Auto-generate HLS on scan</p>
             <p class="text-xs text-muted mt-0.5">Automatically create HLS variants when new media is discovered</p>
           </div>
-          <USwitch v-model="autoGenerate" :disabled="configSaving || loading" aria-label="Auto-generate HLS on scan" />
+          <USwitch v-model="autoGenerate" :disabled="configSaving || loading" aria-label="Auto-generate HLS on scan"/>
         </div>
 
         <div v-if="autoGenerate" class="flex items-center justify-between gap-4 pt-3 border-t border-default">
@@ -204,23 +208,23 @@ onUnmounted(() => {
             <p class="text-xs text-muted mt-0.5">How often the scheduler scans for videos without HLS</p>
           </div>
           <USelect
-            v-model="pregenIntervalHours"
-            :items="INTERVAL_OPTIONS"
-            value-key="value"
-            :disabled="configSaving || loading"
-            class="w-36"
-            size="sm"
+              v-model="pregenIntervalHours"
+              :items="INTERVAL_OPTIONS"
+              value-key="value"
+              :disabled="configSaving || loading"
+              class="w-36"
+              size="sm"
           />
         </div>
 
         <div class="flex justify-end pt-1">
           <UButton
-            icon="i-lucide-save"
-            label="Save HLS Settings"
-            size="sm"
-            :loading="configSaving"
-            :disabled="loading"
-            @click="saveHLSConfig"
+              icon="i-lucide-save"
+              label="Save HLS Settings"
+              size="sm"
+              :loading="configSaving"
+              :disabled="loading"
+              @click="saveHLSConfig"
           />
         </div>
       </div>
@@ -231,19 +235,21 @@ onUnmounted(() => {
       <div class="flex flex-wrap items-center gap-4 text-sm">
         <div class="flex items-center gap-1.5">
           <UIcon
-            :name="caps.healthy ? 'i-lucide-check-circle' : 'i-lucide-alert-triangle'"
-            :class="caps.healthy ? 'text-success' : 'text-warning'"
-            class="size-4"
+              :name="caps.healthy ? 'i-lucide-check-circle' : 'i-lucide-alert-triangle'"
+              :class="caps.healthy ? 'text-success' : 'text-warning'"
+              class="size-4"
           />
           <span class="font-medium">{{ caps.healthy ? 'HLS Ready' : 'HLS Unavailable' }}</span>
         </div>
         <div class="flex items-center gap-1.5">
-          <UBadge :label="caps.ffmpeg_found ? 'ffmpeg ✓' : 'ffmpeg ✗'" :color="caps.ffmpeg_found ? 'success' : 'error'" variant="subtle" size="xs" />
-          <UBadge :label="caps.ffprobe_found ? 'ffprobe ✓' : 'ffprobe ✗'" :color="caps.ffprobe_found ? 'success' : 'error'" variant="subtle" size="xs" />
+          <UBadge :label="caps.ffmpeg_found ? 'ffmpeg ✓' : 'ffmpeg ✗'" :color="caps.ffmpeg_found ? 'success' : 'error'"
+                  variant="subtle" size="xs"/>
+          <UBadge :label="caps.ffprobe_found ? 'ffprobe ✓' : 'ffprobe ✗'"
+                  :color="caps.ffprobe_found ? 'success' : 'error'" variant="subtle" size="xs"/>
         </div>
         <div v-if="caps.qualities.length" class="flex items-center gap-1 flex-wrap">
           <span class="text-muted">Qualities:</span>
-          <UBadge v-for="q in caps.qualities" :key="q" :label="q" color="neutral" variant="subtle" size="xs" />
+          <UBadge v-for="q in caps.qualities" :key="q" :label="q" color="neutral" variant="subtle" size="xs"/>
         </div>
         <span class="text-muted text-xs">Max concurrent: {{ caps.max_concurrent }}</span>
         <span v-if="caps.message" class="text-muted text-xs ml-auto">{{ caps.message }}</span>
@@ -259,7 +265,7 @@ onUnmounted(() => {
         { label: 'Disk Used', value: formatBytes(stats.cache_size_bytes), icon: 'i-lucide-hard-drive', color: '' },
       ]" :key="item.label" :ui="{ body: 'p-4' }">
         <div class="flex items-center gap-2">
-          <UIcon :name="item.icon" class="size-4 text-muted" :class="item.color" />
+          <UIcon :name="item.icon" class="size-4 text-muted" :class="item.color"/>
           <div>
             <p class="text-lg font-bold text-highlighted">{{ item.value }}</p>
             <p class="text-xs text-muted">{{ item.label }}</p>
@@ -270,20 +276,21 @@ onUnmounted(() => {
 
     <!-- Actions -->
     <div class="flex gap-2 flex-wrap">
-      <UButton icon="i-lucide-refresh-cw" label="Refresh" variant="outline" color="neutral" @click="load" />
-      <UButton icon="i-lucide-lock-open" label="Clean Stale Locks" variant="outline" color="warning" @click="cleanStaleLocks" />
-      <UButton icon="i-lucide-trash-2" label="Clean Inactive" variant="outline" color="warning" @click="cleanInactive" />
+      <UButton icon="i-lucide-refresh-cw" label="Refresh" variant="outline" color="neutral" @click="load"/>
+      <UButton icon="i-lucide-lock-open" label="Clean Stale Locks" variant="outline" color="warning"
+               @click="cleanStaleLocks"/>
+      <UButton icon="i-lucide-trash-2" label="Clean Inactive" variant="outline" color="warning" @click="cleanInactive"/>
     </div>
 
     <!-- Jobs table -->
     <UCard>
       <div v-if="loading" class="flex justify-center py-8">
-        <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
+        <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary"/>
       </div>
       <UTable
-        v-else
-        :data="pagedJobs"
-        :columns="[
+          v-else
+          :data="pagedJobs"
+          :columns="[
           { accessorKey: 'id', header: 'ID' },
           { accessorKey: 'status', header: 'Status' },
           { accessorKey: 'progress', header: 'Progress' },
@@ -294,18 +301,19 @@ onUnmounted(() => {
       >
         <template #id-cell="{ row }">
           <button
-            class="font-mono text-xs hover:text-primary cursor-pointer"
-            :title="`${row.original.id} (click to copy)`"
-            :disabled="!row.original.id"
-            @click="row.original.id && copyJobId(row.original.id)"
-          >{{ row.original.id?.slice(0, 12) }}…</button>
+              class="font-mono text-xs hover:text-primary cursor-pointer"
+              :title="`${row.original.id} (click to copy)`"
+              :disabled="!row.original.id"
+              @click="row.original.id && copyJobId(row.original.id)"
+          >{{ row.original.id?.slice(0, 12) }}…
+          </button>
         </template>
         <template #status-cell="{ row }">
-          <UBadge :label="row.original.status" :color="statusColor(row.original.status)" variant="subtle" size="xs" />
+          <UBadge :label="row.original.status" :color="statusColor(row.original.status)" variant="subtle" size="xs"/>
         </template>
         <template #progress-cell="{ row }">
           <div v-if="row.original.status === 'running'" class="flex items-center gap-2 min-w-20">
-            <UProgress :value="row.original.progress" size="xs" class="flex-1" />
+            <UProgress :value="row.original.progress" size="xs" class="flex-1"/>
             <span class="text-xs">{{ row.original.progress }}%</span>
           </div>
           <span v-else class="text-sm text-muted">—</span>
@@ -313,12 +321,12 @@ onUnmounted(() => {
         <template #qualities-cell="{ row }">
           <div class="flex flex-wrap gap-1">
             <UBadge
-              v-for="q in (row.original.qualities ?? [])"
-              :key="q"
-              :label="q"
-              color="neutral"
-              variant="outline"
-              size="xs"
+                v-for="q in (row.original.qualities ?? [])"
+                :key="q"
+                :label="q"
+                color="neutral"
+                variant="outline"
+                size="xs"
             />
           </div>
         </template>
@@ -330,33 +338,33 @@ onUnmounted(() => {
         <template #actions-cell="{ row }">
           <div class="flex gap-1">
             <UButton
-              v-if="row.original.status === 'running' || row.original.status === 'pending'"
-              icon="i-lucide-refresh-cw"
-              aria-label="Refresh job status"
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              :loading="jobRefreshing === row.original.id"
-              @click="refreshJobStatus(row.original.id)"
+                v-if="row.original.status === 'running' || row.original.status === 'pending'"
+                icon="i-lucide-refresh-cw"
+                aria-label="Refresh job status"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                :loading="jobRefreshing === row.original.id"
+                @click="refreshJobStatus(row.original.id)"
             />
             <UButton
-              v-if="row.original.status === 'completed'"
-              icon="i-lucide-shield-check"
-              aria-label="Validate HLS output"
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              :loading="validating === row.original.id"
-              @click="validateJob(row.original.id)"
+                v-if="row.original.status === 'completed'"
+                icon="i-lucide-shield-check"
+                aria-label="Validate HLS output"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                :loading="validating === row.original.id"
+                @click="validateJob(row.original.id)"
             />
             <UButton
-              icon="i-lucide-trash-2"
-              :aria-label="`Delete HLS job ${row.original.id}`"
-              size="xs"
-              variant="ghost"
-              color="error"
-              :disabled="row.original.status === 'running'"
-              @click="deleteJob(row.original.id)"
+                icon="i-lucide-trash-2"
+                :aria-label="`Delete HLS job ${row.original.id}`"
+                size="xs"
+                variant="ghost"
+                color="error"
+                :disabled="row.original.status === 'running'"
+                @click="deleteJob(row.original.id)"
             />
           </div>
         </template>
@@ -367,8 +375,10 @@ onUnmounted(() => {
       <div v-if="jobsTotalPages > 1" class="flex items-center justify-between pt-3 border-t border-default">
         <p class="text-xs text-muted">{{ jobs.length }} jobs · Page {{ jobsPage }}/{{ jobsTotalPages }}</p>
         <div class="flex gap-1">
-          <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" :disabled="jobsPage <= 1" @click="jobsPage--" />
-          <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral" :disabled="jobsPage >= jobsTotalPages" @click="jobsPage++" />
+          <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" :disabled="jobsPage <= 1"
+                   @click="jobsPage--"/>
+          <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral"
+                   :disabled="jobsPage >= jobsTotalPages" @click="jobsPage++"/>
         </div>
       </div>
     </UCard>
@@ -377,13 +387,16 @@ onUnmounted(() => {
       <template #header>
         <div class="flex items-center gap-2 font-semibold">
           <UIcon
-            :name="validationResult.valid ? 'i-lucide-check-circle' : 'i-lucide-alert-triangle'"
-            :class="validationResult.valid ? 'text-success' : 'text-warning'"
-            class="size-4"
+              :name="validationResult.valid ? 'i-lucide-check-circle' : 'i-lucide-alert-triangle'"
+              :class="validationResult.valid ? 'text-success' : 'text-warning'"
+              class="size-4"
           />
           HLS Validation — {{ validationResult.valid ? 'Valid' : 'Invalid' }}
-          <span class="text-muted font-normal text-xs ml-2">{{ validationResult.variant_count }} variant(s), {{ validationResult.segment_count }} segment(s)</span>
-          <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" class="ml-auto" @click="validationResult = null" />
+          <span class="text-muted font-normal text-xs ml-2">{{
+              validationResult.variant_count
+            }} variant(s), {{ validationResult.segment_count }} segment(s)</span>
+          <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" class="ml-auto"
+                   @click="validationResult = null"/>
         </div>
       </template>
       <p class="font-mono text-xs text-muted">{{ validationResult.job_id }}</p>

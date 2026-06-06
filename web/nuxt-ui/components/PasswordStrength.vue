@@ -22,7 +22,7 @@ interface Result {
 
 const result = computed<Result>(() => {
   const p = props.value || ''
-  if (!p) return { score: 0, label: '', tone: 'neutral' }
+  if (!p) return {score: 0, label: '', tone: 'neutral'}
 
   let score = 0
   // Length tiers are deliberately conservative — most users won't pick a
@@ -32,10 +32,10 @@ const result = computed<Result>(() => {
   if (p.length >= 12) score++
   // Character-class diversity. Two classes earn one point; four earn two.
   const classes =
-    Number(/[a-z]/.test(p)) +
-    Number(/[A-Z]/.test(p)) +
-    Number(/\d/.test(p)) +
-    Number(/[^A-Za-z0-9]/.test(p))
+      Number(/[a-z]/.test(p)) +
+      Number(/[A-Z]/.test(p)) +
+      Number(/\d/.test(p)) +
+      Number(/[^A-Za-z0-9]/.test(p))
   if (classes >= 2) score++
   if (classes >= 4) score++
 
@@ -43,28 +43,34 @@ const result = computed<Result>(() => {
   const s = Math.min(4, score) as Result['score']
   const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'] as const
   const tones: Result['tone'][] = ['neutral', 'weak', 'fair', 'good', 'strong']
-  return { score: s, label: labels[s], tone: tones[s] }
+  return {score: s, label: labels[s], tone: tones[s]}
 })
 
 const segmentClass = (i: number) => {
   if (i >= result.value.score) return 'bg-[var(--hairline)]'
   switch (result.value.tone) {
-    case 'weak': return 'bg-red-500'
-    case 'fair': return 'bg-amber-500'
-    case 'good': return 'bg-lime-500'
-    case 'strong': return 'bg-emerald-500'
-    default: return 'bg-[var(--hairline)]'
+    case 'weak':
+      return 'bg-red-500'
+    case 'fair':
+      return 'bg-amber-500'
+    case 'good':
+      return 'bg-lime-500'
+    case 'strong':
+      return 'bg-emerald-500'
+    default:
+      return 'bg-[var(--hairline)]'
   }
 }
 </script>
 
 <template>
   <div v-if="value" class="mt-1.5 space-y-1" aria-live="polite">
-    <div class="flex gap-1" role="meter" :aria-valuenow="result.score" aria-valuemin="0" aria-valuemax="4" :aria-label="`Password strength: ${result.label}`">
+    <div class="flex gap-1" role="meter" :aria-valuenow="result.score" aria-valuemin="0" aria-valuemax="4"
+         :aria-label="`Password strength: ${result.label}`">
       <div
-        v-for="i in 4"
-        :key="i"
-        :class="['h-1 flex-1 rounded-sm transition-colors duration-150', segmentClass(i - 1)]"
+          v-for="i in 4"
+          :key="i"
+          :class="['h-1 flex-1 rounded-sm transition-colors duration-150', segmentClass(i - 1)]"
       />
     </div>
     <p class="text-[10px] text-muted">

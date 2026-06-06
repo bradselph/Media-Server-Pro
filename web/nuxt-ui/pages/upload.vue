@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { UploadResult, UploadProgress } from '~/types/api'
-import { formatBytes } from '~/utils/format'
+import type {UploadProgress, UploadResult} from '~/types/api'
+import {formatBytes} from '~/utils/format'
 
-definePageMeta({ layout: 'default', title: 'Upload Media', middleware: 'auth' })
+definePageMeta({layout: 'default', title: 'Upload Media', middleware: 'auth'})
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -39,7 +39,7 @@ async function pollProgress(uploadId: string) {
     try {
       const p = await uploadApi.getProgress(uploadId)
       consecutiveErrors = 0
-      progressMap.value = { ...progressMap.value, [uploadId]: p }
+      progressMap.value = {...progressMap.value, [uploadId]: p}
       if (p.status === 'completed' || p.status === 'error') {
         activePolls.delete(uploadId)
         return
@@ -47,7 +47,11 @@ async function pollProgress(uploadId: string) {
     } catch {
       consecutiveErrors++
       if (consecutiveErrors >= 3) {
-        toast.add({ title: `Unable to check status for upload — it may still be processing in the background`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+        toast.add({
+          title: `Unable to check status for upload — it may still be processing in the background`,
+          color: 'warning',
+          icon: 'i-lucide-alert-triangle'
+        })
         activePolls.delete(uploadId)
         return
       }
@@ -110,13 +114,17 @@ function addFiles(files: File[]) {
   })
   const rejected = files.length - allowed.length
   if (rejected > 0) {
-    toast.add({ title: `${rejected} file(s) skipped — only video and audio files are accepted`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+    toast.add({
+      title: `${rejected} file(s) skipped — only video and audio files are accepted`,
+      color: 'warning',
+      icon: 'i-lucide-alert-triangle'
+    })
   }
   const existingNames = new Set(selectedFiles.value.map(f => f.name))
   const deduped = allowed.filter(f => !existingNames.has(f.name))
   const dupeCount = allowed.length - deduped.length
   if (dupeCount > 0) {
-    toast.add({ title: `${dupeCount} duplicate file(s) skipped`, color: 'warning', icon: 'i-lucide-alert-triangle' })
+    toast.add({title: `${dupeCount} duplicate file(s) skipped`, color: 'warning', icon: 'i-lucide-alert-triangle'})
   }
   selectedFiles.value = [...selectedFiles.value, ...deduped]
 }
@@ -160,7 +168,7 @@ async function handleUpload() {
       category.value = ''
     }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Upload failed', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Upload failed', color: 'error', icon: 'i-lucide-x'})
   } finally {
     uploading.value = false
   }
@@ -177,61 +185,63 @@ async function handleUpload() {
     <!-- Access check -->
     <template v-if="!authStore.isLoggedIn || !authStore.user?.permissions?.can_upload">
       <UAlert
-        icon="i-lucide-lock"
-        color="error"
-        title="Upload not permitted"
-        description="Your account does not have upload permissions. Contact an administrator."
+          icon="i-lucide-lock"
+          color="error"
+          title="Upload not permitted"
+          description="Your account does not have upload permissions. Contact an administrator."
       />
     </template>
 
     <template v-else>
       <!-- Drop zone -->
       <div
-        ref="dropZoneRef"
-        class="border-2 border-dashed rounded-lg p-10 text-center transition-colors cursor-pointer"
-        :class="dragOver ? 'border-primary bg-primary/5' : 'border-default hover:border-primary/50'"
-        @dragover="onDragOver"
-        @dragleave="onDragLeave"
-        @drop="onDrop"
-        @click="openFilePicker()"
+          ref="dropZoneRef"
+          class="border-2 border-dashed rounded-lg p-10 text-center transition-colors cursor-pointer"
+          :class="dragOver ? 'border-primary bg-primary/5' : 'border-default hover:border-primary/50'"
+          @dragover="onDragOver"
+          @dragleave="onDragLeave"
+          @drop="onDrop"
+          @click="openFilePicker()"
       >
-        <UIcon name="i-lucide-upload-cloud" class="size-12 mx-auto text-muted mb-3" />
-        <p class="text-sm font-medium">Drag and drop files here, or <span class="text-primary underline">browse</span></p>
+        <UIcon name="i-lucide-upload-cloud" class="size-12 mx-auto text-muted mb-3"/>
+        <p class="text-sm font-medium">Drag and drop files here, or <span class="text-primary underline">browse</span>
+        </p>
         <p class="text-xs text-muted mt-1">Video and audio files accepted</p>
-        <input ref="fileInputRef" type="file" multiple accept="video/*,audio/*" class="hidden" @change="onFileInput" />
+        <input ref="fileInputRef" type="file" multiple accept="video/*,audio/*" class="hidden" @change="onFileInput"/>
       </div>
 
       <!-- Category -->
       <UFormField label="Category (optional)">
-        <UInput v-model="category" placeholder="e.g. Entertainment, Music, Sports…" class="w-full" />
+        <UInput v-model="category" placeholder="e.g. Entertainment, Music, Sports…" class="w-full"/>
       </UFormField>
 
       <!-- Selected files -->
       <div v-if="selectedFiles.length > 0" class="space-y-2">
-        <p class="text-sm font-medium">{{ selectedFiles.length }} file{{ selectedFiles.length !== 1 ? 's' : '' }} selected</p>
+        <p class="text-sm font-medium">{{ selectedFiles.length }} file{{ selectedFiles.length !== 1 ? 's' : '' }}
+          selected</p>
         <UCard>
           <ul class="divide-y divide-default">
             <li
-              v-for="(file, i) in selectedFiles"
-              :key="i"
-              class="flex items-center justify-between py-2 px-1 gap-3"
+                v-for="(file, i) in selectedFiles"
+                :key="i"
+                class="flex items-center justify-between py-2 px-1 gap-3"
             >
               <div class="flex items-center gap-2 min-w-0">
                 <UIcon
-                  :name="file.type.startsWith('video/') ? 'i-lucide-film' : file.type.startsWith('audio/') ? 'i-lucide-music' : 'i-lucide-file'"
-                  class="size-4 text-muted shrink-0"
+                    :name="file.type.startsWith('video/') ? 'i-lucide-film' : file.type.startsWith('audio/') ? 'i-lucide-music' : 'i-lucide-file'"
+                    class="size-4 text-muted shrink-0"
                 />
                 <span class="text-sm truncate">{{ file.name }}</span>
               </div>
               <div class="flex items-center gap-2 shrink-0">
                 <span class="text-xs text-muted">{{ formatBytes(file.size) }}</span>
                 <UButton
-                  icon="i-lucide-x"
-                  size="xs"
-                  variant="ghost"
-                  color="neutral"
-                  aria-label="Remove"
-                  @click.stop="removeFile(i)"
+                    icon="i-lucide-x"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    aria-label="Remove"
+                    @click.stop="removeFile(i)"
                 />
               </div>
             </li>
@@ -243,12 +253,12 @@ async function handleUpload() {
       <div class="flex items-center justify-end gap-3">
         <p v-if="selectedFiles.length === 0" class="text-xs text-muted">Select files to upload</p>
         <UButton
-          label="Upload"
-          icon="i-lucide-upload"
-          color="primary"
-          :loading="uploading"
-          :disabled="selectedFiles.length === 0"
-          @click="handleUpload"
+            label="Upload"
+            icon="i-lucide-upload"
+            color="primary"
+            :loading="uploading"
+            :disabled="selectedFiles.length === 0"
+            @click="handleUpload"
         />
       </div>
 
@@ -260,8 +270,8 @@ async function handleUpload() {
         </div>
         <div class="h-2 rounded-full bg-[var(--surface-elevated)] overflow-hidden">
           <div
-            class="h-full rounded-full bg-primary transition-all duration-200"
-            :style="{ width: uploadPct + '%' }"
+              class="h-full rounded-full bg-primary transition-all duration-200"
+              :style="{ width: uploadPct + '%' }"
           />
         </div>
       </div>
@@ -273,21 +283,21 @@ async function handleUpload() {
           <UCard>
             <ul class="divide-y divide-default">
               <li
-                v-for="u in result.uploaded"
-                :key="u.upload_id"
-                class="flex items-center justify-between py-2 px-1 gap-3"
+                  v-for="u in result.uploaded"
+                  :key="u.upload_id"
+                  class="flex items-center justify-between py-2 px-1 gap-3"
               >
                 <div class="flex items-center gap-2 min-w-0">
-                  <UIcon name="i-lucide-check-circle" class="size-4 text-success shrink-0" />
+                  <UIcon name="i-lucide-check-circle" class="size-4 text-success shrink-0"/>
                   <span class="text-sm truncate">{{ u.filename }}</span>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
                   <UBadge
-                    v-if="progressMap[u.upload_id]"
-                    :label="progressMap[u.upload_id].status"
-                    :color="progressMap[u.upload_id].status === 'completed' ? 'success' : progressMap[u.upload_id].status === 'error' ? 'error' : 'warning'"
-                    variant="subtle"
-                    size="xs"
+                      v-if="progressMap[u.upload_id]"
+                      :label="progressMap[u.upload_id].status"
+                      :color="progressMap[u.upload_id].status === 'completed' ? 'success' : progressMap[u.upload_id].status === 'error' ? 'error' : 'warning'"
+                      variant="subtle"
+                      size="xs"
                   />
                   <span class="text-xs text-muted">{{ formatBytes(u.size) }}</span>
                 </div>
@@ -301,12 +311,12 @@ async function handleUpload() {
           <UCard>
             <ul class="divide-y divide-default">
               <li
-                v-for="(e, i) in result.errors"
-                :key="i"
-                class="flex items-center justify-between py-2 px-1 gap-3"
+                  v-for="(e, i) in result.errors"
+                  :key="i"
+                  class="flex items-center justify-between py-2 px-1 gap-3"
               >
                 <div class="flex items-center gap-2 min-w-0">
-                  <UIcon name="i-lucide-x-circle" class="size-4 text-error shrink-0" />
+                  <UIcon name="i-lucide-x-circle" class="size-4 text-error shrink-0"/>
                   <span class="text-sm truncate">{{ e.filename }}</span>
                 </div>
                 <span class="text-xs text-error shrink-0">{{ e.error }}</span>

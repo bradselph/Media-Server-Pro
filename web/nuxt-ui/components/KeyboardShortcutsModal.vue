@@ -13,38 +13,38 @@ function onKeyDown(e: KeyboardEvent) {
 onMounted(() => document.addEventListener('keydown', onKeyDown))
 onUnmounted(() => document.removeEventListener('keydown', onKeyDown))
 
-defineExpose({ open })
+defineExpose({open})
 
 const PLAYER_SHORTCUTS = [
-  { key: 'Space / K', desc: 'Play / Pause' },
-  { key: 'J / L', desc: 'Skip ±10s (configurable)' },
-  { key: '← →', desc: 'Skip ±5s' },
-  { key: '↑ ↓', desc: 'Volume ±5%' },
-  { key: '0–9', desc: 'Seek to 0–90%' },
-  { key: 'Home / End', desc: 'Jump to start / end' },
-  { key: ', / .', desc: 'Frame step (paused)' },
-  { key: '< / >', desc: 'Decrease / increase speed' },
-  { key: 'F', desc: 'Toggle fullscreen' },
-  { key: 'T', desc: 'Toggle theater mode' },
-  { key: 'M', desc: 'Mute / Unmute' },
-  { key: 'I', desc: 'Media info overlay' },
+  {key: 'Space / K', desc: 'Play / Pause'},
+  {key: 'J / L', desc: 'Skip ±10s (configurable)'},
+  {key: '← →', desc: 'Skip ±5s'},
+  {key: '↑ ↓', desc: 'Volume ±5%'},
+  {key: '0–9', desc: 'Seek to 0–90%'},
+  {key: 'Home / End', desc: 'Jump to start / end'},
+  {key: ', / .', desc: 'Frame step (paused)'},
+  {key: '< / >', desc: 'Decrease / increase speed'},
+  {key: 'F', desc: 'Toggle fullscreen'},
+  {key: 'T', desc: 'Toggle theater mode'},
+  {key: 'M', desc: 'Mute / Unmute'},
+  {key: 'I', desc: 'Media info overlay'},
 ]
 
 const GLOBAL_SHORTCUTS = [
-  { key: '?', desc: 'Show this shortcuts reference' },
-  { key: '/', desc: 'Focus the nav search field' },
-  { key: 'Q', desc: 'Toggle the Now Playing sidebar' },
-  { key: '[', desc: 'Expand the sidebar' },
-  { key: ']', desc: 'Collapse the sidebar to a rail' },
-  { key: 'N', desc: 'Skip to next item in the queue' },
+  {key: '?', desc: 'Show this shortcuts reference'},
+  {key: '/', desc: 'Focus the nav search field'},
+  {key: 'Q', desc: 'Toggle the Now Playing sidebar'},
+  {key: '[', desc: 'Expand the sidebar'},
+  {key: ']', desc: 'Collapse the sidebar to a rail'},
+  {key: 'N', desc: 'Skip to next item in the queue'},
 ]
 </script>
 
 <template>
   <UModal
-    v-model:open="open"
-    title="Keyboard Shortcuts"
-    :ui="{ content: 'max-w-lg' }"
+      v-model:open="open"
+      title="Keyboard Shortcuts"
+      :ui="{ content: 'max-w-lg' }"
   >
     <template #body>
       <div class="space-y-5">
@@ -53,7 +53,9 @@ const GLOBAL_SHORTCUTS = [
           <p class="section-title mb-2">Player</p>
           <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
             <template v-for="s in PLAYER_SHORTCUTS" :key="s.key">
-              <kbd class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center whitespace-nowrap self-center">{{ s.key }}</kbd>
+              <kbd class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center whitespace-nowrap self-center">{{
+                  s.key
+                }}</kbd>
               <span class="text-sm text-muted self-center">{{ s.desc }}</span>
             </template>
           </div>
@@ -64,7 +66,9 @@ const GLOBAL_SHORTCUTS = [
           <p class="section-title mb-2">Global</p>
           <div class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
             <template v-for="s in GLOBAL_SHORTCUTS" :key="s.key">
-              <kbd class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center whitespace-nowrap self-center">{{ s.key }}</kbd>
+              <kbd class="font-mono bg-muted rounded px-1.5 py-0.5 text-xs text-center whitespace-nowrap self-center">{{
+                  s.key
+                }}</kbd>
               <span class="text-sm text-muted self-center">{{ s.desc }}</span>
             </template>
           </div>
@@ -72,8 +76,9 @@ const GLOBAL_SHORTCUTS = [
       </div>
     </template>
     <template #footer>
-      <p class="text-xs text-muted">Press <kbd class="font-mono bg-muted rounded px-1 py-0.5 text-xs">?</kbd> anywhere to toggle this modal.</p>
-      <UButton label="Close" variant="ghost" color="neutral" class="ml-auto" @click="open = false" />
+      <p class="text-xs text-muted">Press <kbd class="font-mono bg-muted rounded px-1 py-0.5 text-xs">?</kbd> anywhere
+        to toggle this modal.</p>
+      <UButton label="Close" variant="ghost" color="neutral" class="ml-auto" @click="open = false"/>
     </template>
   </UModal>
 </template>

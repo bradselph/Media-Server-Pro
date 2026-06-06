@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import type { ReceiverDuplicate } from '~/types/api'
-import { formatRelativeDate } from '~/utils/format'
-import { useAdminFeedback } from '~/composables/useAdminFeedback'
+import type {ReceiverDuplicate} from '~/types/api'
+import {formatRelativeDate} from '~/utils/format'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const mediaApi = useMediaApi()
-const { notifyError, notifySuccess } = useAdminFeedback()
+const {notifyError, notifySuccess} = useAdminFeedback()
 
 const duplicates = ref<ReceiverDuplicate[]>([])
 const loading = ref(false)
@@ -88,40 +88,40 @@ const STATUS_COLORS: Record<string, BadgeColor> = {
       </div>
       <div class="flex gap-2">
         <USelect
-          v-model="statusFilter"
-          :items="[{ label: 'Pending', value: 'pending' }, { label: 'All', value: 'all' }]"
-          size="sm"
-          class="w-28"
+            v-model="statusFilter"
+            :items="[{ label: 'Pending', value: 'pending' }, { label: 'All', value: 'all' }]"
+            size="sm"
+            class="w-28"
         />
         <UButton
-          icon="i-lucide-scan"
-          label="Scan Local"
-          size="sm"
-          color="neutral"
-          variant="outline"
-          :loading="scanning"
-          @click="scan"
+            icon="i-lucide-scan"
+            label="Scan Local"
+            size="sm"
+            color="neutral"
+            variant="outline"
+            :loading="scanning"
+            @click="scan"
         />
         <UButton
-          icon="i-lucide-refresh-cw"
-          label="Refresh"
-          size="sm"
-          color="neutral"
-          variant="ghost"
-          :loading="loading"
-          @click="load"
+            icon="i-lucide-refresh-cw"
+            label="Refresh"
+            size="sm"
+            color="neutral"
+            variant="ghost"
+            :loading="loading"
+            @click="load"
         />
       </div>
     </div>
 
     <!-- Loading -->
     <div v-if="loading" class="flex justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary" />
+      <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary"/>
     </div>
 
     <!-- Empty -->
     <div v-else-if="duplicates.length === 0" class="text-center py-12 text-muted">
-      <UIcon name="i-lucide-check-circle" class="size-8 mb-2 text-success" />
+      <UIcon name="i-lucide-check-circle" class="size-8 mb-2 text-success"/>
       <p>No {{ statusFilter === 'pending' ? 'pending ' : '' }}duplicates found.</p>
       <p class="text-xs mt-1">Run "Scan Local" to check for new content-fingerprint duplicates.</p>
     </div>
@@ -129,18 +129,18 @@ const STATUS_COLORS: Record<string, BadgeColor> = {
     <!-- Duplicate cards -->
     <div v-else class="space-y-4">
       <div
-        v-for="dup in duplicates"
-        :key="dup.id"
-        class="border border-default rounded-xl overflow-hidden bg-elevated"
+          v-for="dup in duplicates"
+          :key="dup.id"
+          class="border border-default rounded-xl overflow-hidden bg-elevated"
       >
         <!-- Status bar -->
         <div class="flex items-center justify-between px-4 py-2 bg-muted/30 border-b border-default">
           <div class="flex items-center gap-2">
             <UBadge
-              :label="dup.status"
-              :color="STATUS_COLORS[dup.status] ?? 'neutral'"
-              variant="subtle"
-              size="xs"
+                :label="dup.status"
+                :color="STATUS_COLORS[dup.status] ?? 'neutral'"
+                variant="subtle"
+                size="xs"
             />
             <span class="text-xs text-muted font-mono truncate max-w-48" :title="`fp: ${dup.fingerprint}`">
               fp: {{ dup.fingerprint.slice(0, 12) }}…
@@ -155,23 +155,23 @@ const STATUS_COLORS: Record<string, BadgeColor> = {
           <div class="p-4 space-y-2">
             <div class="flex items-center gap-2">
               <UBadge
-                :label="dup.item_a?.source ?? 'local'"
-                :color="dup.item_a?.source === 'local' ? 'primary' : 'neutral'"
-                variant="subtle"
-                size="xs"
+                  :label="dup.item_a?.source ?? 'local'"
+                  :color="dup.item_a?.source === 'local' ? 'primary' : 'neutral'"
+                  variant="subtle"
+                  size="xs"
               />
               <p class="text-sm font-medium truncate" :title="dup.item_a_name">{{ dup.item_a_name }}</p>
             </div>
             <div class="aspect-video rounded-lg overflow-hidden bg-muted">
               <img
-                v-if="dup.item_a?.source === 'local' && dup.item_a?.id"
-                :src="thumbnailUrl(dup.item_a.id, 'local')"
-                :alt="dup.item_a_name"
-                class="w-full h-full object-cover"
-                loading="lazy"
+                  v-if="dup.item_a?.source === 'local' && dup.item_a?.id"
+                  :src="thumbnailUrl(dup.item_a.id, 'local')"
+                  :alt="dup.item_a_name"
+                  class="w-full h-full object-cover"
+                  loading="lazy"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-server" class="size-8 text-muted" />
+                <UIcon name="i-lucide-server" class="size-8 text-muted"/>
               </div>
             </div>
             <p v-if="dup.item_a?.id" class="text-[10px] text-muted font-mono truncate">{{ dup.item_a.id }}</p>
@@ -181,23 +181,23 @@ const STATUS_COLORS: Record<string, BadgeColor> = {
           <div class="p-4 space-y-2">
             <div class="flex items-center gap-2">
               <UBadge
-                :label="dup.item_b?.source ?? 'local'"
-                :color="dup.item_b?.source === 'local' ? 'primary' : 'neutral'"
-                variant="subtle"
-                size="xs"
+                  :label="dup.item_b?.source ?? 'local'"
+                  :color="dup.item_b?.source === 'local' ? 'primary' : 'neutral'"
+                  variant="subtle"
+                  size="xs"
               />
               <p class="text-sm font-medium truncate" :title="dup.item_b_name">{{ dup.item_b_name }}</p>
             </div>
             <div class="aspect-video rounded-lg overflow-hidden bg-muted">
               <img
-                v-if="dup.item_b?.source === 'local' && dup.item_b?.id"
-                :src="thumbnailUrl(dup.item_b.id, 'local')"
-                :alt="dup.item_b_name"
-                class="w-full h-full object-cover"
-                loading="lazy"
+                  v-if="dup.item_b?.source === 'local' && dup.item_b?.id"
+                  :src="thumbnailUrl(dup.item_b.id, 'local')"
+                  :alt="dup.item_b_name"
+                  class="w-full h-full object-cover"
+                  loading="lazy"
               />
               <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-server" class="size-8 text-muted" />
+                <UIcon name="i-lucide-server" class="size-8 text-muted"/>
               </div>
             </div>
             <p v-if="dup.item_b?.id" class="text-[10px] text-muted font-mono truncate">{{ dup.item_b.id }}</p>
@@ -207,40 +207,40 @@ const STATUS_COLORS: Record<string, BadgeColor> = {
         <!-- Resolution actions (only for pending) -->
         <div v-if="dup.status === 'pending'" class="flex flex-wrap gap-2 px-4 py-3 border-t border-default bg-muted/10">
           <UButton
-            icon="i-lucide-trash-2"
-            label="Remove A"
-            size="xs"
-            color="error"
-            variant="outline"
-            :loading="resolvingId === dup.id"
-            @click="resolve(dup.id, 'remove_a')"
+              icon="i-lucide-trash-2"
+              label="Remove A"
+              size="xs"
+              color="error"
+              variant="outline"
+              :loading="resolvingId === dup.id"
+              @click="resolve(dup.id, 'remove_a')"
           />
           <UButton
-            icon="i-lucide-trash-2"
-            label="Remove B"
-            size="xs"
-            color="error"
-            variant="outline"
-            :loading="resolvingId === dup.id"
-            @click="resolve(dup.id, 'remove_b')"
+              icon="i-lucide-trash-2"
+              label="Remove B"
+              size="xs"
+              color="error"
+              variant="outline"
+              :loading="resolvingId === dup.id"
+              @click="resolve(dup.id, 'remove_b')"
           />
           <UButton
-            icon="i-lucide-copy"
-            label="Keep Both"
-            size="xs"
-            color="success"
-            variant="outline"
-            :loading="resolvingId === dup.id"
-            @click="resolve(dup.id, 'keep_both')"
+              icon="i-lucide-copy"
+              label="Keep Both"
+              size="xs"
+              color="success"
+              variant="outline"
+              :loading="resolvingId === dup.id"
+              @click="resolve(dup.id, 'keep_both')"
           />
           <UButton
-            icon="i-lucide-eye-off"
-            label="Ignore"
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            :loading="resolvingId === dup.id"
-            @click="resolve(dup.id, 'ignore')"
+              icon="i-lucide-eye-off"
+              label="Ignore"
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              :loading="resolvingId === dup.id"
+              @click="resolve(dup.id, 'ignore')"
           />
         </div>
         <!-- Resolved info -->

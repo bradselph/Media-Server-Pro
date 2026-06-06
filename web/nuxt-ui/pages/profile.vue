@@ -1,19 +1,34 @@
 <script setup lang="ts">
-import type { UserPreferences, WatchHistoryItem, StorageUsage, PermissionsInfo, APIToken, APITokenCreated, RatedItem, UserProfile } from '~/types/api'
-import { THEMES, type ThemeValue } from '~/stores/theme'
-import { getDisplayTitle } from '~/utils/mediaTitle'
-import { formatRelativeDate, formatDuration } from '~/utils/format'
-import { useAPITokensApi, useRatingsApi, useSuggestionsApi, useSavedSearchesApi, useMySessionsApi } from '~/composables/useApiEndpoints'
-import type { SavedSearch, MySession } from '~/composables/useApiEndpoints'
+import type {
+  APIToken,
+  APITokenCreated,
+  PermissionsInfo,
+  RatedItem,
+  StorageUsage,
+  UserPreferences,
+  UserProfile,
+  WatchHistoryItem
+} from '~/types/api'
+import {THEMES, type ThemeValue} from '~/stores/theme'
+import {getDisplayTitle} from '~/utils/mediaTitle'
+import {formatDuration, formatRelativeDate} from '~/utils/format'
+import type {MySession, SavedSearch} from '~/composables/useApiEndpoints'
+import {
+  useAPITokensApi,
+  useMySessionsApi,
+  useRatingsApi,
+  useSavedSearchesApi,
+  useSuggestionsApi
+} from '~/composables/useApiEndpoints'
 
 const ACCENT_HUE_KEY = 'msp-accent-hue'
 const ACCENT_PRESETS = [
-  { hue: 220, label: 'Blue' },
-  { hue: 280, label: 'Purple' },
-  { hue: 340, label: 'Pink' },
-  { hue: 20, label: 'Orange' },
-  { hue: 80, label: 'Lime' },
-  { hue: 160, label: 'Teal' },
+  {hue: 220, label: 'Blue'},
+  {hue: 280, label: 'Purple'},
+  {hue: 340, label: 'Pink'},
+  {hue: 20, label: 'Orange'},
+  {hue: 80, label: 'Lime'},
+  {hue: 160, label: 'Teal'},
 ]
 const accentHue = ref(220)
 
@@ -33,9 +48,10 @@ function applyAccentHue(hue: number) {
   if (accentHueCommitTimer) clearTimeout(accentHueCommitTimer)
   accentHueCommitTimer = setTimeout(() => {
     accentHueCommitTimer = null
-    updatePreferences({ accent_hue: clamped }).then((saved) => {
-      if (authStore.user) authStore.user.preferences = { ...saved }
-    }).catch(() => { /* non-fatal: localStorage still has the value */ })
+    updatePreferences({accent_hue: clamped}).then((saved) => {
+      if (authStore.user) authStore.user.preferences = {...saved}
+    }).catch(() => { /* non-fatal: localStorage still has the value */
+    })
   }, ACCENT_HUE_COMMIT_DEBOUNCE_MS)
 }
 
@@ -47,47 +63,54 @@ onMounted(() => {
 })
 
 const QUALITY_OPTIONS = [
-  { label: 'Auto', value: 'auto' },
-  { label: '1080p', value: '1080p' },
-  { label: '720p', value: '720p' },
-  { label: '480p', value: '480p' },
-  { label: '360p', value: '360p' },
+  {label: 'Auto', value: 'auto'},
+  {label: '1080p', value: '1080p'},
+  {label: '720p', value: '720p'},
+  {label: '480p', value: '480p'},
+  {label: '360p', value: '360p'},
 ]
 
 const SPEED_OPTIONS = [
-  { label: '0.5x', value: 0.5 },
-  { label: '0.75x', value: 0.75 },
-  { label: '1x (Normal)', value: 1 },
-  { label: '1.25x', value: 1.25 },
-  { label: '1.5x', value: 1.5 },
-  { label: '2x', value: 2 },
+  {label: '0.5x', value: 0.5},
+  {label: '0.75x', value: 0.75},
+  {label: '1x (Normal)', value: 1},
+  {label: '1.25x', value: 1.25},
+  {label: '1.5x', value: 1.5},
+  {label: '2x', value: 2},
 ]
 
 const ITEMS_PER_PAGE_OPTIONS = [
-  { label: '12', value: 12 },
-  { label: '20', value: 20 },
-  { label: '24', value: 24 },
-  { label: '48', value: 48 },
-  { label: '96', value: 96 },
+  {label: '12', value: 12},
+  {label: '20', value: 20},
+  {label: '24', value: 24},
+  {label: '48', value: 48},
+  {label: '96', value: 96},
 ]
 
 const SKIP_INTERVAL_OPTIONS = [
-  { label: '5 seconds', value: 5 },
-  { label: '10 seconds (default)', value: 10 },
-  { label: '15 seconds', value: 15 },
-  { label: '30 seconds', value: 30 },
-  { label: '60 seconds', value: 60 },
-  { label: '90 seconds', value: 90 },
+  {label: '5 seconds', value: 5},
+  {label: '10 seconds (default)', value: 10},
+  {label: '15 seconds', value: 15},
+  {label: '30 seconds', value: 30},
+  {label: '60 seconds', value: 60},
+  {label: '90 seconds', value: 90},
 ]
 
-definePageMeta({ layout: 'default', title: 'Profile', middleware: 'auth' })
+definePageMeta({layout: 'default', title: 'Profile', middleware: 'auth'})
 
 const authStore = useAuthStore()
 const themeStore = useThemeStore()
 const router = useRouter()
-const { changePassword, adminChangePassword, getPreferences, updatePreferences, requestDataDeletion, deleteAccount } = useApiEndpoints()
-const { list: listHistory, remove: removeHistory, clear: clearHistory } = useWatchHistoryApi()
-const { getUsage, getPermissions } = useStorageApi()
+const {
+  changePassword,
+  adminChangePassword,
+  getPreferences,
+  updatePreferences,
+  requestDataDeletion,
+  deleteAccount
+} = useApiEndpoints()
+const {list: listHistory, remove: removeHistory, clear: clearHistory} = useWatchHistoryApi()
+const {getUsage, getPermissions} = useStorageApi()
 
 const tokensApi = useAPITokensApi()
 const ratingsApi = useRatingsApi()
@@ -101,7 +124,9 @@ const myProfile = ref<UserProfile | null>(null)
 const resetRecLoading = ref(false)
 
 let profileMounted = false
-onMounted(() => { profileMounted = true })
+onMounted(() => {
+  profileMounted = true
+})
 
 async function resetRecommendations() {
   resetRecLoading.value = true
@@ -109,10 +134,10 @@ async function resetRecommendations() {
     await suggestionsApi.resetMyProfile()
     if (!profileMounted) return
     myProfile.value = null
-    toast.add({ title: 'Recommendation history cleared', color: 'success', icon: 'i-lucide-check' })
+    toast.add({title: 'Recommendation history cleared', color: 'success', icon: 'i-lucide-check'})
   } catch {
     if (!profileMounted) return
-    toast.add({ title: 'Failed to reset recommendations', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: 'Failed to reset recommendations', color: 'error', icon: 'i-lucide-x'})
   } finally {
     if (profileMounted) resetRecLoading.value = false
   }
@@ -125,7 +150,8 @@ async function loadStorageUsage() {
     if (u.status === 'fulfilled') storageUsage.value = u.value
     if (p.status === 'fulfilled') permissionsInfo.value = p.value
     if (prof.status === 'fulfilled') myProfile.value = prof.value
-  } catch { /* optional */ }
+  } catch { /* optional */
+  }
 }
 
 function formatWatchTime(seconds: number): string {
@@ -140,9 +166,9 @@ function formatWatchTime(seconds: number): string {
 const topCategories = computed(() => {
   if (!myProfile.value?.category_scores) return []
   return Object.entries(myProfile.value.category_scores)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 5)
-    .map(([name, score]) => ({ name, score }))
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([name, score]) => ({name, score}))
 })
 
 const topTypes = computed(() => {
@@ -150,8 +176,12 @@ const topTypes = computed(() => {
   const entries = Object.entries(myProfile.value.type_preferences)
   const total = entries.reduce((sum, [, v]) => sum + v, 0)
   return entries
-    .sort(([, a], [, b]) => b - a)
-    .map(([name, count]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), count, pct: total > 0 ? Math.round((count / total) * 100) : 0 }))
+      .sort(([, a], [, b]) => b - a)
+      .map(([name, count]) => ({
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        count,
+        pct: total > 0 ? Math.round((count / total) * 100) : 0
+      }))
 })
 
 // Preferences
@@ -169,15 +199,21 @@ async function loadPrefs() {
     if (typeof p.accent_hue === 'number') accentHue.value = p.accent_hue
   } catch (e: unknown) {
     if (!profileMounted) return
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load preferences', color: 'error', icon: 'i-lucide-alert-circle' })
-  } finally { if (profileMounted) prefsLoading.value = false }
+    toast.add({
+      title: e instanceof Error ? e.message : 'Failed to load preferences',
+      color: 'error',
+      icon: 'i-lucide-alert-circle'
+    })
+  } finally {
+    if (profileMounted) prefsLoading.value = false
+  }
 }
 
 async function savePrefs() {
   if (prefsSaving.value) return
   prefsSaving.value = true
   try {
-    const toSave = { ...prefs.value }
+    const toSave = {...prefs.value}
     if (toSave.default_quality === 'auto') toSave.default_quality = ''
     const saved = await updatePreferences(toSave)
     // Sync prefs.value from the backend response so any normalised values
@@ -187,11 +223,11 @@ async function savePrefs() {
     // Push the updated preferences into the auth store so that the player,
     // index page, and any other component reading authStore.user.preferences
     // picks up the new values immediately without needing a page reload.
-    if (authStore.user) authStore.user.preferences = { ...saved }
+    if (authStore.user) authStore.user.preferences = {...saved}
     if (prefs.value.theme) themeStore.setTheme(prefs.value.theme as ThemeValue)
-    toast.add({ title: 'Preferences saved', color: 'success', icon: 'i-lucide-check' })
+    toast.add({title: 'Preferences saved', color: 'success', icon: 'i-lucide-check'})
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x'})
   } finally {
     prefsSaving.value = false
   }
@@ -213,8 +249,14 @@ async function loadHistory() {
     history.value = result ?? []
   } catch (e: unknown) {
     if (!profileMounted) return
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load watch history', color: 'error', icon: 'i-lucide-alert-circle' })
-  } finally { if (profileMounted) historyLoading.value = false }
+    toast.add({
+      title: e instanceof Error ? e.message : 'Failed to load watch history',
+      color: 'error',
+      icon: 'i-lucide-alert-circle'
+    })
+  } finally {
+    if (profileMounted) historyLoading.value = false
+  }
 }
 
 async function removeItem(id: string) {
@@ -222,9 +264,9 @@ async function removeItem(id: string) {
   try {
     await removeHistory(id)
     history.value = history.value.filter(h => h.media_id !== id)
-    toast.add({ title: 'Removed from history', color: 'success', icon: 'i-lucide-check' })
+    toast.add({title: 'Removed from history', color: 'success', icon: 'i-lucide-check'})
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x'})
   }
 }
 
@@ -234,7 +276,7 @@ const exportingCsv = ref(false)
 async function exportWatchHistoryCsv() {
   exportingCsv.value = true
   try {
-    const res = await fetch('/api/watch-history/export', { credentials: 'include' })
+    const res = await fetch('/api/watch-history/export', {credentials: 'include'})
     if (!res.ok) throw new Error(`Export failed: ${res.status}`)
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
@@ -244,7 +286,7 @@ async function exportWatchHistoryCsv() {
     a.click()
     URL.revokeObjectURL(url)
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Export failed', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Export failed', color: 'error', icon: 'i-lucide-x'})
   } finally {
     exportingCsv.value = false
   }
@@ -255,9 +297,9 @@ async function doClearHistory() {
   try {
     await clearHistory()
     history.value = []
-    toast.add({ title: 'Watch history cleared', color: 'success', icon: 'i-lucide-check' })
+    toast.add({title: 'Watch history cleared', color: 'success', icon: 'i-lucide-check'})
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x'})
   }
 }
 
@@ -282,19 +324,21 @@ const pagedHistory = computed(() => {
   return filteredHistory.value.slice(start, start + historyPerPage)
 })
 
-watch([historySearch, historyFilter], () => { historyPage.value = 1 })
+watch([historySearch, historyFilter], () => {
+  historyPage.value = 1
+})
 
 // Password
-const pw = reactive({ current: '', new: '', confirm: '' })
+const pw = reactive({current: '', new: '', confirm: ''})
 const pwLoading = ref(false)
 
 async function handleChangePassword() {
   if (pw.new !== pw.confirm) {
-    toast.add({ title: 'Passwords do not match', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: 'Passwords do not match', color: 'error', icon: 'i-lucide-x'})
     return
   }
   if (pw.new.length < 8) {
-    toast.add({ title: 'Password must be at least 8 characters', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: 'Password must be at least 8 characters', color: 'error', icon: 'i-lucide-x'})
     return
   }
   pwLoading.value = true
@@ -304,10 +348,12 @@ async function handleChangePassword() {
     } else {
       await changePassword(pw.current, pw.new)
     }
-    toast.add({ title: 'Password changed', color: 'success', icon: 'i-lucide-check' })
-    pw.current = ''; pw.new = ''; pw.confirm = ''
+    toast.add({title: 'Password changed', color: 'success', icon: 'i-lucide-check'})
+    pw.current = '';
+    pw.new = '';
+    pw.confirm = ''
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x'})
   } finally {
     pwLoading.value = false
   }
@@ -326,9 +372,14 @@ async function handleDeletionRequest() {
     deletionRequestOpen.value = false
     deletionSubmitted.value = true
     deletionReason.value = ''
-    toast.add({ title: 'Request submitted', description: 'An administrator will review your request.', color: 'success', icon: 'i-lucide-check' })
+    toast.add({
+      title: 'Request submitted',
+      description: 'An administrator will review your request.',
+      color: 'success',
+      icon: 'i-lucide-check'
+    })
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to submit request', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Failed to submit request', color: 'error', icon: 'i-lucide-x'})
   } finally {
     deletionSubmitting.value = false
   }
@@ -361,7 +412,7 @@ const ratingsLoading = ref(false)
 
 const ratingsDistribution = computed(() => {
   if (!myRatings.value.length) return []
-  const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+  const counts: Record<number, number> = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
   for (const r of myRatings.value) {
     const star = Math.round(r.rating)
     if (star >= 1 && star <= 5) counts[star]++
@@ -379,8 +430,10 @@ async function loadMyRatings() {
   try {
     const result = await ratingsApi.getMyRatings()
     if (profileMounted) myRatings.value = result ?? []
-  } catch { /* non-critical */ }
-  finally { if (profileMounted) ratingsLoading.value = false }
+  } catch { /* non-critical */
+  } finally {
+    if (profileMounted) ratingsLoading.value = false
+  }
 }
 
 // Saved searches (retention plan B.5)
@@ -392,17 +445,23 @@ async function loadSavedSearches() {
   savedSearchesLoading.value = true
   try {
     savedSearches.value = (await savedSearchesApi.list()) ?? []
-  } catch { /* non-critical */ }
-  finally { if (profileMounted) savedSearchesLoading.value = false }
+  } catch { /* non-critical */
+  } finally {
+    if (profileMounted) savedSearchesLoading.value = false
+  }
 }
 
 async function deleteSavedSearch(id: string) {
   try {
     await savedSearchesApi.delete(id)
     savedSearches.value = savedSearches.value.filter(s => s.id !== id)
-    toast.add({ title: 'Saved search removed', color: 'success', icon: 'i-lucide-check' })
+    toast.add({title: 'Saved search removed', color: 'success', icon: 'i-lucide-check'})
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Could not delete saved search', color: 'error', icon: 'i-lucide-alert-circle' })
+    toast.add({
+      title: e instanceof Error ? e.message : 'Could not delete saved search',
+      color: 'error',
+      icon: 'i-lucide-alert-circle'
+    })
   }
 }
 
@@ -417,12 +476,18 @@ let revealedTokenTimer: ReturnType<typeof setTimeout> | null = null
 
 function startTokenAutoDismiss() {
   if (revealedTokenTimer) clearTimeout(revealedTokenTimer)
-  revealedTokenTimer = setTimeout(() => { revealedToken.value = null; revealedTokenId.value = null }, 60000)
+  revealedTokenTimer = setTimeout(() => {
+    revealedToken.value = null;
+    revealedTokenId.value = null
+  }, 60000)
 }
 
 watch(revealedToken, (val) => {
   if (val) startTokenAutoDismiss()
-  else if (revealedTokenTimer) { clearTimeout(revealedTokenTimer); revealedTokenTimer = null }
+  else if (revealedTokenTimer) {
+    clearTimeout(revealedTokenTimer);
+    revealedTokenTimer = null
+  }
 })
 
 onUnmounted(() => {
@@ -437,9 +502,9 @@ async function copyToken() {
   if (!revealedToken.value) return
   try {
     await navigator.clipboard.writeText(revealedToken.value)
-    toast.add({ title: 'Token copied to clipboard', color: 'success', icon: 'i-lucide-check' })
+    toast.add({title: 'Token copied to clipboard', color: 'success', icon: 'i-lucide-check'})
   } catch {
-    toast.add({ title: 'Failed to copy token', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: 'Failed to copy token', color: 'error', icon: 'i-lucide-x'})
   }
 }
 
@@ -448,8 +513,10 @@ async function loadTokens() {
   try {
     const result = await tokensApi.list()
     if (profileMounted) tokens.value = result ?? []
-  } catch { /* non-critical */ }
-  finally { if (profileMounted) tokensLoading.value = false }
+  } catch { /* non-critical */
+  } finally {
+    if (profileMounted) tokensLoading.value = false
+  }
 }
 
 async function createToken() {
@@ -459,10 +526,16 @@ async function createToken() {
     const created = await tokensApi.create(newTokenName.value.trim()) as APITokenCreated
     revealedToken.value = created.token
     revealedTokenId.value = created.id
-    tokens.value = [{ id: created.id, name: created.name, last_used_at: created.last_used_at, expires_at: created.expires_at, created_at: created.created_at }, ...tokens.value]
+    tokens.value = [{
+      id: created.id,
+      name: created.name,
+      last_used_at: created.last_used_at,
+      expires_at: created.expires_at,
+      created_at: created.created_at
+    }, ...tokens.value]
     newTokenName.value = ''
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to create token', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Failed to create token', color: 'error', icon: 'i-lucide-x'})
   } finally {
     newTokenCreating.value = false
   }
@@ -472,10 +545,13 @@ async function revokeToken(id: string) {
   try {
     await tokensApi.delete(id)
     tokens.value = tokens.value.filter(t => t.id !== id)
-    if (revealedTokenId.value === id) { revealedToken.value = null; revealedTokenId.value = null }
-    toast.add({ title: 'Token revoked', color: 'success', icon: 'i-lucide-check' })
+    if (revealedTokenId.value === id) {
+      revealedToken.value = null;
+      revealedTokenId.value = null
+    }
+    toast.add({title: 'Token revoked', color: 'success', icon: 'i-lucide-check'})
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x'})
   }
 }
 
@@ -489,8 +565,10 @@ async function loadSessions() {
   try {
     const result = await sessionsApi.list()
     if (profileMounted) sessions.value = result ?? []
-  } catch { /* non-critical */ }
-  finally { if (profileMounted) sessionsLoading.value = false }
+  } catch { /* non-critical */
+  } finally {
+    if (profileMounted) sessionsLoading.value = false
+  }
 }
 
 async function revokeSession(id: string) {
@@ -498,9 +576,9 @@ async function revokeSession(id: string) {
   try {
     await sessionsApi.revoke(id)
     sessions.value = sessions.value.filter(s => s.id !== id)
-    toast.add({ title: 'Session signed out', color: 'success', icon: 'i-lucide-check' })
+    toast.add({title: 'Session signed out', color: 'success', icon: 'i-lucide-check'})
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to revoke session', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Failed to revoke session', color: 'error', icon: 'i-lucide-x'})
   } finally {
     sessionRevoking.value = null
   }
@@ -511,33 +589,45 @@ async function revokeSession(id: string) {
 function describeUserAgent(ua: string): string {
   if (!ua) return 'Unknown device'
   const browser = /Edg\//.test(ua) ? 'Edge'
-    : /Firefox\//.test(ua) ? 'Firefox'
-    : /Chrome\//.test(ua) ? 'Chrome'
-    : /Safari\//.test(ua) ? 'Safari'
-    : 'Browser'
+      : /Firefox\//.test(ua) ? 'Firefox'
+          : /Chrome\//.test(ua) ? 'Chrome'
+              : /Safari\//.test(ua) ? 'Safari'
+                  : 'Browser'
   const os = /Windows/.test(ua) ? 'Windows'
-    : /Android/.test(ua) ? 'Android'
-    : /iPhone|iPad|iOS/.test(ua) ? 'iOS'
-    : /Mac OS X|Macintosh/.test(ua) ? 'macOS'
-    : /Linux/.test(ua) ? 'Linux'
-    : 'Unknown'
+      : /Android/.test(ua) ? 'Android'
+          : /iPhone|iPad|iOS/.test(ua) ? 'iOS'
+              : /Mac OS X|Macintosh/.test(ua) ? 'macOS'
+                  : /Linux/.test(ua) ? 'Linux'
+                      : 'Unknown'
   return `${browser} on ${os}`
 }
 
 let hasFetched = false
+
 function loadAll() {
   hasFetched = true
-  loadPrefs(); loadHistory(); loadStorageUsage(); loadTokens(); loadMyRatings(); loadSavedSearches(); loadSessions()
+  loadPrefs();
+  loadHistory();
+  loadStorageUsage();
+  loadTokens();
+  loadMyRatings();
+  loadSavedSearches();
+  loadSessions()
 }
-onMounted(() => { if (!authStore.isLoading && authStore.user) loadAll() })
-watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
+
+onMounted(() => {
+  if (!authStore.isLoading && authStore.user) loadAll()
+})
+watch(() => authStore.user, (user) => {
+  if (user && !hasFetched) loadAll()
+})
 </script>
 
 <template>
   <UContainer class="py-6 max-w-4xl space-y-6">
     <!-- Loading -->
     <div v-if="authStore.isLoading" class="flex justify-center py-16">
-      <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
+      <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary"/>
     </div>
 
     <template v-else-if="authStore.user">
@@ -545,36 +635,45 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
       <UCard>
         <template #header>
           <div class="flex items-center gap-2 font-semibold">
-            <UIcon name="i-lucide-user" class="size-4" />
+            <UIcon name="i-lucide-user" class="size-4"/>
             Account
           </div>
         </template>
         <div class="flex items-center gap-4">
-          <div class="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xl font-bold">
+          <div
+              class="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xl font-bold">
             {{ authStore.username[0]?.toUpperCase() }}
           </div>
           <div class="flex-1 min-w-0">
             <p class="font-semibold text-lg">{{ authStore.username }}</p>
             <div class="flex items-center gap-2 mt-1 flex-wrap">
-              <UBadge :label="authStore.user.role" :color="authStore.isAdmin ? 'warning' : 'neutral'" variant="subtle" size="xs" />
-              <span v-if="authStore.user.created_at" class="text-sm text-muted">Member since {{ new Date(authStore.user.created_at).toLocaleDateString() }}</span>
-              <span v-if="authStore.user.previous_last_login" class="text-sm text-muted">· Previous session: {{ new Date(authStore.user.previous_last_login).toLocaleDateString() }}</span>
+              <UBadge :label="authStore.user.role" :color="authStore.isAdmin ? 'warning' : 'neutral'" variant="subtle"
+                      size="xs"/>
+              <span v-if="authStore.user.created_at" class="text-sm text-muted">Member since {{
+                  new Date(authStore.user.created_at).toLocaleDateString()
+                }}</span>
+              <span v-if="authStore.user.previous_last_login" class="text-sm text-muted">· Previous session: {{
+                  new Date(authStore.user.previous_last_login).toLocaleDateString()
+                }}</span>
             </div>
             <div v-if="storageUsage" class="mt-2 max-w-xs space-y-1">
               <div class="flex justify-between text-xs text-muted">
                 <span>Storage</span>
-                <span>{{ storageUsage.used_gb.toFixed(2) }} GB / {{ storageUsage.quota_gb > 0 ? storageUsage.quota_gb + ' GB' : 'Unlimited' }}</span>
+                <span>{{
+                    storageUsage.used_gb.toFixed(2)
+                  }} GB / {{ storageUsage.quota_gb > 0 ? storageUsage.quota_gb + ' GB' : 'Unlimited' }}</span>
               </div>
-              <UProgress :value="storageUsage.quota_gb > 0 ? storageUsage.percentage : 0" size="xs" :color="storageUsage.percentage > 90 ? 'error' : storageUsage.percentage > 70 ? 'warning' : 'success'" />
+              <UProgress :value="storageUsage.quota_gb > 0 ? storageUsage.percentage : 0" size="xs"
+                         :color="storageUsage.percentage > 90 ? 'error' : storageUsage.percentage > 70 ? 'warning' : 'success'"/>
             </div>
             <div v-if="authStore.isAdmin && permissionsInfo?.capabilities" class="mt-2 flex flex-wrap gap-1.5">
               <UBadge
-                v-for="[cap, allowed] in Object.entries(permissionsInfo.capabilities)"
-                :key="cap"
-                :label="cap.replace(/^can/, '').replace(/([A-Z])/g, ' $1').trim()"
-                :color="allowed ? 'success' : 'neutral'"
-                :variant="allowed ? 'subtle' : 'outline'"
-                size="xs"
+                  v-for="[cap, allowed] in Object.entries(permissionsInfo.capabilities)"
+                  :key="cap"
+                  :label="cap.replace(/^can/, '').replace(/([A-Z])/g, ' $1').trim()"
+                  :color="allowed ? 'success' : 'neutral'"
+                  :variant="allowed ? 'subtle' : 'outline'"
+                  size="xs"
               />
             </div>
           </div>
@@ -585,7 +684,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
       <UCard v-if="myProfile && (myProfile.total_views > 0 || myProfile.total_watch_time > 0)">
         <template #header>
           <div class="flex items-center gap-2 font-semibold">
-            <UIcon name="i-lucide-bar-chart-2" class="size-4" />
+            <UIcon name="i-lucide-bar-chart-2" class="size-4"/>
             My Stats
           </div>
         </template>
@@ -600,7 +699,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
           </div>
           <div v-if="topTypes.length > 0" class="col-span-2 flex items-center gap-3">
             <span v-for="t in topTypes" :key="t.name" class="flex items-center gap-1 text-sm">
-              <UBadge :label="t.name" color="primary" variant="subtle" size="xs" />
+              <UBadge :label="t.name" color="primary" variant="subtle" size="xs"/>
               <span class="text-muted text-xs">{{ t.pct }}%</span>
             </span>
           </div>
@@ -612,8 +711,8 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               <span class="text-sm w-28 truncate capitalize">{{ cat.name }}</span>
               <div class="flex-1 bg-muted/20 rounded-full h-1.5 overflow-hidden">
                 <div
-                  class="bg-primary h-full rounded-full transition-all"
-                  :style="{ width: `${Math.min(100, (cat.score / (topCategories[0]?.score || 1)) * 100)}%` }"
+                    class="bg-primary h-full rounded-full transition-all"
+                    :style="{ width: `${Math.min(100, (cat.score / (topCategories[0]?.score || 1)) * 100)}%` }"
                 />
               </div>
               <span class="text-xs text-muted w-8 text-right">{{ cat.score }}</span>
@@ -622,15 +721,16 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
         </div>
         <div class="mt-4 pt-3 border-t border-default">
           <UButton
-            icon="i-lucide-rotate-ccw"
-            label="Reset Recommendations"
-            size="xs"
-            variant="outline"
-            color="neutral"
-            :loading="resetRecLoading"
-            @click="resetRecommendations"
+              icon="i-lucide-rotate-ccw"
+              label="Reset Recommendations"
+              size="xs"
+              variant="outline"
+              color="neutral"
+              :loading="resetRecLoading"
+              @click="resetRecommendations"
           />
-          <p class="text-xs text-muted mt-1.5">Clears your watch history and genre scores used to personalise recommendations.</p>
+          <p class="text-xs text-muted mt-1.5">Clears your watch history and genre scores used to personalise
+            recommendations.</p>
         </div>
       </UCard>
 
@@ -638,52 +738,56 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
       <UCard v-if="myRatings.length > 0 || ratingsLoading">
         <template #header>
           <div class="flex items-center gap-2 font-semibold">
-            <UIcon name="i-lucide-star" class="size-4" />
+            <UIcon name="i-lucide-star" class="size-4"/>
             My Ratings
-            <UBadge v-if="myRatings.length > 0" :label="String(myRatings.length)" color="neutral" variant="subtle" size="xs" />
+            <UBadge v-if="myRatings.length > 0" :label="String(myRatings.length)" color="neutral" variant="subtle"
+                    size="xs"/>
           </div>
         </template>
         <div v-if="ratingsLoading" class="flex justify-center py-4">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
         </div>
         <template v-else>
           <div v-if="ratingsDistribution.length > 0" class="mb-3 pb-3 border-b border-default space-y-0.5">
             <div v-for="row in ratingsDistribution" :key="row.star" class="flex items-center gap-2">
               <span class="text-xs text-muted w-5 shrink-0">{{ row.star }}★</span>
               <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                <div class="h-full bg-yellow-400 rounded-full" :style="{ width: `${row.pct}%` }" />
+                <div class="h-full bg-yellow-400 rounded-full" :style="{ width: `${row.pct}%` }"/>
               </div>
               <span class="text-xs text-muted w-4 text-right shrink-0">{{ row.count }}</span>
             </div>
           </div>
-        <div class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-          <NuxtLink
-            v-for="item in myRatings"
-            :key="item.media_id"
-            :to="`/player?id=${encodeURIComponent(item.media_id)}`"
-            class="group shrink-0 w-36"
-          >
-            <div class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
-              <img
-                v-if="item.thumbnail_url"
-                :src="item.thumbnail_url"
-                :alt="item.name"
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                loading="lazy"
-              />
-              <div v-else class="w-full h-full flex items-center justify-center">
-                <UIcon name="i-lucide-film" class="size-6 text-muted" />
+          <div class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            <NuxtLink
+                v-for="item in myRatings"
+                :key="item.media_id"
+                :to="`/player?id=${encodeURIComponent(item.media_id)}`"
+                class="group shrink-0 w-36"
+            >
+              <div
+                  class="relative aspect-video rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
+                <img
+                    v-if="item.thumbnail_url"
+                    :src="item.thumbnail_url"
+                    :alt="item.name"
+                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                    loading="lazy"
+                />
+                <div v-else class="w-full h-full flex items-center justify-center">
+                  <UIcon name="i-lucide-film" class="size-6 text-muted"/>
+                </div>
+                <!-- Rating badge -->
+                <div
+                    class="absolute bottom-1 right-1 bg-black/70 text-[var(--rating-star)] text-xs px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                  <UIcon name="i-lucide-star" class="size-3"/>
+                  {{ item.rating.toFixed(1) }}
+                </div>
               </div>
-              <!-- Rating badge -->
-              <div class="absolute bottom-1 right-1 bg-black/70 text-[var(--rating-star)] text-xs px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                <UIcon name="i-lucide-star" class="size-3" />
-                {{ item.rating.toFixed(1) }}
-              </div>
-            </div>
-            <p class="text-xs font-medium truncate group-hover:text-primary transition-colors" :title="getDisplayTitle(item)">{{ getDisplayTitle(item) }}</p>
-            <p class="text-xs text-muted truncate">{{ item.category || item.media_type }}</p>
-          </NuxtLink>
-        </div>
+              <p class="text-xs font-medium truncate group-hover:text-primary transition-colors"
+                 :title="getDisplayTitle(item)">{{ getDisplayTitle(item) }}</p>
+              <p class="text-xs text-muted truncate">{{ item.category || item.media_type }}</p>
+            </NuxtLink>
+          </div>
         </template>
       </UCard>
 
@@ -691,89 +795,89 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
       <UCard>
         <template #header>
           <div class="flex items-center gap-2 font-semibold">
-            <UIcon name="i-lucide-sliders-horizontal" class="size-4" />
+            <UIcon name="i-lucide-sliders-horizontal" class="size-4"/>
             Preferences
           </div>
         </template>
         <div v-if="prefsLoading" class="flex justify-center py-6">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
         </div>
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <UFormField label="Theme">
             <USelect
-              :model-value="prefs.theme as ThemeValue"
-              :items="THEMES.map(t => ({ label: t.name, value: t.value }))"
-              @update:model-value="prefs.theme = $event as string"
+                :model-value="prefs.theme as ThemeValue"
+                :items="THEMES.map(t => ({ label: t.name, value: t.value }))"
+                @update:model-value="prefs.theme = $event as string"
             />
           </UFormField>
           <UFormField label="Default Quality">
             <USelect
-              v-model="prefs.default_quality"
-              :items="QUALITY_OPTIONS"
+                v-model="prefs.default_quality"
+                :items="QUALITY_OPTIONS"
             />
           </UFormField>
           <UFormField label="Playback Speed">
             <USelect
-              v-model="prefs.playback_speed"
-              :items="SPEED_OPTIONS"
+                v-model="prefs.playback_speed"
+                :items="SPEED_OPTIONS"
             />
           </UFormField>
           <UFormField label="Items per Page">
             <USelect
-              v-model="prefs.items_per_page"
-              :items="ITEMS_PER_PAGE_OPTIONS"
+                v-model="prefs.items_per_page"
+                :items="ITEMS_PER_PAGE_OPTIONS"
             />
           </UFormField>
           <UFormField label="Accent Color" description="Sets the primary highlight color across the site">
             <div class="space-y-3">
               <div class="flex items-center gap-3">
                 <input
-                  v-model.number="accentHue"
-                  type="range"
-                  min="0"
-                  max="360"
-                  step="1"
-                  class="flex-1 accent-[var(--accent)]"
-                  @input="applyAccentHue(accentHue)"
+                    v-model.number="accentHue"
+                    type="range"
+                    min="0"
+                    max="360"
+                    step="1"
+                    class="flex-1 accent-[var(--accent)]"
+                    @input="applyAccentHue(accentHue)"
                 />
                 <div
-                  class="size-7 rounded-full border-2 border-white/20 shrink-0"
-                  :style="{ background: `oklch(62% 0.13 ${accentHue}deg)` }"
+                    class="size-7 rounded-full border-2 border-white/20 shrink-0"
+                    :style="{ background: `oklch(62% 0.13 ${accentHue}deg)` }"
                 />
               </div>
               <div class="flex gap-2 flex-wrap">
                 <button
-                  v-for="preset in ACCENT_PRESETS"
-                  :key="preset.hue"
-                  class="size-7 rounded-full border-2 transition-all hover:scale-110"
-                  :style="{
+                    v-for="preset in ACCENT_PRESETS"
+                    :key="preset.hue"
+                    class="size-7 rounded-full border-2 transition-all hover:scale-110"
+                    :style="{
                     background: `oklch(62% 0.13 ${preset.hue}deg)`,
                     borderColor: accentHue === preset.hue ? 'white' : 'transparent',
                   }"
-                  :title="preset.label"
-                  :aria-label="`Set accent to ${preset.label}`"
-                  @click="accentHue = preset.hue; applyAccentHue(preset.hue)"
+                    :title="preset.label"
+                    :aria-label="`Set accent to ${preset.label}`"
+                    @click="accentHue = preset.hue; applyAccentHue(preset.hue)"
                 />
               </div>
             </div>
           </UFormField>
           <UFormField label="Skip Interval" description="How far J/L and mobile tap skip">
             <USelect
-              v-model="prefs.skip_interval"
-              :items="SKIP_INTERVAL_OPTIONS"
+                v-model="prefs.skip_interval"
+                :items="SKIP_INTERVAL_OPTIONS"
             />
           </UFormField>
           <UFormField label="View Mode">
             <UButtonGroup>
               <UButton
-                v-for="m in [{ label: 'Grid', value: 'grid', icon: 'i-lucide-grid-2x2' }, { label: 'List', value: 'list', icon: 'i-lucide-list' }, { label: 'Compact', value: 'compact', icon: 'i-lucide-align-justify' }]"
-                :key="m.value"
-                :icon="m.icon"
-                :label="m.label"
-                size="sm"
-                :variant="prefs.view_mode === m.value ? 'solid' : 'outline'"
-                :color="prefs.view_mode === m.value ? 'primary' : 'neutral'"
-                @click="prefs.view_mode = m.value as 'grid' | 'list' | 'compact'"
+                  v-for="m in [{ label: 'Grid', value: 'grid', icon: 'i-lucide-grid-2x2' }, { label: 'List', value: 'list', icon: 'i-lucide-list' }, { label: 'Compact', value: 'compact', icon: 'i-lucide-align-justify' }]"
+                  :key="m.value"
+                  :icon="m.icon"
+                  :label="m.label"
+                  size="sm"
+                  :variant="prefs.view_mode === m.value ? 'solid' : 'outline'"
+                  :color="prefs.view_mode === m.value ? 'primary' : 'neutral'"
+                  @click="prefs.view_mode = m.value as 'grid' | 'list' | 'compact'"
               />
             </UButtonGroup>
           </UFormField>
@@ -790,13 +894,14 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               { key: 'download_prompt', label: 'Ask Quality on Download' },
               { key: 'autoplay_similar', label: 'Autoplay Similar at Queue End' },
             ]" :key="toggle.key" class="flex items-center gap-2">
-              <USwitch :model-value="!!(prefs as Record<string, unknown>)[toggle.key]" @update:model-value="(prefs as Record<string, unknown>)[toggle.key] = $event" />
+              <USwitch :model-value="!!(prefs as Record<string, unknown>)[toggle.key]"
+                       @update:model-value="(prefs as Record<string, unknown>)[toggle.key] = $event"/>
               <span class="text-sm">{{ toggle.label }}</span>
             </div>
           </div>
         </div>
         <template #footer>
-          <UButton :loading="prefsSaving" icon="i-lucide-save" label="Save Preferences" @click="savePrefs" />
+          <UButton :loading="prefsSaving" icon="i-lucide-save" label="Save Preferences" @click="savePrefs"/>
         </template>
       </UCard>
 
@@ -804,7 +909,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
       <UCard>
         <template #header>
           <div class="flex items-center gap-2 font-semibold">
-            <UIcon name="i-lucide-bookmark" class="size-4" />
+            <UIcon name="i-lucide-bookmark" class="size-4"/>
             Saved Searches
             <span v-if="savedSearches.length > 0" class="ml-auto text-xs font-mono text-muted">
               {{ savedSearches.length }}
@@ -813,7 +918,8 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
         </template>
         <p class="text-xs text-muted mb-3">
           Saved from the
-          <NuxtLink to="/search" class="underline hover:text-default">search page</NuxtLink>.
+          <NuxtLink to="/search" class="underline hover:text-default">search page</NuxtLink>
+          .
           New matches appear as a row on your home page.
         </p>
         <div v-if="savedSearchesLoading" class="text-sm text-muted py-4">Loading…</div>
@@ -822,11 +928,11 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
         </div>
         <ul v-else class="space-y-2">
           <li
-            v-for="s in savedSearches"
-            :key="s.id"
-            class="flex items-center gap-3 px-3 py-2 rounded-md border border-default"
+              v-for="s in savedSearches"
+              :key="s.id"
+              class="flex items-center gap-3 px-3 py-2 rounded-md border border-default"
           >
-            <UIcon name="i-lucide-search" class="size-4 text-muted shrink-0" />
+            <UIcon name="i-lucide-search" class="size-4 text-muted shrink-0"/>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium truncate">{{ s.name }}</p>
               <p class="text-xs text-muted truncate">
@@ -836,16 +942,17 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               </p>
             </div>
             <NuxtLink
-              :to="{ path: '/search', query: { q: s.query } }"
-              class="text-xs text-[var(--accent-soft)] underline hover:text-default"
-            >Open</NuxtLink>
+                :to="{ path: '/search', query: { q: s.query } }"
+                class="text-xs text-[var(--accent-soft)] underline hover:text-default"
+            >Open
+            </NuxtLink>
             <UButton
-              icon="i-lucide-trash-2"
-              size="xs"
-              variant="ghost"
-              color="error"
-              aria-label="Delete saved search"
-              @click="deleteSavedSearch(s.id)"
+                icon="i-lucide-trash-2"
+                size="xs"
+                variant="ghost"
+                color="error"
+                aria-label="Delete saved search"
+                @click="deleteSavedSearch(s.id)"
             />
           </li>
         </ul>
@@ -856,97 +963,105 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
         <template #header>
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2 font-semibold">
-              <UIcon name="i-lucide-history" class="size-4" />
+              <UIcon name="i-lucide-history" class="size-4"/>
               Watch History
             </div>
             <div v-if="history.length > 0" class="flex items-center gap-1">
               <UButton
-                icon="i-lucide-download"
-                label="Export CSV"
-                variant="ghost"
-                color="neutral"
-                size="xs"
-                :loading="exportingCsv"
-                @click="exportWatchHistoryCsv"
+                  icon="i-lucide-download"
+                  label="Export CSV"
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                  :loading="exportingCsv"
+                  @click="exportWatchHistoryCsv"
               />
               <UButton
-                icon="i-lucide-trash-2"
-                label="Clear All"
-                variant="ghost"
-                color="error"
-                size="xs"
-                @click="clearHistoryConfirmOpen = true"
+                  icon="i-lucide-trash-2"
+                  label="Clear All"
+                  variant="ghost"
+                  color="error"
+                  size="xs"
+                  @click="clearHistoryConfirmOpen = true"
               />
             </div>
           </div>
         </template>
         <div v-if="history.length > 5" class="flex flex-wrap items-center gap-2 mb-3">
           <UInput
-            v-model="historySearch"
-            icon="i-lucide-search"
-            placeholder="Search history…"
-            class="w-56"
+              v-model="historySearch"
+              icon="i-lucide-search"
+              placeholder="Search history…"
+              class="w-56"
           />
           <div class="flex gap-1">
             <UButton
-              v-for="opt in (['all', 'in-progress', 'completed'] as const)"
-              :key="opt"
-              size="xs"
-              :variant="historyFilter === opt ? 'solid' : 'outline'"
-              :color="historyFilter === opt ? 'primary' : 'neutral'"
-              :label="opt === 'all' ? 'All' : opt === 'in-progress' ? 'In Progress' : 'Completed'"
-              @click="historyFilter = opt"
+                v-for="opt in (['all', 'in-progress', 'completed'] as const)"
+                :key="opt"
+                size="xs"
+                :variant="historyFilter === opt ? 'solid' : 'outline'"
+                :color="historyFilter === opt ? 'primary' : 'neutral'"
+                :label="opt === 'all' ? 'All' : opt === 'in-progress' ? 'In Progress' : 'Completed'"
+                @click="historyFilter = opt"
             />
           </div>
         </div>
         <div v-if="historyLoading" class="flex justify-center py-4">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
         </div>
         <div v-else-if="filteredHistory.length === 0" class="text-center py-6 text-muted text-sm">
           No watch history.
         </div>
         <div v-else class="divide-y divide-default">
           <div
-            v-for="item in pagedHistory"
-            :key="item.media_id"
-            class="flex items-center justify-between py-2 gap-3"
+              v-for="item in pagedHistory"
+              :key="item.media_id"
+              class="flex items-center justify-between py-2 gap-3"
           >
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5">
                 <p class="text-sm font-medium truncate">{{ getDisplayTitle(item) }}</p>
-                <UBadge v-if="item.completed" label="Completed" color="success" variant="subtle" size="xs" class="shrink-0" />
+                <UBadge v-if="item.completed" label="Completed" color="success" variant="subtle" size="xs"
+                        class="shrink-0"/>
               </div>
               <div class="flex items-center gap-2 mt-0.5">
                 <p class="text-xs text-muted">
-                  <span v-if="!item.completed">{{ Math.round((item.progress > 1 ? item.progress : item.progress * 100) ) }}%</span>
-                  <span v-if="item.duration"> · {{ formatDuration(item.position) || '0:00' }} / {{ formatDuration(item.duration) }}</span>
+                  <span v-if="!item.completed">{{
+                      Math.round((item.progress > 1 ? item.progress : item.progress * 100))
+                    }}%</span>
+                  <span v-if="item.duration"> · {{
+                      formatDuration(item.position) || '0:00'
+                    }} / {{ formatDuration(item.duration) }}</span>
                   <span v-if="item.watched_at"> · {{ formatRelativeDate(item.watched_at) }}</span>
                 </p>
               </div>
               <!-- Mini progress bar for incomplete items -->
-              <div v-if="!item.completed && item.progress > 0" class="mt-1 h-0.5 w-full max-w-32 rounded-full bg-muted/50 overflow-hidden">
-                <div class="h-full bg-primary rounded-full" :style="{ width: `${Math.min(100, Math.round((item.progress > 1 ? item.progress : item.progress * 100)))}%` }" />
+              <div v-if="!item.completed && item.progress > 0"
+                   class="mt-1 h-0.5 w-full max-w-32 rounded-full bg-muted/50 overflow-hidden">
+                <div class="h-full bg-primary rounded-full"
+                     :style="{ width: `${Math.min(100, Math.round((item.progress > 1 ? item.progress : item.progress * 100)))}%` }"/>
               </div>
             </div>
             <UButton
-              icon="i-lucide-x"
-              aria-label="Remove from history"
-              size="xs"
-              variant="ghost"
-              color="neutral"
-              @click="removeItem(item.media_id)"
+                icon="i-lucide-x"
+                aria-label="Remove from history"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                @click="removeItem(item.media_id)"
             />
           </div>
         </div>
         <div v-if="historyTotalPages > 1" class="flex justify-center pt-3">
-          <UPagination v-model:page="historyPage" :total="filteredHistory.length" :items-per-page="historyPerPage" />
+          <UPagination v-model:page="historyPage" :total="filteredHistory.length" :items-per-page="historyPerPage"/>
         </div>
       </UCard>
 
-      <UModal v-model:open="clearHistoryConfirmOpen" title="Clear Watch History" description="This will permanently delete all your watch history. This action cannot be undone.">
+      <UModal v-model:open="clearHistoryConfirmOpen" title="Clear Watch History"
+              description="This will permanently delete all your watch history. This action cannot be undone.">
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="clearHistoryConfirmOpen = false" />
-          <UButton color="error" label="Clear All" @click="doClearHistory" />
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="clearHistoryConfirmOpen = false"/>
+          <UButton color="error" label="Clear All" @click="doClearHistory"/>
         </template>
       </UModal>
 
@@ -954,13 +1069,14 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
       <UCard>
         <template #header>
           <div class="flex items-center gap-2 font-semibold">
-            <UIcon name="i-lucide-laptop" class="size-4" />
+            <UIcon name="i-lucide-laptop" class="size-4"/>
             Active Sessions
           </div>
         </template>
-        <p class="text-sm text-muted mb-3">Devices currently signed into your account. Sign out of any device that you don't recognize.</p>
+        <p class="text-sm text-muted mb-3">Devices currently signed into your account. Sign out of any device that you
+          don't recognize.</p>
         <div v-if="sessionsLoading" class="flex justify-center py-4">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
         </div>
         <div v-else-if="sessions.length === 0" class="text-sm text-muted py-2">No active sessions.</div>
         <div v-else class="divide-y divide-default">
@@ -968,7 +1084,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
             <div class="min-w-0 flex-1">
               <p class="text-sm font-medium flex items-center gap-2">
                 {{ describeUserAgent(s.user_agent) }}
-                <UBadge v-if="s.is_current" label="This device" color="success" variant="subtle" size="xs" />
+                <UBadge v-if="s.is_current" label="This device" color="success" variant="subtle" size="xs"/>
               </p>
               <p class="text-xs text-muted">
                 <span v-if="s.ip_address">IP {{ s.ip_address }} · </span>
@@ -977,15 +1093,15 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
               </p>
             </div>
             <UButton
-              v-if="!s.is_current"
-              :loading="sessionRevoking === s.id"
-              icon="i-lucide-log-out"
-              size="xs"
-              variant="ghost"
-              color="error"
-              :aria-label="`Sign out ${describeUserAgent(s.user_agent)}`"
-              label="Sign out"
-              @click="revokeSession(s.id)"
+                v-if="!s.is_current"
+                :loading="sessionRevoking === s.id"
+                icon="i-lucide-log-out"
+                size="xs"
+                variant="ghost"
+                color="error"
+                :aria-label="`Sign out ${describeUserAgent(s.user_agent)}`"
+                label="Sign out"
+                @click="revokeSession(s.id)"
             />
             <span v-else class="text-xs text-muted italic">Use Logout to end this session</span>
           </div>
@@ -996,48 +1112,59 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
       <UCard v-if="authStore.isAdmin">
         <template #header>
           <div class="flex items-center gap-2 font-semibold">
-            <UIcon name="i-lucide-key-round" class="size-4" />
+            <UIcon name="i-lucide-key-round" class="size-4"/>
             API Tokens
           </div>
         </template>
-        <p class="text-sm text-muted mb-4">Create tokens to access the API from scripts or tools using <code class="bg-muted/40 px-1 rounded text-xs">Authorization: Bearer &lt;token&gt;</code>.</p>
+        <p class="text-sm text-muted mb-4">Create tokens to access the API from scripts or tools using <code
+            class="bg-muted/40 px-1 rounded text-xs">Authorization: Bearer &lt;token&gt;</code>.</p>
 
         <!-- Revealed token banner -->
         <UAlert
-          v-if="revealedToken"
-          color="warning"
-          variant="subtle"
-          icon="i-lucide-triangle-alert"
-          title="Copy your token now — it won't be shown again."
-          class="mb-4"
+            v-if="revealedToken"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-triangle-alert"
+            title="Copy your token now — it won't be shown again."
+            class="mb-4"
         >
           <template #description>
             <div class="flex items-center gap-2 mt-1 flex-wrap">
               <code class="text-xs break-all select-all">{{ revealedToken }}</code>
-              <UButton size="xs" icon="i-lucide-copy" variant="ghost" color="neutral" aria-label="Copy to clipboard" @click="copyToken" />
-              <UButton size="xs" icon="i-lucide-x" variant="ghost" color="neutral" aria-label="Dismiss" @click="revealedToken = null; revealedTokenId = null" />
+              <UButton size="xs" icon="i-lucide-copy" variant="ghost" color="neutral" aria-label="Copy to clipboard"
+                       @click="copyToken"/>
+              <UButton size="xs" icon="i-lucide-x" variant="ghost" color="neutral" aria-label="Dismiss"
+                       @click="revealedToken = null; revealedTokenId = null"/>
             </div>
           </template>
         </UAlert>
 
         <!-- Create new token -->
         <div class="flex gap-2 mb-4">
-          <UInput v-model="newTokenName" placeholder="Token name (e.g. My Script)" class="flex-1" @keydown.enter="createToken" />
-          <UButton :loading="newTokenCreating" icon="i-lucide-plus" label="Create" @click="createToken" />
+          <UInput v-model="newTokenName" placeholder="Token name (e.g. My Script)" class="flex-1"
+                  @keydown.enter="createToken"/>
+          <UButton :loading="newTokenCreating" icon="i-lucide-plus" label="Create" @click="createToken"/>
         </div>
 
         <!-- Token list -->
         <div v-if="tokensLoading" class="flex justify-center py-4">
-          <UIcon name="i-lucide-loader-2" class="animate-spin size-5" />
+          <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
         </div>
         <div v-else-if="tokens.length === 0" class="text-sm text-muted py-2">No API tokens yet.</div>
         <div v-else class="divide-y divide-default">
           <div v-for="t in tokens" :key="t.id" class="flex items-center justify-between py-2 gap-3">
             <div class="min-w-0">
               <p class="text-sm font-medium truncate">{{ t.name }}</p>
-              <p class="text-xs text-muted"><template v-if="t.created_at">Created {{ new Date(t.created_at).toLocaleDateString() }}</template><template v-if="t.last_used_at"> · Last used {{ new Date(t.last_used_at).toLocaleDateString() }}</template></p>
+              <p class="text-xs text-muted">
+                <template v-if="t.created_at">Created {{ new Date(t.created_at).toLocaleDateString() }}</template>
+                <template v-if="t.last_used_at"> · Last used {{
+                    new Date(t.last_used_at).toLocaleDateString()
+                  }}
+                </template>
+              </p>
             </div>
-            <UButton icon="i-lucide-trash-2" size="xs" variant="ghost" color="error" aria-label="Revoke token" @click="revokeToken(t.id)" />
+            <UButton icon="i-lucide-trash-2" size="xs" variant="ghost" color="error" aria-label="Revoke token"
+                     @click="revokeToken(t.id)"/>
           </div>
         </div>
       </UCard>
@@ -1046,21 +1173,21 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
       <UCard>
         <template #header>
           <div class="flex items-center gap-2 font-semibold">
-            <UIcon name="i-lucide-key" class="size-4" />
+            <UIcon name="i-lucide-key" class="size-4"/>
             Change Password
           </div>
         </template>
         <div class="space-y-3 max-w-sm">
           <UFormField label="Current Password">
-            <PasswordInput v-model="pw.current" autocomplete="current-password" />
+            <PasswordInput v-model="pw.current" autocomplete="current-password"/>
           </UFormField>
           <UFormField label="New Password">
-            <PasswordInput v-model="pw.new" autocomplete="new-password" :minlength="8" />
+            <PasswordInput v-model="pw.new" autocomplete="new-password" :minlength="8"/>
           </UFormField>
           <UFormField label="Confirm New Password">
-            <PasswordInput v-model="pw.confirm" autocomplete="new-password" />
+            <PasswordInput v-model="pw.confirm" autocomplete="new-password"/>
           </UFormField>
-          <UButton :loading="pwLoading" label="Change Password" @click="handleChangePassword" />
+          <UButton :loading="pwLoading" label="Change Password" @click="handleChangePassword"/>
         </div>
       </UCard>
 
@@ -1068,48 +1195,60 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
       <UCard v-if="!authStore.isAdmin">
         <template #header>
           <div class="flex items-center gap-2 font-semibold">
-            <UIcon name="i-lucide-shield-check" class="size-4" />
+            <UIcon name="i-lucide-shield-check" class="size-4"/>
             Data Privacy
           </div>
         </template>
 
         <div v-if="deletionSubmitted" class="text-sm text-muted space-y-1">
           <p class="font-medium text-default">Request submitted</p>
-          <p>Your data deletion request has been submitted. An administrator will review it and take action. You will not be notified by email unless an admin contacts you directly.</p>
+          <p>Your data deletion request has been submitted. An administrator will review it and take action. You will
+            not be notified by email unless an admin contacts you directly.</p>
         </div>
         <template v-else>
-          <p class="text-sm text-muted mb-3">To request deletion of your account and associated data, submit a request below. An administrator will review and process it.</p>
-          <UButton icon="i-lucide-file-text" label="Request Data Deletion" variant="outline" color="warning" @click="deletionRequestOpen = true" />
+          <p class="text-sm text-muted mb-3">To request deletion of your account and associated data, submit a request
+            below. An administrator will review and process it.</p>
+          <UButton icon="i-lucide-file-text" label="Request Data Deletion" variant="outline" color="warning"
+                   @click="deletionRequestOpen = true"/>
         </template>
 
-        <UModal v-model:open="deletionRequestOpen" title="Request Data Deletion" description="Your request will be reviewed by an administrator before any data is removed.">
+        <UModal v-model:open="deletionRequestOpen" title="Request Data Deletion"
+                description="Your request will be reviewed by an administrator before any data is removed.">
           <template #body>
             <UFormField label="Reason (optional)">
-              <UTextarea v-model="deletionReason" placeholder="Let us know why you'd like your data deleted…" :rows="3" />
+              <UTextarea v-model="deletionReason" placeholder="Let us know why you'd like your data deleted…"
+                         :rows="3"/>
             </UFormField>
           </template>
           <template #footer>
-            <UButton variant="ghost" color="neutral" label="Cancel" @click="deletionRequestOpen = false" />
-            <UButton :loading="deletionSubmitting" color="warning" label="Submit Request" @click="handleDeletionRequest" />
+            <UButton variant="ghost" color="neutral" label="Cancel" @click="deletionRequestOpen = false"/>
+            <UButton :loading="deletionSubmitting" color="warning" label="Submit Request"
+                     @click="handleDeletionRequest"/>
           </template>
         </UModal>
 
-        <UDivider class="my-4" />
+        <UDivider class="my-4"/>
 
         <p class="text-sm font-medium text-default mb-1">Delete Account Immediately</p>
-        <p class="text-sm text-muted mb-3">Permanently delete your account and all associated data right now. This cannot be undone.</p>
-        <UButton icon="i-lucide-trash-2" label="Delete My Account" variant="outline" color="error" @click="selfDeleteOpen = true; selfDeleteError = null; selfDeletePassword = ''" />
+        <p class="text-sm text-muted mb-3">Permanently delete your account and all associated data right now. This
+          cannot be undone.</p>
+        <UButton icon="i-lucide-trash-2" label="Delete My Account" variant="outline" color="error"
+                 @click="selfDeleteOpen = true; selfDeleteError = null; selfDeletePassword = ''"/>
 
-        <UModal v-model:open="selfDeleteOpen" title="Delete Your Account" description="This is permanent and cannot be undone. All your data will be deleted immediately.">
+        <UModal v-model:open="selfDeleteOpen" title="Delete Your Account"
+                description="This is permanent and cannot be undone. All your data will be deleted immediately.">
           <template #body>
             <p class="text-sm text-muted mb-4">Enter your password to confirm account deletion.</p>
             <UFormField label="Password" :error="selfDeleteError ?? undefined">
-              <PasswordInput v-model="selfDeletePassword" autocomplete="current-password" placeholder="Your current password" @keydown.enter="handleSelfDelete" />
+              <PasswordInput v-model="selfDeletePassword" autocomplete="current-password"
+                             placeholder="Your current password" @keydown.enter="handleSelfDelete"/>
             </UFormField>
           </template>
           <template #footer>
-            <UButton variant="ghost" color="neutral" label="Cancel" @click="selfDeleteOpen = false; selfDeletePassword = ''; selfDeleteError = null" />
-            <UButton :loading="selfDeleteLoading" color="error" icon="i-lucide-trash-2" label="Delete My Account" :disabled="!selfDeletePassword" @click="handleSelfDelete" />
+            <UButton variant="ghost" color="neutral" label="Cancel"
+                     @click="selfDeleteOpen = false; selfDeletePassword = ''; selfDeleteError = null"/>
+            <UButton :loading="selfDeleteLoading" color="error" icon="i-lucide-trash-2" label="Delete My Account"
+                     :disabled="!selfDeletePassword" @click="handleSelfDelete"/>
           </template>
         </UModal>
       </UCard>
@@ -1117,7 +1256,7 @@ watch(() => authStore.user, (user) => { if (user && !hasFetched) loadAll() })
 
     <!-- Fallback: prevents blank page if auth resolves without a user (edge case) -->
     <div v-else class="flex justify-center py-16">
-      <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary" />
+      <UIcon name="i-lucide-loader-2" class="animate-spin size-8 text-primary"/>
     </div>
   </UContainer>
 </template>

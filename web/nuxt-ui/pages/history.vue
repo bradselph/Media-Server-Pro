@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import type { WatchHistoryItem, MediaItem } from '~/types/api'
-import { useWatchHistoryApi } from '~/composables/useApiEndpoints'
-import { getDisplayTitle } from '~/utils/mediaTitle'
-import { formatDuration, formatRelativeDate } from '~/utils/format'
-import { blurHashBgStyle } from '~/utils/blurhash'
+import type {MediaItem, WatchHistoryItem} from '~/types/api'
+import {useWatchHistoryApi} from '~/composables/useApiEndpoints'
+import {getDisplayTitle} from '~/utils/mediaTitle'
+import {formatDuration, formatRelativeDate} from '~/utils/format'
+import {blurHashBgStyle} from '~/utils/blurhash'
 
-definePageMeta({ layout: 'default', title: 'Watch History', middleware: 'auth' })
+definePageMeta({layout: 'default', title: 'Watch History', middleware: 'auth'})
 
 const watchHistoryApi = useWatchHistoryApi()
 const mediaApi = useMediaApi()
@@ -46,7 +46,10 @@ const grouped = computed<HistoryGroup[]>(() => {
 
   for (const h of filtered.value) {
     const ts = h.watched_at ? Date.parse(h.watched_at) : NaN
-    if (Number.isNaN(ts)) { older.push(h); continue }
+    if (Number.isNaN(ts)) {
+      older.push(h);
+      continue
+    }
     if (ts >= todayStart) today.push(h)
     else if (ts >= yesterdayStart) yesterday.push(h)
     else if (ts >= weekStart) earlierThisWeek.push(h)
@@ -54,10 +57,10 @@ const grouped = computed<HistoryGroup[]>(() => {
   }
 
   const out: HistoryGroup[] = []
-  if (today.length) out.push({ label: 'Today', items: today })
-  if (yesterday.length) out.push({ label: 'Yesterday', items: yesterday })
-  if (earlierThisWeek.length) out.push({ label: 'Earlier this week', items: earlierThisWeek })
-  if (older.length) out.push({ label: 'Older', items: older })
+  if (today.length) out.push({label: 'Today', items: today})
+  if (yesterday.length) out.push({label: 'Yesterday', items: yesterday})
+  if (earlierThisWeek.length) out.push({label: 'Earlier this week', items: earlierThisWeek})
+  if (older.length) out.push({label: 'Older', items: older})
   return out
 })
 
@@ -72,7 +75,11 @@ async function load() {
       mediaMap.value = res?.items ?? {}
     }
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to load history', color: 'error', icon: 'i-lucide-alert-circle' })
+    toast.add({
+      title: e instanceof Error ? e.message : 'Failed to load history',
+      color: 'error',
+      icon: 'i-lucide-alert-circle'
+    })
   } finally {
     loading.value = false
   }
@@ -84,9 +91,9 @@ async function remove(mediaId: string) {
   try {
     await watchHistoryApi.remove(mediaId)
     history.value = history.value.filter(h => h.media_id !== mediaId)
-    toast.add({ title: 'Removed from history', color: 'success', icon: 'i-lucide-check' })
+    toast.add({title: 'Removed from history', color: 'success', icon: 'i-lucide-check'})
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to remove', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Failed to remove', color: 'error', icon: 'i-lucide-x'})
   } finally {
     removingId.value = null
   }
@@ -98,9 +105,9 @@ async function clearAll() {
     await watchHistoryApi.clear()
     history.value = []
     mediaMap.value = {}
-    toast.add({ title: 'Watch history cleared', color: 'success', icon: 'i-lucide-check' })
+    toast.add({title: 'Watch history cleared', color: 'success', icon: 'i-lucide-check'})
   } catch (e: unknown) {
-    toast.add({ title: e instanceof Error ? e.message : 'Failed to clear history', color: 'error', icon: 'i-lucide-x' })
+    toast.add({title: e instanceof Error ? e.message : 'Failed to clear history', color: 'error', icon: 'i-lucide-x'})
   } finally {
     clearing.value = false
     confirmClear.value = false
@@ -110,8 +117,8 @@ async function clearAll() {
 function resumeUrl(item: WatchHistoryItem): string {
   const pos = Math.floor(item.position)
   return pos > 5
-    ? `/player?id=${encodeURIComponent(item.media_id)}&t=${pos}`
-    : `/player?id=${encodeURIComponent(item.media_id)}`
+      ? `/player?id=${encodeURIComponent(item.media_id)}&t=${pos}`
+      : `/player?id=${encodeURIComponent(item.media_id)}`
 }
 
 function thumbUrl(mediaId: string): string {
@@ -131,147 +138,150 @@ watch(() => authStore.user, (user) => {
     <!-- Header -->
     <div class="flex items-center justify-between flex-wrap gap-3 mb-6">
       <div class="flex items-center gap-2">
-        <UIcon name="i-lucide-history" class="size-5 text-primary" />
+        <UIcon name="i-lucide-history" class="size-5 text-primary"/>
         <h1 class="text-xl font-semibold">Watch History</h1>
-        <UBadge v-if="history.length > 0" :label="String(history.length)" color="neutral" variant="subtle" size="xs" />
+        <UBadge v-if="history.length > 0" :label="String(history.length)" color="neutral" variant="subtle" size="xs"/>
       </div>
       <div class="flex gap-2">
         <USelect
-          v-model="filter"
-          :items="[
+            v-model="filter"
+            :items="[
             { label: 'All', value: 'all' },
             { label: 'In Progress', value: 'in_progress' },
             { label: 'Completed', value: 'completed' },
           ]"
-          size="sm"
-          class="w-36"
+            size="sm"
+            class="w-36"
         />
         <UButton
-          v-if="history.length > 0"
-          icon="i-lucide-trash-2"
-          label="Clear All"
-          size="sm"
-          color="error"
-          variant="outline"
-          @click="confirmClear = true"
+            v-if="history.length > 0"
+            icon="i-lucide-trash-2"
+            label="Clear All"
+            size="sm"
+            color="error"
+            variant="outline"
+            @click="confirmClear = true"
         />
       </div>
     </div>
 
     <!-- Loading -->
-    <MediaCardSkeleton v-if="loading" :count="10" />
+    <MediaCardSkeleton v-if="loading" :count="10"/>
 
     <!-- Empty -->
     <div v-else-if="filtered.length === 0" class="text-center py-16 text-muted">
-      <UIcon name="i-lucide-history" class="size-10 mb-3 mx-auto opacity-40" />
+      <UIcon name="i-lucide-history" class="size-10 mb-3 mx-auto opacity-40"/>
       <p class="text-lg font-medium">
         {{ history.length === 0 ? 'No watch history yet' : 'No items match this filter' }}
       </p>
       <p class="text-sm mt-1">Items appear here after you start watching them.</p>
-      <UButton class="mt-4" label="Browse Media" to="/" variant="outline" />
+      <UButton class="mt-4" label="Browse Media" to="/" variant="outline"/>
     </div>
 
     <!-- History grid, grouped by day -->
     <div v-else class="space-y-8">
       <section
-        v-for="group in grouped"
-        :key="group.label"
+          v-for="group in grouped"
+          :key="group.label"
       >
         <h2 class="text-sm font-semibold text-[var(--text-strong)] mb-3 flex items-center gap-2">
           {{ group.label }}
           <span class="text-xs font-mono text-muted">({{ group.items.length }})</span>
         </h2>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-      <div
-        v-for="item in group.items"
-        :key="item.media_id"
-        class="group relative"
-      >
-        <NuxtLink :to="resumeUrl(item)" class="block">
-          <!-- Thumbnail -->
           <div
-            class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb"
-            :style="mediaMap[item.media_id]?.type !== 'audio' ? blurHashBgStyle(mediaMap[item.media_id]?.blur_hash) : {}"
+              v-for="item in group.items"
+              :key="item.media_id"
+              class="group relative"
           >
-            <HoverPreviewImg
-              v-if="!failedThumbs.has(item.media_id)"
-              :media-id="item.media_id"
-              :src="thumbUrl(item.media_id)"
-              :alt="item.media_name ?? ''"
-              img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-              @error="failedThumbs.add(item.media_id)"
-            />
-            <div v-else-if="mediaMap[item.media_id]?.type === 'audio'" class="w-full h-full flex items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
-              <AudioBars size="sm" :bars="5" />
-            </div>
-            <div v-else class="w-full h-full flex items-center justify-center">
-              <UIcon name="i-lucide-film" class="size-8 text-muted" />
-            </div>
-
-            <!-- Duration / completion badge -->
-            <div class="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1 rounded font-mono">
-              <template v-if="item.completed">
-                Watched
-              </template>
-              <template v-else>
-                {{ formatDuration(Math.floor(item.position)) }} / {{ formatDuration(Math.floor(item.duration)) }}
-              </template>
-            </div>
-
-            <!-- Progress bar -->
-            <div v-if="!item.completed && item.progress > 0" class="absolute bottom-0 left-0 right-0 h-0.5 bg-black/40">
+            <NuxtLink :to="resumeUrl(item)" class="block">
+              <!-- Thumbnail -->
               <div
-                class="h-full bg-primary transition-all"
-                :style="{ width: `${Math.min(100, item.progress * 100)}%` }"
-              />
-            </div>
+                  class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb"
+                  :style="mediaMap[item.media_id]?.type !== 'audio' ? blurHashBgStyle(mediaMap[item.media_id]?.blur_hash) : {}"
+              >
+                <HoverPreviewImg
+                    v-if="!failedThumbs.has(item.media_id)"
+                    :media-id="item.media_id"
+                    :src="thumbUrl(item.media_id)"
+                    :alt="item.media_name ?? ''"
+                    img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                    @error="failedThumbs.add(item.media_id)"
+                />
+                <div v-else-if="mediaMap[item.media_id]?.type === 'audio'"
+                     class="w-full h-full flex items-center justify-center bg-linear-to-br from-primary/10 to-primary/5">
+                  <AudioBars size="sm" :bars="5"/>
+                </div>
+                <div v-else class="w-full h-full flex items-center justify-center">
+                  <UIcon name="i-lucide-film" class="size-8 text-muted"/>
+                </div>
 
-            <!-- Completed overlay -->
-            <div v-if="item.completed" class="absolute inset-0 bg-black/40 flex items-center justify-center">
-              <UIcon name="i-lucide-check-circle" class="size-6 text-success" />
-            </div>
+                <!-- Duration / completion badge -->
+                <div class="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1 rounded font-mono">
+                  <template v-if="item.completed">
+                    Watched
+                  </template>
+                  <template v-else>
+                    {{ formatDuration(Math.floor(item.position)) }} / {{ formatDuration(Math.floor(item.duration)) }}
+                  </template>
+                </div>
+
+                <!-- Progress bar -->
+                <div v-if="!item.completed && item.progress > 0"
+                     class="absolute bottom-0 left-0 right-0 h-0.5 bg-black/40">
+                  <div
+                      class="h-full bg-primary transition-all"
+                      :style="{ width: `${Math.min(100, item.progress * 100)}%` }"
+                  />
+                </div>
+
+                <!-- Completed overlay -->
+                <div v-if="item.completed" class="absolute inset-0 bg-black/40 flex items-center justify-center">
+                  <UIcon name="i-lucide-check-circle" class="size-6 text-success"/>
+                </div>
+              </div>
+
+              <!-- Title -->
+              <p
+                  class="text-sm font-semibold truncate"
+                  :title="mediaMap[item.media_id] ? getDisplayTitle(mediaMap[item.media_id]) : item.media_name"
+              >
+                {{ mediaMap[item.media_id] ? getDisplayTitle(mediaMap[item.media_id]) : (item.media_name || '—') }}
+              </p>
+
+              <!-- Watched-at timestamp -->
+              <p v-if="item.watched_at" class="text-xs text-muted" :title="new Date(item.watched_at).toLocaleString()">
+                {{ formatRelativeDate(item.watched_at) }}
+              </p>
+            </NuxtLink>
+
+            <!-- Remove button -->
+            <button
+                class="absolute top-1 right-1 p-0.5 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
+                aria-label="Remove from history"
+                :disabled="removingId === item.media_id"
+                @click.prevent.stop="remove(item.media_id)"
+            >
+              <UIcon name="i-lucide-x" class="size-3.5 text-white"/>
+            </button>
           </div>
-
-          <!-- Title -->
-          <p
-            class="text-sm font-semibold truncate"
-            :title="mediaMap[item.media_id] ? getDisplayTitle(mediaMap[item.media_id]) : item.media_name"
-          >
-            {{ mediaMap[item.media_id] ? getDisplayTitle(mediaMap[item.media_id]) : (item.media_name || '—') }}
-          </p>
-
-          <!-- Watched-at timestamp -->
-          <p v-if="item.watched_at" class="text-xs text-muted" :title="new Date(item.watched_at).toLocaleString()">
-            {{ formatRelativeDate(item.watched_at) }}
-          </p>
-        </NuxtLink>
-
-        <!-- Remove button -->
-        <button
-          class="absolute top-1 right-1 p-0.5 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
-          aria-label="Remove from history"
-          :disabled="removingId === item.media_id"
-          @click.prevent.stop="remove(item.media_id)"
-        >
-          <UIcon name="i-lucide-x" class="size-3.5 text-white" />
-        </button>
-      </div>
         </div>
       </section>
     </div>
 
     <!-- Clear all confirmation -->
     <UModal
-      :open="confirmClear"
-      title="Clear Watch History"
-      @update:open="val => { if (!val) confirmClear = false }"
+        :open="confirmClear"
+        title="Clear Watch History"
+        @update:open="val => { if (!val) confirmClear = false }"
     >
       <template #body>
-        <p>This will permanently remove all {{ history.length }} item{{ history.length !== 1 ? 's' : '' }} from your watch history. This cannot be undone.</p>
+        <p>This will permanently remove all {{ history.length }} item{{ history.length !== 1 ? 's' : '' }} from your
+          watch history. This cannot be undone.</p>
       </template>
       <template #footer>
-        <UButton color="error" label="Clear All" :loading="clearing" @click="clearAll" />
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmClear = false" />
+        <UButton color="error" label="Clear All" :loading="clearing" @click="clearAll"/>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmClear = false"/>
       </template>
     </UModal>
   </UContainer>

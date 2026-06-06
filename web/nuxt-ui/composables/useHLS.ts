@@ -397,7 +397,8 @@ export function useHLS(
     }
 
     // Extracted poll body to avoid exceeding 4 levels of function nesting (typescript:S2004)
-    const consecutiveErrors = { count: 0 }
+    const consecutiveErrors = {count: 0}
+
     async function doPollCheck(id: string) {
         if (document.hidden) return
         if (Date.now() - pollStartTime > MAX_POLL_DURATION) {

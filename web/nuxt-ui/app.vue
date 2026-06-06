@@ -1,8 +1,8 @@
 <template>
   <UApp>
     <NuxtLayout>
-      <NuxtPage />
+      <NuxtPage/>
     </NuxtLayout>
-    <UToasts />
+    <UToasts/>
   </UApp>
 </template>
