@@ -624,6 +624,9 @@ components:
           type: number
         thumbnail_url:
           type: string
+        user_rating:
+          type: number
+          description: Requesting user's own rating (1-5); omitted when unrated or anonymous.
 
     ServerSettings:
       type: object

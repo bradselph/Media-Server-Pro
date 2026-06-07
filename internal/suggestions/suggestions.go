@@ -57,6 +57,9 @@ type Suggestion struct {
 	Reasons      []string `json:"reasons"`
 	Duration     float64  `json:"duration,omitempty"`
 	ThumbnailURL string   `json:"thumbnail_url,omitempty"`
+	// UserRating is the requesting user's own rating (1-5), populated by the
+	// handler layer per request; nil (omitted) when unrated or anonymous.
+	UserRating *float64 `json:"user_rating,omitempty"`
 }
 
 // Module handles content suggestions. RecordView is called from the streaming
