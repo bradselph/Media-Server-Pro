@@ -1132,11 +1132,26 @@ function toggleMute() {
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
 
+// Replace rather than stack the speed toast: holding < / > fires key-repeat at
+// the OS rate, and each step would otherwise queue its own notification.
+let speedToastId: string | number | null = null
+
 function changeSpeed(delta: number) {
+  const prevSpeed = playbackSpeed.value
   const curIdx = SPEED_OPTIONS.indexOf(playbackSpeed.value)
   const newIdx = Math.max(0, Math.min(SPEED_OPTIONS.length - 1, (curIdx === -1 ? 3 : curIdx) + delta))
   playbackSpeed.value = SPEED_OPTIONS[newIdx]
   if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
+  // Keyboard-only path (< / > keys) — surface the new speed, since unlike the
+  // controls-bar button there's no visible label change to confirm it.
+  if (playbackSpeed.value !== prevSpeed) {
+    if (speedToastId != null) toast.remove(speedToastId)
+    speedToastId = toast.add({
+      title: `Playback speed: ${playbackSpeed.value}x`,
+      color: 'info',
+      icon: 'i-lucide-zap'
+    }).id ?? null
+  }
   if (authStore.isLoggedIn) updatePreferences({playback_speed: playbackSpeed.value}).catch(() => {
   })
 }
