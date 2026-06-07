@@ -1338,26 +1338,29 @@ onUnmounted(() => {
           to="/categories"
           @thumbnail-error="onSuggestionThumbnailError"
       />
-      <!-- Top categories chip strip — guest-only discovery nudge. Sorted by
-           item count, capped at 8 so it stays on one row on most viewports. -->
-      <div v-if="categories.length > 0" class="space-y-2">
-        <h2 class="text-sm font-bold text-[var(--text-strong)] flex items-center gap-2">
-          <UIcon name="i-lucide-tag" class="size-4 text-[var(--accent)]"/>
-          Top categories
-        </h2>
-        <div class="flex flex-wrap gap-1.5">
-          <NuxtLink
-              v-for="c in [...categories].sort((a, b) => b.count - a.count).slice(0, 8)"
-              :key="c.name"
-              :to="`/browse?category=${encodeURIComponent(c.name)}`"
-              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--hairline)] bg-[var(--surface-card)] hover:border-[var(--accent)] hover:text-default text-xs text-muted no-underline transition-colors"
-          >
-            {{ c.display_name || c.name }}
-            <span class="text-[10px] font-mono opacity-70">{{ c.count.toLocaleString() }}</span>
-          </NuxtLink>
-        </div>
-      </div>
     </template>
+
+    <!-- Top categories chip strip — discovery nudge for everyone. Renders right
+         after either branch's last row (guests: Popular; logged-in: the rec
+         rows), so the guest layout is unchanged. Sorted by item count, capped
+         at 8 so it stays on one row on most viewports. -->
+    <div v-if="categories.length > 0" class="space-y-2">
+      <h2 class="text-sm font-bold text-[var(--text-strong)] flex items-center gap-2">
+        <UIcon name="i-lucide-tag" class="size-4 text-[var(--accent)]"/>
+        Top categories
+      </h2>
+      <div class="flex flex-wrap gap-1.5">
+        <NuxtLink
+            v-for="c in [...categories].sort((a, b) => b.count - a.count).slice(0, 8)"
+            :key="c.name"
+            :to="`/browse?category=${encodeURIComponent(c.name)}`"
+            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--hairline)] bg-[var(--surface-card)] hover:border-[var(--accent)] hover:text-default text-xs text-muted no-underline transition-colors"
+        >
+          {{ c.display_name || c.name }}
+          <span class="text-[10px] font-mono opacity-70">{{ c.count.toLocaleString() }}</span>
+        </NuxtLink>
+      </div>
+    </div>
 
     <!-- Library stats (public) -->
     <div v-if="libraryStats && !authStore.isLoggedIn" class="flex items-center gap-4 text-xs text-muted">
