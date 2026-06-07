@@ -235,6 +235,29 @@ async function saveCurrentSearch() {
     savingSearch.value = false
   }
 }
+
+// ── Personalized recommendations row (UX backlog #7) ──────────────────
+const {
+  items: personalizedItems,
+  loading: personalizedLoading,
+  favoriteIds,
+  failedIds: failedSuggestions,
+  progress: personalizedProgress,
+  load: loadPersonalized,
+  toggleFavorite: toggleFavoriteId,
+  playlistMenuItemsFor,
+  onThumbnailError: onSuggestionThumbnailError,
+} = usePersonalizedRow(12)
+
+onMounted(() => {
+  if (authStore.isLoggedIn) loadPersonalized()
+})
+
+// Mid-session login (e.g. via another tab or the nav): fetch the recs the
+// mount-time call skipped while logged out.
+watch(() => authStore.isLoggedIn, (loggedIn) => {
+  if (loggedIn) loadPersonalized()
+})
 </script>
 
 <template>
@@ -454,5 +477,21 @@ async function saveCurrentSearch() {
         />
       </div>
     </div>
+
+    <!-- Personalized recommendations (logged-in only) — also shown when a
+         search comes back empty, as a useful place to go next. -->
+    <RecommendationRow
+        v-if="authStore.isLoggedIn && query && !loading && authStore.user?.preferences?.show_recommended !== false"
+        title="Recommended For You"
+        icon="i-lucide-thumbs-up"
+        :items="personalizedItems"
+        :favorite-ids="favoriteIds"
+        :playlist-menu-items="playlistMenuItemsFor"
+        :failed-ids="failedSuggestions"
+        :loading="personalizedLoading"
+        :progress="personalizedProgress"
+        @toggle-favorite="toggleFavoriteId"
+        @thumbnail-error="onSuggestionThumbnailError"
+    />
   </UContainer>
 </template>
