@@ -4,6 +4,7 @@ import {getDisplayTitle} from '~/utils/mediaTitle'
 import {formatBitrate, formatBytes, formatDuration, formatRelativeDate} from '~/utils/format'
 import {safeJsonLD} from '~/utils/jsonld'
 import {getMediaGradient} from '~/utils/gradient'
+import {hlsQualityName} from '~/utils/hlsQuality'
 import {useQueueStore} from '~/stores/queue'
 import {useCollectionsApi} from '~/composables/useApiEndpoints'
 
@@ -1326,7 +1327,7 @@ const formatBandwidth = formatBitrate
 
 const currentQualityLabel = computed(() => {
   if (currentQuality.value === -1) return 'Auto'
-  return qualities.value[currentQuality.value]?.name ?? 'Auto'
+  return hlsQualityName(qualities.value[currentQuality.value]) ?? 'Auto'
 })
 
 // Analytics event helpers (fire-and-forget, never block playback)
@@ -1640,7 +1641,7 @@ watch(mediaId, (id, oldId) => {
               <div v-if="media.bitrate" class="flex gap-1.5"><span class="text-white/50">Bitrate</span><span
                   class="font-mono">{{ (media.bitrate / 1000).toFixed(0) }} kbps</span></div>
               <div v-if="hlsActivated && currentQuality >= 0 && qualities[currentQuality]" class="flex gap-1.5"><span
-                  class="text-white/50">Quality</span><span>{{ qualities[currentQuality]?.name }}</span></div>
+                  class="text-white/50">Quality</span><span>{{ hlsQualityName(qualities[currentQuality]) }}</span></div>
               <div v-if="hlsActivated && bandwidth > 0" class="flex gap-1.5"><span
                   class="text-white/50">Bandwidth</span><span class="font-mono">{{ (bandwidth / 1_000_000).toFixed(1) }} Mbps</span>
               </div>
@@ -2288,7 +2289,7 @@ watch(mediaId, (id, oldId) => {
           <UButton
               v-for="q in qualities"
               :key="q.index"
-              :label="q.name"
+              :label="hlsQualityName(q)"
               icon="i-lucide-layers"
               variant="outline"
               color="neutral"

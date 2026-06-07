@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {formatDuration} from '~/utils/format'
+import {hlsQualityName} from '~/utils/hlsQuality'
 
 const props = defineProps<{
   isPlaying: boolean
@@ -13,7 +14,7 @@ const props = defineProps<{
   isPiP: boolean
   pipSupported: boolean
   isTheater: boolean
-  qualities: Array<{ name: string; index: number; bitrate?: number; codec?: string }>
+  qualities: Array<{ name: string; index: number; bitrate?: number; codec?: string; fps?: number }>
   currentQuality: number
   thumbnailPreviews: string[]
   showControls: boolean
@@ -73,8 +74,8 @@ function friendlyCodec(codec?: string): string {
 }
 
 // Dropdown label: "1080p · 8.0 Mbps · H.264" (bitrate/codec appended when known).
-function formatQualityLabel(q: { name: string; bitrate?: number; codec?: string }): string {
-  const parts = [q.name]
+function formatQualityLabel(q: { name: string; bitrate?: number; codec?: string; fps?: number }): string {
+  const parts = [hlsQualityName(q)]
   if (q.bitrate && q.bitrate > 0) parts.push(`${(q.bitrate / 1e6).toFixed(1)} Mbps`)
   const codec = friendlyCodec(q.codec)
   if (codec) parts.push(codec)
@@ -95,7 +96,7 @@ const chapterMenuItems = computed(() => [[
 
 const currentQualityLabel = computed(() => {
   if (props.currentQuality === -1) return 'Auto'
-  return props.qualities[props.currentQuality]?.name ?? 'Auto'
+  return hlsQualityName(props.qualities[props.currentQuality]) ?? 'Auto'
 })
 
 const volumeIcon = computed(() => {
