@@ -2200,6 +2200,11 @@ watch(mediaId, (id, oldId) => {
                      class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
                   {{ formatDuration(item.duration) }}
                 </div>
+                <div v-if="item.user_rating"
+                     class="absolute top-0 right-0 flex items-center gap-0.5 bg-black/70 text-[var(--rating-star)] text-[9px] px-0.5 rounded-bl">
+                  <UIcon name="i-lucide-star" class="size-2.5 fill-current"/>
+                  <span>{{ item.user_rating }}</span>
+                </div>
               </div>
               <div class="min-w-0">
                 <p class="text-sm font-semibold truncate">{{ getDisplayTitle(item) }}</p>
@@ -2237,6 +2242,11 @@ watch(mediaId, (id, oldId) => {
                 <div v-if="item.duration"
                      class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
                   {{ formatDuration(item.duration) }}
+                </div>
+                <div v-if="item.user_rating"
+                     class="absolute top-0 right-0 flex items-center gap-0.5 bg-black/70 text-[var(--rating-star)] text-[9px] px-0.5 rounded-bl">
+                  <UIcon name="i-lucide-star" class="size-2.5 fill-current"/>
+                  <span>{{ item.user_rating }}</span>
                 </div>
               </div>
               <div class="min-w-0">
