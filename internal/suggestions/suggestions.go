@@ -1003,6 +1003,51 @@ func (m *Module) PurgeMediaPath(mediaPath string) {
 	}
 }
 
+// RenameMediaPath re-keys view-history entries when a media file is renamed so
+// users' ratings and watch history follow the file instead of being orphaned.
+// Loaded profiles are re-keyed in memory; the database rows are re-keyed
+// directly so users whose profiles are not currently loaded (evicted) migrate
+// too. When a profile already has an entry for newPath, the old entry is
+// dropped in its favor rather than duplicated.
+func (m *Module) RenameMediaPath(oldPath, newPath string) {
+	if oldPath == "" || newPath == "" || oldPath == newPath {
+		return
+	}
+
+	m.mu.Lock()
+	for _, profile := range m.profiles {
+		oldIdx, newIdx := -1, -1
+		for i := range profile.ViewHistory {
+			switch profile.ViewHistory[i].MediaPath {
+			case oldPath:
+				oldIdx = i
+			case newPath:
+				newIdx = i
+			}
+		}
+		if oldIdx == -1 {
+			continue
+		}
+		if newIdx >= 0 {
+			profile.ViewHistory = append(profile.ViewHistory[:oldIdx], profile.ViewHistory[oldIdx+1:]...)
+		} else {
+			profile.ViewHistory[oldIdx].MediaPath = newPath
+		}
+		// Not marked dirty: the database is re-keyed below, so memory and DB
+		// already agree without another flush.
+	}
+	m.mu.Unlock()
+
+	if m.repo == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := m.repo.RenameViewHistoryMediaPath(ctx, oldPath, newPath); err != nil {
+		m.log.Error("failed to re-key view history for renamed media %q -> %q: %v", oldPath, newPath, err)
+	}
+}
+
 // ResetUserProfile clears the in-memory profile and deletes persisted data (profile
 // row + view history) from the database for the given user.  After the reset the
 // user starts accumulating a fresh profile from their next viewing session.
