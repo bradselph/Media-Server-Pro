@@ -57,4 +57,21 @@ defineProps<{
 .animate-audio-bar {
   animation: audio-bar 1.2s ease-in-out infinite;
 }
+
+/* Reduced motion: freeze as a static equalizer. Explicit heights are required
+   because the animated path takes its height from the keyframes alone. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-audio-bar {
+    animation: none;
+    height: 45%;
+  }
+
+  .animate-audio-bar:nth-child(odd) {
+    height: 70%;
+  }
+
+  .animate-audio-bar:nth-child(3n) {
+    height: 30%;
+  }
+}
 </style>

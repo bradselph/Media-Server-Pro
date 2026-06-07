@@ -35,6 +35,24 @@ let connectedElement: HTMLMediaElement | null = null
 let animationFrame = 0
 let resizeObserver: ResizeObserver | null = null
 
+// Respect prefers-reduced-motion: skip the rAF draw loop entirely, leaving the
+// canvas blank over the card's static gradient. Tracked live so toggling the
+// OS setting mid-playback stops/starts the loop without a remount.
+let prefersReducedMotion = false
+let reducedMotionQuery: MediaQueryList | null = null
+
+function onReducedMotionChange(e: MediaQueryListEvent) {
+  prefersReducedMotion = e.matches
+  if (e.matches) {
+    if (animationFrame) {
+      cancelAnimationFrame(animationFrame)
+      animationFrame = 0
+    }
+  } else if (getActiveAnalyser()) {
+    startDraw()
+  }
+}
+
 function getBarColor(): string {
   if (props.color) return props.color
   const el = canvasRef.value
@@ -83,7 +101,7 @@ function disconnectOwn() {
 }
 
 function startDraw() {
-  if (animationFrame) return
+  if (prefersReducedMotion || animationFrame) return
   const canvas = canvasRef.value
   if (!canvas) return
   const ctx = canvas.getContext('2d')
@@ -176,6 +194,9 @@ watch(() => props.mediaElement, (el) => {
 onMounted(() => {
   const canvas = canvasRef.value
   if (!canvas) return
+  reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+  prefersReducedMotion = reducedMotionQuery.matches
+  reducedMotionQuery.addEventListener('change', onReducedMotionChange)
   // Keep canvas intrinsic size in sync with CSS layout so it's never blurry
   // after window resize or theater mode toggle.
   resizeObserver = new ResizeObserver((entries) => {
@@ -193,6 +214,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  reducedMotionQuery?.removeEventListener('change', onReducedMotionChange)
+  reducedMotionQuery = null
   resizeObserver?.disconnect()
   resizeObserver = null
   disconnectOwn()

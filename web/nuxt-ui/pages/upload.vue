@@ -196,12 +196,17 @@ async function handleUpload() {
       <!-- Drop zone -->
       <div
           ref="dropZoneRef"
-          class="border-2 border-dashed rounded-lg p-10 text-center transition-colors cursor-pointer"
+          tabindex="0"
+          role="button"
+          aria-label="Select files to upload"
+          class="border-2 border-dashed rounded-lg p-10 text-center transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           :class="dragOver ? 'border-primary bg-primary/5' : 'border-default hover:border-primary/50'"
           @dragover="onDragOver"
           @dragleave="onDragLeave"
           @drop="onDrop"
           @click="openFilePicker()"
+          @keydown.enter.prevent="openFilePicker()"
+          @keydown.space.prevent="openFilePicker()"
       >
         <UIcon name="i-lucide-upload-cloud" class="size-12 mx-auto text-muted mb-3"/>
         <p class="text-sm font-medium">Drag and drop files here, or <span class="text-primary underline">browse</span>
