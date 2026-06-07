@@ -20,6 +20,9 @@ const props = withDefaults(defineProps<{
   required?: boolean
   autofocus?: boolean
   minlength?: number | string
+  // Forwarded to the inner input — plain attr fallthrough would land on the
+  // wrapper <div>, not the <input>, so callers use this prop instead.
+  ariaDescribedby?: string
 }>(), {
   name: 'password',
   placeholder: '••••••••',
@@ -43,6 +46,7 @@ const inputType = computed(() => (visible.value ? 'text' : 'password'))
         :required="props.required"
         :autofocus="props.autofocus"
         :minlength="props.minlength"
+        :aria-describedby="props.ariaDescribedby"
         class="w-full pr-9"
     />
     <UButton
