@@ -55,6 +55,11 @@ async function handleLogin() {
       <UCard>
         <form class="space-y-4" @submit.prevent="handleLogin">
           <UAlert v-if="error" :title="error" color="error" variant="soft" icon="i-lucide-x-circle"/>
+          <p v-if="error === 'Admin access required'" class="text-sm text-muted">
+            This account doesn't have admin rights. Use the
+            <NuxtLink to="/login" class="text-primary hover:underline">regular sign-in</NuxtLink>
+            instead.
+          </p>
           <UFormField label="Username">
             <UInput v-model="form.username" name="username" placeholder="admin" autocomplete="username" required/>
           </UFormField>

@@ -50,6 +50,8 @@ function applyAccentHue(hue: number) {
     accentHueCommitTimer = null
     updatePreferences({accent_hue: clamped}).then((saved) => {
       if (authStore.user) authStore.user.preferences = {...saved}
+      // Debounce means this fires once per settled change, not per slider pixel.
+      toast.add({title: 'Accent color saved', color: 'success', icon: 'i-lucide-check'})
     }).catch(() => { /* non-fatal: localStorage still has the value */
     })
   }, ACCENT_HUE_COMMIT_DEBOUNCE_MS)
