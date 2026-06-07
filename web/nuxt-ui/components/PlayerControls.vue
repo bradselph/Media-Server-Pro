@@ -117,15 +117,37 @@ function onSeekBarClick(e: MouseEvent) {
   emit('seek-to-fraction', fraction)
 }
 
+// rAF-throttle the touch preview tooltip: mobile fires touchmove faster than the
+// display refreshes, and every write re-runs seekBarPreviewUrl + re-renders the
+// tooltip. Queue the latest position and flush at most once per frame. The final
+// seek on touchend reads the event directly, so it is unaffected by the queue.
+let seekBarUpdateFrame = 0
+let pendingSeekBarHoverX = 0
+let pendingSeekBarHoverTime = 0
+
+function flushSeekBarTouchUpdate() {
+  seekBarUpdateFrame = 0
+  seekBarHoverTime.value = pendingSeekBarHoverTime
+  seekBarHoverX.value = pendingSeekBarHoverX
+}
+
 function onSeekBarTouch(e: TouchEvent) {
   const touch = e.touches[0]
   if (!touch) return
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
   const fraction = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
-  seekBarHoverTime.value = fraction * props.duration
-  seekBarHoverX.value = touch.clientX - rect.left
+  pendingSeekBarHoverTime = fraction * props.duration
+  pendingSeekBarHoverX = touch.clientX - rect.left
   seekBarHovering.value = true
+  if (!seekBarUpdateFrame) seekBarUpdateFrame = requestAnimationFrame(flushSeekBarTouchUpdate)
 }
+
+onBeforeUnmount(() => {
+  if (seekBarUpdateFrame) {
+    cancelAnimationFrame(seekBarUpdateFrame)
+    seekBarUpdateFrame = 0
+  }
+})
 
 function onSeekBarTouchEnd(e: TouchEvent) {
   const touch = e.changedTouches[0]

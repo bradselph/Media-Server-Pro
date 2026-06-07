@@ -44,7 +44,10 @@ const SORT_OPTIONS_BASE = [
 ]
 const SORT_OPTION_MY_RATING = {label: 'My Rating', value: 'my_rating'}
 
-definePageMeta({title: 'Media Library'})
+// pageTransition off: this template is multi-root (hero <template v-if> blocks
+// + UContainer), which Vue's Transition cannot animate — opting out avoids the
+// dev warning; the page renders instantly as before.
+definePageMeta({title: 'Media Library', pageTransition: false})
 
 const mediaApi = useMediaApi()
 const suggestionsApi = useSuggestionsApi()

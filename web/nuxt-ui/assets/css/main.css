@@ -106,6 +106,19 @@ body {
     }
 }
 
+/* Route-change fade (app.pageTransition in nuxt.config.ts). 150ms linear to
+   match the §8 motion-token scale; out-in mode keeps the full swap ~300ms.
+   The reduced-motion override above flattens it automatically. */
+.page-enter-active,
+.page-leave-active {
+    transition: opacity 150ms linear;
+}
+
+.page-enter-from,
+.page-leave-to {
+    opacity: 0;
+}
+
 /* ── Design token system ──────────────────────────────────────────────── */
 :root {
     --accent-hue: 220;
@@ -214,9 +227,13 @@ body {
     transition: transform var(--motion-hover), box-shadow var(--motion-hover);
 }
 
-.media-card-lift:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--accent-border);
+/* Hover-capable pointers only: on touch devices :hover sticks after a tap,
+   leaving cards lifted and janking scroll — so the lift is desktop-only. */
+@media (hover: hover) and (pointer: fine) {
+    .media-card-lift:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--accent-border);
+    }
 }
 
 /* ── Now Playing sidebar layout offset ──────────────────────────────────
