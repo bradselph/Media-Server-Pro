@@ -692,6 +692,21 @@ async function loadMedia(id: string) {
   }
 }
 
+// Retry a failed media load from the error UI. loadMedia() clears error.value on
+// entry, so the error banner disappears while the retry is in flight and reappears
+// only if the fetch fails again.
+const retrying = ref(false)
+
+async function retryLoad() {
+  if (!mediaId.value || retrying.value) return
+  retrying.value = true
+  try {
+    await loadMedia(mediaId.value)
+  } finally {
+    retrying.value = false
+  }
+}
+
 async function restorePosition() {
   if (!mediaId.value || !videoRef.value) return
   positionRestored = true
@@ -1457,11 +1472,16 @@ watch(mediaId, (id, oldId) => {
       <UIcon name="i-lucide-loader-2" class="animate-spin size-10 text-primary"/>
     </div>
 
-    <!-- Error -->
-    <div v-else-if="error" class="flex flex-col items-center py-16 gap-4">
+    <!-- Error with nothing loaded yet — full-page block. When a media *switch* fails,
+         media still holds the previous item, so this is skipped and the inline error
+         banner inside the player section shows instead. -->
+    <div v-else-if="error && !media" class="flex flex-col items-center py-16 gap-4">
       <UIcon name="i-lucide-x-circle" class="size-12 text-error"/>
       <p class="text-error">{{ error }}</p>
-      <UButton to="/" variant="outline" label="Back to Library"/>
+      <div class="flex gap-3">
+        <UButton :loading="retrying" label="Retry" color="primary" @click="retryLoad"/>
+        <UButton to="/" variant="outline" label="Back to Library"/>
+      </div>
     </div>
 
     <!-- Mature gate -->
@@ -1698,6 +1718,20 @@ watch(mediaId, (id, oldId) => {
         </div>
 
         <div class="flex flex-col gap-4 max-md:px-4 max-md:pt-4">
+          <!-- Media switch failed; previous media is still loaded and playable -->
+          <UAlert
+              v-if="error"
+              :title="error"
+              description="The selected media failed to load. Retry, or keep watching the current item."
+              color="error"
+              variant="soft"
+              icon="i-lucide-alert-circle"
+          >
+            <template #actions>
+              <UButton label="Retry" size="xs" color="error" :loading="retrying" @click="retryLoad"/>
+            </template>
+          </UAlert>
+
           <!-- HLS + media meta -->
           <UAlert
               v-if="jobRunning"
