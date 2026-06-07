@@ -430,6 +430,25 @@ const savedSearches = ref<SavedSearch[]>([])
 const savedSearchMatches = ref<Record<string, MediaItem[]>>({})
 const savedSearchesApi = useSavedSearchesApi()
 
+// Fetch the items added to a saved search's result set since the user last
+// saw it. Shared by the initial fan-out and the per-row manual refresh.
+async function fetchSavedSearchMatches(s: SavedSearch): Promise<MediaItem[]> {
+  const res = await mediaApi.list({
+    search: s.query || '',
+    tags: s.tags?.length ? s.tags : undefined,
+    tag_mode: s.tag_mode,
+    type: s.media_type || '',
+    sort_by: 'date_added',
+    sort_order: 'desc',
+    limit: 12,
+  })
+  const cutoff = new Date(s.last_seen_at).getTime()
+  return (res.items ?? []).filter(i => {
+    if (!i.date_added) return false
+    return new Date(i.date_added).getTime() > cutoff
+  })
+}
+
 async function loadSavedSearches() {
   if (!authStore.isLoggedIn) return
   try {
@@ -441,26 +460,42 @@ async function loadSavedSearches() {
     const matches: Record<string, MediaItem[]> = {}
     await Promise.all(savedSearches.value.map(async (s) => {
       try {
-        const res = await mediaApi.list({
-          search: s.query || '',
-          tags: s.tags?.length ? s.tags : undefined,
-          tag_mode: s.tag_mode,
-          type: s.media_type || '',
-          sort_by: 'date_added',
-          sort_order: 'desc',
-          limit: 12,
-        })
-        const cutoff = new Date(s.last_seen_at).getTime()
-        const recent = (res.items ?? []).filter(i => {
-          if (!i.date_added) return false
-          return new Date(i.date_added).getTime() > cutoff
-        })
+        const recent = await fetchSavedSearchMatches(s)
         if (recent.length > 0) matches[s.id] = recent
       } catch { /* per-search failure ignored */
       }
     }))
     if (indexMounted) savedSearchMatches.value = matches
   } catch { /* non-critical */
+  }
+}
+
+// Per-row manual re-check — lets the user pull the latest matches for one
+// saved search without reloading the whole page. Tracked as a set so refreshes
+// of different rows run independently (one in-flight row doesn't block others).
+const refreshingSavedSearches = ref<Set<string>>(new Set())
+
+async function refreshSavedSearch(s: SavedSearch) {
+  if (refreshingSavedSearches.value.has(s.id)) return
+  refreshingSavedSearches.value = new Set(refreshingSavedSearches.value).add(s.id)
+  try {
+    const recent = await fetchSavedSearchMatches(s)
+    if (!indexMounted) return
+    const next = {...savedSearchMatches.value}
+    if (recent.length > 0) next[s.id] = recent
+    else delete next[s.id]
+    savedSearchMatches.value = next
+    toast.add({
+      title: recent.length > 0 ? `${recent.length} new match${recent.length === 1 ? '' : 'es'}` : 'No new matches yet',
+      color: recent.length > 0 ? 'success' : 'info',
+      icon: 'i-lucide-refresh-cw',
+    })
+  } catch {
+    toast.add({title: 'Failed to refresh search', color: 'error', icon: 'i-lucide-alert-circle'})
+  } finally {
+    const next = new Set(refreshingSavedSearches.value)
+    next.delete(s.id)
+    refreshingSavedSearches.value = next
   }
 }
 
@@ -1222,14 +1257,25 @@ onUnmounted(() => {
               New for: {{ s.name }}
               <span class="text-xs font-mono text-muted">({{ savedSearchMatches[s.id]?.length ?? 0 }})</span>
             </h2>
-            <UButton
-                icon="i-lucide-check"
-                label="Mark seen"
-                size="xs"
-                variant="ghost"
-                color="neutral"
-                @click="dismissSavedSearchRow(s.id)"
-            />
+            <div class="flex items-center gap-1">
+              <UButton
+                  icon="i-lucide-refresh-cw"
+                  label="Refresh"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  :loading="refreshingSavedSearches.has(s.id)"
+                  @click="refreshSavedSearch(s)"
+              />
+              <UButton
+                  icon="i-lucide-check"
+                  label="Mark seen"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  @click="dismissSavedSearchRow(s.id)"
+              />
+            </div>
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
             <NuxtLink
