@@ -184,9 +184,13 @@ func (m *Module) backgroundLoop() {
 	for {
 		select {
 		case <-m.flushTicker.C:
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			m.flushDirtyDailyStats(ctx)
-			cancel()
+			// Wrap in a closure so cancel() runs via defer even if flush panics,
+			// instead of leaking the timeout context's goroutine.
+			func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				m.flushDirtyDailyStats(ctx)
+			}()
 		case <-m.done:
 			return
 		}

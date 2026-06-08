@@ -64,6 +64,7 @@ type Module struct {
 	transActive        int        // current number of active transcodes
 	healthy            bool
 	healthMsg          string
+	healthStatus       string // tri-state for Health(): healthy | degraded | unhealthy
 	healthMu           sync.RWMutex
 	cacheDir           string
 	ffmpegPath         string
@@ -169,6 +170,7 @@ func (m *Module) Start(_ context.Context) error {
 	m.healthMu.Lock()
 	m.healthy = true
 	m.healthMsg = "Running"
+	m.healthStatus = "healthy"
 	m.healthMu.Unlock()
 	m.log.Info("HLS module started (ffmpeg-go transcoding available)")
 	return nil
@@ -183,6 +185,9 @@ func (m *Module) applyStartupHealthDisabled(cfg *config.Config) bool {
 	m.healthMu.Lock()
 	m.healthy = true
 	m.healthMsg = "Disabled (direct streaming only)"
+	// Intentionally configured off, not a fault: report healthy so the dashboard
+	// doesn't alarm. The message conveys that transcoding is off.
+	m.healthStatus = "healthy"
 	m.healthMu.Unlock()
 	return true
 }
@@ -195,6 +200,7 @@ func (m *Module) applyStartupHealthFFmpeg() bool {
 		m.healthMu.Lock()
 		m.healthy = true
 		m.healthMsg = "Degraded: ffmpeg not found (direct streaming only)"
+		m.healthStatus = "degraded"
 		m.healthMu.Unlock()
 		return true
 	}
@@ -218,6 +224,7 @@ func (m *Module) applyStartupHealthCacheDir() bool {
 		m.healthMu.Lock()
 		m.healthy = true
 		m.healthMsg = fmt.Sprintf("Degraded: cache dir error: %v", err)
+		m.healthStatus = "degraded"
 		m.healthMu.Unlock()
 		return true
 	}
@@ -392,6 +399,7 @@ func (m *Module) Stop(ctx context.Context) error {
 	m.healthMu.Lock()
 	m.healthy = false
 	m.healthMsg = "Stopped"
+	m.healthStatus = "unhealthy"
 	m.healthMu.Unlock()
 	// Report the timeout to the caller instead of claiming a clean shutdown:
 	// ffmpeg processes may still be running, and the caller logs success on nil.
@@ -405,9 +413,16 @@ func (m *Module) Stop(ctx context.Context) error {
 func (m *Module) Health() models.HealthStatus {
 	m.healthMu.RLock()
 	defer m.healthMu.RUnlock()
+	// Prefer the tri-state healthStatus (healthy|degraded|unhealthy) so genuinely
+	// degraded states (ffmpeg/cache-dir) surface as "degraded" instead of masquerading
+	// as healthy. Fall back to the binary flag before Start() has set the field.
+	status := m.healthStatus
+	if status == "" {
+		status = helpers.StatusString(m.healthy)
+	}
 	return models.HealthStatus{
 		Name:      m.Name(),
-		Status:    helpers.StatusString(m.healthy),
+		Status:    status,
 		Message:   m.healthMsg,
 		CheckedAt: time.Now(),
 	}
