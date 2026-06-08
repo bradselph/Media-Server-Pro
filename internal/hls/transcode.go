@@ -79,6 +79,15 @@ func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 	// enabled, job.Qualities is the full list but only the first quality exists
 	// on disk — listing all would cause 404s for any non-first quality variant.
 	if err := m.generateMasterPlaylist(&generateMasterPlaylistParams{OutputDir: job.OutputDir, Variants: qualitiesToTranscode}); err != nil {
+		// Clean up the per-variant directories already written: without the master
+		// playlist they're unservable, and the failure path otherwise leaks .ts
+		// segments on disk until the job is evicted. Mirrors handleTranscodeWaitError.
+		for _, quality := range qualitiesToTranscode {
+			variantDir := filepath.Join(job.OutputDir, quality)
+			if removeErr := os.RemoveAll(variantDir); removeErr != nil {
+				m.log.Warn("Failed to clean up variant dir %s after master playlist failure: %v", variantDir, removeErr)
+			}
+		}
 		m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusFailed, ErrorMsg: fmt.Sprintf("Failed to create master playlist: %v", err), Progress: 0})
 		return
 	}
@@ -411,11 +420,19 @@ func calculateVariantProgress(currentSecs, totalDuration float64) float64 {
 func parseFFmpegTime(timeStr string) float64 {
 	parts := strings.Split(timeStr, ":")
 	if len(parts) == 3 {
-		h, _ := strconv.ParseFloat(parts[0], 64)
-		m, _ := strconv.ParseFloat(parts[1], 64)
-		s, _ := strconv.ParseFloat(parts[2], 64)
+		h, errH := strconv.ParseFloat(parts[0], 64)
+		m, errM := strconv.ParseFloat(parts[1], 64)
+		s, errS := strconv.ParseFloat(parts[2], 64)
+		// On a malformed ffmpeg time string, return 0 rather than a partial sum from
+		// silently-zeroed components, which would make progress jump or run backward.
+		if errH != nil || errM != nil || errS != nil {
+			return 0
+		}
 		return h*3600 + m*60 + s
 	}
-	s, _ := strconv.ParseFloat(timeStr, 64)
+	s, err := strconv.ParseFloat(timeStr, 64)
+	if err != nil {
+		return 0
+	}
 	return s
 }

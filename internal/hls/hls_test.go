@@ -42,6 +42,15 @@ func TestParseFFmpegTime_Invalid(t *testing.T) {
 	}
 }
 
+// FND-0049: a malformed component inside an h:m:s string must yield 0, not a
+// partial sum built from silently-zeroed parts (which would make transcode
+// progress jump or run backward). Before the fix this returned 60.0.
+func TestParseFFmpegTime_MalformedComponent(t *testing.T) {
+	if got := parseFFmpegTime("00:01:XX"); got != 0 {
+		t.Errorf("parseFFmpegTime(\"00:01:XX\") = %f, want 0", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // calculateVariantProgress
 // ---------------------------------------------------------------------------

@@ -376,11 +376,13 @@ func (m *Module) Stop(ctx context.Context) error {
 		close(done)
 	}()
 
+	timedOut := false
 	select {
 	case <-done:
 		m.log.Info("All HLS transcoding jobs stopped")
 	case <-ctx.Done():
 		m.log.Warn("HLS shutdown timeout - some ffmpeg processes may still be running")
+		timedOut = true
 	}
 
 	if err := m.saveJobs(); err != nil {
@@ -391,6 +393,11 @@ func (m *Module) Stop(ctx context.Context) error {
 	m.healthy = false
 	m.healthMsg = "Stopped"
 	m.healthMu.Unlock()
+	// Report the timeout to the caller instead of claiming a clean shutdown:
+	// ffmpeg processes may still be running, and the caller logs success on nil.
+	if timedOut {
+		return ctx.Err()
+	}
 	return nil
 }
 
