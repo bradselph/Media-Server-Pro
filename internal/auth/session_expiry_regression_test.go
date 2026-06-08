@@ -13,12 +13,14 @@ import (
 // the zero value without exercising any real storage.
 type fnd0012SessionRepo struct{}
 
-func (fnd0012SessionRepo) Create(context.Context, *models.Session) error        { return nil }
-func (fnd0012SessionRepo) Get(context.Context, string) (*models.Session, error) { return nil, ErrSessionNotFound }
-func (fnd0012SessionRepo) Update(context.Context, *models.Session) error        { return nil }
-func (fnd0012SessionRepo) Delete(context.Context, string) error                 { return nil }
-func (fnd0012SessionRepo) DeleteExpired(context.Context) error                  { return nil }
-func (fnd0012SessionRepo) List(context.Context) ([]*models.Session, error)      { return nil, nil }
+func (fnd0012SessionRepo) Create(context.Context, *models.Session) error { return nil }
+func (fnd0012SessionRepo) Get(context.Context, string) (*models.Session, error) {
+	return nil, ErrSessionNotFound
+}
+func (fnd0012SessionRepo) Update(context.Context, *models.Session) error   { return nil }
+func (fnd0012SessionRepo) Delete(context.Context, string) error            { return nil }
+func (fnd0012SessionRepo) DeleteExpired(context.Context) error             { return nil }
+func (fnd0012SessionRepo) List(context.Context) ([]*models.Session, error) { return nil, nil }
 func (fnd0012SessionRepo) ListByUser(context.Context, string) ([]*models.Session, error) {
 	return nil, nil
 }
