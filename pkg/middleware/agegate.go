@@ -110,7 +110,7 @@ func extractClientIP(r *http.Request) string {
 				}
 			}
 		}
-		if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
+		if realIP := r.Header.Get("X-Real-IP"); realIP != "" && net.ParseIP(realIP) != nil {
 			return realIP
 		}
 	}
@@ -261,6 +261,7 @@ func (ag *AgeGate) GinVerifyHandler() gin.HandlerFunc {
 			ag.mu.Lock()
 			// Cap map size to prevent unbounded memory growth under high traffic.
 			const maxVerifiedIPs = 100000
+			insertOK := true
 			if len(ag.verifiedIPs) >= maxVerifiedIPs {
 				// Evict oldest entries when at capacity.
 				// Release the lock, run eviction, then re-acquire and re-check the
@@ -270,14 +271,21 @@ func (ag *AgeGate) GinVerifyHandler() gin.HandlerFunc {
 				ag.evictExpired()
 				ag.mu.Lock()
 				// Re-check size after eviction in case concurrent goroutines also
-				// passed the first check and grew the map past the limit.
+				// passed the first check and grew the map past the limit. If the cache
+				// is still full, skip the IP-cache insert but continue: the age cookie
+				// set below is the source of truth, so the user is still verified and
+				// must receive a normal success response.
 				if len(ag.verifiedIPs) >= maxVerifiedIPs {
-					ag.mu.Unlock()
-					return
+					insertOK = false
 				}
 			}
-			ag.verifiedIPs[ip] = time.Now()
+			if insertOK {
+				ag.verifiedIPs[ip] = time.Now()
+			}
 			ag.mu.Unlock()
+			if !insertOK {
+				ag.log.Warn("Age-gate verifiedIPs at capacity (%d); proceeding with cookie-only verification", maxVerifiedIPs)
+			}
 			ag.scheduleEvict()
 			http.SetCookie(c.Writer, &http.Cookie{
 				Name:     ag.cfg.CookieName,

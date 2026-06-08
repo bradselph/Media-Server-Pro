@@ -544,6 +544,13 @@ func (m *Module) ApplySuggestion(originalPath FilePath) error {
 
 	m.log.Info("Applied suggestion: %s -> %s", pathStr, destPath)
 
+	// saveSuggestions only UPSERTs the current set, so explicitly delete the
+	// applied path's DB row here — otherwise it reloads as a ghost suggestion on
+	// restart for a file that has already been moved (mirrors ClearSuggestion).
+	if delErr := m.repo.Delete(context.Background(), pathStr); delErr != nil {
+		m.log.Warn("Failed to delete applied suggestion %q from DB: %v", pathStr, delErr)
+	}
+
 	m.mu.Lock()
 	delete(m.suggestions, SuggestionKey(pathStr))
 	m.mu.Unlock()
@@ -603,16 +610,19 @@ func (m *Module) GetSuggestions() []*models.AutoDiscoverySuggestion {
 // ClearSuggestion removes a suggestion from memory and persists the deletion.
 // DB deletion happens first; the in-memory entry is only removed on success so
 // that a DB failure does not cause the suggestion to ghost-reappear on restart.
-func (m *Module) ClearSuggestion(path FilePath) {
+// The error is returned so callers can report a failed dismissal instead of
+// claiming success for a deletion that did not persist.
+func (m *Module) ClearSuggestion(path FilePath) error {
 	ctx := context.Background()
 	if err := m.repo.Delete(ctx, string(path)); err != nil {
 		m.log.Warn("Failed to persist suggestion deletion for %q: %v", path, err)
-		return
+		return err
 	}
 
 	m.mu.Lock()
 	delete(m.suggestions, SuggestionKey(path))
 	m.mu.Unlock()
+	return nil
 }
 
 // ClearAllSuggestions removes all suggestions from memory and persists the deletion.

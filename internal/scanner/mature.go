@@ -470,6 +470,13 @@ func (s *MatureScanner) scanFileInternal(path string) *ScanResult {
 
 	// Store result
 	s.mu.Lock()
+	// A concurrent ReviewItem may have stored a reviewed result for this path
+	// while we were scanning (between the RUnlock above and here). Don't clobber
+	// an admin's review decision with a fresh auto-scan result.
+	if existing, ok := s.results[path]; ok && (existing.ReviewedBy != "" || existing.ReviewDecision != "") {
+		s.mu.Unlock()
+		return existing
+	}
 	s.results[path] = result
 	s.mu.Unlock()
 

@@ -83,8 +83,9 @@ func TestFND0016_BanIP_ExpiryChecking(t *testing.T) {
 		t.Error("IP should be banned immediately (FND-0016 regression)")
 	}
 
-	// Wait for ban to expire
-	time.Sleep(15 * time.Millisecond)
+	// Wait for ban to expire (generous margin over the 10ms ban so loaded CI
+	// runners don't flake on scheduler/GC jitter)
+	time.Sleep(50 * time.Millisecond)
 
 	// Ban should no longer be active after expiry
 	if rl.IsBanned(ip) {

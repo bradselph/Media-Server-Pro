@@ -64,13 +64,22 @@ func (m *Module) writePlaceholderImage(outputPath string, img image.Image) error
 	if err != nil {
 		return err
 	}
-	defer func() {
+	closed := false
+	closeFile := func() {
+		if closed {
+			return
+		}
+		closed = true
 		if closeErr := file.Close(); closeErr != nil {
 			m.log.Warn("Failed to close thumbnail file: %v", closeErr)
 		}
-	}()
+	}
+	defer closeFile()
 
 	if err := jpeg.Encode(file, img, &jpeg.Options{Quality: 80}); err != nil {
+		// Close before removing so Windows (which refuses to delete an open file)
+		// can remove the partial/corrupt placeholder.
+		closeFile()
 		if removeErr := os.Remove(outputPath); removeErr != nil {
 			m.log.Error("Failed to remove corrupted placeholder %s: %v (corrupted file will persist)", outputPath, removeErr)
 			return fmt.Errorf("failed to encode thumbnail: %w; also failed to remove partial file: %w", err, removeErr)

@@ -80,7 +80,9 @@ jobs:
         run: go vet ./...
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        # v9 runs on Node 24; v7 (Node 20) breaks when GitHub forces Node 24
+        # on runners starting 2026-06-16. Same inputs; linter stays v2.x.
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.4
           only-new-issues: true

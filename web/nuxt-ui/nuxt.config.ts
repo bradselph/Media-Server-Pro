@@ -63,6 +63,10 @@ export default defineNuxtConfig({
     },
 
     app: {
+        // Route-change fade (perf perception). Pages must be single-root to
+        // animate; index.vue is multi-root and opts out via definePageMeta.
+        // prefers-reduced-motion suppresses it globally via main.css.
+        pageTransition: {name: 'page', mode: 'out-in'},
         head: {
             htmlAttrs: {lang: 'en'},
             title: 'Media Server Pro',

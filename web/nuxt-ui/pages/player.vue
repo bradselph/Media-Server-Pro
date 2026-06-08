@@ -4,6 +4,7 @@ import {getDisplayTitle} from '~/utils/mediaTitle'
 import {formatBitrate, formatBytes, formatDuration, formatRelativeDate} from '~/utils/format'
 import {safeJsonLD} from '~/utils/jsonld'
 import {getMediaGradient} from '~/utils/gradient'
+import {hlsQualityName} from '~/utils/hlsQuality'
 import {useQueueStore} from '~/stores/queue'
 import {useCollectionsApi} from '~/composables/useApiEndpoints'
 
@@ -692,6 +693,21 @@ async function loadMedia(id: string) {
   }
 }
 
+// Retry a failed media load from the error UI. loadMedia() clears error.value on
+// entry, so the error banner disappears while the retry is in flight and reappears
+// only if the fetch fails again.
+const retrying = ref(false)
+
+async function retryLoad() {
+  if (!mediaId.value || retrying.value) return
+  retrying.value = true
+  try {
+    await loadMedia(mediaId.value)
+  } finally {
+    retrying.value = false
+  }
+}
+
 async function restorePosition() {
   if (!mediaId.value || !videoRef.value) return
   positionRestored = true
@@ -1117,11 +1133,26 @@ function toggleMute() {
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
 
+// Replace rather than stack the speed toast: holding < / > fires key-repeat at
+// the OS rate, and each step would otherwise queue its own notification.
+let speedToastId: string | number | null = null
+
 function changeSpeed(delta: number) {
+  const prevSpeed = playbackSpeed.value
   const curIdx = SPEED_OPTIONS.indexOf(playbackSpeed.value)
   const newIdx = Math.max(0, Math.min(SPEED_OPTIONS.length - 1, (curIdx === -1 ? 3 : curIdx) + delta))
   playbackSpeed.value = SPEED_OPTIONS[newIdx]
   if (videoRef.value) videoRef.value.playbackRate = playbackSpeed.value
+  // Keyboard-only path (< / > keys) — surface the new speed, since unlike the
+  // controls-bar button there's no visible label change to confirm it.
+  if (playbackSpeed.value !== prevSpeed) {
+    if (speedToastId != null) toast.remove(speedToastId)
+    speedToastId = toast.add({
+      title: `Playback speed: ${playbackSpeed.value}x`,
+      color: 'info',
+      icon: 'i-lucide-zap'
+    }).id ?? null
+  }
   if (authStore.isLoggedIn) updatePreferences({playback_speed: playbackSpeed.value}).catch(() => {
   })
 }
@@ -1296,7 +1327,7 @@ const formatBandwidth = formatBitrate
 
 const currentQualityLabel = computed(() => {
   if (currentQuality.value === -1) return 'Auto'
-  return qualities.value[currentQuality.value]?.name ?? 'Auto'
+  return hlsQualityName(qualities.value[currentQuality.value]) ?? 'Auto'
 })
 
 // Analytics event helpers (fire-and-forget, never block playback)
@@ -1457,11 +1488,16 @@ watch(mediaId, (id, oldId) => {
       <UIcon name="i-lucide-loader-2" class="animate-spin size-10 text-primary"/>
     </div>
 
-    <!-- Error -->
-    <div v-else-if="error" class="flex flex-col items-center py-16 gap-4">
+    <!-- Error with nothing loaded yet — full-page block. When a media *switch* fails,
+         media still holds the previous item, so this is skipped and the inline error
+         banner inside the player section shows instead. -->
+    <div v-else-if="error && !media" class="flex flex-col items-center py-16 gap-4">
       <UIcon name="i-lucide-x-circle" class="size-12 text-error"/>
       <p class="text-error">{{ error }}</p>
-      <UButton to="/" variant="outline" label="Back to Library"/>
+      <div class="flex gap-3">
+        <UButton :loading="retrying" label="Retry" color="primary" @click="retryLoad"/>
+        <UButton to="/" variant="outline" label="Back to Library"/>
+      </div>
     </div>
 
     <!-- Mature gate -->
@@ -1605,7 +1641,7 @@ watch(mediaId, (id, oldId) => {
               <div v-if="media.bitrate" class="flex gap-1.5"><span class="text-white/50">Bitrate</span><span
                   class="font-mono">{{ (media.bitrate / 1000).toFixed(0) }} kbps</span></div>
               <div v-if="hlsActivated && currentQuality >= 0 && qualities[currentQuality]" class="flex gap-1.5"><span
-                  class="text-white/50">Quality</span><span>{{ qualities[currentQuality]?.name }}</span></div>
+                  class="text-white/50">Quality</span><span>{{ hlsQualityName(qualities[currentQuality]) }}</span></div>
               <div v-if="hlsActivated && bandwidth > 0" class="flex gap-1.5"><span
                   class="text-white/50">Bandwidth</span><span class="font-mono">{{ (bandwidth / 1_000_000).toFixed(1) }} Mbps</span>
               </div>
@@ -1698,6 +1734,20 @@ watch(mediaId, (id, oldId) => {
         </div>
 
         <div class="flex flex-col gap-4 max-md:px-4 max-md:pt-4">
+          <!-- Media switch failed; previous media is still loaded and playable -->
+          <UAlert
+              v-if="error"
+              :title="error"
+              description="The selected media failed to load. Retry, or keep watching the current item."
+              color="error"
+              variant="soft"
+              icon="i-lucide-alert-circle"
+          >
+            <template #actions>
+              <UButton label="Retry" size="xs" color="error" :loading="retrying" @click="retryLoad"/>
+            </template>
+          </UAlert>
+
           <!-- HLS + media meta -->
           <UAlert
               v-if="jobRunning"
@@ -2151,6 +2201,11 @@ watch(mediaId, (id, oldId) => {
                      class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
                   {{ formatDuration(item.duration) }}
                 </div>
+                <div v-if="item.user_rating"
+                     class="absolute top-0 right-0 flex items-center gap-0.5 bg-black/70 text-[var(--rating-star)] text-[9px] px-0.5 rounded-bl">
+                  <UIcon name="i-lucide-star" class="size-2.5 fill-current"/>
+                  <span>{{ item.user_rating }}</span>
+                </div>
               </div>
               <div class="min-w-0">
                 <p class="text-sm font-semibold truncate">{{ getDisplayTitle(item) }}</p>
@@ -2188,6 +2243,11 @@ watch(mediaId, (id, oldId) => {
                 <div v-if="item.duration"
                      class="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] font-mono px-0.5 rounded-tl">
                   {{ formatDuration(item.duration) }}
+                </div>
+                <div v-if="item.user_rating"
+                     class="absolute top-0 right-0 flex items-center gap-0.5 bg-black/70 text-[var(--rating-star)] text-[9px] px-0.5 rounded-bl">
+                  <UIcon name="i-lucide-star" class="size-2.5 fill-current"/>
+                  <span>{{ item.user_rating }}</span>
                 </div>
               </div>
               <div class="min-w-0">
@@ -2229,7 +2289,7 @@ watch(mediaId, (id, oldId) => {
           <UButton
               v-for="q in qualities"
               :key="q.index"
-              :label="q.name"
+              :label="hlsQualityName(q)"
               icon="i-lucide-layers"
               variant="outline"
               color="neutral"

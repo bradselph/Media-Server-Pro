@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/media"
+	"media-server-pro/internal/suggestions"
 	"media-server-pro/internal/thumbnails"
 )
 
@@ -23,12 +24,52 @@ func (h *Handler) requireSuggestionsCatalogue(c *gin.Context) bool {
 	return true
 }
 
+// enrichSuggestionUserRatings stamps each suggestion with the requesting
+// user's own rating, mirroring the user_ratings map ListMedia returns.
+// No-op for anonymous requests or users without a suggestion profile.
+func (h *Handler) enrichSuggestionUserRatings(items []*suggestions.Suggestion, userID string) {
+	if userID == "" || h.suggestions == nil || len(items) == 0 {
+		return
+	}
+	profile := h.suggestions.GetUserProfile(userID)
+	if profile == nil {
+		return
+	}
+	ratingsByPath := make(map[string]float64, len(profile.ViewHistory))
+	for _, vh := range profile.ViewHistory {
+		if vh.Rating > 0 && vh.MediaPath != "" {
+			ratingsByPath[vh.MediaPath] = vh.Rating
+		}
+	}
+	if len(ratingsByPath) == 0 {
+		return
+	}
+	for _, s := range items {
+		if r, ok := ratingsByPath[s.MediaPath]; ok {
+			s.UserRating = new(r)
+		}
+	}
+}
+
+// userIDFromSession returns the authenticated user's ID, or "" for anonymous
+// requests. For optional-auth endpoints that personalize when possible.
+func userIDFromSession(c *gin.Context) string {
+	if session := getSession(c); session != nil {
+		return session.UserID
+	}
+	return ""
+}
+
 // respondSuggestions fetches personalized suggestions and writes the response.
 func (h *Handler) respondSuggestions(c *gin.Context, userID string, defaultLimit, maxLimit int) {
+	// Responses carry the requesting user's own ratings — keep shared caches out
+	// (same policy as ListMedia).
+	c.Header(headerCacheControl, "private, max-age=300")
 	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: defaultLimit, Min: 1, Max: maxLimit})
 	canViewMature := h.canViewMatureContent(c)
 	suggestions := h.suggestions.GetSuggestions(userID, limit, canViewMature)
 	h.enrichSuggestionThumbnails(suggestions)
+	h.enrichSuggestionUserRatings(suggestions, userID)
 	writeSuccess(c, suggestions)
 }
 
@@ -56,10 +97,14 @@ func (h *Handler) GetTrendingSuggestions(c *gin.Context) {
 	if !h.requireSuggestionsCatalogue(c) {
 		return
 	}
+	// Personalized via user_rating when a session is present — must not be
+	// stored by shared caches.
+	c.Header(headerCacheControl, "private, max-age=300")
 	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 10, Min: 1, Max: 100})
 	canViewMature := h.canViewMatureContent(c)
 	trending := h.suggestions.GetTrendingSuggestions(limit, canViewMature)
 	h.enrichSuggestionThumbnails(trending)
+	h.enrichSuggestionUserRatings(trending, userIDFromSession(c))
 	writeSuccess(c, trending)
 }
 
@@ -74,6 +119,9 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 		return
 	}
 
+	// Personalized via user_rating when a session is present — must not be
+	// stored by shared caches.
+	c.Header(headerCacheControl, "private, max-age=300")
 	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 10, Min: 1, Max: 100})
 
 	// Pass the StableID directly to the suggestions module which has its own
@@ -82,6 +130,7 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 	canViewMature := h.canViewMatureContent(c)
 	similar := h.suggestions.GetSimilarMedia(id, limit, canViewMature)
 	h.enrichSuggestionThumbnails(similar)
+	h.enrichSuggestionUserRatings(similar, userIDFromSession(c))
 	writeSuccess(c, similar)
 }
 
@@ -95,10 +144,12 @@ func (h *Handler) GetContinueWatching(c *gin.Context) {
 		return
 	}
 
+	c.Header(headerCacheControl, "private, max-age=300")
 	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 10, Min: 1, Max: 50})
 	canViewMature := h.canViewMatureContent(c)
 	items := h.suggestions.GetContinueWatching(session.UserID, limit, canViewMature)
 	h.enrichSuggestionThumbnails(items)
+	h.enrichSuggestionUserRatings(items, session.UserID)
 	writeSuccess(c, items)
 }
 

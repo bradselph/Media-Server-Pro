@@ -558,8 +558,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/feed", requireAuth(), h.GetRSSFeed)
 
 	// Age gate — public, no auth required (must be accessible before user logs in)
-	api.GET("/age-gate/status", ageGate.GinStatusHandler())
-	api.POST("/age-verify", ageGate.GinVerifyHandler())
+	if ageGate != nil {
+		api.GET("/age-gate/status", ageGate.GinStatusHandler())
+		api.POST("/age-verify", ageGate.GinVerifyHandler())
+	}
 
 	// Cookie consent — public, no auth required (must be accessible to all visitors)
 	if cookieConsent != nil {

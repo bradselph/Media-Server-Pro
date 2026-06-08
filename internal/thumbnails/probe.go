@@ -66,7 +66,10 @@ func (m *Module) getMediaDuration(path string) (float64, error) {
 
 	// Fallback to raw ffprobe if available
 	if m.ffprobePath == "" {
-		return 0, fmt.Errorf("ffprobe not available and ffmpeg-go probe failed: %w", err)
+		if err != nil {
+			return 0, fmt.Errorf("ffprobe not available and ffmpeg-go probe failed: %w", err)
+		}
+		return 0, fmt.Errorf("ffprobe not available and ffmpeg-go returned unparseable output")
 	}
 
 	m.log.Debug("ffmpeg-go probe failed, trying raw ffprobe: %v", err)

@@ -190,9 +190,10 @@ async function handleSignup() {
                 required
                 autofocus
                 :aria-invalid="!!fieldErrors.username"
+                :aria-describedby="fieldErrors.username ? 'username-error' : undefined"
                 @blur="touched.username = true; validateField('username')"
             />
-            <p v-if="fieldErrors.username" class="text-[11px] text-red-400 mt-1" role="alert">{{
+            <p v-if="fieldErrors.username" id="username-error" class="text-[11px] text-red-400 mt-1" role="alert">{{
                 fieldErrors.username
               }}</p>
           </div>
@@ -207,9 +208,10 @@ async function handleSignup() {
                 autocomplete="email"
                 class="w-full"
                 :aria-invalid="!!fieldErrors.email"
+                :aria-describedby="fieldErrors.email ? 'email-error' : undefined"
                 @blur="touched.email = true; validateField('email')"
             />
-            <p v-if="fieldErrors.email" class="text-[11px] text-red-400 mt-1" role="alert">{{ fieldErrors.email }}</p>
+            <p v-if="fieldErrors.email" id="email-error" class="text-[11px] text-red-400 mt-1" role="alert">{{ fieldErrors.email }}</p>
           </div>
           <div>
             <label class="block text-[11px] font-bold text-muted uppercase tracking-wide mb-1.5">Password <span
@@ -220,13 +222,14 @@ async function handleSignup() {
                 autocomplete="new-password"
                 required
                 :minlength="8"
+                :aria-describedby="fieldErrors.password ? 'password-error' : 'password-hint'"
                 @blur="touched.password = true; validateField('password')"
             />
             <PasswordStrength :value="form.password"/>
-            <p v-if="fieldErrors.password" class="text-[11px] text-red-400 mt-1" role="alert">{{
+            <p v-if="fieldErrors.password" id="password-error" class="text-[11px] text-red-400 mt-1" role="alert">{{
                 fieldErrors.password
               }}</p>
-            <p v-else class="text-[10px] text-muted mt-1">Minimum 8 characters.</p>
+            <p v-else id="password-hint" class="text-[10px] text-muted mt-1">Minimum 8 characters.</p>
           </div>
           <div>
             <label class="block text-[11px] font-bold text-muted uppercase tracking-wide mb-1.5">Confirm Password <span
@@ -236,9 +239,10 @@ async function handleSignup() {
                 name="confirm-password"
                 autocomplete="new-password"
                 required
+                :aria-describedby="fieldErrors.confirm ? 'confirm-error' : undefined"
                 @blur="touched.confirm = true; validateField('confirm')"
             />
-            <p v-if="fieldErrors.confirm" class="text-[11px] text-red-400 mt-1" role="alert">{{
+            <p v-if="fieldErrors.confirm" id="confirm-error" class="text-[11px] text-red-400 mt-1" role="alert">{{
                 fieldErrors.confirm
               }}</p>
           </div>

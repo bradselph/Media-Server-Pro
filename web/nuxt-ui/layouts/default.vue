@@ -347,7 +347,7 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
 <template>
   <div class="min-h-screen bg-default text-default">
     <a href="#main-content"
-       class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-md focus:text-sm focus:font-medium">
+       class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-md focus:text-sm focus:font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
       Skip to main content
     </a>
     <!-- Full-page gate: nothing is rendered until the age-gate check resolves.

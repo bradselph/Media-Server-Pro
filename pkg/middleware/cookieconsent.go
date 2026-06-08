@@ -52,7 +52,12 @@ func (cc *CookieConsent) isSameOrigin(r *http.Request) bool {
 		origin = r.Header.Get("Referer")
 	}
 	if origin == "" {
-		return false
+		// No Origin/Referer header: treat as same-origin. Browsers always send
+		// Origin on cross-origin POSTs, so CSRF attempts still carry a header and
+		// fail the host check below; only non-browser callers (curl, native apps)
+		// reach here. Matches AgeGate.isSameOrigin so the two paired consent
+		// endpoints have a consistent CSRF posture.
+		return true
 	}
 	u, err := url.Parse(origin)
 	if err != nil {

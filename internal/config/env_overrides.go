@@ -38,6 +38,7 @@ func (m *Manager) applyTunableEnvOverrides() {
 	m.applyAuthEnvOverrides()
 	m.applySecurityEnvOverrides()
 	m.applyStreamingEnvOverrides()
+	m.applyDownloadEnvOverrides()
 	m.applyHLSEnvOverrides()
 	m.applyThumbnailsEnvOverrides()
 	m.applyAnalyticsEnvOverrides()

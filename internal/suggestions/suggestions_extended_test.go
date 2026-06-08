@@ -236,3 +236,66 @@ func TestTopShuffled_PreservesHighScores(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// RenameMediaPath
+// ---------------------------------------------------------------------------
+
+func TestRenameMediaPath_RatingsFollowFile(t *testing.T) {
+	m := NewModule(nil, nil)
+	m.RecordRating("user1", "/media/old.mp4", 4)
+
+	m.RenameMediaPath("/media/old.mp4", "/media/new.mp4")
+
+	profile := m.GetUserProfile("user1")
+	if profile == nil {
+		t.Fatal("profile missing")
+	}
+	if len(profile.ViewHistory) != 1 {
+		t.Fatalf("ViewHistory len = %d, want 1", len(profile.ViewHistory))
+	}
+	vh := profile.ViewHistory[0]
+	if vh.MediaPath != "/media/new.mp4" {
+		t.Errorf("MediaPath = %q, want /media/new.mp4", vh.MediaPath)
+	}
+	if vh.Rating != 4 {
+		t.Errorf("Rating = %v, want 4", vh.Rating)
+	}
+}
+
+func TestRenameMediaPath_ExistingTargetEntryWins(t *testing.T) {
+	m := NewModule(nil, nil)
+	m.RecordRating("user1", "/media/old.mp4", 2)
+	m.RecordRating("user1", "/media/new.mp4", 5)
+
+	m.RenameMediaPath("/media/old.mp4", "/media/new.mp4")
+
+	profile := m.GetUserProfile("user1")
+	if profile == nil {
+		t.Fatal("profile missing")
+	}
+	if len(profile.ViewHistory) != 1 {
+		t.Fatalf("ViewHistory len = %d, want 1 (old entry dropped)", len(profile.ViewHistory))
+	}
+	vh := profile.ViewHistory[0]
+	if vh.MediaPath != "/media/new.mp4" || vh.Rating != 5 {
+		t.Errorf("surviving entry = %q rating %v, want /media/new.mp4 rating 5", vh.MediaPath, vh.Rating)
+	}
+}
+
+func TestRenameMediaPath_NoOpOnSameOrEmptyPaths(t *testing.T) {
+	m := NewModule(nil, nil)
+	m.RecordRating("user1", "/media/a.mp4", 3)
+
+	m.RenameMediaPath("/media/a.mp4", "/media/a.mp4")
+	m.RenameMediaPath("", "/media/b.mp4")
+	m.RenameMediaPath("/media/a.mp4", "")
+
+	profile := m.GetUserProfile("user1")
+	if profile == nil || len(profile.ViewHistory) != 1 {
+		t.Fatal("profile should be unchanged")
+	}
+	if profile.ViewHistory[0].MediaPath != "/media/a.mp4" {
+		t.Errorf("MediaPath = %q, want /media/a.mp4", profile.ViewHistory[0].MediaPath)
+	}
+}

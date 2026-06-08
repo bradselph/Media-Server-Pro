@@ -173,15 +173,27 @@ func (r *ScanResultRepository) GetPendingReview(ctx context.Context) ([]*reposit
 // MarkReviewed updates a scan result with review information
 func (r *ScanResultRepository) MarkReviewed(ctx context.Context, path, reviewedBy, decision string) error {
 	now := time.Now()
+	updates := map[string]any{
+		"needs_review":    false,
+		"reviewed_by":     reviewedBy,
+		"reviewed_at":     now,
+		"review_decision": decision,
+	}
+	// Persist the maturity decision alongside the review metadata: approve => mature,
+	// reject => not mature. Without this the in-memory IsMature flag set by
+	// MatureScanner.ReviewItem is lost on restart — the unchanged DB is_mature value
+	// reloads and silently undoes the admin's decision. A map (not a struct) is used
+	// so GORM writes is_mature=false rather than skipping the zero value.
+	switch decision {
+	case "approve":
+		updates["is_mature"] = true
+	case "reject":
+		updates["is_mature"] = false
+	}
 	result := r.db.WithContext(ctx).
 		Model(&scanResultRow{}).
 		Where(sqlPathEq, path).
-		Updates(map[string]any{
-			"needs_review":    false,
-			"reviewed_by":     reviewedBy,
-			"reviewed_at":     now,
-			"review_decision": decision,
-		})
+		Updates(updates)
 
 	if result.Error != nil {
 		return fmt.Errorf("failed to mark as reviewed: %w", result.Error)

@@ -21,6 +21,8 @@ const toast = useToast()
 const query = computed(() => (route.query.q as string | undefined)?.trim() ?? '')
 const items = ref<MediaItem[]>([])
 const playbackProgress = ref<Record<string, number>>({})
+// Per-item star ratings from the list response (authenticated users only)
+const userRatings = ref<Record<string, number>>({})
 const loading = ref(false)
 const error = ref('')
 const localQuery = ref(query.value)
@@ -64,6 +66,8 @@ async function runSearch(q: string) {
     lastFetchedFor.value = ''
     error.value = ''
     loading.value = false
+    playbackProgress.value = {}
+    userRatings.value = {}
     return
   }
   loading.value = true
@@ -73,6 +77,7 @@ async function runSearch(q: string) {
     if (token !== searchToken) return // stale — newer query already in flight
     items.value = res?.items ?? []
     total.value = res?.total_items ?? items.value.length
+    userRatings.value = res?.user_ratings ?? {}
     page.value = 1
     lastFetchedFor.value = q
     pushRecent(q)
@@ -100,6 +105,8 @@ async function loadMore() {
     const more = res?.items ?? []
     items.value = [...items.value, ...more]
     total.value = res?.total_items ?? total.value
+    // Merge so earlier pages keep their ratings as new pages append
+    userRatings.value = {...userRatings.value, ...(res?.user_ratings ?? {})}
     page.value += 1
     await loadPositions(more, token)
   } catch { /* non-critical — leave existing results in place */
@@ -235,6 +242,29 @@ async function saveCurrentSearch() {
     savingSearch.value = false
   }
 }
+
+// ── Personalized recommendations row (UX backlog #7) ──────────────────
+const {
+  items: personalizedItems,
+  loading: personalizedLoading,
+  favoriteIds,
+  failedIds: failedSuggestions,
+  progress: personalizedProgress,
+  load: loadPersonalized,
+  toggleFavorite: toggleFavoriteId,
+  playlistMenuItemsFor,
+  onThumbnailError: onSuggestionThumbnailError,
+} = usePersonalizedRow(12)
+
+onMounted(() => {
+  if (authStore.isLoggedIn) loadPersonalized()
+})
+
+// Mid-session login (e.g. via another tab or the nav): fetch the recs the
+// mount-time call skipped while logged out.
+watch(() => authStore.isLoggedIn, (loggedIn) => {
+  if (loggedIn) loadPersonalized()
+})
 </script>
 
 <template>
@@ -414,6 +444,14 @@ async function saveCurrentSearch() {
             <div v-if="item.is_mature"
                  class="absolute top-1 right-1 bg-black/70 text-white text-[9px] font-bold px-1 rounded">18+
             </div>
+            <!-- User star rating badge (hidden when the 18+ badge occupies the corner) -->
+            <div
+                v-if="userRatings[item.id] && !item.is_mature"
+                class="absolute top-1 right-1 flex items-center gap-0.5 bg-black/70 text-[var(--rating-star)] text-xs px-1 rounded"
+            >
+              <UIcon name="i-lucide-star" class="size-3 fill-current"/>
+              <span>{{ userRatings[item.id] }}</span>
+            </div>
             <div
                 v-if="playbackProgress[item.id] && (playbackProgress[item.id] ?? 0) < 0.9"
                 class="absolute bottom-0 left-0 right-0 h-1 bg-white/20"
@@ -454,5 +492,21 @@ async function saveCurrentSearch() {
         />
       </div>
     </div>
+
+    <!-- Personalized recommendations (logged-in only) — also shown when a
+         search comes back empty, as a useful place to go next. -->
+    <RecommendationRow
+        v-if="authStore.isLoggedIn && query && !loading && authStore.user?.preferences?.show_recommended !== false"
+        title="Recommended For You"
+        icon="i-lucide-thumbs-up"
+        :items="personalizedItems"
+        :favorite-ids="favoriteIds"
+        :playlist-menu-items="playlistMenuItemsFor"
+        :failed-ids="failedSuggestions"
+        :loading="personalizedLoading"
+        :progress="personalizedProgress"
+        @toggle-favorite="toggleFavoriteId"
+        @thumbnail-error="onSuggestionThumbnailError"
+    />
   </UContainer>
 </template>

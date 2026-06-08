@@ -17,6 +17,9 @@ const error = ref('')
 // Per-field client-side validation. Empty until the user blurs a field or
 // submits, so we don't flash red borders before they've had a chance to type.
 const fieldErrors = reactive({username: '', password: ''})
+// Username UInput template ref; Nuxt UI exposes the underlying <input> element
+// as `inputRef`. Re-focused after a failed login so the user can retype at once.
+const usernameInput = ref<{ inputRef?: HTMLInputElement | null } | null>(null)
 const touched = reactive({username: false, password: false})
 const allowRegistration = ref(true) // optimistic default until settings load
 const allowGuests = computed(() => authStore.allowGuests)
@@ -81,6 +84,7 @@ async function handleLogin() {
     router.replace(loginRedirectDest())
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Invalid credentials'
+    nextTick(() => usernameInput.value?.inputRef?.focus())
   } finally {
     loading.value = false
   }
@@ -113,6 +117,7 @@ async function handleLogin() {
           <div>
             <label class="block text-[11px] font-bold text-muted uppercase tracking-wide mb-1.5">Username</label>
             <UInput
+                ref="usernameInput"
                 v-model="form.username"
                 name="username"
                 placeholder="your username"
@@ -121,9 +126,10 @@ async function handleLogin() {
                 required
                 autofocus
                 :aria-invalid="!!fieldErrors.username"
+                :aria-describedby="fieldErrors.username ? 'username-error' : undefined"
                 @blur="touched.username = true; validateField('username')"
             />
-            <p v-if="fieldErrors.username" class="text-[11px] text-red-400 mt-1" role="alert">{{
+            <p v-if="fieldErrors.username" id="username-error" class="text-[11px] text-red-400 mt-1" role="alert">{{
                 fieldErrors.username
               }}</p>
           </div>
@@ -134,9 +140,10 @@ async function handleLogin() {
                 name="password"
                 autocomplete="current-password"
                 required
+                :aria-describedby="fieldErrors.password ? 'password-error' : undefined"
                 @blur="touched.password = true; validateField('password')"
             />
-            <p v-if="fieldErrors.password" class="text-[11px] text-red-400 mt-1" role="alert">{{
+            <p v-if="fieldErrors.password" id="password-error" class="text-[11px] text-red-400 mt-1" role="alert">{{
                 fieldErrors.password
               }}</p>
           </div>

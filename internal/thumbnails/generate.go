@@ -170,8 +170,11 @@ func (m *Module) generateVideoThumbnail(job *ThumbnailJob) error {
 		m.log.Error("FFmpeg output: %s", string(output))
 		return fmt.Errorf("ffmpeg failed: %w", err)
 	}
-	if _, err := os.Stat(job.OutputPath); os.IsNotExist(err) {
-		return fmt.Errorf("thumbnail file not created")
+	// Reject a missing OR zero-byte output: a degenerate ffmpeg run can exit 0 yet
+	// leave an empty file, which would otherwise be served as a valid thumbnail and
+	// break the WebP/BlurHash post-processing that follows.
+	if !isValidThumbnailFile(job.OutputPath) {
+		return fmt.Errorf("thumbnail file not created or empty")
 	}
 
 	m.addFileSizeToStats(job.OutputPath)
@@ -296,8 +299,11 @@ func (m *Module) generateAudioThumbnail(job *ThumbnailJob) error {
 
 // verifyAndPostProcessAudioThumbnail verifies the waveform file exists, generates WebP variant, and updates BlurHash.
 func (m *Module) verifyAndPostProcessAudioThumbnail(job *ThumbnailJob) error {
-	if _, err := os.Stat(job.OutputPath); os.IsNotExist(err) {
-		return fmt.Errorf("waveform file not created")
+	// Reject a missing OR zero-byte waveform: an empty file slips past an existence
+	// check and then corrupts the WebP/BlurHash steps below (jpeg.Decode fails on
+	// zero bytes), leaving an invalid thumbnail accepted as success.
+	if !isValidThumbnailFile(job.OutputPath) {
+		return fmt.Errorf("waveform file not created or empty")
 	}
 	webpPath := m.getThumbnailPathWebp(job.OutputPath)
 	if err := m.generateWebPFromAudio(&webPFromAudioOpts{MediaPath: job.FFmpegInput, OutputPath: webpPath, Width: job.Width, Height: job.Height}); err != nil {

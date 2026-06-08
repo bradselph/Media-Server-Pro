@@ -454,6 +454,7 @@ func (m *Module) RequestStream(slaveID, token, path, rangeHeader string) (*Pendi
 		m.pendingMu.Lock()
 		delete(m.pendingStreams, token)
 		m.pendingMu.Unlock()
+		cancel() // caller never receives ps, so release the context here
 		return nil, fmt.Errorf("failed to send stream request: %w", err)
 	}
 
@@ -490,6 +491,7 @@ func (m *Module) RequestThumbnail(slaveID, token, remoteID string, preferWebP bo
 		m.pendingMu.Lock()
 		delete(m.pendingStreams, token)
 		m.pendingMu.Unlock()
+		cancel() // caller never receives ps, so release the context here
 		return nil, fmt.Errorf("failed to send thumb request: %w", err)
 	}
 

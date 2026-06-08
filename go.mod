@@ -1,6 +1,6 @@
 module media-server-pro
 
-go 1.26.2
+go 1.26.4
 
 require (
 	github.com/buckket/go-blurhash v1.1.0

@@ -16,6 +16,7 @@ export interface HLSQuality {
     bitrate: number
     name: string
     codec?: string
+    fps?: number
 }
 
 export interface UseHLSReturn {
@@ -244,7 +245,7 @@ export function useHLS(
         hlsInstance = hls
 
         hls.on(Hls.Events.MANIFEST_PARSED, (_event: unknown, data: {
-            levels: Array<{ height: number; width: number; bitrate: number; videoCodec?: string }>
+            levels: Array<{ height: number; width: number; bitrate: number; videoCodec?: string; frameRate?: number }>
         }) => {
             const q: HLSQuality[] = data.levels.map((level, i) => ({
                 index: i,
@@ -253,6 +254,7 @@ export function useHLS(
                 bitrate: level.bitrate,
                 name: getQualityName(level.height),
                 codec: level.videoCodec || undefined,
+                fps: Math.round(level.frameRate || 0) || undefined,
             }))
             qualities.value = q
             hlsLoading.value = false

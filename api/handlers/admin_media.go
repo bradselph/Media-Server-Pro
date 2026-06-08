@@ -266,6 +266,11 @@ func (h *Handler) applyAdminRenameIfNeeded(path, reqName string) (string, error)
 	if err != nil {
 		return "", err
 	}
+	// Re-key path-keyed suggestion view history (ratings + watch history)
+	// so it follows the renamed file instead of being orphaned.
+	if h.suggestions != nil {
+		h.suggestions.RenameMediaPath(path, newPath)
+	}
 	return newPath, nil
 }
 

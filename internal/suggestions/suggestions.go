@@ -57,6 +57,9 @@ type Suggestion struct {
 	Reasons      []string `json:"reasons"`
 	Duration     float64  `json:"duration,omitempty"`
 	ThumbnailURL string   `json:"thumbnail_url,omitempty"`
+	// UserRating is the requesting user's own rating (1-5), populated by the
+	// handler layer per request; nil (omitted) when unrated or anonymous.
+	UserRating *float64 `json:"user_rating,omitempty"`
 }
 
 // Module handles content suggestions. RecordView is called from the streaming
@@ -997,6 +1000,51 @@ func (m *Module) PurgeMediaPath(mediaPath string) {
 	ctx := context.Background()
 	if err := m.repo.DeleteViewHistoryByMediaPath(ctx, mediaPath); err != nil {
 		m.log.Error("failed to purge view history for deleted media %q: %v", mediaPath, err)
+	}
+}
+
+// RenameMediaPath re-keys view-history entries when a media file is renamed so
+// users' ratings and watch history follow the file instead of being orphaned.
+// Loaded profiles are re-keyed in memory; the database rows are re-keyed
+// directly so users whose profiles are not currently loaded (evicted) migrate
+// too. When a profile already has an entry for newPath, the old entry is
+// dropped in its favor rather than duplicated.
+func (m *Module) RenameMediaPath(oldPath, newPath string) {
+	if oldPath == "" || newPath == "" || oldPath == newPath {
+		return
+	}
+
+	m.mu.Lock()
+	for _, profile := range m.profiles {
+		oldIdx, newIdx := -1, -1
+		for i := range profile.ViewHistory {
+			switch profile.ViewHistory[i].MediaPath {
+			case oldPath:
+				oldIdx = i
+			case newPath:
+				newIdx = i
+			}
+		}
+		if oldIdx == -1 {
+			continue
+		}
+		if newIdx >= 0 {
+			profile.ViewHistory = append(profile.ViewHistory[:oldIdx], profile.ViewHistory[oldIdx+1:]...)
+		} else {
+			profile.ViewHistory[oldIdx].MediaPath = newPath
+		}
+		// Not marked dirty: the database is re-keyed below, so memory and DB
+		// already agree without another flush.
+	}
+	m.mu.Unlock()
+
+	if m.repo == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := m.repo.RenameViewHistoryMediaPath(ctx, oldPath, newPath); err != nil {
+		m.log.Error("failed to re-key view history for renamed media %q -> %q: %v", oldPath, newPath, err)
 	}
 }
 

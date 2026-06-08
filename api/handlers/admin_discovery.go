@@ -112,7 +112,11 @@ func (h *Handler) DismissDiscoverySuggestion(c *gin.Context) {
 		return
 	}
 
-	h.autodiscovery.ClearSuggestion(autodiscovery.FilePath(absPath))
+	if err := h.autodiscovery.ClearSuggestion(autodiscovery.FilePath(absPath)); err != nil {
+		h.log.Error("%v", err)
+		writeError(c, http.StatusInternalServerError, errInternalServer)
+		return
+	}
 	h.trackServerEvent(c, analytics.EventDiscoveryRun, map[string]any{"scope": "dismiss", "path": absPath})
 	writeSuccess(c, map[string]string{"message": "Suggestion dismissed"})
 }

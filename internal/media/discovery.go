@@ -830,7 +830,10 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		// This detects files that were moved or renamed between scans.
 		fp, fpErr := computeContentFingerprint(path)
 		if fpErr != nil {
-			m.log.Debug("Could not fingerprint %s: %v", path, fpErr)
+			// Warn (not Debug): a fingerprint failure permanently disables move/dedup
+			// detection for this file until it's manually rescanned, and DEBUG is off
+			// in production, so operators would never see persistent failures.
+			m.log.Warn("Could not fingerprint %s: %v", path, fpErr)
 		}
 
 		if fp != "" {
@@ -838,6 +841,13 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 			// concurrent workers from both detecting the same fingerprint as a
 			// "move" and both trying to migrate, corrupting the index.
 			m.mu.Lock()
+			// Re-read under the write lock: a concurrent createMediaItem for the
+			// same path may have created m.metadata[path] in the window since the
+			// RUnlock above. If so, adopt it instead of creating a second entry and
+			// overwriting the fingerprint index it just registered (lost update).
+			if existing, ok := m.metadata[path]; ok {
+				meta, hasMeta = existing, true
+			}
 			oldPath, found := m.fingerprintIndex[fp]
 			var oldMeta *Metadata
 			if found && oldPath != path {
@@ -936,6 +946,10 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 				meta.ContentFingerprint = fp
 				m.fingerprintIndex[fp] = path
 				m.mu.Unlock()
+			} else if err != nil {
+				// Surface re-fingerprint failures: silently leaving the fingerprint
+				// empty disables move/dedup detection for this file with no trace.
+				m.log.Warn("Could not re-fingerprint %s: %v", path, err)
 			}
 		}
 	}

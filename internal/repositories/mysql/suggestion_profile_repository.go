@@ -261,3 +261,28 @@ func (r *SuggestionProfileRepository) DeleteViewHistoryByMediaPath(ctx context.C
 	}
 	return nil
 }
+
+// RenameViewHistoryMediaPath re-keys every user's view-history rows from
+// oldPath to newPath after a media file rename. Rows whose owner already has
+// an entry for newPath are deleted first — re-keying them would violate the
+// (user_id, media_path) composite primary key; the existing newPath row wins.
+func (r *SuggestionProfileRepository) RenameViewHistoryMediaPath(ctx context.Context, oldPath, newPath string) error {
+	// Wrap the collision-delete and the re-key update in one transaction: if the
+	// delete commits but the update fails (timeout/DB error), the colliding rows
+	// would be lost without the rename completing, leaving view history corrupt.
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(
+			`DELETE vh_old FROM suggestion_view_history vh_old
+			 JOIN suggestion_view_history vh_new
+			   ON vh_new.user_id = vh_old.user_id AND vh_new.media_path = ?
+			 WHERE vh_old.media_path = ?`, newPath, oldPath).Error; err != nil {
+			return fmt.Errorf("failed to drop colliding view history rows: %w", err)
+		}
+		if err := tx.Model(&viewHistoryRow{}).
+			Where("media_path = ?", oldPath).
+			Update("media_path", newPath).Error; err != nil {
+			return fmt.Errorf("failed to re-key view history media path: %w", err)
+		}
+		return nil
+	})
+}

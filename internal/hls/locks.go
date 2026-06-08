@@ -72,9 +72,11 @@ func (m *Module) checkLock(jobID string) (exists, stale bool, lock *LockFile) {
 // handleStaleLock processes a single stale lock: logs, removes the lock file, and updates job status.
 func (m *Module) handleStaleLock(jobID string, lock *LockFile) {
 	m.log.Warn("Found stale lock for job %s (started: %v)", jobID, lock.StartedAt)
-	m.removeLock(jobID)
+	// Hold jobsMu across both the lock-file removal and the status update so the
+	// stale-lock handling is atomic with respect to other jobsMu holders.
 	m.jobsMu.Lock()
 	defer m.jobsMu.Unlock()
+	m.removeLock(jobID)
 	if job, ok := m.jobs[jobID]; ok && job.Status == models.HLSStatusRunning {
 		job.Status = models.HLSStatusFailed
 		job.Error = "Job timed out (stale lock)"

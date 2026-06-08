@@ -203,7 +203,9 @@ func TestFND0058_GetActiveSessions_MultipleValidSessions(t *testing.T) {
 
 	// Verify all are independent pointers by modifying each
 	for i, sess := range active {
+		m.sessionsMu.RLock()
 		originalID := m.sessions[sess.ID].ID
+		m.sessionsMu.RUnlock()
 		sess.ID = "modified-" + sess.ID
 
 		// Re-fetch and verify cache was not mutated

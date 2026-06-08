@@ -117,12 +117,13 @@ func servePlaylist(w http.ResponseWriter, _ *http.Request, opts servePlaylistOpt
 	if err != nil {
 		return fmt.Errorf("failed to read playlist: %w", err)
 	}
-	corsOrigin := opts.corsOrigin
-	if corsOrigin == "" {
-		corsOrigin = "*"
-	}
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Access-Control-Allow-Origin", corsOrigin)
+	// Omit the CORS header when empty: hlsCORSOrigin returns "" only to DENY a
+	// configured-but-non-matching Origin. Defaulting to "*" would turn that deny
+	// into allow-all and defeat the operator's CORS allow-list.
+	if opts.corsOrigin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", opts.corsOrigin)
+	}
 	if opts.cdnBase == "" {
 		w.Header().Set(headerCacheControl, "no-cache")
 		if _, err := w.Write(data); err != nil {
@@ -217,7 +218,9 @@ func (m *Module) ServeSegment(w http.ResponseWriter, r *http.Request, p SegmentP
 
 	w.Header().Set("Content-Type", "video/mp2t")
 	w.Header().Set(headerCacheControl, "public, max-age=31536000")
-	w.Header().Set("Access-Control-Allow-Origin", m.hlsCORSOrigin(r))
+	if origin := m.hlsCORSOrigin(r); origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+	}
 	http.ServeFile(w, r, segmentPath)
 	return nil
 }

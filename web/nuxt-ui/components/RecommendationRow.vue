@@ -115,6 +115,14 @@ function scrollBy(delta: number) {
                class="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-mono px-1.5 py-0.5 rounded">
             {{ formatDuration(s.duration) }}
           </div>
+          <!-- User's own star rating (rides on the Suggestion item; same badge as the grids) -->
+          <div
+              v-if="s.user_rating"
+              class="absolute top-1 right-1 flex items-center gap-0.5 bg-black/70 text-[var(--rating-star)] text-xs px-1 rounded"
+          >
+            <UIcon name="i-lucide-star" class="size-3 fill-current"/>
+            <span>{{ s.user_rating }}</span>
+          </div>
           <!-- Progress / Watched indicator (parity with home grid) -->
           <div
               v-if="progress?.[s.media_id] && (progress?.[s.media_id] ?? 0) < 0.9"
