@@ -48,7 +48,10 @@ func setReflectField(field reflect.Value, value any, path string) error {
 		return fmt.Errorf("cannot set config value: %s", path)
 	}
 	newVal := reflect.ValueOf(value)
-	if newVal.Type().ConvertibleTo(field.Type()) {
+	// A nil value (e.g. a JSON null in the update map) yields an invalid Value;
+	// calling .Type() on it panics. Fall through to the JSON path, which marshals
+	// nil to "null" and decodes it into the field without crashing.
+	if newVal.IsValid() && newVal.Type().ConvertibleTo(field.Type()) {
 		field.Set(newVal.Convert(field.Type()))
 		return nil
 	}

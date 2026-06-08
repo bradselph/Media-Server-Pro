@@ -6,7 +6,6 @@ func (m *Manager) applyStreamingEnvOverrides() {
 	m.applyStreamingChunkOverrides()
 	m.applyStreamingKeepAliveOverrides()
 	m.applyStreamingAdaptiveOverrides()
-	m.applyDownloadEnvOverrides()
 }
 
 func (m *Manager) applyStreamingChunkOverrides() {

@@ -11,8 +11,11 @@ import (
 	"media-server-pro/internal/backup"
 )
 
-// validBackupID matches alphanumeric strings, hyphens, and underscores (UUID-safe).
-var validBackupID = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+// validBackupID matches alphanumeric strings, hyphens, underscores, and dots.
+// Dots are required because backup IDs embed a fractional-second timestamp
+// (backup_20060102_150405.000000000). No path separators are allowed, and
+// resolveBackupPath additionally enforces pathWithinBase, so dots are safe.
+var validBackupID = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
 
 // ListBackupsV2 lists backups using the backup module
 func (h *Handler) ListBackupsV2(c *gin.Context) {

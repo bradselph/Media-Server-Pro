@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -57,7 +58,7 @@ func (h *Handler) RequestDataDeletion(c *gin.Context) {
 	if !BindJSON(c, &req, "") {
 		return
 	}
-	if len(req.Reason) > 1000 {
+	if utf8.RuneCountInString(req.Reason) > 1000 {
 		writeError(c, http.StatusBadRequest, "Reason must not exceed 1000 characters")
 		return
 	}
@@ -157,7 +158,7 @@ func (h *Handler) AdminProcessDeletionRequest(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, `action must be "approve" or "deny"`)
 		return
 	}
-	if len(req.AdminNotes) > 2000 {
+	if utf8.RuneCountInString(req.AdminNotes) > 2000 {
 		writeError(c, http.StatusBadRequest, "Admin notes must not exceed 2000 characters")
 		return
 	}
