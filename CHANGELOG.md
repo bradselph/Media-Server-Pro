@@ -1,5 +1,71 @@
 # Changelog
 
+## [1.18.1] - 2026-06-08 (patch)
+
+- fix: resolve audit coverage wave 2 (hls/autodiscovery/receiver/thumbnails)
+- fix: resolve 8 findings from audit coverage wave 1 (handlers/config/repos)
+- fix(admin): collapse dual keydown handlers to stop flaky vue-tsc TS1117
+- fix(hls,middleware,analytics): resolve deferred audit findings
+- style(auth): gofmt FND-0012 regression test stub
+- fix(hls,thumbnails): honest shutdown, cleanup, reject zero-byte output
+- fix(media): persist mature review decision, close fingerprint/review races
+- fix(security): validate age-gate X-Real-IP, plug session/auth races
+- feat(player): high-frame-rate suffix on HLS quality labels
+- feat(home): per-row refresh button on saved-search rows
+- chore(ci): bump golangci-lint-action v7 -> v9 ahead of Node 24 cutover
+- fix(ci): require Go 1.26.4 — clears govulncheck stdlib findings
+- fix(suggestions): ratings and watch history follow admin file renames
+- feat(frontend): star badges for own ratings on rec rows + player sidebar
+- feat(suggestions): surface the user's own rating on suggestion items
+- feat(a11y): aria-describedby on auth form errors + skip-link outline
+- feat(player): toast feedback for keyboard speed changes
+- feat(home): show Top categories shelf to logged-in users
+- feat(search): surface user star ratings on result cards
+- feat(account): login retry focus, admin-login hint, accent-hue save toast
+- perf(frontend): route-change fade, touch hover-lift fix, rAF seek tooltip
+- feat(a11y): reduced-motion guards + keyboard-accessible upload drop zone
+- feat(suggestions): personalized rec rows on search + categories pages
+- feat(player): retry for failed media loads
+- chore: remove dead useAnalytics() wrapper and stale golangci exclusion
+- chore(go): tool-driven cleanup — atomic counters, IsZero, doc comments, dead param
+- style: project-wide reformat — imports, wrapping, indentation; drop unused imports
+- refactor(go): finish new(expr) modernization; fix CORS copy-under-lock race
+- docs(css): drop stale on-deck mention from scrollbar-hide comment
+- feat(frontend): remove On Deck home section + API wiring
+- fix(json): omitempty->omitzero on 12 plain time.Time fields
+- feat(suggestions)!: remove dead GetOnDeck endpoint
+- refactor(handlers): extract UploadMedia file-processing loop into processUploadFiles
+- docs(streaming): document why the three stream loops are intentionally not deduped
+- refactor(server): decompose registerTasks into per-concern sub-functions
+- perf(security): convert totalBlocked/totalRateLimited to atomic.Int64
+- refactor(handlers): dedup AdminEnableTask/AdminDisableTask into setTaskEnabled helper
+- refactor(frontend): drop dead sortBy + dedup HLS-validate toast
+- refactor: simplify redundant boolean returns
+- refactor(handlers): adopt RequireSession helper for auth-gate boilerplate
+- style: combine consecutive same-type params (gocritic paramTypeCombine)
+- refactor(frontend): remove dead code + extract shared media-gradient util
+- style: fix comment spelling (US locale) and Go formatting
+- refactor: adopt Go 1.24/1.25 iterators (SplitSeq/FieldsSeq, WaitGroup.Go)
+- refactor: modernize string/slice idioms (strings.Cut, slices.Contains/Backward)
+- refactor: migrate helpers.Ptr(x) to Go 1.26 new(expr) builtin
+- refactor: remove dead/redundant code (cleanup sweep)
+- refactor: modernize to Go 1.21+ builtins (min/max, range-over-int, maps.Copy, any)
+- refactor: remove dead code (testutil wrappers, thumbnails formatBytes)
+- feat(home): favorite + add-to-playlist hover actions on recommendation rows
+- feat(home): removable active-filter chips for type and min-rating
+- feat(search): show total result count and add Load-more pagination
+- feat(player): poster frame, richer HLS quality labels, mobile quality selector
+- feat(ui): blurhash LQIP placeholders on search/favorites/history grids
+- test(validator): cover parse pipeline and resultToRecord mapping
+- test: cover isTrustedProxyIP and redactSensitiveConfigKeys
+- test(repos): replace tautological interface assertions (staticcheck S1040)
+- refactor: use slices.ContainsFunc for prefix/keyword membership checks
+- refactor(security): extract isTrustedProxyIP helper in getClientIP
+- Merge branch 'main' into development
+- refactor(config): use maps.Clone and inline trivial syncToggle closure
+- refactor: collapse manual lookup loops to slices.ContainsFunc
+
+
 ## [1.18.0] - 2026-06-02 (minor)
 
 - refactor(middleware): remove dead static-CORS cluster
