@@ -360,8 +360,7 @@ onMounted(() => {
               :rows="4"
               placeholder="SELECT * FROM users LIMIT 10"
               class="font-mono text-sm"
-              @keydown.ctrl.enter="runDbQuery"
-              @keydown.meta.enter="runDbQuery"
+              @keydown.enter="($event.ctrlKey || $event.metaKey) && runDbQuery()"
           />
           <div class="flex items-center gap-2">
             <UButton :loading="dbQueryRunning" icon="i-lucide-play" label="Run Query" size="sm" @click="runDbQuery"/>
