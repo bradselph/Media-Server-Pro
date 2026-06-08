@@ -544,6 +544,13 @@ func (m *Module) ApplySuggestion(originalPath FilePath) error {
 
 	m.log.Info("Applied suggestion: %s -> %s", pathStr, destPath)
 
+	// saveSuggestions only UPSERTs the current set, so explicitly delete the
+	// applied path's DB row here — otherwise it reloads as a ghost suggestion on
+	// restart for a file that has already been moved (mirrors ClearSuggestion).
+	if delErr := m.repo.Delete(context.Background(), pathStr); delErr != nil {
+		m.log.Warn("Failed to delete applied suggestion %q from DB: %v", pathStr, delErr)
+	}
+
 	m.mu.Lock()
 	delete(m.suggestions, SuggestionKey(pathStr))
 	m.mu.Unlock()
