@@ -114,10 +114,11 @@ func TestGetClientIP_XRealIP(t *testing.T) {
 	if ip == "" {
 		t.Error("should return a non-empty IP")
 	}
-	// When the remote is trusted and X-Real-IP is set, the implementation
-	// should return the X-Real-IP value.
-	if ip != "203.0.113.100" && ip != testIP1 {
-		t.Errorf("getClientIP = %q, want 203.0.113.100 or 10.0.0.1", ip)
+	// When the remote is trusted and X-Real-IP is set, the implementation returns
+	// the X-Real-IP value. Assert exactly that so a regression dropping the
+	// X-Real-IP handling (silently falling back to remoteIP) is caught.
+	if ip != "203.0.113.100" {
+		t.Errorf("getClientIP = %q, want 203.0.113.100", ip)
 	}
 }
 

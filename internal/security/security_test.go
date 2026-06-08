@@ -58,8 +58,8 @@ func TestGetClientIP_NoPort(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.RemoteAddr = testIP1
 	ip := getClientIP(req, nil)
-	if ip == "" {
-		t.Error("should handle RemoteAddr without port")
+	if ip != testIP1 {
+		t.Errorf("getClientIP = %q, want %s", ip, testIP1)
 	}
 }
 
@@ -69,7 +69,7 @@ func TestGetClientIP_XForwardedFor(t *testing.T) {
 	req.Header.Set("X-Forwarded-For", "203.0.113.50, 10.0.0.1")
 	ip := getClientIP(req, nil)
 	if ip != "203.0.113.50" {
-		t.Logf("getClientIP with X-Forwarded-For = %q (implementation dependent)", ip)
+		t.Errorf("getClientIP with X-Forwarded-For = %q, want 203.0.113.50", ip)
 	}
 }
 

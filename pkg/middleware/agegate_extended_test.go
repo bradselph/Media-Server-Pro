@@ -163,8 +163,29 @@ func TestExtractClientIP_XForwardedFor(t *testing.T) {
 	req.RemoteAddr = "127.0.0.1:1234"
 	req.Header.Set("X-Forwarded-For", "203.0.113.50")
 	ip := extractClientIP(req)
-	if ip == "" {
-		t.Error("should return non-empty IP")
+	if ip != "203.0.113.50" {
+		t.Errorf("extractClientIP = %q, want 203.0.113.50", ip)
+	}
+}
+
+// FND-0010: a non-IP X-Real-IP from a trusted proxy must be rejected (falling
+// back to the proxy's remote address) so a crafted header can't be stored as a
+// garbage verifiedIPs key and defeat IP-based TTL enforcement.
+func TestExtractClientIP_RejectsInvalidXRealIP(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "127.0.0.1:1234" // loopback => trusted proxy
+	req.Header.Set("X-Real-IP", "not-an-ip")
+	if ip := extractClientIP(req); ip != "127.0.0.1" {
+		t.Errorf("extractClientIP = %q, want 127.0.0.1 (invalid X-Real-IP must be rejected)", ip)
+	}
+}
+
+func TestExtractClientIP_ValidXRealIP(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "127.0.0.1:1234" // loopback => trusted proxy
+	req.Header.Set("X-Real-IP", "203.0.113.99")
+	if ip := extractClientIP(req); ip != "203.0.113.99" {
+		t.Errorf("extractClientIP = %q, want 203.0.113.99", ip)
 	}
 }
 

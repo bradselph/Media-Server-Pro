@@ -126,13 +126,17 @@ func (m *Module) getOrLoadSession(ctx context.Context, sessionID string) (*model
 	return session, nil
 }
 
-// removeExpiredSession deletes the session from repository and cache.
+// removeExpiredSession deletes the session from the repository and both cache
+// maps. Admin sessions live in m.adminSessions (see getOrLoadSession), so both
+// maps must be cleared here or expired admin sessions leak until the periodic
+// cleanup tick — matching the both-maps handling in Logout/LogoutAdmin.
 func (m *Module) removeExpiredSession(ctx context.Context, sessionID string) {
 	if err := m.sessionRepo.Delete(ctx, sessionID); err != nil {
 		m.log.Warn("Failed to delete expired session: %v", err)
 	}
 	m.sessionsMu.Lock()
 	delete(m.sessions, sessionID)
+	delete(m.adminSessions, sessionID)
 	m.sessionsMu.Unlock()
 }
 

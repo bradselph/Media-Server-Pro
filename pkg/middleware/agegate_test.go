@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -214,6 +215,28 @@ func TestGinStatusHandler(t *testing.T) {
 
 	if w.Code != 200 {
 		t.Errorf("status code = %d, want 200", w.Code)
+	}
+
+	// Validate the response body shape, not just the status code, so a handler
+	// regression (renamed/omitted fields, wrong wrapper) is actually caught.
+	var resp struct {
+		Success bool `json:"success"`
+		Data    struct {
+			Enabled  bool `json:"enabled"`
+			Verified bool `json:"verified"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("response body is not valid JSON: %v", err)
+	}
+	if !resp.Success {
+		t.Error("response success = false, want true")
+	}
+	if !resp.Data.Enabled {
+		t.Error("data.enabled = false, want true (gate is enabled in this test)")
+	}
+	if resp.Data.Verified {
+		t.Error("data.verified = true, want false (public IP, no cookie, not previously verified)")
 	}
 }
 

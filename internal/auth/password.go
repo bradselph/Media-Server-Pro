@@ -138,10 +138,22 @@ func (m *Module) ChangeAdminPassword(ctx context.Context, currentPassword, newPa
 		return fmt.Errorf("failed to hash new password: %w", err)
 	}
 
+	// Compare-and-swap under the config write lock (config.Update runs the
+	// closure while holding it): only replace the hash if it still matches the
+	// value we verified above. Without this, two concurrent admin password
+	// changes can both pass the verify and the second silently clobbers the first.
+	oldHash := cfg.Admin.PasswordHash
+	applied := false
 	if err := m.config.Update(func(c *config.Config) {
-		c.Admin.PasswordHash = string(hash)
+		if c.Admin.PasswordHash == oldHash {
+			c.Admin.PasswordHash = string(hash)
+			applied = true
+		}
 	}); err != nil {
 		return fmt.Errorf("failed to persist new admin password: %w", err)
+	}
+	if !applied {
+		return ErrInvalidCredentials
 	}
 
 	// Evict all existing admin sessions so the old password can no longer be used.

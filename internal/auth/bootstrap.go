@@ -27,7 +27,7 @@ func (m *Module) ensureDefaultAdmin() error {
 		}
 		hash, err := bcrypt.GenerateFromPassword([]byte(defaultPassword), bcrypt.DefaultCost)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to hash default admin password: %w", err)
 		}
 		if err := m.config.Update(func(c *config.Config) {
 			c.Admin.PasswordHash = string(hash)
