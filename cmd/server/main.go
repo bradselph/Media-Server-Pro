@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"media-server-pro/api/handlers"
@@ -702,7 +703,7 @@ func registerTasks(
 	registerSessionBackupTasks(registerWithOverride, cfg, authModule, backupModule, log)
 	registerScannerTasks(registerWithOverride, cfg, mediaModule, scannerModule, duplicatesModule, log)
 	registerAdminHealthTasks(registerWithOverride, cfg, adminModule, log)
-	registerHLSStreamingTasks(registerWithOverride, cfg, mediaModule, hlsModule, streamingModule, log)
+	registerHLSStreamingTasks(registerWithOverride, cfg, mediaModule, hlsModule, streamingModule, analyticsModule, log)
 	registerCacheCleanupTasks(registerWithOverride, cfg, hlsModule, analyticsModule, categorizerModule, remoteModule, log)
 	registerScheduleWatcher(scheduler, cfg, log)
 }
@@ -1015,7 +1016,7 @@ func registerAdminHealthTasks(registerWithOverride func(tasks.TaskRegistration),
 
 // registerHLSStreamingTasks registers HLS pre-generation, HLS inactive-job
 // cleanup, and streaming-session eviction tasks.
-func registerHLSStreamingTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, mediaModule *media.Module, hlsModule *hls.Module, streamingModule *streaming.Module, log *logger.Logger) {
+func registerHLSStreamingTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, mediaModule *media.Module, hlsModule *hls.Module, streamingModule *streaming.Module, analyticsModule *analytics.Module, log *logger.Logger) {
 	// HLS pre-generation — generates HLS content for video media that doesn't have it yet.
 	// Interval is configurable via hls.pre_generate_interval_hours (default: 1).
 	// Each cycle queues at most ConcurrentLimit jobs and skips entirely when existing
@@ -1048,6 +1049,29 @@ func registerHLSStreamingTasks(registerWithOverride func(tasks.TaskRegistration)
 			}
 
 			items := mediaModule.ListMedia(media.Filter{})
+
+			// Prioritize by popularity: pre-transcode the most-viewed un-HLS'd
+			// items first so the content users actually request is the content
+			// that's already streaming-ready. Without this the batch picks items
+			// in arbitrary catalog (map-iteration) order. Falls back to catalog
+			// order when analytics is unavailable or has no view data yet.
+			if analyticsModule != nil {
+				rank := make(map[string]int)
+				for i, mv := range analyticsModule.GetTopMedia(0) {
+					rank[mv.MediaID] = i
+				}
+				if len(rank) > 0 {
+					sort.SliceStable(items, func(a, b int) bool {
+						ra, oka := rank[items[a].ID]
+						rb, okb := rank[items[b].ID]
+						if oka && okb {
+							return ra < rb // lower index = more views
+						}
+						return oka && !okb // ranked items ahead of unranked
+					})
+				}
+			}
+
 			queued := 0
 			for _, item := range items {
 				if ctx.Err() != nil {

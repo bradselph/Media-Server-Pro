@@ -96,28 +96,32 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		SortDesc: c.Query("sort_order") == "desc",
 	}
 
+	// Fast path: a plain public browse/search needs neither cross-module merge
+	// (receiver/extractor) nor per-user post-filters (min_rating, my_rating,
+	// hide_watched). In that — by far most common — case, ListMediaPage serves
+	// the listing in a single locked pass that copies only the requested page
+	// instead of deep-copying every matching item, with identical filtering,
+	// sorting, and counts. When any of those features IS in play, fall through
+	// to the full path below, which materializes the whole filtered set.
+	hideWatched := c.Query("hide_watched") == "true" || c.Query("hide_watched") == "1"
+	needFullSet := minRating > 0 || sortByRating || hideWatched ||
+		(h.extractor != nil && h.media.GetConfig().Extractor.Enabled) ||
+		(h.receiver != nil && len(h.receiver.GetAllMedia()) > 0)
+
+	if !needFullSet {
+		page, total, typeCounts := h.media.ListMediaPage(filterNoPagination, limit, offset)
+		h.trackMediaSearch(c, filterNoPagination.Search, total)
+		h.finalizeMediaList(c, page, total, limit, typeCounts, h.userRatingsByPath(c))
+		return
+	}
+
 	allItems := h.media.ListMedia(filterNoPagination)
 
 	// Track search queries for analytics (non-empty search terms only) AFTER
 	// the search has run, so we can record the result count and an explicit
 	// "no results" flag — letting the dashboard distinguish productive
 	// searches from queries that turned up nothing.
-	if h.analytics != nil && filterNoPagination.Search != "" {
-		sess := getSession(c)
-		uid := ""
-		if sess != nil {
-			uid = sess.UserID
-		}
-		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
-			Type: analytics.EventSearch, UserID: uid,
-			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-			Data: map[string]any{
-				"query":        filterNoPagination.Search,
-				"result_count": len(allItems),
-				"empty":        len(allItems) == 0,
-			},
-		})
-	}
+	h.trackMediaSearch(c, filterNoPagination.Search, len(allItems))
 
 	// Global ID set — tracks every item ID already present in allItems so that
 	// receiver and extractor items are never added twice regardless of source.
@@ -219,17 +223,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 	// Build user ratings map (path → rating) for authenticated users.
 	// Used for sort=my_rating, min_rating filter, and the user_ratings response field.
-	var userRatingsByPath map[string]float64
-	if session := getSession(c); session != nil && h.suggestions != nil {
-		if profile := h.suggestions.GetUserProfile(session.UserID); profile != nil {
-			userRatingsByPath = make(map[string]float64, len(profile.ViewHistory))
-			for _, vh := range profile.ViewHistory {
-				if vh.Rating > 0 && vh.MediaPath != "" {
-					userRatingsByPath[vh.MediaPath] = vh.Rating
-				}
-			}
-		}
-	}
+	userRatingsByPath := h.userRatingsByPath(c)
 
 	// Filter to only items the user has rated at or above min_rating.
 	if minRating > 0 && userRatingsByPath != nil {
@@ -286,15 +280,8 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	// Actual playback/streaming is blocked by checkMatureAccess().
 
 	totalItems := len(allItems)
-	totalPages := 1
-	if limit > 0 {
-		totalPages = max((totalItems+limit-1)/limit, 1)
-	}
 
 	items := allItems
-	if items == nil {
-		items = []*models.MediaItem{}
-	}
 	if offset > 0 {
 		if offset >= len(items) {
 			items = []*models.MediaItem{}
@@ -306,41 +293,119 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		items = items[:limit]
 	}
 
-	for _, item := range items {
-		if item.ThumbnailURL == "" && item.Path != "" && h.thumbnails != nil {
-			// Only generate thumbnails for local media (receiver items have no local path)
-			if !h.thumbnails.HasThumbnail(thumbnails.MediaID(item.ID)) {
-				isAudio := item.Type == "audio"
-				_, err := h.thumbnails.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.Path, MediaID: item.ID, IsAudio: isAudio, HighPriority: true})
-				if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
-					h.log.Warn("Failed to queue thumbnail for %s: %v", item.Path, err)
-				}
-			}
-			item.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
-		}
-	}
-
-	// Build user_ratings map keyed by media ID for the current page items.
-	// Only included when the user is authenticated and has rated at least one item.
-	var userRatingsByID map[string]float64
-	if userRatingsByPath != nil {
-		for _, item := range items {
-			if item.Path != "" {
-				if r, ok := userRatingsByPath[item.Path]; ok {
-					if userRatingsByID == nil {
-						userRatingsByID = make(map[string]float64)
-					}
-					userRatingsByID[item.ID] = r
-				}
-			}
-		}
-	}
-
 	typeCounts := make(map[string]int, 3)
 	for _, item := range allItems {
 		if item.Type != "" {
 			typeCounts[string(item.Type)]++
 		}
+	}
+
+	h.finalizeMediaList(c, items, totalItems, limit, typeCounts, userRatingsByPath)
+}
+
+// userRatingsByPath returns the current user's star ratings keyed by media path,
+// or nil for anonymous requests / when the suggestions module is absent. When a
+// profile exists the map is non-nil even if empty, so callers can distinguish
+// "no ratings recorded" (filter min_rating to nothing) from "not a rated user".
+func (h *Handler) userRatingsByPath(c *gin.Context) map[string]float64 {
+	session := getSession(c)
+	if session == nil || h.suggestions == nil {
+		return nil
+	}
+	profile := h.suggestions.GetUserProfile(session.UserID)
+	if profile == nil {
+		return nil
+	}
+	ratings := make(map[string]float64, len(profile.ViewHistory))
+	for _, vh := range profile.ViewHistory {
+		if vh.Rating > 0 && vh.MediaPath != "" {
+			ratings[vh.MediaPath] = vh.Rating
+		}
+	}
+	return ratings
+}
+
+// trackMediaSearch records a search traffic event (non-empty queries only) with
+// the result count and an explicit empty flag, so the dashboard can tell
+// productive searches from ones that returned nothing. Shared by both listing
+// paths; result count is the total matched set before pagination.
+func (h *Handler) trackMediaSearch(c *gin.Context, search string, resultCount int) {
+	if h.analytics == nil || search == "" {
+		return
+	}
+	uid := ""
+	if sess := getSession(c); sess != nil {
+		uid = sess.UserID
+	}
+	h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
+		Type: analytics.EventSearch, UserID: uid,
+		IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+		Data: map[string]any{
+			"query":        search,
+			"result_count": resultCount,
+			"empty":        resultCount == 0,
+		},
+	})
+}
+
+// ensurePageThumbnails queues thumbnail generation for any page item missing one
+// and stamps the resulting URL. Only local media (items with a path) is eligible;
+// receiver items have no local file. A no-op when the thumbnails module is absent.
+func (h *Handler) ensurePageThumbnails(items []*models.MediaItem) {
+	if h.thumbnails == nil {
+		return
+	}
+	for _, item := range items {
+		if item.ThumbnailURL != "" || item.Path == "" {
+			continue
+		}
+		if !h.thumbnails.HasThumbnail(thumbnails.MediaID(item.ID)) {
+			isAudio := item.Type == "audio"
+			_, err := h.thumbnails.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.Path, MediaID: item.ID, IsAudio: isAudio, HighPriority: true})
+			if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
+				h.log.Warn("Failed to queue thumbnail for %s: %v", item.Path, err)
+			}
+		}
+		item.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
+	}
+}
+
+// buildUserRatingsByID maps the IDs of the current page items to the user's star
+// rating, returning nil when none of the page items are rated (so the caller can
+// omit the user_ratings field entirely).
+func buildUserRatingsByID(items []*models.MediaItem, byPath map[string]float64) map[string]float64 {
+	if byPath == nil {
+		return nil
+	}
+	var byID map[string]float64
+	for _, item := range items {
+		if item.Path == "" {
+			continue
+		}
+		if r, ok := byPath[item.Path]; ok {
+			if byID == nil {
+				byID = make(map[string]float64)
+			}
+			byID[item.ID] = r
+		}
+	}
+	return byID
+}
+
+// finalizeMediaList queues missing thumbnails for the page, attaches the per-item
+// user_ratings map, and writes the standard listing response. Shared by the fast
+// (single-pass) and full (merge/post-filter) ListMedia paths so both emit an
+// identical payload shape. totalItems is the count of the full matched set;
+// typeCounts is tallied over that same set.
+func (h *Handler) finalizeMediaList(c *gin.Context, items []*models.MediaItem, totalItems, limit int, typeCounts map[string]int, userRatingsByPath map[string]float64) {
+	if items == nil {
+		items = []*models.MediaItem{}
+	}
+	h.ensurePageThumbnails(items)
+
+	totalPages := 1
+	if limit > 0 {
+		totalPages = max((totalItems+limit-1)/limit, 1)
 	}
 
 	resp := map[string]any{
@@ -350,8 +415,8 @@ func (h *Handler) ListMedia(c *gin.Context) {
 		"scanning":    h.media.IsScanning(),
 		"type_counts": typeCounts,
 	}
-	if userRatingsByID != nil {
-		resp["user_ratings"] = userRatingsByID
+	if byID := buildUserRatingsByID(items, userRatingsByPath); byID != nil {
+		resp["user_ratings"] = byID
 	}
 	if !h.media.IsReady() {
 		resp["initializing"] = true
