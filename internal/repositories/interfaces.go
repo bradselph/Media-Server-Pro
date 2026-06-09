@@ -52,6 +52,13 @@ type SessionRepository interface {
 // MediaMetadataRepository provides media metadata access methods
 type MediaMetadataRepository interface {
 	Upsert(ctx context.Context, path string, metadata *MediaMetadata) error
+	// BulkUpsert writes many metadata rows in chunked multi-row statements
+	// instead of one transaction per row. It returns the number of rows
+	// successfully persisted. On a large library this turns a post-scan save
+	// from tens of thousands of round-trips into a few hundred. Each chunk is
+	// its own transaction; the context is honored between chunks so shutdown
+	// or scan cancellation stops the save promptly.
+	BulkUpsert(ctx context.Context, items map[string]*MediaMetadata) (int, error)
 	Get(ctx context.Context, path string) (*MediaMetadata, error)
 	Delete(ctx context.Context, path string) error
 	List(ctx context.Context) (map[string]*MediaMetadata, error)

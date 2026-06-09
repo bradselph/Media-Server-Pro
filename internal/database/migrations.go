@@ -735,6 +735,14 @@ func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 			"ALTER TABLE media_metadata ADD UNIQUE INDEX idx_stable_id (stable_id)"},
 		{"media_metadata", "idx_content_fingerprint",
 			"ALTER TABLE media_metadata ADD INDEX idx_content_fingerprint (content_fingerprint)"},
+		// Every mature-gated browse/admin listing filters on is_mature and then
+		// orders by date_added or views (see MediaMetadataRepository.ListFiltered).
+		// Without a composite index MySQL does a full scan + filesort on every such
+		// query; these two cover the equality-probe-then-range-scan access pattern.
+		{"media_metadata", "idx_media_mature_date",
+			"ALTER TABLE media_metadata ADD INDEX idx_media_mature_date (is_mature, date_added)"},
+		{"media_metadata", "idx_media_mature_views",
+			"ALTER TABLE media_metadata ADD INDEX idx_media_mature_views (is_mature, views)"},
 		{"receiver_media", "idx_receiver_media_fingerprint",
 			"ALTER TABLE receiver_media ADD INDEX idx_receiver_media_fingerprint (content_fingerprint)"},
 		// Prevent duplicate items in the same playlist after PK migration from

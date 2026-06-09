@@ -72,63 +72,74 @@ func NewMediaMetadataRepository(db *gorm.DB) repositories.MediaMetadataRepositor
 	return &MediaMetadataRepository{db: db}
 }
 
+// buildMetadataRow converts a domain metadata value into its table row,
+// parsing the string timestamps and normalising a zero/nil ProbeModTime to nil.
+// Shared by Upsert and BulkUpsert so the two paths can never diverge.
+func buildMetadataRow(path string, metadata *repositories.MediaMetadata) mediaMetadataRow {
+	var lastPlayed *time.Time
+	if metadata.LastPlayed != nil {
+		if t, err := time.Parse(time.RFC3339, *metadata.LastPlayed); err == nil {
+			lastPlayed = &t
+		}
+	}
+
+	dateAdded, err := time.Parse(time.RFC3339, metadata.DateAdded)
+	if err != nil {
+		dateAdded = time.Now()
+	}
+
+	var probeModTime *time.Time
+	if metadata.ProbeModTime != nil && !metadata.ProbeModTime.IsZero() {
+		probeModTime = metadata.ProbeModTime
+	}
+
+	return mediaMetadataRow{
+		Path:               path,
+		StableID:           metadata.StableID,
+		ContentFingerprint: metadata.ContentFingerprint,
+		Views:              metadata.Views,
+		LastPlayed:         lastPlayed,
+		DateAdded:          dateAdded,
+		IsMature:           metadata.IsMature,
+		MatureScore:        metadata.MatureScore,
+		Category:           metadata.Category,
+		ProbeModTime:       probeModTime,
+		BlurHash:           metadata.BlurHash,
+		Duration:           metadata.Duration,
+	}
+}
+
+// mediaMetadataConflictClause is the ON DUPLICATE KEY UPDATE policy applied by
+// both Upsert and BulkUpsert: operational fields are always overwritten, but
+// stable_id and content_fingerprint are preserved once set, and duration is
+// only widened (never zeroed). MySQL's VALUES(col) references the incoming row;
+// in a multi-row INSERT it resolves per-row, so the same clause is correct for
+// the batched path.
+func mediaMetadataConflictClause() clause.OnConflict {
+	return clause.OnConflict{
+		Columns: []clause.Column{{Name: "path"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"views":          gorm.Expr("VALUES(views)"),
+			"last_played":    gorm.Expr("VALUES(last_played)"),
+			"is_mature":      gorm.Expr("VALUES(is_mature)"),
+			"mature_score":   gorm.Expr("VALUES(mature_score)"),
+			"category":       gorm.Expr("VALUES(category)"),
+			"probe_mod_time": gorm.Expr("VALUES(probe_mod_time)"),
+			"duration":       gorm.Expr("IF(VALUES(duration) > 0, VALUES(duration), media_metadata.duration)"),
+			// Only write stable_id when it's not already set
+			"stable_id": gorm.Expr("IF(media_metadata.stable_id IS NULL OR media_metadata.stable_id = '', VALUES(stable_id), media_metadata.stable_id)"),
+			// Only write fingerprint when it's not already set
+			"content_fingerprint": gorm.Expr("IF(media_metadata.content_fingerprint IS NULL OR media_metadata.content_fingerprint = '', VALUES(content_fingerprint), media_metadata.content_fingerprint)"),
+		}),
+	}
+}
+
 // Upsert inserts or updates media metadata
 func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metadata *repositories.MediaMetadata) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Parse LastPlayed
-		var lastPlayed *time.Time
-		if metadata.LastPlayed != nil {
-			if t, err := time.Parse(time.RFC3339, *metadata.LastPlayed); err == nil {
-				lastPlayed = &t
-			}
-		}
+		row := buildMetadataRow(path, metadata)
 
-		// Parse DateAdded
-		dateAdded, err := time.Parse(time.RFC3339, metadata.DateAdded)
-		if err != nil {
-			dateAdded = time.Now()
-		}
-
-		// Handle ProbeModTime — nil or zero → nil
-		var probeModTime *time.Time
-		if metadata.ProbeModTime != nil && !metadata.ProbeModTime.IsZero() {
-			probeModTime = metadata.ProbeModTime
-		}
-
-		row := mediaMetadataRow{
-			Path:               path,
-			StableID:           metadata.StableID,
-			ContentFingerprint: metadata.ContentFingerprint,
-			Views:              metadata.Views,
-			LastPlayed:         lastPlayed,
-			DateAdded:          dateAdded,
-			IsMature:           metadata.IsMature,
-			MatureScore:        metadata.MatureScore,
-			Category:           metadata.Category,
-			ProbeModTime:       probeModTime,
-			BlurHash:           metadata.BlurHash,
-			Duration:           metadata.Duration,
-		}
-
-		// On conflict: always update operational fields but only set stable_id
-		// if the existing row doesn't already have one (preserve existing UUIDs).
-		if err := tx.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "path"}},
-			DoUpdates: clause.Assignments(map[string]any{
-				// MySQL uses VALUES(col) to reference the incoming row in ON DUPLICATE KEY UPDATE.
-				"views":          gorm.Expr("VALUES(views)"),
-				"last_played":    gorm.Expr("VALUES(last_played)"),
-				"is_mature":      gorm.Expr("VALUES(is_mature)"),
-				"mature_score":   gorm.Expr("VALUES(mature_score)"),
-				"category":       gorm.Expr("VALUES(category)"),
-				"probe_mod_time": gorm.Expr("VALUES(probe_mod_time)"),
-				"duration":       gorm.Expr("IF(VALUES(duration) > 0, VALUES(duration), media_metadata.duration)"),
-				// Only write stable_id when it's not already set
-				"stable_id": gorm.Expr("IF(media_metadata.stable_id IS NULL OR media_metadata.stable_id = '', VALUES(stable_id), media_metadata.stable_id)"),
-				// Only write fingerprint when it's not already set
-				"content_fingerprint": gorm.Expr("IF(media_metadata.content_fingerprint IS NULL OR media_metadata.content_fingerprint = '', VALUES(content_fingerprint), media_metadata.content_fingerprint)"),
-			}),
-		}).Create(&row).Error; err != nil {
+		if err := tx.Clauses(mediaMetadataConflictClause()).Create(&row).Error; err != nil {
 			return fmt.Errorf("failed to upsert media metadata: %w", err)
 		}
 
@@ -149,6 +160,69 @@ func (r *MediaMetadataRepository) Upsert(ctx context.Context, path string, metad
 
 		return nil
 	})
+}
+
+// bulkUpsertChunkSize bounds how many metadata rows go into a single multi-row
+// INSERT. 400 paths keeps the statement (plus its tag inserts) comfortably under
+// MySQL's default max_allowed_packet while still collapsing a full-library save
+// from one transaction per file into a few hundred.
+const bulkUpsertChunkSize = 400
+
+// BulkUpsert writes many metadata rows using chunked multi-row statements.
+// Each chunk is a single transaction containing: one multi-row upsert of the
+// metadata rows, one bulk delete of the chunk's tags, and one multi-row insert
+// of the replacement tags. Tag replacement keeps the exact semantics of the
+// per-row Upsert (delete-all-then-insert). Returns the number of rows persisted.
+func (r *MediaMetadataRepository) BulkUpsert(ctx context.Context, items map[string]*repositories.MediaMetadata) (int, error) {
+	if len(items) == 0 {
+		return 0, nil
+	}
+
+	// Stable working slice so chunk boundaries are well-defined.
+	paths := make([]string, 0, len(items))
+	for path := range items {
+		paths = append(paths, path)
+	}
+
+	saved := 0
+	for start := 0; start < len(paths); start += bulkUpsertChunkSize {
+		if err := ctx.Err(); err != nil {
+			return saved, err
+		}
+		end := min(start+bulkUpsertChunkSize, len(paths))
+		chunk := paths[start:end]
+
+		rows := make([]mediaMetadataRow, len(chunk))
+		var tagRows []mediaTagRow
+		for i, path := range chunk {
+			rows[i] = buildMetadataRow(path, items[path])
+			for _, tag := range items[path].Tags {
+				tagRows = append(tagRows, mediaTagRow{Path: path, Tag: tag})
+			}
+		}
+
+		err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Clauses(mediaMetadataConflictClause()).Create(&rows).Error; err != nil {
+				return fmt.Errorf("failed to bulk upsert media metadata: %w", err)
+			}
+			// Replace tags for every path in the chunk: clear then re-insert.
+			if err := tx.Where("path IN ?", chunk).Delete(&mediaTagRow{}).Error; err != nil {
+				return fmt.Errorf("failed to delete old tags: %w", err)
+			}
+			if len(tagRows) > 0 {
+				if err := tx.Create(&tagRows).Error; err != nil {
+					return fmt.Errorf("failed to insert tags: %w", err)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return saved, err
+		}
+		saved += len(chunk)
+	}
+
+	return saved, nil
 }
 
 // Get retrieves media metadata by path

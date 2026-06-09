@@ -1246,6 +1246,52 @@ func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 	return items
 }
 
+// ListMediaPage returns a single page of the in-memory catalog together with the
+// total number of matching items and a per-type count over the FULL matched set —
+// all computed in one pass under a single read-lock. Unlike ListMedia, only the
+// returned page is deep-copied, so a browse request on a large library no longer
+// allocates a copy of every matching item just to discard all but one page.
+//
+// Filtering and sorting semantics are identical to ListMedia (same Matches, same
+// SortItems). It deliberately does NOT merge receiver/extractor items or apply
+// per-user post-filters (min_rating, my_rating, hide_watched); callers that need
+// any of those must use ListMedia and page the result themselves. limit <= 0
+// means "no limit" (return everything from offset), matching the handler's
+// existing contract.
+func (m *Module) ListMediaPage(filter Filter, limit, offset int) (page []*models.MediaItem, total int, typeCounts map[string]int) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// Collect matching pointers (no copy yet) and tally type counts in the same
+	// pass. Pointers alias live items; reordering the slice below does not mutate
+	// them, and the lock is held until we have copied the page.
+	matched := make([]*models.MediaItem, 0, len(m.media))
+	typeCounts = make(map[string]int, 4)
+	for _, item := range m.media {
+		if filter.Matches(item) {
+			matched = append(matched, item)
+			if item.Type != "" {
+				typeCounts[string(item.Type)]++
+			}
+		}
+	}
+	total = len(matched)
+
+	filter.SortItems(matched)
+
+	lo := min(max(offset, 0), len(matched))
+	hi := len(matched)
+	if limit > 0 && lo+limit < hi {
+		hi = lo + limit
+	}
+
+	page = make([]*models.MediaItem, 0, hi-lo)
+	for _, item := range matched[lo:hi] {
+		page = append(page, deepCopyItem(item))
+	}
+	return page, total, typeCounts
+}
+
 // ListMediaPaginated returns a page of media items using DB-level filtering and pagination.
 // Use this for admin or large libraries to avoid loading the full catalog. Total is the
 // total matching rows in the DB; items may be fewer if some paths are no longer in the
@@ -1899,35 +1945,19 @@ func (m *Module) saveMetadata(ctx context.Context) error {
 	m.saveMu.Lock()
 	defer m.saveMu.Unlock()
 
-	consecutiveErrors := 0
-	saved := 0
-	for path, repoMeta := range snapshot {
-		// Bail out if the parent context (shutdown or scan cancellation) is done.
-		select {
-		case <-ctx.Done():
+	// Batched save: one chunked multi-row upsert per ~400 rows instead of a
+	// transaction per file. BulkUpsert honors ctx between chunks, so shutdown or
+	// scan cancellation still stops the save promptly. A failing chunk aborts the
+	// rest (a mid-save DB outage); whatever was already written persists and the
+	// next scan retries the remainder.
+	saved, err := m.metadataRepo.BulkUpsert(ctx, snapshot)
+	if err != nil {
+		if ctx.Err() != nil {
 			m.log.Info("Metadata save interrupted (%d/%d saved): %v", saved, len(snapshot), ctx.Err())
 			return ctx.Err()
-		default:
 		}
-
-		// Use a per-item deadline derived from the parent context so that
-		// individual slow rows don't stall shutdown beyond the server timeout.
-		itemCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
-		err := m.metadataRepo.Upsert(itemCtx, path, repoMeta)
-		cancel()
-		if err != nil {
-			consecutiveErrors++
-			if consecutiveErrors <= 2 {
-				m.log.Warn("Failed to save metadata for %s (will retry next scan): %v", path, err)
-			}
-			if consecutiveErrors >= 5 {
-				m.log.Error("Aborting metadata save: DB appears unreachable after %d consecutive errors (%d/%d saved)", consecutiveErrors, saved, len(snapshot))
-				return fmt.Errorf("metadata save aborted: %d consecutive DB errors", consecutiveErrors)
-			}
-		} else {
-			consecutiveErrors = 0
-			saved++
-		}
+		m.log.Warn("Metadata save incomplete (%d/%d saved, will retry next scan): %v", saved, len(snapshot), err)
+		return err
 	}
 
 	return nil
