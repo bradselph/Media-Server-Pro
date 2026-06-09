@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.18.2] - 2026-06-09 (patch)
+
+- perf(media): page browse hot-path, batch upserts, index mature queries
+- refactor: consolidate admin panel from 15 tabs to 9
+
+
 ## [1.18.1] - 2026-06-08 (patch)
 
 - fix: resolve audit coverage wave 2 (hls/autodiscovery/receiver/thumbnails)
