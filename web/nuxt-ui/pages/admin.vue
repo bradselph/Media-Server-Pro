@@ -2,24 +2,20 @@
 definePageMeta({title: 'Admin Panel', middleware: 'admin'})
 
 // Async-load each tab so an admin landing on /admin?tab=dashboard pays for
-// only the dashboard chunk, not all 16 tabs. Previously every tab component
+// only the dashboard chunk, not all tabs. Previously every tab component
 // was eagerly bundled into the admin route (~420 kB minified) because Vue's
 // template compiler treats `<AdminFooTab>` references as static imports.
+// The shell tabs (Media/Library/Ingest/Moderation/System) render their absorbed
+// sub-panels via auto-import, so those land in the shell's own async chunk.
 const AdminDashboardTab = defineAsyncComponent(() => import('~/components/admin/DashboardTab.vue'))
 const AdminUsersTab = defineAsyncComponent(() => import('~/components/admin/UsersTab.vue'))
 const AdminMediaTab = defineAsyncComponent(() => import('~/components/admin/MediaTab.vue'))
-const AdminStreamingTab = defineAsyncComponent(() => import('~/components/admin/StreamingTab.vue'))
+const AdminLibraryTab = defineAsyncComponent(() => import('~/components/admin/LibraryTab.vue'))
+const AdminIngestTab = defineAsyncComponent(() => import('~/components/admin/IngestTab.vue'))
+const AdminModerationTab = defineAsyncComponent(() => import('~/components/admin/ModerationTab.vue'))
 const AdminAnalyticsTab = defineAsyncComponent(() => import('~/components/admin/AnalyticsTab.vue'))
-const AdminPlaylistsTab = defineAsyncComponent(() => import('~/components/admin/PlaylistsTab.vue'))
 const AdminSecurityTab = defineAsyncComponent(() => import('~/components/admin/SecurityTab.vue'))
-const AdminDownloaderTab = defineAsyncComponent(() => import('~/components/admin/DownloaderTab.vue'))
 const AdminSystemTab = defineAsyncComponent(() => import('~/components/admin/SystemTab.vue'))
-const AdminUpdatesTab = defineAsyncComponent(() => import('~/components/admin/UpdatesTab.vue'))
-const AdminContentTab = defineAsyncComponent(() => import('~/components/admin/ContentTab.vue'))
-const AdminSourcesTab = defineAsyncComponent(() => import('~/components/admin/SourcesTab.vue'))
-const AdminDiscoveryTab = defineAsyncComponent(() => import('~/components/admin/DiscoveryTab.vue'))
-const AdminDuplicatesTab = defineAsyncComponent(() => import('~/components/admin/DuplicatesTab.vue'))
-const AdminCollectionsTab = defineAsyncComponent(() => import('~/components/admin/CollectionsTab.vue'))
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -29,23 +25,29 @@ const TABS = [
   {label: 'Dashboard', value: 'dashboard', icon: 'i-lucide-layout-dashboard'},
   {label: 'Users', value: 'users', icon: 'i-lucide-users'},
   {label: 'Media', value: 'media', icon: 'i-lucide-film'},
-  {label: 'HLS Jobs', value: 'streaming', icon: 'i-lucide-video'},
+  {label: 'Library', value: 'library', icon: 'i-lucide-library'},
+  {label: 'Ingest', value: 'ingest', icon: 'i-lucide-import'},
+  {label: 'Moderation', value: 'moderation', icon: 'i-lucide-shield-check'},
   {label: 'Analytics', value: 'analytics', icon: 'i-lucide-bar-chart-2'},
-  {label: 'Playlists', value: 'playlists', icon: 'i-lucide-list-music'},
   {label: 'Security', value: 'security', icon: 'i-lucide-shield'},
-  {label: 'Downloader', value: 'downloader', icon: 'i-lucide-cloud-download'},
   {label: 'System', value: 'system', icon: 'i-lucide-settings'},
-  {label: 'Updates', value: 'updates', icon: 'i-lucide-download'},
-  {label: 'Content', value: 'content', icon: 'i-lucide-scan'},
-  {label: 'Sources', value: 'sources', icon: 'i-lucide-server'},
-  {label: 'Discovery', value: 'discovery', icon: 'i-lucide-compass'},
-  {label: 'Duplicates', value: 'duplicates', icon: 'i-lucide-copy-x'},
-  {label: 'Collections', value: 'collections', icon: 'i-lucide-layers'},
 ]
 
 const VALID = TABS.map(t => t.value)
-// Legacy tab name aliases — redirect old bookmarks to the current tab value.
-const TAB_ALIASES: Record<string, string> = {settings: 'system'}
+// Legacy tab name aliases — redirect old bookmarks/links to the tab that now
+// owns that surface. The target shell reads ?tab= to open the matching sub-tab.
+const TAB_ALIASES: Record<string, string> = {
+  settings: 'system',
+  streaming: 'system',
+  updates: 'system',
+  collections: 'library',
+  playlists: 'library',
+  duplicates: 'media',
+  downloader: 'ingest',
+  sources: 'ingest',
+  content: 'moderation',
+  discovery: 'moderation',
+}
 const activeTab = ref(
     VALID.includes(route.query.tab as string)
         ? (route.query.tab as string)
@@ -112,18 +114,12 @@ watch(activeTab, tab => {
           <AdminDashboardTab v-if="activeTab === 'dashboard'"/>
           <AdminUsersTab v-else-if="activeTab === 'users'"/>
           <AdminMediaTab v-else-if="activeTab === 'media'"/>
-          <AdminStreamingTab v-else-if="activeTab === 'streaming'"/>
+          <AdminLibraryTab v-else-if="activeTab === 'library'"/>
+          <AdminIngestTab v-else-if="activeTab === 'ingest'"/>
+          <AdminModerationTab v-else-if="activeTab === 'moderation'"/>
           <AdminAnalyticsTab v-else-if="activeTab === 'analytics'"/>
-          <AdminPlaylistsTab v-else-if="activeTab === 'playlists'"/>
           <AdminSecurityTab v-else-if="activeTab === 'security'"/>
-          <AdminDownloaderTab v-else-if="activeTab === 'downloader'"/>
           <AdminSystemTab v-else-if="activeTab === 'system'"/>
-          <AdminUpdatesTab v-else-if="activeTab === 'updates'"/>
-          <AdminContentTab v-else-if="activeTab === 'content'"/>
-          <AdminSourcesTab v-else-if="activeTab === 'sources'"/>
-          <AdminDiscoveryTab v-else-if="activeTab === 'discovery'"/>
-          <AdminDuplicatesTab v-else-if="activeTab === 'duplicates'"/>
-          <AdminCollectionsTab v-else-if="activeTab === 'collections'"/>
         </div>
       </div>
     </div>
