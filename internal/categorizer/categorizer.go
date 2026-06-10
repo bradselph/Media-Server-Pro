@@ -41,6 +41,16 @@ const (
 	CategoryUncategorized Category = "Uncategorized"
 )
 
+// MediaSlug converts a Category into the media module's category namespace
+// (lowercase snake_case, e.g. "TV Shows" → "tv_shows"). The media module's
+// browse filter does exact string matching against the categories its own
+// detectCategory assigns ("movies", "tv_shows", "music", "uncategorized"),
+// so propagating the display names verbatim created a second, parallel
+// category namespace that never matched any filter.
+func (c Category) MediaSlug() string {
+	return strings.ToLower(strings.ReplaceAll(string(c), " ", "_"))
+}
+
 // CategorizedItem represents a categorized media item
 type CategorizedItem struct {
 	ID             string     `json:"id"`

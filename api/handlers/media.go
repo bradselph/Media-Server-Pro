@@ -582,10 +582,32 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 	}
 
 	items := h.categorizer.GetByCategory(categorizer.Category(category))
-	total := len(items)
 
-	// Window the slice before enriching so we don't pay the
-	// GetMediaByID + thumbnail lookup cost on items we'll discard.
+	// Resolve each categorized path to its live media item. The categorizer
+	// assigns its own internal UUIDs, which the media module and thumbnail
+	// store don't know — by-ID lookups always missed, leaving browse items
+	// with no duration, no thumbnail, and dead /player?id= links. Resolution
+	// happens before windowing so mature-gated items don't shift pages.
+	canMature := h.canViewMatureContent(c)
+	type resolvedItem struct {
+		cat   *categorizer.CategorizedItem
+		media *models.MediaItem
+	}
+	resolved := make([]resolvedItem, 0, len(items))
+	for _, item := range items {
+		var mi *models.MediaItem
+		if h.media != nil && item.Path != "" {
+			if found, err := h.media.GetMedia(item.Path); err == nil {
+				mi = found
+			}
+		}
+		if mi != nil && mi.IsMature && !canMature {
+			continue
+		}
+		resolved = append(resolved, resolvedItem{cat: item, media: mi})
+	}
+	total := len(resolved)
+
 	end := offset + limit
 	if offset > total {
 		offset = total
@@ -593,7 +615,7 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 	if end > total {
 		end = total
 	}
-	pageItems := items[offset:end]
+	pageItems := resolved[offset:end]
 
 	type browseItem struct {
 		ID           string  `json:"id"`
@@ -605,7 +627,8 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 		ThumbnailURL string  `json:"thumbnail_url,omitempty"`
 	}
 	results := make([]browseItem, 0, len(pageItems))
-	for _, item := range pageItems {
+	for _, ri := range pageItems {
+		item := ri.cat
 		bi := browseItem{
 			ID:           item.ID,
 			Name:         item.Name,
@@ -613,13 +636,14 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 			Confidence:   item.Confidence,
 			DetectedInfo: item.DetectedInfo,
 		}
-		if h.media != nil && item.ID != "" {
-			if mi, err := h.media.GetMediaByID(item.ID); err == nil && mi != nil {
-				bi.Duration = mi.Duration
-			}
+		if ri.media != nil {
+			// The media module's stable ID makes /player?id= links and
+			// thumbnail lookups actually resolve.
+			bi.ID = ri.media.ID
+			bi.Duration = ri.media.Duration
 		}
-		if h.thumbnails != nil && item.ID != "" {
-			bi.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
+		if h.thumbnails != nil && ri.media != nil {
+			bi.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(ri.media.ID))
 		}
 		results = append(results, bi)
 	}
