@@ -164,11 +164,13 @@ func (m *Manager) validate() error {
 //
 // NOTE: The following feature flags do NOT have corresponding module-level Enabled
 // fields (there is no PlaylistConfig, SuggestionsConfig, AutoDiscoveryConfig, or
-// DuplicateDetectionConfig with an Enabled bool). They only take effect at startup
-// when checked in cmd/server/main.go to decide whether to register the module:
+// DuplicateDetectionConfig with an Enabled bool). Their modules are always
+// constructed; the flags are enforced hot-reloadably at request time by the
+// require*/checkFeatureEnabled handler guards, and at tick time inside the
+// related background tasks (media-scan, duplicate-scan):
 //   - EnablePlaylists
 //   - EnableSuggestions
-//   - EnableAutoDiscovery
+//   - EnableAutoDiscovery (also gates module construction in cmd/server/main.go)
 //   - EnableDuplicateDetection
 func (m *Manager) syncFeatureToggles() {
 	f := &m.config.Features
