@@ -714,9 +714,11 @@ async function retryLoad() {
 async function restorePosition() {
   if (!mediaId.value || !videoRef.value) return
   positionRestored = true
-  // Honour ?t=N deep-link: seek to the given second, skipping the stored position.
+  // Honour ?t=N deep-link: seek to the given second, skipping the stored
+  // position. An explicit t=0 means "restart from the beginning" (used by
+  // the sidebar's Previous button), so it must also bypass resume.
   const tParam = Number(route.query.t)
-  if (tParam > 0) {
+  if (route.query.t !== undefined && !Number.isNaN(tParam) && tParam >= 0) {
     videoRef.value.currentTime = tParam
     return
   }
