@@ -1142,6 +1142,12 @@ onMounted(loadConfig)
               <UInput type="number" :model-value="get('admin', 'audit_log_retention_days')"
                       @update:model-value="set('admin', 'audit_log_retention_days', Number($event))"/>
             </UFormField>
+            <UFormField label="Admin Session Timeout (hours)"
+                        help="Lifetime of admin login sessions. Default 24. Applies to new sessions.">
+              <UInput type="number" min="1"
+                      :model-value="Math.round(Number(get('admin', 'session_timeout') ?? 0) / 3_600_000_000_000)"
+                      @update:model-value="set('admin', 'session_timeout', Number($event) * 3_600_000_000_000)"/>
+            </UFormField>
           </div>
         </UCard>
 

@@ -118,6 +118,7 @@ func (m *Manager) Load() error {
 	m.syncFeatureToggles()
 	m.migrateHLSQualityEnabled()
 	m.migrateHLSCleanupEnabled()
+	m.migrateStreamingBufferSize()
 	m.normalizeHLSScalars()
 	if err := m.validate(); err != nil {
 		return err
@@ -240,6 +241,24 @@ func (m *Manager) migrateHLSCleanupEnabled() {
 		m.config.HLS.CleanupEnabled = false
 	}
 	m.config.HLS.CleanupMigrated = true
+}
+
+// migrateStreamingBufferSize is a one-shot upgrade migration. Before the
+// streaming buffer pool read Streaming.BufferSize, the field was shipped as
+// 32KB-by-default but read by nothing (the pool hardcoded 1MB), so existing
+// installs have 32768 persisted even though no admin explicitly chose it.
+// Honoring that stale value would silently shrink streaming buffers 32x, so
+// the legacy default is upgraded once to the 1MB the server actually used.
+// Admins who genuinely want 32KB can set it again now that the field works.
+func (m *Manager) migrateStreamingBufferSize() {
+	if m.config.Streaming.BufferSizeMigrated {
+		return
+	}
+	if m.config.Streaming.BufferSize == 32*1024 {
+		m.log.Info("Migrating legacy streaming buffer_size default: 32KB (never honored) -> 1MB (actual prior behavior)")
+		m.config.Streaming.BufferSize = 1024 * 1024
+	}
+	m.config.Streaming.BufferSizeMigrated = true
 }
 
 // normalizeHLSScalars repairs HLS numeric fields that were persisted as zero

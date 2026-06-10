@@ -88,14 +88,19 @@ type StreamStats struct {
 
 // NewModule creates a new streaming module
 func NewModule(cfg *config.Manager) *Module {
+	// Buffer size is read once at module construction (streaming is not a
+	// hot-reload config section; changes require restart).
+	bufSize := cfg.Get().Streaming.BufferSize
+	if bufSize <= 0 {
+		bufSize = 1024 * 1024
+	}
 	return &Module{
 		config:         cfg,
 		log:            logger.New("streaming"),
 		activeSessions: make(map[string]*models.StreamSession),
 		bufferPool: &sync.Pool{
 			New: func() any {
-				// Create 1MB buffers for the pool (reasonable size for streaming)
-				return make([]byte, 1024*1024)
+				return make([]byte, bufSize)
 			},
 		},
 	}

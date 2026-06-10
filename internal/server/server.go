@@ -105,8 +105,21 @@ func loadConfigManager(log *logger.Logger, configPath string) *config.Manager {
 }
 
 // configureLoggingFromConfig applies logging-related settings from the loaded configuration.
+// It runs before modules are constructed so module loggers inherit the global
+// level/colors. Logging is not in hotReloadKeys: admin UI changes persist and
+// report restart_required.
 func configureLoggingFromConfig(log *logger.Logger, cfgMgr *config.Manager) {
 	appCfg := cfgMgr.Get()
+
+	// Config is authoritative over the CLI bootstrap level (same precedence
+	// rule as config-over-env); the CLI flag stays in effect when the config
+	// value is empty or unknown.
+	if level, ok := logger.ParseLevel(appCfg.Logging.Level); ok {
+		logger.SetGlobalLevel(level)
+		log.SetLevel(level)
+	}
+	logger.SetGlobalColors(appCfg.Logging.ColorEnabled)
+	log.SetColors(appCfg.Logging.ColorEnabled)
 
 	if appCfg.Logging.Format == "json" {
 		logger.SetJSONFormat(true)

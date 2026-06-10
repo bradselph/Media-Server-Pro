@@ -101,9 +101,10 @@ func (h *Handler) DismissDiscoverySuggestion(c *gin.Context) {
 	if !h.requireAutodiscovery(c) {
 		return
 	}
-	rawPath := strings.TrimPrefix(c.Param("path"), "/")
-	path, err := url.PathUnescape(rawPath)
-	if err != nil || path == "" {
+	// Gin's *path wildcard always carries a leading '/'; keep it so the
+	// suggestion's absolute path survives intact (apply gets it via JSON body).
+	path, err := url.PathUnescape(c.Param("path"))
+	if err != nil || path == "" || path == "/" {
 		writeError(c, http.StatusBadRequest, errPathParamRequired)
 		return
 	}

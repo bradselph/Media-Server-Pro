@@ -268,13 +268,20 @@ func (m *Module) CreateSessionForUser(ctx context.Context, params *CreateSession
 func (m *Module) createSession(ctx context.Context, user *models.User, req *sessionRequestContext) (*models.Session, error) {
 	cfg := m.config.Get()
 
+	// Admin-role sessions use the (shorter) admin timeout when configured;
+	// everyone else gets the general auth timeout.
+	timeout := cfg.Auth.SessionTimeout
+	if user.Role == models.RoleAdmin && cfg.Admin.SessionTimeout > 0 {
+		timeout = cfg.Admin.SessionTimeout
+	}
+
 	session := &models.Session{
 		ID:           generateSessionID(),
 		UserID:       user.ID,
 		Username:     user.Username,
 		Role:         user.Role,
 		CreatedAt:    time.Now(),
-		ExpiresAt:    time.Now().Add(cfg.Auth.SessionTimeout),
+		ExpiresAt:    time.Now().Add(timeout),
 		LastActivity: time.Now(),
 		IPAddress:    req.IPAddress,
 		UserAgent:    req.UserAgent,

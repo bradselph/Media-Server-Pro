@@ -67,7 +67,7 @@ func defaultStreamingConfig() StreamingConfig {
 	return StreamingConfig{
 		DefaultChunkSize:   1024 * 1024,
 		MaxChunkSize:       10 * 1024 * 1024,
-		BufferSize:         32 * 1024,
+		BufferSize:         1024 * 1024,
 		KeepAliveEnabled:   true,
 		KeepAliveTimeout:   60 * time.Second,
 		Adaptive:           true, // auto-activate HLS when available; set false to always use direct streaming
