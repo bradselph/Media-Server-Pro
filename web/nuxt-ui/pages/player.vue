@@ -777,6 +777,7 @@ async function loadChapters(id: string) {
 function seekToChapter(startTime: number) {
   if (!videoRef.value) return
   videoRef.value.currentTime = startTime
+  syncDisplayedTime()
   trackSeek()
 }
 
@@ -908,15 +909,26 @@ function togglePlay() {
   videoRef.value.paused ? videoRef.value.play() : videoRef.value.pause()
 }
 
+// Snap the displayed time to the element's position right after a seek —
+// onTimeUpdate is throttled to 250ms, which left the progress bar frozen at
+// the pre-seek position long enough to make seeks look ignored.
+function syncDisplayedTime() {
+  if (!videoRef.value) return
+  currentTime.value = videoRef.value.currentTime
+  lastTimeUpdateAt = performance.now()
+}
+
 function seek(delta: number) {
   if (!videoRef.value) return
   videoRef.value.currentTime = Math.max(0, Math.min(duration.value, currentTime.value + delta))
+  syncDisplayedTime()
   trackSeek()
 }
 
 function seekToFraction(fraction: number) {
   if (!videoRef.value) return
   videoRef.value.currentTime = fraction * duration.value
+  syncDisplayedTime()
   trackSeek()
 }
 
