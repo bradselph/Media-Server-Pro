@@ -213,6 +213,7 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 			m.fingerprintIndex[meta.ContentFingerprint] = newPath
 		}
 	}
+	m.version++ // catalog mutated — poll-based consumers must see a bump
 	m.mu.Unlock()
 
 	m.log.Info("Renamed media: %s -> %s", oldPath, newPath)
@@ -330,7 +331,16 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 			m.fingerprintIndex[meta.ContentFingerprint] = newPath
 		}
 	}
+	m.version++ // catalog mutated — poll-based consumers must see a bump
 	m.mu.Unlock()
+
+	// Rebuild m.categories: a cross-category move otherwise leaves the old
+	// category's count one too high and the new one too low (or missing)
+	// until the next full scan, since GetCategories reads m.categories
+	// directly. Must run after Unlock — updateCategories takes m.mu itself.
+	if categoryUpdated {
+		m.updateCategories()
+	}
 
 	m.log.Info("Moved media: %s -> %s", oldPath, newPath)
 
