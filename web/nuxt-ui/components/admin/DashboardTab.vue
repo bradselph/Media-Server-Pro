@@ -189,7 +189,7 @@ onMounted(() => {
             {{ formatBytes(row.original.bytes_sent ?? 0) }}
           </template>
           <template #started_at-cell="{ row }">
-            {{ row.original.started_at ? new Date(row.original.started_at).toLocaleTimeString() : '—' }}
+            {{ row.original.started_at ? new Date(row.original.started_at * 1000).toLocaleTimeString() : '—' }}
           </template>
         </UTable>
       </UCard>

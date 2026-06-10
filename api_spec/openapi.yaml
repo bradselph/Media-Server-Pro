@@ -687,6 +687,11 @@ components:
             maxFileSize:
               type: integer
               format: int64
+        download:
+          type: object
+          properties:
+            enabled:
+              type: boolean
         admin:
           type: object
           properties:
@@ -1966,14 +1971,26 @@ components:
           type: string
         media_id:
           type: string
-        media_path:
+        filename:
           type: string
+          description: Human-readable media name; falls back to media_id when lookup fails.
+        ip_address:
+          type: string
+        quality:
+          type: string
+        position:
+          type: number
+        bytes_sent:
+          type: integer
+          format: int64
         started_at:
-          type: string
-          format: date-time
-        last_activity:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
+          description: Unix seconds.
+        last_update:
+          type: integer
+          format: int64
+          description: Unix seconds.
 
     ActiveUpload:
       type: object

@@ -23,6 +23,9 @@ const authStore = useAuthStore()
 const queueStore = useQueueStore()
 const {updatePreferences} = useApiEndpoints()
 const toast = useToast()
+const {settings: serverSettings, load: loadServerSettings} = useServerSettings()
+// Download button gates on download.enabled, failing open while null.
+loadServerSettings()
 
 const userPrefs = computed(() => authStore.user?.preferences)
 
@@ -1899,7 +1902,7 @@ watch(mediaId, (id, oldId) => {
             </div>
             <div class="flex gap-2 mt-4 flex-wrap">
               <UButton
-                  v-if="authStore.isLoggedIn && authStore.user?.permissions?.can_download"
+                  v-if="authStore.isLoggedIn && authStore.user?.permissions?.can_download && serverSettings?.download?.enabled !== false"
                   icon="i-lucide-download"
                   label="Download"
                   variant="outline"

@@ -789,9 +789,11 @@ export interface StreamSession {
     quality: string
     bytes_sent: number
     ip_address: string
-    started_at: string
+    /** Unix seconds (backend sends StartedAt.Unix()) */
+    started_at: number
     position: number
-    last_update: string
+    /** Unix seconds (backend sends LastUpdate.Unix()) */
+    last_update: number
 }
 
 export interface UploadProgress {
@@ -1083,6 +1085,9 @@ export interface ServerSettings {
     uploads: {
         enabled: boolean
         maxFileSize: number
+    }
+    download: {
+        enabled: boolean
     }
     admin: {
         enabled: boolean

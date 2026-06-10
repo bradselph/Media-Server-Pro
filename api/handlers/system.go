@@ -257,6 +257,9 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 			"enabled":     cfg.Uploads.Enabled,
 			"maxFileSize": cfg.Uploads.MaxFileSize,
 		},
+		"download": map[string]any{
+			"enabled": cfg.Download.Enabled,
+		},
 		"admin": map[string]any{
 			"enabled": cfg.Admin.Enabled,
 		},

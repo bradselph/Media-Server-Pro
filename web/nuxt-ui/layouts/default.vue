@@ -10,6 +10,7 @@ const versionApi = useVersionApi()
 const serverVersion = ref('')
 const suggestionsApi = useSuggestionsApi()
 const newCount = ref(0)
+const {settings: serverSettings, load: loadServerSettings} = useServerSettings()
 // Resolves brand config at runtime — prefers window.APP_CONFIG (deploy-time
 // injection), falls back to Nuxt app.config, then hard-coded defaults.
 const brand = useBrandConfig()
@@ -133,7 +134,11 @@ function handleMenuKeydown(e: KeyboardEvent) {
   }
 }
 
-onMounted(() => document.addEventListener('keydown', handleMenuKeydown))
+onMounted(() => {
+  document.addEventListener('keydown', handleMenuKeydown)
+  // Nav gates on uploads.enabled; fails open while null/unloaded.
+  loadServerSettings()
+})
 onUnmounted(() => document.removeEventListener('keydown', handleMenuKeydown))
 
 watch(mobileMenuOpen, async (open) => {
@@ -158,7 +163,7 @@ const navLinks = computed(() => {
         {label: 'Categories', to: '/categories', icon: 'i-lucide-layers'},
         {label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music'},
     )
-    if (authStore.user?.permissions?.can_upload) {
+    if (authStore.user?.permissions?.can_upload && serverSettings.value?.uploads?.enabled !== false) {
       links.push({label: 'Upload', to: '/upload', icon: 'i-lucide-upload'})
     }
   }
@@ -178,7 +183,7 @@ const mobileNavLinks = computed(() => {
         {label: 'Favorites', to: '/favorites', icon: 'i-lucide-heart'},
         {label: 'History', to: '/history', icon: 'i-lucide-history'},
     )
-    if (authStore.user?.permissions?.can_upload) {
+    if (authStore.user?.permissions?.can_upload && serverSettings.value?.uploads?.enabled !== false) {
       links.push({label: 'Upload', to: '/upload', icon: 'i-lucide-upload'})
     }
     links.push({label: 'Profile', to: '/profile', icon: 'i-lucide-user'})
