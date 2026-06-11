@@ -1476,14 +1476,6 @@ watch(mediaId, (id, oldId) => {
   if (oldId && oldId !== id) savePosition()
   if (id) loadMedia(id)
 }, {immediate: true})
-
-// Seeks requested from outside the player (sidebar Previous restarts the
-// current item). Route-based ?t= can't express this when already on the same
-// item — pushing an identical query is a router no-op — so the store carries
-// an explicit tokenized request instead.
-watch(() => playbackStore.seekRequest, (req) => {
-  if (req && videoRef.value) videoRef.value.currentTime = req.time
-})
 </script>
 
 <template>

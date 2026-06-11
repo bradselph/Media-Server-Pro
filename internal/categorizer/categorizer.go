@@ -665,12 +665,16 @@ func (m *Module) RenamePath(oldPath, newPath string) {
 		return
 	}
 	m.mu.Lock()
-	item, ok := m.items[oldPath]
+	old, ok := m.items[oldPath]
 	if !ok {
 		m.mu.Unlock()
 		return
 	}
 	delete(m.items, oldPath)
+	// Copy-on-write: stored items are read via shared pointer after callers
+	// release m.mu (CategorizeFile/SetCategory pass them to saveItem unlocked),
+	// so the existing struct must never be field-mutated — re-key a copy.
+	item := copyItem(old)
 	item.Path = newPath
 	item.Name = filepath.Base(newPath)
 	m.items[newPath] = item
