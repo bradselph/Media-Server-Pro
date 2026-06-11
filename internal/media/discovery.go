@@ -582,30 +582,40 @@ func (m *Module) Scan() error {
 	m.mediaByID = newMediaByID
 	m.version++
 	m.lastScan = time.Now()
+	itemCount := len(newMedia)
+	// Snapshot thumbnail work while still holding the lock: once m.media is
+	// published, concurrent writers (uploads, deletes, renames) mutate the
+	// same map the queue goroutine would otherwise be iterating.
+	type thumbReq struct {
+		path, id string
+		audio    bool
+	}
+	var pendingThumbs []thumbReq
+	if m.thumbnailQueuer != nil {
+		for _, item := range newMedia {
+			if item.ThumbnailURL == "" && item.Path != "" {
+				pendingThumbs = append(pendingThumbs, thumbReq{item.Path, item.ID, item.Type == models.MediaTypeAudio})
+			}
+		}
+	}
 	m.mu.Unlock()
 
 	// Update categories
 	m.updateCategories()
 
 	duration := time.Since(start)
-	m.log.Info("Media scan complete: %d items found in %v", len(newMedia), duration)
+	m.log.Info("Media scan complete: %d items found in %v", itemCount, duration)
 	m.healthMu.Lock()
-	m.healthMsg = fmt.Sprintf("Running (%d items)", len(newMedia))
+	m.healthMsg = fmt.Sprintf("Running (%d items)", itemCount)
 	m.healthMu.Unlock()
 
 	// Queue thumbnail generation for media items that don't have thumbnails yet.
-	if m.thumbnailQueuer != nil {
+	if len(pendingThumbs) > 0 {
 		go func() {
-			queued := 0
-			for _, item := range newMedia {
-				if item.ThumbnailURL == "" && item.Path != "" {
-					m.thumbnailQueuer.QueueThumbnailIfMissing(item.Path, item.ID, item.Type == models.MediaTypeAudio)
-					queued++
-				}
+			for _, req := range pendingThumbs {
+				m.thumbnailQueuer.QueueThumbnailIfMissing(req.path, req.id, req.audio)
 			}
-			if queued > 0 {
-				m.log.Info("Queued %d thumbnail generation requests after scan", queued)
-			}
+			m.log.Info("Queued %d thumbnail generation requests after scan", len(pendingThumbs))
 		}()
 	}
 
@@ -1169,6 +1179,29 @@ func (m *Module) updateCategories() {
 			DisplayName: cases.Title(language.English).String(strings.ReplaceAll(name, "_", " ")),
 			Count:       count,
 		}
+	}
+}
+
+// adjustCategoryCount applies an incremental delta to one category's count so
+// per-item category updates don't need a full O(library) rebuild.
+// Must be called with m.mu held. The map entry is replaced with a fresh struct
+// (never mutated in place) because GetCategories hands out the live pointers.
+func (m *Module) adjustCategoryCount(name string, delta int) {
+	if name == "" {
+		return
+	}
+	count := delta
+	if cur, ok := m.categories[name]; ok {
+		count += cur.Count
+	}
+	if count <= 0 {
+		delete(m.categories, name)
+		return
+	}
+	m.categories[name] = &models.MediaCategory{
+		Name:        name,
+		DisplayName: cases.Title(language.English).String(strings.ReplaceAll(name, "_", " ")),
+		Count:       count,
 	}
 }
 

@@ -590,6 +590,13 @@ func (m *Module) syncMediaItem(mediaPath string, updates map[string]any) {
 			// (not CustomMeta), so it must not bleed into the MediaItem.Metadata custom-key map.
 		case "category":
 			if cat, ok := value.(string); ok {
+				// Keep the m.categories counts (served by GetCategories) in
+				// step — they were previously only rebuilt on a full scan, so
+				// categorization left them stale for up to a scan interval.
+				if cat != item.Category {
+					m.adjustCategoryCount(item.Category, -1)
+					m.adjustCategoryCount(cat, +1)
+				}
 				item.Category = cat
 			}
 		case "views":
