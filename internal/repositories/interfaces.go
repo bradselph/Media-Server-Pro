@@ -22,6 +22,7 @@ var (
 	ErrReceiverDuplicateNotFound = errors.New("receiver duplicate not found")
 	ErrPathNotFound              = errors.New("path not found")
 	ErrMetadataNotFound          = errors.New("media metadata not found")
+	ErrBackupManifestNotFound    = errors.New("backup manifest not found")
 )
 
 // UserRepository provides user data access methods

@@ -516,8 +516,11 @@ type TaskInfo struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Schedule    string    `json:"schedule"`
-	LastRun     time.Time `json:"last_run"`
-	NextRun     time.Time `json:"next_run"`
+	// omitzero: a never-run task has zero-value times, which would otherwise
+	// serialize as the truthy string "0001-01-01T00:00:00Z" and defeat the
+	// SPA's `value ? format(value) : '—'` guards.
+	LastRun     time.Time `json:"last_run,omitzero"`
+	NextRun     time.Time `json:"next_run,omitzero"`
 	Running     bool      `json:"running"`
 	LastError   string    `json:"last_error,omitempty"`
 	Enabled     bool      `json:"enabled"`

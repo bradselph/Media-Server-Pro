@@ -116,9 +116,17 @@ func (m *Manager) Load() error {
 
 	m.resolveAbsolutePaths()
 	m.syncFeatureToggles()
-	m.migrateHLSQualityEnabled()
-	m.migrateHLSCleanupEnabled()
-	m.migrateStreamingBufferSize()
+	// One-shot migrations must persist their Migrated flags, otherwise they
+	// re-run on every restart until some unrelated config save lands them.
+	if m.migrateHLSQualityEnabled() {
+		needsSave = true
+	}
+	if m.migrateHLSCleanupEnabled() {
+		needsSave = true
+	}
+	if m.migrateStreamingBufferSize() {
+		needsSave = true
+	}
 	m.normalizeHLSScalars()
 	if err := m.validate(); err != nil {
 		return err
@@ -196,21 +204,23 @@ func (m *Manager) syncFeatureToggles() {
 // The migration is idempotent: once QualityProfilesMigrated is true it will not
 // fire again, so a user who later deliberately disables all profiles will not
 // have them silently re-enabled on the next restart.
-func (m *Manager) migrateHLSQualityEnabled() {
+// The bool return reports whether this load performed the migration (and the
+// flag therefore needs to be persisted).
+func (m *Manager) migrateHLSQualityEnabled() bool {
 	if m.config.HLS.QualityProfilesMigrated {
-		return
+		return false
 	}
 	profiles := m.config.HLS.QualityProfiles
 	if len(profiles) == 0 {
 		m.config.HLS.QualityProfilesMigrated = true
-		return
+		return true
 	}
 	// If ANY profile has Enabled=true the config was already written after the
 	// Enabled field existed — mark migrated and leave profiles unchanged.
 	for _, p := range profiles {
 		if p.Enabled {
 			m.config.HLS.QualityProfilesMigrated = true
-			return
+			return true
 		}
 	}
 	// All profiles are Enabled=false and the migration flag is unset — this is a
@@ -220,6 +230,7 @@ func (m *Manager) migrateHLSQualityEnabled() {
 	}
 	m.config.HLS.QualityProfilesMigrated = true
 	m.log.Info("Migrated %d HLS quality profiles to include enabled flag", len(profiles))
+	return true
 }
 
 // migrateHLSCleanupEnabled is a one-shot upgrade migration. Before the
@@ -234,15 +245,18 @@ func (m *Manager) migrateHLSQualityEnabled() {
 // The migration runs at most once per config file: CleanupMigrated is set
 // after the first pass so any later admin choice (true or false) is
 // preserved on subsequent restarts.
-func (m *Manager) migrateHLSCleanupEnabled() {
+// The bool return reports whether this load performed the migration (and the
+// flag therefore needs to be persisted).
+func (m *Manager) migrateHLSCleanupEnabled() bool {
 	if m.config.HLS.CleanupMigrated {
-		return
+		return false
 	}
 	if m.config.HLS.CleanupEnabled {
 		m.log.Info("Migrating legacy HLS cleanup default: forcing CleanupEnabled=false (admin can re-enable in System Settings)")
 		m.config.HLS.CleanupEnabled = false
 	}
 	m.config.HLS.CleanupMigrated = true
+	return true
 }
 
 // migrateStreamingBufferSize is a one-shot upgrade migration. Before the
@@ -252,15 +266,18 @@ func (m *Manager) migrateHLSCleanupEnabled() {
 // Honoring that stale value would silently shrink streaming buffers 32x, so
 // the legacy default is upgraded once to the 1MB the server actually used.
 // Admins who genuinely want 32KB can set it again now that the field works.
-func (m *Manager) migrateStreamingBufferSize() {
+// The bool return reports whether this load performed the migration (and the
+// flag therefore needs to be persisted).
+func (m *Manager) migrateStreamingBufferSize() bool {
 	if m.config.Streaming.BufferSizeMigrated {
-		return
+		return false
 	}
 	if m.config.Streaming.BufferSize == 32*1024 {
 		m.log.Info("Migrating legacy streaming buffer_size default: 32KB (never honored) -> 1MB (actual prior behavior)")
 		m.config.Streaming.BufferSize = 1024 * 1024
 	}
 	m.config.Streaming.BufferSizeMigrated = true
+	return true
 }
 
 // normalizeHLSScalars repairs HLS numeric fields that were persisted as zero

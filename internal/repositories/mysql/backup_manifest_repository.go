@@ -97,7 +97,7 @@ func (r *BackupManifestRepository) Delete(ctx context.Context, id string) error 
 		return fmt.Errorf("failed to delete backup manifest: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("backup manifest not found: %s", id)
+		return fmt.Errorf("%w: %s", repositories.ErrBackupManifestNotFound, id)
 	}
 	return nil
 }

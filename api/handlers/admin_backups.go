@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"regexp"
 
@@ -9,6 +10,7 @@ import (
 
 	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/backup"
+	"media-server-pro/internal/repositories"
 )
 
 // validBackupID matches alphanumeric strings, hyphens, underscores, and dots.
@@ -102,6 +104,10 @@ func (h *Handler) DeleteBackup(c *gin.Context) {
 	}
 
 	if err := h.backup.DeleteBackup(backupID); err != nil {
+		if errors.Is(err, repositories.ErrBackupManifestNotFound) {
+			writeError(c, http.StatusNotFound, "Backup not found")
+			return
+		}
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return

@@ -840,8 +840,9 @@ export interface ScheduledTask {
     name: string
     description: string
     schedule: string
-    last_run: string
-    next_run: string
+    // Omitted by the backend (omitzero) for tasks that have never run.
+    last_run?: string
+    next_run?: string
     enabled: boolean
     running: boolean
     last_error?: string
