@@ -37,8 +37,15 @@ func (h *Handler) ClassifyStatus(c *gin.Context) {
 	if h.tasks != nil {
 		if info, err := h.tasks.GetTask("hf-classification"); err == nil {
 			resp["task_running"] = info.Running
-			resp["task_last_run"] = info.LastRun
-			resp["task_next_run"] = info.NextRun
+			// Omit zero times: "0001-01-01T00:00:00Z" is a truthy string, so
+			// the SPA's v-if guard would render a "year 1" timestamp for a
+			// task that has never run.
+			if !info.LastRun.IsZero() {
+				resp["task_last_run"] = info.LastRun
+			}
+			if !info.NextRun.IsZero() {
+				resp["task_next_run"] = info.NextRun
+			}
 			resp["task_last_error"] = info.LastError
 			resp["task_enabled"] = info.Enabled
 		}
