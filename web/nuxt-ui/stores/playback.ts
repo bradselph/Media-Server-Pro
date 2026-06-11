@@ -29,6 +29,17 @@ export const usePlaybackStore = defineStore('playback', () => {
         if (info) mediaInfo.value = info
     }
 
+    // Seek requested from outside the player (sidebar Previous restarts the
+    // current item). A monotonically increasing token keeps repeated requests
+    // for the same time observable — a bare number would not re-trigger the
+    // player's watcher on the second click.
+    const seekRequest = ref<{ time: number, token: number } | null>(null)
+    let seekToken = 0
+
+    function requestSeek(time: number) {
+        seekRequest.value = {time, token: ++seekToken}
+    }
+
     function updatePosition(pos: number, dur?: number) {
         position.value = pos
         if (dur !== undefined) duration.value = dur
@@ -63,5 +74,6 @@ export const usePlaybackStore = defineStore('playback', () => {
         currentMediaId, position, duration, isPlaying, mediaInfo,
         setMedia, updatePosition, savePosition,
         startAutoSave, stopAutoSave,
+        seekRequest, requestSeek,
     }
 })

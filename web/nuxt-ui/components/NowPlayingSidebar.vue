@@ -148,10 +148,16 @@ function playNext() {
 
 function playPrevious() {
   // The queue is forward-only (no history stack), so Previous restarts the
-  // current item from the beginning — standard transport behavior. t=0
-  // explicitly bypasses the player's resume-position restore.
+  // current item from the beginning — standard transport behavior.
   const id = playback.currentMediaId
   if (!id) return
+  // Already watching this item: pushing the same id (even with &t=0) is a
+  // router no-op the player never sees — request the seek through the store.
+  if (route.path === '/player' && route.query.id === id) {
+    playback.requestSeek(0)
+    return
+  }
+  // t=0 explicitly bypasses the player's resume-position restore.
   router.push(`/player?id=${encodeURIComponent(id)}&t=0`)
 }
 

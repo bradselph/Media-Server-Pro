@@ -149,8 +149,13 @@ onBeforeUnmount(() => {
 
 function onSeekBarPointerDown(e: PointerEvent) {
   if (e.pointerType === 'mouse' && e.button !== 0) return
+  const el = e.currentTarget as HTMLElement
+  // @pointerdown.prevent suppresses the browser's default focus-on-click for
+  // this tabindex element — restore it so the slider's arrow-key handlers
+  // keep working after a pointer seek (ARIA slider contract).
+  el.focus({preventScroll: true})
   try {
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    el.setPointerCapture(e.pointerId)
   } catch { /* pointer already released */
   }
   const fraction = seekBarFraction(e)
