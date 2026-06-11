@@ -336,6 +336,11 @@ components:
           type: integer
         scanning:
           type: boolean
+        type_counts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Item counts per media type for the current filter (e.g. video/audio)
         user_ratings:
           type: object
           additionalProperties:
@@ -1292,7 +1297,9 @@ components:
     CategorizedItem:
       type: object
       properties:
-        path:
+        id:
+          type: string
+        name:
           type: string
         category:
           type: string
@@ -2880,6 +2887,54 @@ paths:
                       data:
                         $ref: '#/components/schemas/MediaItem'
 
+  /api/media/{id}/report:
+    post:
+      tags: [ media ]
+      summary: Report a media item for moderation
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  enum: [ inappropriate, broken, spam, copyright, other ]
+                  description: Unknown or empty reasons are coerced to "other"
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Report submitted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          status:
+                            type: string
+                          created_at:
+                            type: string
+                            format: date-time
+        '404':
+          description: Media not found
+
   /api/playback:
     get:
       tags: [ playback ]
@@ -3890,6 +3945,8 @@ paths:
     get:
       tags: [ suggestions ]
       summary: Get recently added content
+      security:
+        - sessionCookie: [ ]
       parameters:
         - name: days
           in: query
@@ -5016,7 +5073,7 @@ paths:
             default: 1
       responses:
         '200':
-          description: Media items
+          description: Media items (paginated)
           content:
             application/json:
               schema:
@@ -5025,9 +5082,102 @@ paths:
                   - type: object
                     properties:
                       data:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/MediaItem'
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/MediaItem'
+                          total_items:
+                            type: integer
+                          total_pages:
+                            type: integer
+                          scanning:
+                            type: boolean
+
+  /api/admin/media/reports:
+    get:
+      tags: [ admin-media ]
+      summary: List media moderation reports
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ open, resolved, dismissed ]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Reports
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          reports:
+                            type: array
+                            items:
+                              type: object
+                              additionalProperties: true
+                          open_count:
+                            type: integer
+
+  /api/admin/media/reports/{id}:
+    patch:
+      tags: [ admin-media ]
+      summary: Update a media report's status
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ status ]
+              properties:
+                status:
+                  type: string
+                  enum: [ open, resolved, dismissed ]
+      responses:
+        '200':
+          description: Report updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          status:
+                            type: string
 
   /api/admin/media/scan:
     post:
@@ -6080,6 +6230,28 @@ paths:
       responses:
         '200':
           description: Suggestion applied
+
+  /api/admin/discovery/{path}:
+    delete:
+      tags: [ admin-discovery ]
+      summary: Dismiss a discovery suggestion
+      description: >
+        The path parameter is the suggestion's absolute file path
+        (URL-encoded; matched by a wildcard route, so it may contain
+        slashes).
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Suggestion dismissed
+        '400':
+          description: Missing or invalid path
 
   /api/admin/suggestions/stats:
     get:
@@ -7559,21 +7731,15 @@ paths:
         '200':
           description: Rule deleted
 
-  /api/admin/auto-tag-rules/{id}/apply:
+  /api/admin/auto-tag-rules/apply:
     post:
       tags: [ admin ]
-      summary: Apply auto-tag rule immediately
+      summary: Apply all enabled auto-tag rules to the library
       security:
         - sessionCookie: [ ]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
       responses:
         '200':
-          description: Rule applied
+          description: Rules applied
 
   /api/admin/media/{id}/thumbnail:
     post:
