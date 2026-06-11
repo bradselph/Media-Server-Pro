@@ -912,7 +912,7 @@ components:
           enum: [ healthy, unhealthy, degraded, failed, disabled ]
         message:
           type: string
-        last_check:
+        checked_at:
           type: string
           format: date-time
 

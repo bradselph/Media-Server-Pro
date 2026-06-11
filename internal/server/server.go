@@ -574,9 +574,10 @@ func (s *Server) HandleModules(c *gin.Context) {
 	for _, m := range s.modules {
 		health := m.Health()
 		modules = append(modules, map[string]any{
-			"name":    m.Name(),
-			"status":  health.Status,
-			"message": health.Message,
+			"name":       m.Name(),
+			"status":     health.Status,
+			"message":    health.Message,
+			"checked_at": health.CheckedAt,
 		})
 	}
 	c.JSON(http.StatusOK, models.APIResponse{Success: true, Data: modules})

@@ -757,7 +757,9 @@ export interface ModuleHealth {
     name: string
     status: 'healthy' | 'unhealthy' | 'degraded' | 'failed' | 'disabled'
     message?: string
-    last_check: string
+    // JSON tag on models.HealthStatus.CheckedAt — was misdeclared as
+    // last_check, which no endpoint ever sent.
+    checked_at: string
 }
 
 export interface ServerStatus {

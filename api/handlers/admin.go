@@ -84,12 +84,16 @@ func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
 		h.categorizer, h.updater, h.remote, h.receiver,
 		h.extractor, h.crawler, h.duplicates, h.downloader,
 	}
-	// last_check is always present (CheckedAt is always set); no omitempty so the contract is explicit.
+	// checked_at is always present (CheckedAt is always set); no omitempty so
+	// the contract is explicit. The name matches models.HealthStatus's JSON
+	// tag so all three module-health surfaces share one wire shape (this was
+	// last_check, a name the /api/modules endpoints never used and no client
+	// ever read).
 	type moduleHealthItem struct {
 		Name      string `json:"name"`
 		Status    string `json:"status"`
 		Message   string `json:"message,omitempty"`
-		LastCheck string `json:"last_check"`
+		CheckedAt string `json:"checked_at"`
 	}
 	moduleHealths := make([]moduleHealthItem, 0, len(allModules))
 	for _, p := range allModules {
@@ -101,7 +105,7 @@ func (h *Handler) AdminGetSystemInfo(c *gin.Context) {
 			Name:      hs.Name,
 			Status:    hs.Status,
 			Message:   hs.Message,
-			LastCheck: hs.CheckedAt.Format(time.RFC3339),
+			CheckedAt: hs.CheckedAt.Format(time.RFC3339),
 		})
 	}
 
