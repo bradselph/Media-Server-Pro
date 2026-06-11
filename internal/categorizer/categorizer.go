@@ -657,6 +657,36 @@ func (m *Module) RemoveByPath(path string) {
 	}
 }
 
+// RenamePath re-keys a categorization entry when its media file is renamed,
+// so category browse keeps resolving the live media item instead of carrying
+// a dead path until the daily stale cleanup discards it.
+func (m *Module) RenamePath(oldPath, newPath string) {
+	if oldPath == newPath || newPath == "" {
+		return
+	}
+	m.mu.Lock()
+	item, ok := m.items[oldPath]
+	if !ok {
+		m.mu.Unlock()
+		return
+	}
+	delete(m.items, oldPath)
+	item.Path = newPath
+	item.Name = filepath.Base(newPath)
+	m.items[newPath] = item
+	rec := m.itemToRecord(newPath, item)
+	m.mu.Unlock()
+
+	if m.repo != nil {
+		if err := m.repo.Delete(context.Background(), oldPath); err != nil {
+			m.log.Debug("RenamePath: no categorization entry to delete for %s: %v", oldPath, err)
+		}
+		if err := m.repo.Upsert(context.Background(), rec); err != nil {
+			m.log.Error("Failed to persist re-keyed categorization for %s: %v", newPath, err)
+		}
+	}
+}
+
 // Persistence — reads/writes via MySQL repository
 
 func (m *Module) loadItems() error {

@@ -453,6 +453,9 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	// Downloader (non-critical — proxy to external downloader service, gated by feature flag)
 	m.downloader = downloader.NewModule(cfg)
 	m.downloader.SetMediaModule(m.media)
+	// Re-feed the suggestions catalog after post-import rescans so imported
+	// files become recommendable immediately, not at the next scheduled scan.
+	m.downloader.SetPostScanHook(func() { feedSuggestions(m.media, m.suggestions) })
 	mustRegister(srv, m.downloader)
 
 	// Extractor (non-critical — requires database for item persistence)

@@ -15,6 +15,7 @@ import (
 	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/streaming"
+	"media-server-pro/internal/suggestions"
 	"media-server-pro/internal/thumbnails"
 	"media-server-pro/pkg/models"
 )
@@ -522,6 +523,33 @@ func (h *Handler) GetMediaStats(c *gin.Context) {
 	writeSuccess(c, stats)
 }
 
+// refreshSuggestionsCatalog pushes the current media catalog into the
+// suggestions engine. Mirrors the scheduled tasks' post-scan re-feed — without
+// it an on-demand rescan leaves suggestions serving a stale catalog until the
+// next scheduled tick.
+func (h *Handler) refreshSuggestionsCatalog() {
+	if h.suggestions == nil {
+		return
+	}
+	items := h.media.ListMedia(media.Filter{})
+	mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
+	for _, item := range items {
+		mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
+			Path:      item.Path,
+			StableID:  item.ID,
+			Title:     item.Name,
+			Category:  item.Category,
+			MediaType: string(item.Type),
+			Tags:      item.Tags,
+			Views:     item.Views,
+			Duration:  item.Duration,
+			AddedAt:   item.DateAdded,
+			IsMature:  item.IsMature,
+		})
+	}
+	h.suggestions.UpdateMediaData(mediaInfos)
+}
+
 // ScanMedia initiates a media scan
 func (h *Handler) ScanMedia(c *gin.Context) {
 	if h.media.IsScanning() {
@@ -531,7 +559,9 @@ func (h *Handler) ScanMedia(c *gin.Context) {
 	go func() {
 		if err := h.media.Scan(); err != nil {
 			h.log.Error("Media scan failed: %v", err)
+			return
 		}
+		h.refreshSuggestionsCatalog()
 	}()
 	writeSuccess(c, map[string]string{"message": "Scan started"})
 }
@@ -601,7 +631,9 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 				mi = found
 			}
 		}
-		if mi != nil && mi.IsMature && !canMature {
+		// Unresolved items (mi == nil: deleted or not yet scanned) have an
+		// unknown mature flag — fail closed for viewers without mature access.
+		if !canMature && (mi == nil || mi.IsMature) {
 			continue
 		}
 		resolved = append(resolved, resolvedItem{cat: item, media: mi})

@@ -374,6 +374,8 @@ func (h *Handler) ClearMediaCache(c *gin.Context) {
 	go func() {
 		if err := h.media.Scan(); err != nil {
 			h.log.Error("Background media rescan failed: %v", err)
+		} else {
+			h.refreshSuggestionsCatalog()
 		}
 		// The media set just changed, so the SEO sitemap and RSS feed caches are
 		// stale. Drop them here so an explicit "clear cache" reflects new/removed
