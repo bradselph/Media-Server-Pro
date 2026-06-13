@@ -664,7 +664,9 @@ export function useAdminApi() {
 
         // Scanner / Content review
         getScannerStats: () => api.get<ScannerStats>(`${base}/scanner/stats`),
-        runScan: (path?: string) => api.post<void>(`${base}/scanner/scan`, path ? {path} : undefined),
+        // Always send a JSON body — an empty {} scans all configured directories.
+        // Passing undefined sends no body, which ShouldBindJSON rejects with EOF -> 400.
+        runScan: (path?: string) => api.post<void>(`${base}/scanner/scan`, path ? {path} : {}),
         getReviewQueue: () => api.get<ReviewQueueItem[]>(`${base}/scanner/queue`),
         batchReview: (action: 'approve' | 'reject', ids: string[]) =>
             api.post<{ updated: number; total: number }>(`${base}/scanner/queue`, {action, ids}),
