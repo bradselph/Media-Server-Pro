@@ -83,14 +83,14 @@ function formatQualityLabel(q: { name: string; bitrate?: number; codec?: string;
 }
 
 const qualityMenuItems = computed(() => [[
-  {label: 'Auto', click: () => emit('quality-select', -1)},
-  ...props.qualities.map(q => ({label: formatQualityLabel(q), click: () => emit('quality-select', q.index)})),
+  {label: 'Auto', onSelect: () => emit('quality-select', -1)},
+  ...props.qualities.map(q => ({label: formatQualityLabel(q), onSelect: () => emit('quality-select', q.index)})),
 ]])
 
 const chapterMenuItems = computed(() => [[
   ...props.chapters.map(ch => ({
     label: ch.label,
-    click: () => emit('seek-to-chapter', ch.start_time),
+    onSelect: () => emit('seek-to-chapter', ch.start_time),
   })),
 ]])
 
