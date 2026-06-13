@@ -331,7 +331,7 @@ onMounted(async () => {
           />
           <span class="text-sm capitalize">{{ status.stage || (status.in_progress ? 'In Progress' : 'Done') }}</span>
         </div>
-        <UProgress v-if="status.progress != null" :value="status.progress" size="sm"/>
+        <UProgress v-if="status.progress != null" :model-value="status.progress" size="sm"/>
         <p v-if="status.error" class="text-sm text-error">{{ status.error }}</p>
       </div>
     </UCard>

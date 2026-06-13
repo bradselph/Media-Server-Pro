@@ -901,7 +901,7 @@ onMounted(() => {
                   <span class="text-xs text-muted">Match</span>
                   <USelect
                       v-model="spNewRules.match"
-                      :options="['all', 'any']"
+                      :items="['all', 'any']"
                       size="sm"
                   />
                 </div>
@@ -909,13 +909,13 @@ onMounted(() => {
                   <div v-for="(cond, idx) in spNewRules.conditions" :key="condKey(cond)" class="flex items-end gap-2">
                     <USelect
                         v-model="cond.field"
-                        :options="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
+                        :items="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
                         size="sm"
                         class="flex-1"
                     />
                     <USelect
                         v-model="cond.op"
-                        :options="['eq', 'gte', 'lte', 'includes']"
+                        :items="['eq', 'gte', 'lte', 'includes']"
                         size="sm"
                         class="w-20"
                     />
@@ -946,12 +946,12 @@ onMounted(() => {
                   <span class="text-xs text-muted">Order by</span>
                   <USelect
                       v-model="spNewRules.order_by"
-                      :options="['date_added', 'name', 'duration', 'views']"
+                      :items="['date_added', 'name', 'duration', 'views']"
                       size="sm"
                   />
                   <USelect
                       v-model="spNewRules.order_dir"
-                      :options="['asc', 'desc']"
+                      :items="['asc', 'desc']"
                       size="sm"
                       class="w-24"
                   />
@@ -994,7 +994,7 @@ onMounted(() => {
                   <span class="text-xs text-muted">Match</span>
                   <USelect
                       v-model="spEditRules.match"
-                      :options="['all', 'any']"
+                      :items="['all', 'any']"
                       size="sm"
                   />
                 </div>
@@ -1002,13 +1002,13 @@ onMounted(() => {
                   <div v-for="(cond, idx) in spEditRules.conditions" :key="condKey(cond)" class="flex items-end gap-2">
                     <USelect
                         v-model="cond.field"
-                        :options="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
+                        :items="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
                         size="sm"
                         class="flex-1"
                     />
                     <USelect
                         v-model="cond.op"
-                        :options="['eq', 'gte', 'lte', 'includes']"
+                        :items="['eq', 'gte', 'lte', 'includes']"
                         size="sm"
                         class="w-20"
                     />
@@ -1039,12 +1039,12 @@ onMounted(() => {
                   <span class="text-xs text-muted">Order by</span>
                   <USelect
                       v-model="spEditRules.order_by"
-                      :options="['date_added', 'name', 'duration', 'views']"
+                      :items="['date_added', 'name', 'duration', 'views']"
                       size="sm"
                   />
                   <USelect
                       v-model="spEditRules.order_dir"
-                      :options="['asc', 'desc']"
+                      :items="['asc', 'desc']"
                       size="sm"
                       class="w-24"
                   />

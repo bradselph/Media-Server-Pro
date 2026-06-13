@@ -631,7 +631,7 @@ function progressBarColor(status: DownloaderProgress['status']) {
               />
             </div>
           </div>
-          <UProgress :value="dl.progress ?? 0" :color="progressBarColor(dl.status)" size="xs"/>
+          <UProgress :model-value="dl.progress ?? 0" :color="progressBarColor(dl.status)" size="xs"/>
           <p v-if="dl.error" class="text-xs text-error">{{ dl.error }}</p>
         </div>
       </div>

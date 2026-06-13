@@ -313,7 +313,7 @@ onUnmounted(() => {
         </template>
         <template #progress-cell="{ row }">
           <div v-if="row.original.status === 'running'" class="flex items-center gap-2 min-w-20">
-            <UProgress :value="row.original.progress" size="xs" class="flex-1"/>
+            <UProgress :model-value="row.original.progress" size="xs" class="flex-1"/>
             <span class="text-xs">{{ row.original.progress }}%</span>
           </div>
           <span v-else class="text-sm text-muted">—</span>

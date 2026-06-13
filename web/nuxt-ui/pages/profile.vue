@@ -665,7 +665,7 @@ watch(() => authStore.user, (user) => {
                     storageUsage.used_gb.toFixed(2)
                   }} GB / {{ storageUsage.quota_gb > 0 ? storageUsage.quota_gb + ' GB' : 'Unlimited' }}</span>
               </div>
-              <UProgress :value="storageUsage.quota_gb > 0 ? storageUsage.percentage : 0" size="xs"
+              <UProgress :model-value="storageUsage.quota_gb > 0 ? storageUsage.percentage : 0" size="xs"
                          :color="storageUsage.percentage > 90 ? 'error' : storageUsage.percentage > 70 ? 'warning' : 'success'"/>
             </div>
             <div v-if="authStore.isAdmin && permissionsInfo?.capabilities" class="mt-2 flex flex-wrap gap-1.5">
@@ -1229,7 +1229,7 @@ watch(() => authStore.user, (user) => {
           </template>
         </UModal>
 
-        <UDivider class="my-4"/>
+        <USeparator class="my-4"/>
 
         <p class="text-sm font-medium text-default mb-1">Delete Account Immediately</p>
         <p class="text-sm text-muted mb-3">Permanently delete your account and all associated data right now. This
