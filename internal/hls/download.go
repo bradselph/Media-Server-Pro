@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"media-server-pro/pkg/models"
 )
@@ -67,6 +68,10 @@ func (m *Module) StreamVariantMP4(ctx context.Context, mediaID, playlistPath str
 	cmd.Stdout = w
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	// Bound the post-cancel wait: when the client disconnects, ctx cancellation
+	// kills ffmpeg, but the stdout-copy goroutine can block writing to the dead
+	// connection. WaitDelay forces Run() to return instead of hanging on it.
+	cmd.WaitDelay = 5 * time.Second
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("ffmpeg remux failed: %w (%s)", err, strings.TrimSpace(stderr.String()))
 	}

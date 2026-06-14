@@ -1034,7 +1034,11 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 				h.trackDownloadCompleted(c, session, id)
 				return
 			}
-			// ffmpeg failed before any bytes were written — fall through to original.
+			// ffmpeg failed before any bytes were written — clear the variant MP4
+			// headers so the fallback original file isn't mislabeled (wrong
+			// Content-Type / "_quality.mp4" filename), then serve the original.
+			c.Writer.Header().Del("Content-Type")
+			c.Writer.Header().Del("Content-Disposition")
 			h.log.Warn("Variant download failed for %s (%s), serving original: %v", id, q, serr)
 		} else {
 			h.log.Debug("No HLS variant %q for %s, serving original file: %v", q, id, verr)
