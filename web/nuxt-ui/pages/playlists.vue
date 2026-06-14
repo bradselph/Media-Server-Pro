@@ -909,7 +909,7 @@ onMounted(() => {
       </UModal>
 
       <!-- Create smart playlist modal -->
-      <UModal v-model:open="spCreateOpen" title="New Smart Playlist" size="lg">
+      <UModal v-model:open="spCreateOpen" title="New Smart Playlist" :ui="{ content: 'max-w-2xl' }">
         <template #body>
           <div class="space-y-4 max-h-96 overflow-y-auto">
             <UFormField label="Name" required>
@@ -1003,7 +1003,7 @@ onMounted(() => {
       </UModal>
 
       <!-- Edit smart playlist modal -->
-      <UModal v-model:open="spEditOpen" title="Edit Smart Playlist" size="lg">
+      <UModal v-model:open="spEditOpen" title="Edit Smart Playlist" :ui="{ content: 'max-w-2xl' }">
         <template #body>
           <div class="space-y-4 max-h-96 overflow-y-auto">
             <UFormField label="Name" required>
@@ -1106,7 +1106,7 @@ onMounted(() => {
       </UModal>
 
       <!-- Preview smart playlist modal -->
-      <UModal v-model:open="spPreviewOpen" title="Smart Playlist Preview" size="lg">
+      <UModal v-model:open="spPreviewOpen" title="Smart Playlist Preview" :ui="{ content: 'max-w-2xl' }">
         <template #body>
           <div class="max-h-96 overflow-y-auto">
             <div v-if="spPreviewLoading" class="flex justify-center py-6">
