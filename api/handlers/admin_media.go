@@ -271,6 +271,11 @@ func (h *Handler) applyAdminRenameIfNeeded(path, reqName string) (string, error)
 	if h.suggestions != nil {
 		h.suggestions.RenameMediaPath(path, newPath)
 	}
+	// Re-key the categorization entry — category browse resolves items by
+	// path, so a stale key leaves dead player links until stale cleanup.
+	if h.categorizer != nil {
+		h.categorizer.RenamePath(path, newPath)
+	}
 	return newPath, nil
 }
 

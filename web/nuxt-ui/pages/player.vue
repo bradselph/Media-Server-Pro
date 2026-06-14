@@ -23,6 +23,9 @@ const authStore = useAuthStore()
 const queueStore = useQueueStore()
 const {updatePreferences} = useApiEndpoints()
 const toast = useToast()
+const {settings: serverSettings, load: loadServerSettings} = useServerSettings()
+// Download button gates on download.enabled, failing open while null.
+loadServerSettings()
 
 const userPrefs = computed(() => authStore.user?.preferences)
 
@@ -168,6 +171,12 @@ useHead(computed(() => {
 // Player refs
 const videoRef = ref<HTMLVideoElement | null>(null)
 const isPlaying = ref(false)
+// Mirror local play/pause state into the shared playback store so the
+// NowPlayingSidebar's play indicator + animated EQ bars reflect reality — the
+// store field was previously only ever reset to false, never set true.
+watch(isPlaying, (v) => {
+  playbackStore.isPlaying = v
+})
 const volume = ref(userPrefs.value?.volume ?? 1)
 const currentTime = ref(0)
 const duration = ref(0)
@@ -539,6 +548,7 @@ const {
   activateHLS,
   jobProgress,
   jobRunning,
+  recheck: recheckHls,
 } = useHLS(videoRef, mediaIdRef, {defaultQuality: () => userPrefs.value?.default_quality})
 
 // Request on-demand HLS generation
@@ -551,6 +561,9 @@ async function requestHlsGeneration() {
   try {
     await hlsApi.generate(mediaId.value)
     toast.add({title: 'HLS generation started', color: 'info', icon: 'i-lucide-info'})
+    // Re-check now so the in-progress poll + progress banner start immediately
+    // instead of only after the user navigates away and back to this item.
+    recheckHls()
   } catch (e: unknown) {
     toast.add({
       title: e instanceof Error ? e.message : 'Failed to start HLS generation',
@@ -652,7 +665,8 @@ async function loadMedia(id: string) {
     const fetched = await mediaApi.getById(id)
     if (!playerMounted || gen !== loadGeneration) return
     media.value = fetched
-    userRating.value = 0
+    // Restore the user's own rating so the stars reflect their prior choice on reload.
+    userRating.value = fetched.user_rating ?? 0
     playbackStore.setMedia(id, {
       id,
       name: media.value ? (media.value.metadata?.title || media.value.name) : id,
@@ -711,9 +725,11 @@ async function retryLoad() {
 async function restorePosition() {
   if (!mediaId.value || !videoRef.value) return
   positionRestored = true
-  // Honour ?t=N deep-link: seek to the given second, skipping the stored position.
+  // Honour ?t=N deep-link: seek to the given second, skipping the stored
+  // position. An explicit t=0 means "restart from the beginning" (used by
+  // the sidebar's Previous button), so it must also bypass resume.
   const tParam = Number(route.query.t)
-  if (tParam > 0) {
+  if (route.query.t !== undefined && !Number.isNaN(tParam) && tParam >= 0) {
     videoRef.value.currentTime = tParam
     return
   }
@@ -774,6 +790,7 @@ async function loadChapters(id: string) {
 function seekToChapter(startTime: number) {
   if (!videoRef.value) return
   videoRef.value.currentTime = startTime
+  syncDisplayedTime()
   trackSeek()
 }
 
@@ -905,15 +922,26 @@ function togglePlay() {
   videoRef.value.paused ? videoRef.value.play() : videoRef.value.pause()
 }
 
+// Snap the displayed time to the element's position right after a seek —
+// onTimeUpdate is throttled to 250ms, which left the progress bar frozen at
+// the pre-seek position long enough to make seeks look ignored.
+function syncDisplayedTime() {
+  if (!videoRef.value) return
+  currentTime.value = videoRef.value.currentTime
+  lastTimeUpdateAt = performance.now()
+}
+
 function seek(delta: number) {
   if (!videoRef.value) return
   videoRef.value.currentTime = Math.max(0, Math.min(duration.value, currentTime.value + delta))
+  syncDisplayedTime()
   trackSeek()
 }
 
 function seekToFraction(fraction: number) {
   if (!videoRef.value) return
   videoRef.value.currentTime = fraction * duration.value
+  syncDisplayedTime()
   trackSeek()
 }
 
@@ -1430,6 +1458,9 @@ onUnmounted(() => {
   // saves the user's progress, not just browser close / refresh.
   playbackStore.savePosition()
   playbackStore.stopAutoSave()
+  // Player is unmounting (SPA nav away) so playback has stopped — clear the
+  // shared flag so the NowPlayingSidebar doesn't show a stuck "playing" state.
+  playbackStore.isPlaying = false
   if (controlsTimer) clearTimeout(controlsTimer)
   if (seekTimer) clearTimeout(seekTimer)
   if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
@@ -1899,7 +1930,7 @@ watch(mediaId, (id, oldId) => {
             </div>
             <div class="flex gap-2 mt-4 flex-wrap">
               <UButton
-                  v-if="authStore.isLoggedIn && authStore.user?.permissions?.can_download"
+                  v-if="authStore.isLoggedIn && authStore.user?.permissions?.can_download && serverSettings?.download?.enabled !== false"
                   icon="i-lucide-download"
                   label="Download"
                   variant="outline"
@@ -2217,6 +2248,14 @@ watch(mediaId, (id, oldId) => {
             <button
                 v-if="authStore.isLoggedIn"
                 class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+                aria-label="Play next"
+                @click="queueStore.addNext({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Playing next', color: 'success', icon: 'i-lucide-list-start' })"
+            >
+              <UIcon name="i-lucide-list-start" class="size-4 text-muted"/>
+            </button>
+            <button
+                v-if="authStore.isLoggedIn"
+                class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
                 aria-label="Add to queue"
                 @click="queueStore.addToQueue({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })"
             >
@@ -2259,6 +2298,13 @@ watch(mediaId, (id, oldId) => {
             </NuxtLink>
             <button
                 class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+                aria-label="Play next"
+                @click="queueStore.addNext({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Playing next', color: 'success', icon: 'i-lucide-list-start' })"
+            >
+              <UIcon name="i-lucide-list-start" class="size-4 text-muted"/>
+            </button>
+            <button
+                class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
                 aria-label="Add to queue"
                 @click="queueStore.addToQueue({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })"
             >
@@ -2294,7 +2340,7 @@ watch(mediaId, (id, oldId) => {
               variant="outline"
               color="neutral"
               class="justify-start"
-              :to="`/download?id=${encodeURIComponent(media?.id ?? '')}&quality=${q.index}`"
+              :to="`/download?id=${encodeURIComponent(media?.id ?? '')}&quality=${encodeURIComponent(q.name)}`"
               target="_blank"
               @click="downloadModalOpen = false"
           />

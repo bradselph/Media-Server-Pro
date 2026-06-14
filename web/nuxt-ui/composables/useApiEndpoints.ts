@@ -33,9 +33,11 @@ import type {
     DataDeletionRequest,
     DeviceBucket,
     DiscoverySuggestion,
+    DownloaderBatchResult,
     DownloaderDetectResult,
     DownloaderHealth,
     DownloaderJob,
+    DownloaderQueue,
     DownloaderSettings,
     ErrorPathEntry,
     EventStats,
@@ -664,7 +666,9 @@ export function useAdminApi() {
 
         // Scanner / Content review
         getScannerStats: () => api.get<ScannerStats>(`${base}/scanner/stats`),
-        runScan: (path?: string) => api.post<void>(`${base}/scanner/scan`, path ? {path} : undefined),
+        // Always send a JSON body — an empty {} scans all configured directories.
+        // Passing undefined sends no body, which ShouldBindJSON rejects with EOF -> 400.
+        runScan: (path?: string) => api.post<void>(`${base}/scanner/scan`, path ? {path} : {}),
         getReviewQueue: () => api.get<ReviewQueueItem[]>(`${base}/scanner/queue`),
         batchReview: (action: 'approve' | 'reject', ids: string[]) =>
             api.post<{ updated: number; total: number }>(`${base}/scanner/queue`, {action, ids}),
@@ -851,7 +855,12 @@ export function useAdminApi() {
             clientId: string;
             isYouTube?: boolean;
             isYouTubeMusic?: boolean;
-            relayId?: string
+            relayId?: string;
+            // v1.5.0 universal-engine options
+            audioOnly?: boolean;
+            audioFormat?: string;
+            audioQuality?: number;
+            format?: string;
         }) =>
             api.post<{
                 success: boolean;
@@ -859,6 +868,13 @@ export function useAdminApi() {
                 streamUrl: string;
                 message: string
             }>(`${base}/downloader/download`, params),
+        // v1.5.0: queue many URLs in one call. Each item is a URL or an object with per-job options.
+        batchDownloaderJobs: (params: {
+            clientId: string;
+            urls: Array<{ url: string; title?: string; audioOnly?: boolean; audioFormat?: string; audioQuality?: number; format?: string }>;
+        }) => api.post<DownloaderBatchResult>(`${base}/downloader/download/batch`, params),
+        // v1.5.0: the downloader's active + queued jobs.
+        getDownloaderQueue: () => api.get<DownloaderQueue>(`${base}/downloader/queue`),
         cancelDownloaderJob: (id: string) =>
             api.post<void>(`${base}/downloader/cancel/${encodeURIComponent(id)}`),
         deleteDownloaderJob: (filename: string) =>

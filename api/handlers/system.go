@@ -257,6 +257,9 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 			"enabled":     cfg.Uploads.Enabled,
 			"maxFileSize": cfg.Uploads.MaxFileSize,
 		},
+		"download": map[string]any{
+			"enabled": cfg.Download.Enabled,
+		},
 		"admin": map[string]any{
 			"enabled": cfg.Admin.Enabled,
 		},
@@ -371,6 +374,8 @@ func (h *Handler) ClearMediaCache(c *gin.Context) {
 	go func() {
 		if err := h.media.Scan(); err != nil {
 			h.log.Error("Background media rescan failed: %v", err)
+		} else {
+			h.refreshSuggestionsCatalog()
 		}
 		// The media set just changed, so the SEO sitemap and RSS feed caches are
 		// stale. Drop them here so an explicit "clear cache" reflects new/removed

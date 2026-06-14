@@ -15,6 +15,7 @@ import (
 	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/streaming"
+	"media-server-pro/internal/suggestions"
 	"media-server-pro/internal/thumbnails"
 	"media-server-pro/pkg/models"
 )
@@ -513,6 +514,19 @@ func (h *Handler) GetMedia(c *gin.Context) {
 		item.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
 	}
 
+	// Per-user rating: surface the caller's own star rating so the player can
+	// pre-fill the stars they set previously. item is a deepCopyItem copy, so
+	// mutating it can't leak into another request. Mark the response private so a
+	// shared cache never serves one user's rating to another.
+	if session := getSession(c); session != nil {
+		c.Header(headerCacheControl, "private, no-cache")
+		if ratings := h.userRatingsByPath(c); ratings != nil {
+			if r := ratings[item.Path]; r > 0 {
+				item.UserRating = r
+			}
+		}
+	}
+
 	writeSuccess(c, item)
 }
 
@@ -520,6 +534,33 @@ func (h *Handler) GetMedia(c *gin.Context) {
 func (h *Handler) GetMediaStats(c *gin.Context) {
 	stats := h.media.GetStats()
 	writeSuccess(c, stats)
+}
+
+// refreshSuggestionsCatalog pushes the current media catalog into the
+// suggestions engine. Mirrors the scheduled tasks' post-scan re-feed — without
+// it an on-demand rescan leaves suggestions serving a stale catalog until the
+// next scheduled tick.
+func (h *Handler) refreshSuggestionsCatalog() {
+	if h.suggestions == nil {
+		return
+	}
+	items := h.media.ListMedia(media.Filter{})
+	mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
+	for _, item := range items {
+		mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
+			Path:      item.Path,
+			StableID:  item.ID,
+			Title:     item.Name,
+			Category:  item.Category,
+			MediaType: string(item.Type),
+			Tags:      item.Tags,
+			Views:     item.Views,
+			Duration:  item.Duration,
+			AddedAt:   item.DateAdded,
+			IsMature:  item.IsMature,
+		})
+	}
+	h.suggestions.UpdateMediaData(mediaInfos)
 }
 
 // ScanMedia initiates a media scan
@@ -531,7 +572,9 @@ func (h *Handler) ScanMedia(c *gin.Context) {
 	go func() {
 		if err := h.media.Scan(); err != nil {
 			h.log.Error("Media scan failed: %v", err)
+			return
 		}
+		h.refreshSuggestionsCatalog()
 	}()
 	writeSuccess(c, map[string]string{"message": "Scan started"})
 }
@@ -582,10 +625,34 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 	}
 
 	items := h.categorizer.GetByCategory(categorizer.Category(category))
-	total := len(items)
 
-	// Window the slice before enriching so we don't pay the
-	// GetMediaByID + thumbnail lookup cost on items we'll discard.
+	// Resolve each categorized path to its live media item. The categorizer
+	// assigns its own internal UUIDs, which the media module and thumbnail
+	// store don't know — by-ID lookups always missed, leaving browse items
+	// with no duration, no thumbnail, and dead /player?id= links. Resolution
+	// happens before windowing so mature-gated items don't shift pages.
+	canMature := h.canViewMatureContent(c)
+	type resolvedItem struct {
+		cat   *categorizer.CategorizedItem
+		media *models.MediaItem
+	}
+	resolved := make([]resolvedItem, 0, len(items))
+	for _, item := range items {
+		var mi *models.MediaItem
+		if h.media != nil && item.Path != "" {
+			if found, err := h.media.GetMedia(item.Path); err == nil {
+				mi = found
+			}
+		}
+		// Unresolved items (mi == nil: deleted or not yet scanned) have an
+		// unknown mature flag — fail closed for viewers without mature access.
+		if !canMature && (mi == nil || mi.IsMature) {
+			continue
+		}
+		resolved = append(resolved, resolvedItem{cat: item, media: mi})
+	}
+	total := len(resolved)
+
 	end := offset + limit
 	if offset > total {
 		offset = total
@@ -593,7 +660,7 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 	if end > total {
 		end = total
 	}
-	pageItems := items[offset:end]
+	pageItems := resolved[offset:end]
 
 	type browseItem struct {
 		ID           string  `json:"id"`
@@ -605,7 +672,8 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 		ThumbnailURL string  `json:"thumbnail_url,omitempty"`
 	}
 	results := make([]browseItem, 0, len(pageItems))
-	for _, item := range pageItems {
+	for _, ri := range pageItems {
+		item := ri.cat
 		bi := browseItem{
 			ID:           item.ID,
 			Name:         item.Name,
@@ -613,13 +681,14 @@ func (h *Handler) GetCategoryBrowse(c *gin.Context) {
 			Confidence:   item.Confidence,
 			DetectedInfo: item.DetectedInfo,
 		}
-		if h.media != nil && item.ID != "" {
-			if mi, err := h.media.GetMediaByID(item.ID); err == nil && mi != nil {
-				bi.Duration = mi.Duration
-			}
+		if ri.media != nil {
+			// The media module's stable ID makes /player?id= links and
+			// thumbnail lookups actually resolve.
+			bi.ID = ri.media.ID
+			bi.Duration = ri.media.Duration
 		}
-		if h.thumbnails != nil && item.ID != "" {
-			bi.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
+		if h.thumbnails != nil && ri.media != nil {
+			bi.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(ri.media.ID))
 		}
 		results = append(results, bi)
 	}
@@ -858,6 +927,27 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 	}
 }
 
+// variantDownloadName builds a safe attachment filename for a per-quality HLS
+// download, e.g. ("My Clip.mp4", "720p") -> "My Clip_720p.mp4". Strips any
+// existing extension and neutralizes header-unsafe characters.
+func variantDownloadName(name, quality string) string {
+	base := name
+	if i := strings.LastIndexByte(base, '.'); i > 0 {
+		base = base[:i]
+	}
+	repl := func(r rune) rune {
+		if r < 0x20 || r == '"' || r == '\\' || r == '/' || r == '\r' || r == '\n' {
+			return '_'
+		}
+		return r
+	}
+	base = strings.Map(repl, base)
+	if base == "" {
+		base = "video"
+	}
+	return fmt.Sprintf("%s_%s.mp4", base, strings.Map(repl, quality))
+}
+
 // DownloadMedia downloads a media file
 func (h *Handler) DownloadMedia(c *gin.Context) {
 	cfg := h.media.GetConfig()
@@ -930,6 +1020,29 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 
 	if !h.checkMatureAccess(c, localItem.IsMature) {
 		return
+	}
+
+	// Per-quality HLS download: when a quality is requested and a completed HLS
+	// rendition exists, remux that variant into an MP4 and serve it. Falls through
+	// to the original file when HLS isn't ready or ffmpeg is unavailable.
+	if q := strings.TrimSpace(c.Query("quality")); q != "" && h.hls != nil {
+		if plPath, verr := h.hls.VariantDownloadPath(id, q); verr == nil {
+			c.Header("Content-Type", "video/mp4")
+			c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", variantDownloadName(localItem.Name, q)))
+			serr := h.hls.StreamVariantMP4(c.Request.Context(), id, plPath, c.Writer)
+			if serr == nil || isClientDisconnect(serr) || c.Writer.Written() {
+				h.trackDownloadCompleted(c, session, id)
+				return
+			}
+			// ffmpeg failed before any bytes were written — clear the variant MP4
+			// headers so the fallback original file isn't mislabeled (wrong
+			// Content-Type / "_quality.mp4" filename), then serve the original.
+			c.Writer.Header().Del("Content-Type")
+			c.Writer.Header().Del("Content-Disposition")
+			h.log.Warn("Variant download failed for %s (%s), serving original: %v", id, q, serr)
+		} else {
+			h.log.Debug("No HLS variant %q for %s, serving original file: %v", q, id, verr)
+		}
 	}
 
 	dlErr := h.streaming.Download(c.Writer, c.Request, absPath)

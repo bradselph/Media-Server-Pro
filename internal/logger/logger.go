@@ -287,6 +287,56 @@ func (l *Logger) SetLevel(level Level) {
 	l.minLevel = level
 }
 
+// SetColors updates colored output for this logger instance. Colors stay off
+// when the terminal can't render them (NO_COLOR, systemd, dumb/absent TERM)
+// regardless of the preference.
+func (l *Logger) SetColors(enabled bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.useColors = enabled && isColorTerminal()
+}
+
+// ParseLevel converts a level name ("debug", "info", "warn", "error", "fatal")
+// to a Level. The second return is false for unknown or empty values.
+func ParseLevel(s string) (Level, bool) {
+	switch strings.ToLower(s) {
+	case "debug":
+		return DEBUG, true
+	case "info":
+		return INFO, true
+	case "warn", "warning":
+		return WARN, true
+	case "error":
+		return ERROR, true
+	case "fatal":
+		return FATAL, true
+	}
+	return INFO, false
+}
+
+// SetGlobalLevel changes the minimum level on the global logger. Module
+// loggers snapshot the global state when created, so this must run before
+// modules are constructed to take full effect.
+func SetGlobalLevel(level Level) {
+	if globalLogger == nil {
+		return
+	}
+	globalLogger.mu.Lock()
+	globalLogger.minLevel = level
+	globalLogger.mu.Unlock()
+}
+
+// SetGlobalColors applies the configured color preference to the global
+// logger, gated by terminal support like SetColors.
+func SetGlobalColors(enabled bool) {
+	if globalLogger == nil {
+		return
+	}
+	globalLogger.mu.Lock()
+	globalLogger.useColors = enabled && isColorTerminal()
+	globalLogger.mu.Unlock()
+}
+
 // SetJSONFormat enables or disables JSON-structured log output on the global logger.
 // Call after Init() to switch output format based on config (e.g. LOG_FORMAT=json).
 func SetJSONFormat(enabled bool) {

@@ -116,6 +116,8 @@ export interface MediaItem {
     last_played?: string
     is_mature: boolean
     mature_score?: number
+    /** The requesting user's own star rating (1-5); present only on single-item GetMedia for authenticated users. */
+    user_rating?: number
     metadata?: Record<string, string>
 }
 
@@ -757,7 +759,9 @@ export interface ModuleHealth {
     name: string
     status: 'healthy' | 'unhealthy' | 'degraded' | 'failed' | 'disabled'
     message?: string
-    last_check: string
+    // JSON tag on models.HealthStatus.CheckedAt — was misdeclared as
+    // last_check, which no endpoint ever sent.
+    checked_at: string
 }
 
 export interface ServerStatus {
@@ -789,9 +793,11 @@ export interface StreamSession {
     quality: string
     bytes_sent: number
     ip_address: string
-    started_at: string
+    /** Unix seconds (backend sends StartedAt.Unix()) */
+    started_at: number
     position: number
-    last_update: string
+    /** Unix seconds (backend sends LastUpdate.Unix()) */
+    last_update: number
 }
 
 export interface UploadProgress {
@@ -838,8 +844,9 @@ export interface ScheduledTask {
     name: string
     description: string
     schedule: string
-    last_run: string
-    next_run: string
+    // Omitted by the backend (omitzero) for tasks that have never run.
+    last_run?: string
+    next_run?: string
     enabled: boolean
     running: boolean
     last_error?: string
@@ -1083,6 +1090,9 @@ export interface ServerSettings {
     uploads: {
         enabled: boolean
         maxFileSize: number
+    }
+    download: {
+        enabled: boolean
     }
     admin: {
         enabled: boolean
@@ -1419,6 +1429,8 @@ export interface CrawlerStats {
     total_discoveries: number
     pending_discoveries: number
     crawling: boolean
+    browser_enabled?: boolean
+    browser_available?: boolean
 }
 
 // ── Downloader ────────────────────────────────────────────────────────────────
@@ -1430,6 +1442,8 @@ export interface DownloaderHealth {
     uptime?: number
     dependencies?: Record<string, unknown>
     error?: string
+    /** v1.5.0: admins may download from any URL (yt-dlp universal engine). */
+    anySiteForAdmin?: boolean
 }
 
 export interface DownloaderStreamInfo {
@@ -1448,6 +1462,10 @@ export interface DownloaderDetectResult {
     isYouTubeMusic: boolean
     streams: DownloaderStreamInfo[]
     relayId?: string
+    /** v1.5.0: "ytdlp" = the page URL is handed to yt-dlp; "stream" = a stream URL is downloaded. */
+    engine?: 'ytdlp' | 'stream'
+    /** v1.5.0: true when this admin bypassed the curated-site gate (any-site unlocked). */
+    adminUnlocked?: boolean
 }
 
 export interface DownloaderProgress {
@@ -1469,6 +1487,44 @@ export interface DownloaderSettings {
     browserRelayConfigured?: boolean
     downloadsDir?: string
     proxyPoolSize?: number
+    /** v1.5.0: admins may download from any URL. */
+    anySiteForAdmin?: boolean
+    /** v1.5.0: selectable audio formats for audio-only downloads. */
+    audioFormats?: string[]
+    /** v1.5.0: whether yt-dlp is installed on the downloader. */
+    ytdlpAvailable?: boolean
+}
+
+export interface DownloaderQueueActiveItem {
+    downloadId: string
+    type: string
+    clientId: string
+}
+
+export interface DownloaderQueueQueuedItem {
+    downloadId: string
+    url: string
+    title: string
+    saveLocation: string
+    clientId: string
+    audioOnly: boolean
+}
+
+/** v1.5.0: GET /downloader/queue — the downloader's active + queued jobs. */
+export interface DownloaderQueue {
+    success: boolean
+    processing: number
+    maxConcurrent: number
+    active: DownloaderQueueActiveItem[]
+    queued: DownloaderQueueQueuedItem[]
+}
+
+/** v1.5.0: POST /downloader/download/batch result. */
+export interface DownloaderBatchResult {
+    success: boolean
+    queued: number
+    accepted: { url: string; downloadId: string }[]
+    rejected: { url: string; reason: string }[]
 }
 
 export interface ImportableFile {

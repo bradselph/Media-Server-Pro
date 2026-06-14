@@ -11,7 +11,10 @@ onUnmounted(() => {
 })
 
 const requests = ref<DataDeletionRequest[]>([])
-const loading = ref(true)
+// Must start false: load() guards on `loading` to drop concurrent calls, so a
+// true initial value made the very first load() a permanent no-op (the panel
+// sat on its spinner forever and never fetched).
+const loading = ref(false)
 const statusFilter = ref<'' | 'pending' | 'approved' | 'denied'>('')
 const processOpen = ref(false)
 const selected = ref<DataDeletionRequest | null>(null)

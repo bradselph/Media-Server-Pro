@@ -57,7 +57,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.18.2"
+	Version   = "1.18.52"
 	BuildDate = "dev"
 )
 
@@ -453,6 +453,9 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	// Downloader (non-critical — proxy to external downloader service, gated by feature flag)
 	m.downloader = downloader.NewModule(cfg)
 	m.downloader.SetMediaModule(m.media)
+	// Re-feed the suggestions catalog after post-import rescans so imported
+	// files become recommendable immediately, not at the next scheduled scan.
+	m.downloader.SetPostScanHook(func() { feedSuggestions(m.media, m.suggestions) })
 	mustRegister(srv, m.downloader)
 
 	// Extractor (non-critical — requires database for item persistence)
@@ -725,26 +728,7 @@ func registerMediaTasks(registerWithOverride func(tasks.TaskRegistration), cfg *
 			if err := mediaModule.Scan(); err != nil {
 				return err
 			}
-			// Feed updated media catalog to suggestions module
-			if suggestionsModule != nil {
-				items := mediaModule.ListMedia(media.Filter{})
-				mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
-				for _, item := range items {
-					mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
-						Path:      item.Path,
-						StableID:  item.ID,
-						Title:     item.Name,
-						Category:  item.Category,
-						MediaType: string(item.Type),
-						Tags:      item.Tags,
-						Views:     item.Views,
-						Duration:  item.Duration,
-						AddedAt:   item.DateAdded,
-						IsMature:  item.IsMature,
-					})
-				}
-				suggestionsModule.UpdateMediaData(mediaInfos)
-			}
+			feedSuggestions(mediaModule, suggestionsModule)
 			return nil
 		},
 	})
@@ -756,9 +740,41 @@ func registerMediaTasks(registerWithOverride func(tasks.TaskRegistration), cfg *
 		Description: "Removes metadata entries for media files that no longer exist on disk",
 		Schedule:    24 * time.Hour,
 		Func: func(_ context.Context) error {
-			return mediaModule.Scan()
+			if err := mediaModule.Scan(); err != nil {
+				return err
+			}
+			// When EnableAutoDiscovery is off, the media-scan task above is a
+			// no-op and this 24h scan is the only catalog refresh — without
+			// re-feeding here, the suggestions engine served recommendations
+			// from a snapshot frozen at boot.
+			feedSuggestions(mediaModule, suggestionsModule)
+			return nil
 		},
 	})
+}
+
+// feedSuggestions pushes the current media catalog into the suggestions engine.
+func feedSuggestions(mediaModule *media.Module, suggestionsModule *suggestions.Module) {
+	if suggestionsModule == nil {
+		return
+	}
+	items := mediaModule.ListMedia(media.Filter{})
+	mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
+	for _, item := range items {
+		mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
+			Path:      item.Path,
+			StableID:  item.ID,
+			Title:     item.Name,
+			Category:  item.Category,
+			MediaType: string(item.Type),
+			Tags:      item.Tags,
+			Views:     item.Views,
+			Duration:  item.Duration,
+			AddedAt:   item.DateAdded,
+			IsMature:  item.IsMature,
+		})
+	}
+	suggestionsModule.UpdateMediaData(mediaInfos)
 }
 
 // registerThumbnailTasks registers thumbnail generation and cleanup tasks.
@@ -941,13 +957,19 @@ func registerScannerTasks(registerWithOverride func(tasks.TaskRegistration), cfg
 		})
 	}
 
-	// Duplicate scan — checks local media library for fingerprint collisions every 24h
+	// Duplicate scan — checks local media library for fingerprint collisions every 24h.
+	// Gated on Features.EnableDuplicateDetection at tick time, matching the
+	// request-time gating of the duplicates admin endpoints — the flag
+	// previously silenced the API but the background scan kept running.
 	registerWithOverride(tasks.TaskRegistration{
 		ID:          "duplicate-scan",
 		Name:        "Duplicate Media Scan",
 		Description: "Scans local media library for files sharing the same content fingerprint",
 		Schedule:    24 * time.Hour,
 		Func: func(ctx context.Context) error {
+			if !cfg.Get().Features.EnableDuplicateDetection {
+				return nil
+			}
 			return duplicatesModule.ScanLocalMedia(ctx)
 		},
 	})

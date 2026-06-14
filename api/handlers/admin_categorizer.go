@@ -38,8 +38,10 @@ func (h *Handler) CategorizeFile(c *gin.Context) {
 		return
 	}
 	if result != nil && string(result.Category) != "" {
+		// MediaSlug keeps the media module's category namespace consistent —
+		// it filters by exact match against lowercase snake_case names.
 		if err := h.media.UpdateMetadata(absPath, map[string]any{
-			"category": string(result.Category),
+			"category": result.Category.MediaSlug(),
 		}); err != nil {
 			h.log.Warn(fmtCategorizerUpdateFailed, absPath, err)
 		}
@@ -75,7 +77,7 @@ func (h *Handler) CategorizeDirectory(c *gin.Context) {
 	for _, item := range results {
 		if item != nil && string(item.Category) != "" {
 			if updateErr := h.media.UpdateMetadata(item.Path, map[string]any{
-				"category": string(item.Category),
+				"category": item.Category.MediaSlug(),
 			}); updateErr != nil {
 				h.log.Warn(fmtCategorizerUpdateFailed, item.Path, updateErr)
 			}
@@ -124,7 +126,7 @@ func (h *Handler) SetMediaCategory(c *gin.Context) {
 	// ListMedia/GetMedia reflect the change without waiting for the next scan.
 	if string(req.Category) != "" {
 		if updateErr := h.media.UpdateMetadata(absPath, map[string]any{
-			"category": string(req.Category),
+			"category": req.Category.MediaSlug(),
 		}); updateErr != nil {
 			h.log.Warn(fmtCategorizerUpdateFailed, absPath, updateErr)
 		}

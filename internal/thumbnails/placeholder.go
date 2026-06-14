@@ -59,7 +59,10 @@ func (m *Module) generateStaticPlaceholder(outputPath, placeholderType string) e
 }
 
 // writePlaceholderImage writes an RGBA image to path as JPEG (for static placeholders).
-func (m *Module) writePlaceholderImage(outputPath string, img image.Image) error {
+// A failed Close on a written file means unflushed data (disk full, I/O error) —
+// the named return lets the deferred close surface that instead of reporting a
+// truncated JPEG as success.
+func (m *Module) writePlaceholderImage(outputPath string, img image.Image) (retErr error) {
 	file, err := os.Create(outputPath)
 	if err != nil {
 		return err
@@ -72,6 +75,9 @@ func (m *Module) writePlaceholderImage(outputPath string, img image.Image) error
 		closed = true
 		if closeErr := file.Close(); closeErr != nil {
 			m.log.Warn("Failed to close thumbnail file: %v", closeErr)
+			if retErr == nil {
+				retErr = fmt.Errorf("failed to close placeholder file: %w", closeErr)
+			}
 		}
 	}
 	defer closeFile()

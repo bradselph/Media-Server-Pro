@@ -168,7 +168,7 @@ async function resolveDuplicate(id: string, action: string) {
     await adminApi.resolveDuplicate(id, action)
     if (!destroyed) {
       duplicates.value = duplicates.value.filter(d => d.id !== id)
-      notifySuccess(`Duplicate ${action}d`)
+      notifySuccess('Duplicate resolved')
     }
   } catch (e: unknown) {
     if (!destroyed) {
@@ -621,10 +621,11 @@ onMounted(async () => {
             <p class="text-xs text-muted">vs. {{ d.item_b_name }}</p>
           </div>
           <div class="flex gap-1">
+            <!-- Backend actions are removal-oriented: keeping A means removing B -->
             <UButton label="Keep A" size="xs" variant="outline" color="success"
-                     @click="resolveDuplicate(d.id, 'keep_a')"/>
+                     @click="resolveDuplicate(d.id, 'remove_b')"/>
             <UButton label="Keep B" size="xs" variant="outline" color="neutral"
-                     @click="resolveDuplicate(d.id, 'keep_b')"/>
+                     @click="resolveDuplicate(d.id, 'remove_a')"/>
             <UButton label="Keep Both" size="xs" variant="ghost" color="neutral"
                      @click="resolveDuplicate(d.id, 'keep_both')"/>
           </div>

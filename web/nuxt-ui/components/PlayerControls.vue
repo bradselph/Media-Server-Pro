@@ -83,14 +83,14 @@ function formatQualityLabel(q: { name: string; bitrate?: number; codec?: string;
 }
 
 const qualityMenuItems = computed(() => [[
-  {label: 'Auto', click: () => emit('quality-select', -1)},
-  ...props.qualities.map(q => ({label: formatQualityLabel(q), click: () => emit('quality-select', q.index)})),
+  {label: 'Auto', onSelect: () => emit('quality-select', -1)},
+  ...props.qualities.map(q => ({label: formatQualityLabel(q), onSelect: () => emit('quality-select', q.index)})),
 ]])
 
 const chapterMenuItems = computed(() => [[
   ...props.chapters.map(ch => ({
     label: ch.label,
-    click: () => emit('seek-to-chapter', ch.start_time),
+    onSelect: () => emit('seek-to-chapter', ch.start_time),
   })),
 ]])
 
@@ -105,42 +105,39 @@ const volumeIcon = computed(() => {
   return 'i-lucide-volume-2'
 })
 
-function onSeekBarMouseMove(e: MouseEvent) {
+// ── Drag-to-seek (Pointer Events unify mouse, touch and pen) ───────────
+// pointerdown seeks immediately and captures the pointer; pointermove while
+// dragging keeps seeking (rate-limited) so scrubbing tracks the pointer live;
+// pointerup commits the final position. A plain click is just down+up at the
+// same spot, so it needs no separate handler.
+const seekBarDragging = ref(false)
+const seekBarDragFraction = ref(0)
+let lastDragSeekAt = 0
+const DRAG_SEEK_INTERVAL_MS = 200
+
+function seekBarFraction(e: PointerEvent): number {
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-  seekBarHoverTime.value = fraction * props.duration
-  seekBarHoverX.value = e.clientX - rect.left
+  return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
 }
 
-function onSeekBarClick(e: MouseEvent) {
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-  emit('seek-to-fraction', fraction)
-}
-
-// rAF-throttle the touch preview tooltip: mobile fires touchmove faster than the
-// display refreshes, and every write re-runs seekBarPreviewUrl + re-renders the
-// tooltip. Queue the latest position and flush at most once per frame. The final
-// seek on touchend reads the event directly, so it is unaffected by the queue.
+// rAF-throttle the preview tooltip: pointermove fires faster than the display
+// refreshes, and every write re-runs seekBarPreviewUrl + re-renders the
+// tooltip. Queue the latest position and flush at most once per frame.
 let seekBarUpdateFrame = 0
 let pendingSeekBarHoverX = 0
 let pendingSeekBarHoverTime = 0
 
-function flushSeekBarTouchUpdate() {
+function flushSeekBarHoverUpdate() {
   seekBarUpdateFrame = 0
   seekBarHoverTime.value = pendingSeekBarHoverTime
   seekBarHoverX.value = pendingSeekBarHoverX
 }
 
-function onSeekBarTouch(e: TouchEvent) {
-  const touch = e.touches[0]
-  if (!touch) return
+function queueSeekBarHoverUpdate(e: PointerEvent, fraction: number) {
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const fraction = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
   pendingSeekBarHoverTime = fraction * props.duration
-  pendingSeekBarHoverX = touch.clientX - rect.left
-  seekBarHovering.value = true
-  if (!seekBarUpdateFrame) seekBarUpdateFrame = requestAnimationFrame(flushSeekBarTouchUpdate)
+  pendingSeekBarHoverX = e.clientX - rect.left
+  if (!seekBarUpdateFrame) seekBarUpdateFrame = requestAnimationFrame(flushSeekBarHoverUpdate)
 }
 
 onBeforeUnmount(() => {
@@ -150,13 +147,51 @@ onBeforeUnmount(() => {
   }
 })
 
-function onSeekBarTouchEnd(e: TouchEvent) {
-  const touch = e.changedTouches[0]
-  if (!touch) return
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const fraction = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
+function onSeekBarPointerDown(e: PointerEvent) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return
+  const el = e.currentTarget as HTMLElement
+  // @pointerdown.prevent suppresses the browser's default focus-on-click for
+  // this tabindex element — restore it so the slider's arrow-key handlers
+  // keep working after a pointer seek (ARIA slider contract).
+  el.focus({preventScroll: true})
+  try {
+    el.setPointerCapture(e.pointerId)
+  } catch { /* pointer already released */
+  }
+  const fraction = seekBarFraction(e)
+  seekBarDragging.value = true
+  seekBarDragFraction.value = fraction
+  seekBarHovering.value = true
+  queueSeekBarHoverUpdate(e, fraction)
+  lastDragSeekAt = performance.now()
   emit('seek-to-fraction', fraction)
-  seekBarHovering.value = false
+}
+
+function onSeekBarPointerMove(e: PointerEvent) {
+  const fraction = seekBarFraction(e)
+  queueSeekBarHoverUpdate(e, fraction)
+  if (!seekBarDragging.value) return
+  seekBarDragFraction.value = fraction
+  const now = performance.now()
+  if (now - lastDragSeekAt < DRAG_SEEK_INTERVAL_MS) return
+  lastDragSeekAt = now
+  emit('seek-to-fraction', fraction)
+}
+
+function onSeekBarPointerUp(e: PointerEvent) {
+  if (!seekBarDragging.value) return
+  seekBarDragging.value = false
+  emit('seek-to-fraction', seekBarFraction(e))
+  if (e.pointerType !== 'mouse') seekBarHovering.value = false
+}
+
+function onSeekBarPointerCancel(e: PointerEvent) {
+  seekBarDragging.value = false
+  if (e.pointerType !== 'mouse') seekBarHovering.value = false
+}
+
+function onSeekBarPointerLeave() {
+  if (!seekBarDragging.value) seekBarHovering.value = false
 }
 
 function copyLinkAtTime() {
@@ -189,14 +224,13 @@ function copyLinkAtTime() {
         :aria-valuemax="Math.floor(duration)"
         :aria-valuenow="Math.floor(currentTime)"
         :aria-valuetext="`${formatDuration(currentTime)} of ${formatDuration(duration)}`"
-        class="relative w-full cursor-pointer px-3 py-2 touch-manipulation focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        @click="onSeekBarClick"
-        @mousemove="onSeekBarMouseMove"
-        @mouseenter="seekBarHovering = true"
-        @mouseleave="seekBarHovering = false"
-        @touchstart.prevent="onSeekBarTouch"
-        @touchmove.prevent="onSeekBarTouch"
-        @touchend.prevent="onSeekBarTouchEnd"
+        class="relative w-full cursor-pointer px-3 py-2 touch-none select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        @pointerdown.prevent="onSeekBarPointerDown"
+        @pointermove="onSeekBarPointerMove"
+        @pointerup="onSeekBarPointerUp"
+        @pointercancel="onSeekBarPointerCancel"
+        @pointerenter="seekBarHovering = true"
+        @pointerleave="onSeekBarPointerLeave"
         @keydown.left.prevent="emit('seek', -5)"
         @keydown.right.prevent="emit('seek', 5)"
     >
@@ -219,10 +253,10 @@ function copyLinkAtTime() {
             class="absolute top-0 left-0 h-full bg-white/30 rounded-full pointer-events-none"
             :style="{ width: `${bufferedFraction * 100}%` }"
         />
-        <!-- Playback progress -->
+        <!-- Playback progress — follows the pointer while scrubbing -->
         <div
             class="absolute top-0 left-0 h-full bg-primary rounded-full pointer-events-none"
-            :style="{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }"
+            :style="{ width: `${(seekBarDragging ? seekBarDragFraction : (duration ? currentTime / duration : 0)) * 100}%` }"
         />
         <!-- Chapter pins on seek bar -->
         <template v-if="chapters.length > 0 && duration > 0">
@@ -232,7 +266,7 @@ function copyLinkAtTime() {
               class="absolute top-1/2 -translate-y-1/2 w-1 h-3 bg-white/70 rounded-full cursor-pointer hover:bg-white hover:h-4 transition-all pointer-events-auto"
               :style="{ left: `${(ch.start_time / duration) * 100}%` }"
               :title="ch.label"
-              @click.stop="emit('seek-to-chapter', ch.start_time)"
+              @pointerdown.stop.prevent="emit('seek-to-chapter', ch.start_time)"
           />
         </template>
       </div>

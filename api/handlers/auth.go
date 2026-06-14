@@ -399,6 +399,11 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 	}
 	prefs := user.Preferences
 	applyPreferencesPatch(&prefs, incoming)
+	// Normalise the patched struct (clamp ranges, default invalid enums) BEFORE
+	// persisting, so the stored value and the response are identical. Previously
+	// Validate ran only after the save, so an out-of-range value could be written
+	// to the DB while the client was told a different (clamped) value.
+	prefs.Validate()
 
 	h.log.Debug("Updating preferences for user %s: show_mature=%v, mature_preference_set=%v", session.Username, prefs.ShowMature, prefs.MaturePreferenceSet)
 
@@ -407,11 +412,6 @@ func (h *Handler) UpdatePreferences(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
-
-	// Validate normalises the stored struct (clamping, enum defaults, etc.) so the
-	// response reflects exactly what was committed, preventing a discrepancy that
-	// would make the client think one value was saved when another was stored.
-	prefs.Validate()
 	// Track which fields the patch actually touched (key set, not values) so
 	// the audit log doesn't record sensitive things like custom EQ presets,
 	// while still showing operators what kind of preferences a user is
@@ -472,7 +472,7 @@ func applyPreferencesPatch(prefs *models.UserPreferences, m map[string]any) {
 	setStringPref(m, "default_quality", &prefs.DefaultQuality)
 	setBoolPref(m, "auto_play", &prefs.AutoPlay)
 	setBoolPref(m, "autoplay", &prefs.AutoPlay)
-	setClampedFloatPref(m, "playback_speed", &prefs.PlaybackSpeed, 0.25, 4.0)
+	setClampedFloatPref(m, "playback_speed", &prefs.PlaybackSpeed, 0.25, 3.0)
 	setClampedFloatPref(m, "volume", &prefs.Volume, 0, 1.0)
 	if v, ok := m["show_mature"].(bool); ok {
 		prefs.ShowMature = v

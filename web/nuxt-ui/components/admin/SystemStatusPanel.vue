@@ -131,8 +131,8 @@ onMounted(loadStatus)
             <span class="text-muted">Message:</span>
             <p class="mt-1 font-mono text-xs bg-muted rounded p-2">{{ moduleDetail.message }}</p>
           </div>
-          <div v-if="moduleDetail.last_check">
-            <span class="text-muted">Last Check:</span> {{ new Date(moduleDetail.last_check).toLocaleString() }}
+          <div v-if="moduleDetail.checked_at">
+            <span class="text-muted">Last Check:</span> {{ new Date(moduleDetail.checked_at).toLocaleString() }}
           </div>
         </div>
       </template>

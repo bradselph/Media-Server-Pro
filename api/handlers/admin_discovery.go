@@ -86,10 +86,26 @@ func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.autodiscovery.ApplySuggestion(autodiscovery.FilePath(absPath)); err != nil {
+	newPath, err := h.autodiscovery.ApplySuggestion(autodiscovery.FilePath(absPath))
+	if err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
+	}
+	// ApplySuggestion performs its own os.Rename, so the media catalog and the
+	// path-keyed indexes must be re-keyed to the new location — otherwise the
+	// item stays indexed under the old (now-missing) path until the next full
+	// scan. Mirrors the post-rename fix-ups in applyAdminRenameIfNeeded.
+	if newPath != "" && newPath != absPath {
+		if h.media != nil {
+			h.media.ReindexMovedFile(absPath, newPath)
+		}
+		if h.suggestions != nil {
+			h.suggestions.RenameMediaPath(absPath, newPath)
+		}
+		if h.categorizer != nil {
+			h.categorizer.RenamePath(absPath, newPath)
+		}
 	}
 
 	h.trackServerEvent(c, analytics.EventDiscoveryRun, map[string]any{"scope": "apply", "path": absPath})
@@ -101,9 +117,10 @@ func (h *Handler) DismissDiscoverySuggestion(c *gin.Context) {
 	if !h.requireAutodiscovery(c) {
 		return
 	}
-	rawPath := strings.TrimPrefix(c.Param("path"), "/")
-	path, err := url.PathUnescape(rawPath)
-	if err != nil || path == "" {
+	// Gin's *path wildcard always carries a leading '/'; keep it so the
+	// suggestion's absolute path survives intact (apply gets it via JSON body).
+	path, err := url.PathUnescape(c.Param("path"))
+	if err != nil || path == "" || path == "/" {
 		writeError(c, http.StatusBadRequest, errPathParamRequired)
 		return
 	}

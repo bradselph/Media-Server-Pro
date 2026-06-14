@@ -165,10 +165,13 @@ const chapters = ref<MediaChapter[]>([])
 const newChapter = reactive({start_time: 0, end_time: '', label: ''})
 const chaptersLoading = ref(false)
 const chaptersSaving = ref(false)
+// When set, the form below the chapter list edits this chapter instead of adding one.
+const editingChapter = ref<MediaChapter | null>(null)
 
 async function openChapters(item: MediaItem) {
   chaptersTarget.value = item
   chapters.value = []
+  editingChapter.value = null
   newChapter.start_time = 0
   newChapter.end_time = ''
   newChapter.label = ''
@@ -223,6 +226,47 @@ async function deleteChapter(id: string) {
     }
   } catch (e: unknown) {
     notifyError(e, 'Failed to delete chapter')
+  } finally {
+    chaptersSaving.value = false
+  }
+}
+
+function startEditChapter(ch: MediaChapter) {
+  editingChapter.value = ch
+  newChapter.label = ch.label
+  newChapter.start_time = ch.start_time
+  newChapter.end_time = ch.end_time != null ? String(ch.end_time) : ''
+}
+
+function cancelEditChapter() {
+  editingChapter.value = null
+  newChapter.start_time = 0
+  newChapter.end_time = ''
+  newChapter.label = ''
+}
+
+async function updateChapter() {
+  if (!chaptersTarget.value || !editingChapter.value) return
+  if (!newChapter.label) {
+    notifyError('Label is required')
+    return
+  }
+  chaptersSaving.value = true
+  try {
+    const endTimeParsed = newChapter.end_time ? parseFloat(newChapter.end_time) : undefined
+    if (endTimeParsed !== undefined && isNaN(endTimeParsed)) {
+      notifyError('End time must be a valid number')
+      return
+    }
+    await chaptersApi.update(editingChapter.value.id, {
+      start_time: newChapter.start_time,
+      end_time: endTimeParsed,
+      label: newChapter.label,
+    })
+    notifySuccess('Chapter updated')
+    await openChapters(chaptersTarget.value)
+  } catch (e: unknown) {
+    notifyError(e, 'Failed to update chapter')
   } finally {
     chaptersSaving.value = false
   }
@@ -787,7 +831,8 @@ onUnmounted(() => {
             <h4 class="font-medium text-sm text-highlighted">Existing Chapters</h4>
             <div class="space-y-1 max-h-48 overflow-y-auto">
               <div v-for="ch in chapters" :key="ch.id"
-                   class="flex items-center justify-between bg-muted rounded p-2 text-sm">
+                   class="flex items-center justify-between bg-muted rounded p-2 text-sm"
+                   :class="editingChapter?.id === ch.id ? 'ring-1 ring-primary' : ''">
                 <div class="flex-1">
                   <p class="font-medium">{{ ch.label }}</p>
                   <p class="text-xs text-muted">{{
@@ -795,7 +840,17 @@ onUnmounted(() => {
                     }}{{ ch.end_time ? ` – ${formatDuration(Math.floor(ch.end_time))}` : '' }}</p>
                 </div>
                 <UButton
+                    icon="i-lucide-pencil"
+                    aria-label="Edit chapter"
+                    size="xs"
+                    variant="ghost"
+                    color="neutral"
+                    :disabled="chaptersSaving"
+                    @click="startEditChapter(ch)"
+                />
+                <UButton
                     icon="i-lucide-trash-2"
+                    aria-label="Delete chapter"
                     size="xs"
                     variant="ghost"
                     color="error"
@@ -807,9 +862,11 @@ onUnmounted(() => {
           </div>
           <div v-else class="text-center py-4 text-muted text-sm">No chapters yet</div>
 
-          <!-- Add new chapter form -->
+          <!-- Add / edit chapter form (edit mode reuses the same fields) -->
           <div class="border-t pt-4 space-y-2">
-            <h4 class="font-medium text-sm text-highlighted">Add New Chapter</h4>
+            <h4 class="font-medium text-sm text-highlighted">
+              {{ editingChapter ? `Edit Chapter: ${editingChapter.label}` : 'Add New Chapter' }}
+            </h4>
             <UFormField label="Label" required>
               <UInput v-model="newChapter.label" placeholder="e.g., Introduction"/>
             </UFormField>
@@ -820,13 +877,23 @@ onUnmounted(() => {
               <UInput v-model="newChapter.end_time" type="number" min="0" step="0.1"
                       placeholder="Leave empty for open-ended"/>
             </UFormField>
-            <UButton
-                label="Add Chapter"
-                :loading="chaptersSaving"
-                color="primary"
-                class="w-full"
-                @click="addChapter"
-            />
+            <div class="flex gap-2">
+              <UButton
+                  :label="editingChapter ? 'Save Chapter' : 'Add Chapter'"
+                  :loading="chaptersSaving"
+                  color="primary"
+                  class="flex-1"
+                  @click="editingChapter ? updateChapter() : addChapter()"
+              />
+              <UButton
+                  v-if="editingChapter"
+                  label="Cancel"
+                  variant="outline"
+                  color="neutral"
+                  :disabled="chaptersSaving"
+                  @click="cancelEditChapter"
+              />
+            </div>
           </div>
         </div>
       </UCard>

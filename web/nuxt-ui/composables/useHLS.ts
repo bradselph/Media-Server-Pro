@@ -48,6 +48,8 @@ export interface UseHLSReturn {
     jobProgress: Ref<number>
     /** Whether HLS job is currently generating. */
     jobRunning: Ref<boolean>
+    /** Re-run the availability check for the current media (e.g. after manual generation). */
+    recheck: () => void
 }
 
 const QUALITY_PREF_KEY = 'media-server-quality-pref'
@@ -447,6 +449,52 @@ export function useHLS(
         }
     }
 
+    // Runs the availability check for a media id: activates HLS if it's ready, or
+    // starts the completion poll if a transcode job is in progress. Extracted so
+    // recheck() can re-run it on demand (e.g. after manual generation) without
+    // waiting for a mediaId change.
+    async function runCheck(id: string) {
+        try {
+            const status = await hlsApi.check(id)
+            if (status.available && status.hls_url) {
+                hlsAvailable.value = true
+                hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
+                // Auto-activate HLS only when adaptive streaming is enabled in server settings.
+                // When disabled, the player falls back to direct streaming; user can still
+                // click "Switch to HLS" if the banner is shown.
+                const settings = await settingsApi.get().catch(() => null)
+                if (settings && settings.streaming?.adaptive !== false) {
+                    await activateHLS()
+                }
+            } else if (status.status === 'running' || status.status === 'pending') {
+                jobRunning.value = true
+                jobProgress.value = status.progress
+
+                // Poll for completion — skip while tab is hidden to avoid wasteful background requests
+                pollStartTime = Date.now()
+                consecutiveErrors.count = 0
+                if (pollTimer) clearInterval(pollTimer)
+                pollTimer = setInterval(() => doPollCheck(id), 3000)
+            }
+        } catch (err) {
+            // HLS not available or check failed — fall back to direct streaming
+            console.warn('[hls] check failed:', err)
+        }
+    }
+
+    // Re-run the availability check for the current media without waiting for a
+    // mediaId change — used after the user manually requests HLS generation so the
+    // progress banner + poll start immediately rather than only after a reload.
+    function recheck() {
+        const id = mediaId.value
+        if (!id) return
+        if (checkDebounce) {
+            clearTimeout(checkDebounce)
+            checkDebounce = null
+        }
+        runCheck(id)
+    }
+
     // Check HLS availability when media ID changes (debounced to prevent burst requests)
     watch(mediaId, (id) => {
         if (checkDebounce) {
@@ -459,33 +507,9 @@ export function useHLS(
 
         if (!id) return
 
-        checkDebounce = setTimeout(async () => {
+        checkDebounce = setTimeout(() => {
             checkDebounce = null
-            try {
-                const status = await hlsApi.check(id)
-                if (status.available && status.hls_url) {
-                    hlsAvailable.value = true
-                    hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
-                    // Auto-activate HLS only when adaptive streaming is enabled in server settings.
-                    // When disabled, the player falls back to direct streaming; user can still
-                    // click "Switch to HLS" if the banner is shown.
-                    const settings = await settingsApi.get().catch(() => null)
-                    if (settings && settings.streaming?.adaptive !== false) {
-                        await activateHLS()
-                    }
-                } else if (status.status === 'running') {
-                    jobRunning.value = true
-                    jobProgress.value = status.progress
-
-                    // Poll for completion — skip while tab is hidden to avoid wasteful background requests
-                    pollStartTime = Date.now()
-                    consecutiveErrors.count = 0
-                    pollTimer = setInterval(() => doPollCheck(id), 3000)
-                }
-            } catch (err) {
-                // HLS not available or check failed — fall back to direct streaming
-                console.warn('[hls] check failed:', err)
-            }
+            runCheck(id)
         }, 50)
     }, {immediate: true})
 
@@ -497,6 +521,7 @@ export function useHLS(
     return {
         hlsAvailable,
         hlsActivated,
+        recheck,
         hlsUrl,
         hlsLoading,
         hlsError,

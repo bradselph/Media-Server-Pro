@@ -41,6 +41,16 @@ const (
 	CategoryUncategorized Category = "Uncategorized"
 )
 
+// MediaSlug converts a Category into the media module's category namespace
+// (lowercase snake_case, e.g. "TV Shows" → "tv_shows"). The media module's
+// browse filter does exact string matching against the categories its own
+// detectCategory assigns ("movies", "tv_shows", "music", "uncategorized"),
+// so propagating the display names verbatim created a second, parallel
+// category namespace that never matched any filter.
+func (c Category) MediaSlug() string {
+	return strings.ToLower(strings.ReplaceAll(string(c), " ", "_"))
+}
+
 // CategorizedItem represents a categorized media item
 type CategorizedItem struct {
 	ID             string     `json:"id"`
@@ -643,6 +653,40 @@ func (m *Module) RemoveByPath(path string) {
 	if m.repo != nil {
 		if err := m.repo.Delete(context.Background(), path); err != nil {
 			m.log.Debug("RemoveByPath: no categorization entry to delete for %s: %v", path, err)
+		}
+	}
+}
+
+// RenamePath re-keys a categorization entry when its media file is renamed,
+// so category browse keeps resolving the live media item instead of carrying
+// a dead path until the daily stale cleanup discards it.
+func (m *Module) RenamePath(oldPath, newPath string) {
+	if oldPath == newPath || newPath == "" {
+		return
+	}
+	m.mu.Lock()
+	old, ok := m.items[oldPath]
+	if !ok {
+		m.mu.Unlock()
+		return
+	}
+	delete(m.items, oldPath)
+	// Copy-on-write: stored items are read via shared pointer after callers
+	// release m.mu (CategorizeFile/SetCategory pass them to saveItem unlocked),
+	// so the existing struct must never be field-mutated — re-key a copy.
+	item := copyItem(old)
+	item.Path = newPath
+	item.Name = filepath.Base(newPath)
+	m.items[newPath] = item
+	rec := m.itemToRecord(newPath, item)
+	m.mu.Unlock()
+
+	if m.repo != nil {
+		if err := m.repo.Delete(context.Background(), oldPath); err != nil {
+			m.log.Debug("RenamePath: no categorization entry to delete for %s: %v", oldPath, err)
+		}
+		if err := m.repo.Upsert(context.Background(), rec); err != nil {
+			m.log.Error("Failed to persist re-keyed categorization for %s: %v", newPath, err)
 		}
 	}
 }

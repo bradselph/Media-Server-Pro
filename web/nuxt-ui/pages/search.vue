@@ -1,4 +1,9 @@
 <script setup lang="ts">
+// resolveComponent must be an explicit setup binding: the template-only
+// auto-import variant resolves at runtime, where NuxtLink is not globally
+// registered — Vue then renders a dead literal <nuxtlink> element and every
+// search result card silently loses its link behavior.
+import {resolveComponent} from 'vue'
 import type {MediaItem, Playlist} from '~/types/api'
 import {getDisplayTitle} from '~/utils/mediaTitle'
 import {formatBytes, formatDuration} from '~/utils/format'
@@ -209,6 +214,7 @@ async function bulkAddToPlaylist() {
     } catch { /* skip duplicates */
     }
   }
+  bulkAdding.value = false
   toast.add({
     title: `Added ${added} item${added === 1 ? '' : 's'} to playlist`,
     color: 'success',
@@ -217,7 +223,6 @@ async function bulkAddToPlaylist() {
   bulkAddPlaylistId.value = undefined
   selectedIds.value = new Set()
   selectionMode.value = false
-  bulkAdding.value = false
 }
 
 // ── Save this search (retention plan B.5) ─────────────────────────────

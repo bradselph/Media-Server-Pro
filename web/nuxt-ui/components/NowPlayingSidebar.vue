@@ -146,6 +146,17 @@ function playNext() {
   })
 }
 
+function playPrevious() {
+  // The queue is forward-only (no history stack), so Previous restarts the
+  // current item from the beginning — standard transport behavior. t=0
+  // explicitly bypasses the player's resume-position restore. The sidebar is
+  // hidden on /player (HIDDEN_ROUTES), so this always navigates from another
+  // route — a same-route push (which the router would no-op) can't occur.
+  const id = playback.currentMediaId
+  if (!id) return
+  router.push(`/player?id=${encodeURIComponent(id)}&t=0`)
+}
+
 function playFromQueue(id: string) {
   queue.remove(id)
   router.push(`/player?id=${encodeURIComponent(id)}`)
@@ -373,7 +384,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
             </div>
           </div>
           <div class="np__controls">
-            <button class="np-btn" aria-label="Previous" @click="playNext">
+            <button class="np-btn" aria-label="Previous" @click="playPrevious">
               <UIcon name="i-lucide-skip-back" class="size-4"/>
             </button>
             <button class="np-btn np-btn--play" aria-label="Open player" @click="openPlayer">
@@ -573,7 +584,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
           <span class="rail__eq-bar"/>
           <span class="rail__eq-bar"/>
         </div>
-        <button class="rail__icon-btn" aria-label="Previous" @click="playNext">
+        <button class="rail__icon-btn" aria-label="Previous" @click="playPrevious">
           <UIcon name="i-lucide-skip-back" class="size-3.5"/>
         </button>
         <button class="rail__icon-btn rail__icon-btn--play" aria-label="Open player" @click="openPlayer">
@@ -685,7 +696,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
                 </div>
               </div>
               <div class="np__controls">
-                <button class="np-btn" aria-label="Previous" @click="playNext">
+                <button class="np-btn" aria-label="Previous" @click="playPrevious">
                   <UIcon name="i-lucide-skip-back" class="size-4"/>
                 </button>
                 <button class="np-btn np-btn--play" aria-label="Open player" @click="openPlayer">

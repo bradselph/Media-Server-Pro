@@ -46,6 +46,7 @@ type MediaItem struct {
 	LastPlayed   *time.Time `json:"last_played,omitempty"`
 	IsMature     bool       `json:"is_mature"`
 	MatureScore  float64    `json:"mature_score,omitempty"`
+	UserRating   float64    `json:"user_rating,omitempty"` // caller's own star rating (1-5); set on single-item GetMedia for authenticated users, omitted when 0
 	// SECURITY WARNING: Metadata contains arbitrary key-value pairs.
 	// All metadata values MUST be sanitized using helpers.SanitizeMap before storage
 	// to prevent XSS when rendered in HTML templates. Handlers should validate keys/values.

@@ -336,6 +336,11 @@ components:
           type: integer
         scanning:
           type: boolean
+        type_counts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Item counts per media type for the current filter (e.g. video/audio)
         user_ratings:
           type: object
           additionalProperties:
@@ -687,6 +692,11 @@ components:
             maxFileSize:
               type: integer
               format: int64
+        download:
+          type: object
+          properties:
+            enabled:
+              type: boolean
         admin:
           type: object
           properties:
@@ -902,7 +912,7 @@ components:
           enum: [ healthy, unhealthy, degraded, failed, disabled ]
         message:
           type: string
-        last_check:
+        checked_at:
           type: string
           format: date-time
 
@@ -1284,10 +1294,34 @@ components:
         reason:
           type: string
 
+    SavedSearch:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        query:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        tag_mode:
+          type: string
+        media_type:
+          type: string
+        created_at:
+          type: string
+        last_seen_at:
+          type: string
+
     CategorizedItem:
       type: object
       properties:
-        path:
+        id:
+          type: string
+        name:
           type: string
         category:
           type: string
@@ -1799,6 +1833,12 @@ components:
           type: integer
         crawling:
           type: boolean
+        browser_enabled:
+          type: boolean
+          description: The crawler.browser_enabled config flag.
+        browser_available:
+          type: boolean
+          description: True only when browser detection is enabled AND a Chrome/Chromium binary was found on the server.
 
     DownloaderHealth:
       type: object
@@ -1966,14 +2006,26 @@ components:
           type: string
         media_id:
           type: string
-        media_path:
+        filename:
           type: string
+          description: Human-readable media name; falls back to media_id when lookup fails.
+        ip_address:
+          type: string
+        quality:
+          type: string
+        position:
+          type: number
+        bytes_sent:
+          type: integer
+          format: int64
         started_at:
-          type: string
-          format: date-time
-        last_activity:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
+          description: Unix seconds.
+        last_update:
+          type: integer
+          format: int64
+          description: Unix seconds.
 
     ActiveUpload:
       type: object
@@ -2674,6 +2726,120 @@ paths:
         '200':
           description: Verified
 
+  /api/tags:
+    get:
+      tags: [ media ]
+      summary: Tag cloud — aggregate tag/count distribution
+      responses:
+        '200':
+          description: Tag counts
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            tag:
+                              type: string
+                            count:
+                              type: integer
+
+  /api/preferences/saved_searches:
+    get:
+      tags: [ preferences ]
+      summary: List saved searches
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Saved searches
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SavedSearch'
+    post:
+      tags: [ preferences ]
+      summary: Create saved search
+      security:
+        - sessionCookie: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ name ]
+              properties:
+                name:
+                  type: string
+                query:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                tag_mode:
+                  type: string
+                media_type:
+                  type: string
+      responses:
+        '200':
+          description: Saved search created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SavedSearch'
+
+  /api/preferences/saved_searches/{id}:
+    delete:
+      tags: [ preferences ]
+      summary: Delete saved search
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Saved search deleted
+
+  /api/preferences/saved_searches/{id}/seen:
+    post:
+      tags: [ preferences ]
+      summary: Mark saved search results as seen
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Marked seen
+
   /api/preferences:
     get:
       tags: [ preferences ]
@@ -2862,6 +3028,54 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/MediaItem'
+
+  /api/media/{id}/report:
+    post:
+      tags: [ media ]
+      summary: Report a media item for moderation
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  enum: [ inappropriate, broken, spam, copyright, other ]
+                  description: Unknown or empty reasons are coerced to "other"
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Report submitted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          status:
+                            type: string
+                          created_at:
+                            type: string
+                            format: date-time
+        '404':
+          description: Media not found
 
   /api/playback:
     get:
@@ -3873,6 +4087,8 @@ paths:
     get:
       tags: [ suggestions ]
       summary: Get recently added content
+      security:
+        - sessionCookie: [ ]
       parameters:
         - name: days
           in: query
@@ -4823,6 +5039,278 @@ paths:
         '200':
           description: CSV file download
 
+  /api/admin/analytics/top-users:
+    get:
+      tags: [ admin-analytics ]
+      summary: Top users by activity
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Top users
+
+  /api/admin/analytics/top-searches:
+    get:
+      tags: [ admin-analytics ]
+      summary: Top search queries
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Top searches
+
+  /api/admin/analytics/failed-logins:
+    get:
+      tags: [ admin-analytics ]
+      summary: Failed login attempts
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Failed logins
+
+  /api/admin/analytics/error-paths:
+    get:
+      tags: [ admin-analytics ]
+      summary: Top server-error request paths
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Error paths
+
+  /api/admin/analytics/timeline:
+    get:
+      tags: [ admin-analytics ]
+      summary: Metric timeline
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Timeline data
+
+  /api/admin/analytics/cohorts:
+    get:
+      tags: [ admin-analytics ]
+      summary: Cohort metrics
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Cohort metrics
+
+  /api/admin/analytics/heatmap:
+    get:
+      tags: [ admin-analytics ]
+      summary: Hourly activity heatmap
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Heatmap data
+
+  /api/admin/analytics/quality:
+    get:
+      tags: [ admin-analytics ]
+      summary: Playback quality breakdown
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Quality breakdown
+
+  /api/admin/analytics/content-gaps:
+    get:
+      tags: [ admin-analytics ]
+      summary: Content gap analysis
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Content gaps
+
+  /api/admin/analytics/comparison:
+    get:
+      tags: [ admin-analytics ]
+      summary: Period-over-period comparison
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Comparison data
+
+  /api/admin/analytics/funnel:
+    get:
+      tags: [ admin-analytics ]
+      summary: Engagement funnel
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Funnel data
+
+  /api/admin/analytics/devices:
+    get:
+      tags: [ admin-analytics ]
+      summary: Device breakdown
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Device breakdown
+
+  /api/admin/analytics/media/{id}:
+    get:
+      tags: [ admin-analytics ]
+      summary: Per-media analytics
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Media analytics
+
+  /api/admin/analytics/export-panel:
+    get:
+      tags: [ admin-analytics ]
+      summary: Export current panel data
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Panel export
+
+  /api/admin/analytics/stream:
+    get:
+      tags: [ admin-analytics ]
+      summary: Live analytics event stream (Server-Sent Events)
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: SSE stream (text/event-stream)
+
+  /api/admin/analytics/retention:
+    get:
+      tags: [ admin-analytics ]
+      summary: Retention metrics
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Retention metrics
+
+  /api/admin/analytics/anomalies:
+    get:
+      tags: [ admin-analytics ]
+      summary: Detected metric anomalies
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Anomalies
+
+  /api/admin/analytics/ips:
+    get:
+      tags: [ admin-analytics ]
+      summary: IP address summary
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: IP summary
+
+  /api/admin/analytics/diagnostics:
+    get:
+      tags: [ admin-analytics ]
+      summary: Analytics pipeline diagnostics
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Diagnostics
+
+  /api/admin/analytics/health:
+    get:
+      tags: [ admin-analytics ]
+      summary: Analytics subsystem health
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Health status
+
+  /api/admin/analytics/forecast:
+    get:
+      tags: [ admin-analytics ]
+      summary: Metric forecast
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Forecast data
+
+  /api/admin/analytics/export-all:
+    get:
+      tags: [ admin-analytics ]
+      summary: Export all analytics data
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Full export
+
+  /api/admin/analytics/range-compare:
+    get:
+      tags: [ admin-analytics ]
+      summary: Compare two date ranges
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Range comparison
+
+  /api/admin/analytics/evaluate-alerts:
+    post:
+      tags: [ admin-analytics ]
+      summary: Evaluate alert rules now
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Alerts evaluated
+
+  /api/admin/analytics/backfill:
+    post:
+      tags: [ admin-analytics ]
+      summary: Backfill daily stats
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Backfill started
+
+  /api/admin/users/{username}/analytics:
+    get:
+      tags: [ admin-analytics ]
+      summary: Per-user analytics
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User analytics
+
   /api/admin/config:
     get:
       tags: [ admin-config ]
@@ -4999,7 +5487,7 @@ paths:
             default: 1
       responses:
         '200':
-          description: Media items
+          description: Media items (paginated)
           content:
             application/json:
               schema:
@@ -5008,9 +5496,102 @@ paths:
                   - type: object
                     properties:
                       data:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/MediaItem'
+                        type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/MediaItem'
+                          total_items:
+                            type: integer
+                          total_pages:
+                            type: integer
+                          scanning:
+                            type: boolean
+
+  /api/admin/media/reports:
+    get:
+      tags: [ admin-media ]
+      summary: List media moderation reports
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ open, resolved, dismissed ]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Reports
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          reports:
+                            type: array
+                            items:
+                              type: object
+                              additionalProperties: true
+                          open_count:
+                            type: integer
+
+  /api/admin/media/reports/{id}:
+    patch:
+      tags: [ admin-media ]
+      summary: Update a media report's status
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ status ]
+              properties:
+                status:
+                  type: string
+                  enum: [ open, resolved, dismissed ]
+      responses:
+        '200':
+          description: Report updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          status:
+                            type: string
 
   /api/admin/media/scan:
     post:
@@ -5676,6 +6257,26 @@ paths:
           description: Bulk result
 
   /api/admin/playlists/{id}:
+    put:
+      tags: [ admin-playlists ]
+      summary: Update playlist (admin)
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Playlist updated
     delete:
       tags: [ admin-playlists ]
       summary: Delete playlist (admin)
@@ -6063,6 +6664,28 @@ paths:
       responses:
         '200':
           description: Suggestion applied
+
+  /api/admin/discovery/{path}:
+    delete:
+      tags: [ admin-discovery ]
+      summary: Dismiss a discovery suggestion
+      description: >
+        The path parameter is the suggestion's absolute file path
+        (URL-encoded; matched by a wildcard route, so it may contain
+        slashes).
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Suggestion dismissed
+        '400':
+          description: Missing or invalid path
 
   /api/admin/suggestions/stats:
     get:
@@ -6854,6 +7477,82 @@ paths:
         '200':
           description: Receiver media item
 
+  /api/admin/receiver/settings:
+    get:
+      tags: [ admin ]
+      summary: Get receiver settings
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Receiver settings
+
+  /api/admin/peer/connect:
+    post:
+      tags: [ admin ]
+      summary: Pair with a federated peer server
+      security:
+        - sessionCookie: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ peer_url, peer_api_key ]
+              properties:
+                peer_url:
+                  type: string
+                peer_api_key:
+                  type: string
+      responses:
+        '200':
+          description: Peer connected
+
+  /api/admin/follower/settings:
+    get:
+      tags: [ admin ]
+      summary: Get follower settings
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Follower settings
+    post:
+      tags: [ admin ]
+      summary: Update follower settings
+      security:
+        - sessionCookie: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Follower settings updated
+
+  /api/admin/follower/status:
+    get:
+      tags: [ admin ]
+      summary: Get follower connection status
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Follower status
+
+  /api/admin/follower/test:
+    post:
+      tags: [ admin ]
+      summary: Test follower pairing
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Pairing test result
+
   /api/admin/receiver/slaves:
     get:
       tags: [ admin-receiver ]
@@ -6911,6 +7610,16 @@ paths:
           description: Slave removed
 
   # ─── Downloader subsystem ───
+
+  /api/admin/downloader/destinations:
+    get:
+      tags: [ admin ]
+      summary: List writable import destinations
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Destinations
 
   /api/admin/downloader/health:
     get:
@@ -6986,6 +7695,18 @@ paths:
                   type: boolean
                 relayId:
                   type: string
+                audioOnly:
+                  type: boolean
+                  description: Extract audio only (yt-dlp -x). v1.5.0.
+                audioFormat:
+                  type: string
+                  description: mp3|m4a|aac|opus|flac|wav, used with audioOnly. v1.5.0.
+                audioQuality:
+                  type: integer
+                  description: 0 best … 10 worst, used with audioOnly. v1.5.0.
+                format:
+                  type: string
+                  description: Explicit yt-dlp -f selector for video. v1.5.0.
       responses:
         '200':
           description: Download started
@@ -7007,6 +7728,130 @@ paths:
                             type: string
                           message:
                             type: string
+
+  /api/admin/downloader/download/batch:
+    post:
+      tags: [ admin-downloader ]
+      summary: Queue multiple downloads in one request (v1.5.0)
+      security:
+        - sessionCookie: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ clientId, urls ]
+              properties:
+                clientId:
+                  type: string
+                urls:
+                  type: array
+                  items:
+                    type: object
+                    required: [ url ]
+                    properties:
+                      url:
+                        type: string
+                      title:
+                        type: string
+                      audioOnly:
+                        type: boolean
+                      audioFormat:
+                        type: string
+                      audioQuality:
+                        type: integer
+                      format:
+                        type: string
+      responses:
+        '200':
+          description: Batch queued
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          success:
+                            type: boolean
+                          queued:
+                            type: integer
+                          accepted:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                url:
+                                  type: string
+                                downloadId:
+                                  type: string
+                          rejected:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                url:
+                                  type: string
+                                reason:
+                                  type: string
+
+  /api/admin/downloader/queue:
+    get:
+      tags: [ admin-downloader ]
+      summary: List the downloader's active and queued jobs (v1.5.0)
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Queue snapshot
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          success:
+                            type: boolean
+                          processing:
+                            type: integer
+                          maxConcurrent:
+                            type: integer
+                          active:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                downloadId:
+                                  type: string
+                                type:
+                                  type: string
+                                clientId:
+                                  type: string
+                          queued:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                downloadId:
+                                  type: string
+                                url:
+                                  type: string
+                                title:
+                                  type: string
+                                saveLocation:
+                                  type: string
+                                clientId:
+                                  type: string
+                                audioOnly:
+                                  type: boolean
 
   /api/admin/downloader/cancel/{id}:
     post:
@@ -7320,8 +8165,10 @@ paths:
       responses:
         '200':
           description: Collections list
+
+  /api/admin/collections:
     post:
-      tags: [ media ]
+      tags: [ admin ]
       summary: Create collection
       security:
         - sessionCookie: [ ]
@@ -7341,9 +8188,66 @@ paths:
         '200':
           description: Collection created
 
+  /api/admin/collections/{id}/items:
+    post:
+      tags: [ admin ]
+      summary: Add items to collection
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Items added
+
+  /api/admin/collections/{id}/items/{media_id}:
+    delete:
+      tags: [ admin ]
+      summary: Remove item from collection
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: media_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Item removed
+
   /api/collections/{id}:
-    put:
+    get:
       tags: [ media ]
+      summary: Get a single collection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Collection
+
+  /api/admin/collections/{id}:
+    put:
+      tags: [ admin ]
       summary: Update collection
       security:
         - sessionCookie: [ ]
@@ -7363,7 +8267,7 @@ paths:
         '200':
           description: Collection updated
     delete:
-      tags: [ media ]
+      tags: [ admin ]
       summary: Delete collection
       security:
         - sessionCookie: [ ]
@@ -7408,6 +8312,20 @@ paths:
           description: Smart playlist created
 
   /api/smart-playlists/{id}:
+    get:
+      tags: [ playlists ]
+      summary: Get smart playlist
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Smart playlist
     put:
       tags: [ playlists ]
       summary: Update smart playlist
@@ -7444,7 +8362,7 @@ paths:
           description: Smart playlist deleted
 
   /api/smart-playlists/{id}/preview:
-    post:
+    get:
       tags: [ playlists ]
       summary: Preview smart playlist results
       security:
@@ -7459,13 +8377,26 @@ paths:
         '200':
           description: Preview results
 
-  /api/cookie-consent:
+  /api/cookie-consent/status:
     get:
       tags: [ auth ]
       summary: Get cookie consent status
       responses:
         '200':
           description: Cookie consent status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  required:
+                    type: boolean
+                  given:
+                    type: boolean
+                  analytics_accepted:
+                    type: boolean
+
+  /api/cookie-consent:
     post:
       tags: [ auth ]
       summary: Set cookie consent
@@ -7542,21 +8473,15 @@ paths:
         '200':
           description: Rule deleted
 
-  /api/admin/auto-tag-rules/{id}/apply:
+  /api/admin/auto-tag-rules/apply:
     post:
       tags: [ admin ]
-      summary: Apply auto-tag rule immediately
+      summary: Apply all enabled auto-tag rules to the library
       security:
         - sessionCookie: [ ]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
       responses:
         '200':
-          description: Rule applied
+          description: Rules applied
 
   /api/admin/media/{id}/thumbnail:
     post:

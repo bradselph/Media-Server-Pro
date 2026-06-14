@@ -170,7 +170,13 @@ func (m *Module) CreateBackup(opts CreateBackupOptions) (*Manifest, error) {
 
 	if err := m.saveManifest(manifest); err != nil {
 		m.log.Error("Failed to save backup manifest: %v", err)
-		manifest.Errors = append(manifest.Errors, fmt.Sprintf("manifest save failed: %v", err))
+		// ListBackups is DB-only: without a manifest row the zip would be an
+		// invisible orphan no API call can list, restore, or delete. Remove
+		// it and surface the failure instead of reporting success.
+		if rmErr := os.Remove(backupPath); rmErr != nil {
+			m.log.Warn("Failed to remove orphaned backup archive %s: %v", backupPath, rmErr)
+		}
+		return nil, fmt.Errorf("backup archive created but manifest save failed: %w", err)
 	}
 
 	m.log.Info("Created backup: %s (%d files, %d bytes)", backupID, len(manifest.Files), manifest.Size)
@@ -536,13 +542,16 @@ func (m *Module) DeleteBackup(backupID string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-
-	// Delete manifest from database
+	// Remove the DB record first: deleting the file first and then failing
+	// the DB delete left a manifest row that forever lists a backup whose
+	// zip is gone (ListBackups is DB-only, with no disk reconciliation) —
+	// and the failure was swallowed, so the caller saw success. The reverse
+	// failure order only leaves an unreferenced zip on disk.
 	if err := m.repo.Delete(context.Background(), backupID); err != nil {
-		m.log.Warn("Failed to delete backup manifest from database: %v", err)
+		return fmt.Errorf("failed to delete backup manifest: %w", err)
+	}
+	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+		m.log.Warn("Backup manifest deleted but archive removal failed (%s): %v", backupPath, err)
 	}
 
 	m.log.Info("Deleted backup: %s", backupID)

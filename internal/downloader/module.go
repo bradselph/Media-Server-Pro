@@ -45,10 +45,11 @@ const defaultHealthCheckInterval = 30 * time.Second
 
 // Module manages the connection to the external downloader service.
 type Module struct {
-	config      *config.Manager
-	log         *logger.Logger
-	client      *Client
-	mediaModule *media.Module
+	config       *config.Manager
+	log          *logger.Logger
+	client       *Client
+	mediaModule  *media.Module
+	postScanHook func()
 
 	healthMu  sync.RWMutex
 	healthy   bool
@@ -72,6 +73,14 @@ func NewModule(cfg *config.Manager) *Module {
 // circular dependency.
 func (m *Module) SetMediaModule(mm *media.Module) {
 	m.mediaModule = mm
+}
+
+// SetPostScanHook sets a callback invoked after a successful post-import
+// rescan. main.go wires this to the suggestions catalog re-feed so imports
+// don't leave the suggestions engine serving a stale catalog until the next
+// scheduled scan.
+func (m *Module) SetPostScanHook(hook func()) {
+	m.postScanHook = hook
 }
 
 func (m *Module) Name() string { return "downloader" }
@@ -287,8 +296,11 @@ func (m *Module) Import(filename, destination, subfolder string, deleteSource, t
 		m.scanWG.Go(func() {
 			if err := m.mediaModule.Scan(); err != nil {
 				m.log.Warn("Media rescan after import failed: %v", err)
-			} else {
-				m.log.Info("Media rescan triggered after import")
+				return
+			}
+			m.log.Info("Media rescan triggered after import")
+			if m.postScanHook != nil {
+				m.postScanHook()
 			}
 		})
 	}

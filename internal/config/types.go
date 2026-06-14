@@ -177,6 +177,7 @@ type StreamingConfig struct {
 	DefaultChunkSize   int64         `json:"default_chunk_size"`
 	MaxChunkSize       int64         `json:"max_chunk_size"`
 	BufferSize         int           `json:"buffer_size"`
+	BufferSizeMigrated bool          `json:"buffer_size_migrated"` // one-shot upgrade flag, see migrateStreamingBufferSize
 	KeepAliveEnabled   bool          `json:"keep_alive_enabled"`
 	KeepAliveTimeout   time.Duration `json:"keep_alive_timeout"`
 	Adaptive           bool          `json:"adaptive"` // if false, disable HLS auto-activate and fall back to direct stream

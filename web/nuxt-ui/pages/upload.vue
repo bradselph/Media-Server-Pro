@@ -8,6 +8,9 @@ const authStore = useAuthStore()
 const router = useRouter()
 const toast = useToast()
 const uploadApi = useUploadApi()
+const {settings: serverSettings, load: loadServerSettings} = useServerSettings()
+// Fire-and-forget: template gates on uploads.enabled, failing open while null.
+loadServerSettings()
 
 // Redirect if user cannot upload
 watchEffect(() => {
@@ -189,6 +192,17 @@ async function handleUpload() {
           color="error"
           title="Upload not permitted"
           description="Your account does not have upload permissions. Contact an administrator."
+      />
+    </template>
+
+    <!-- Global kill-switch: the backend rejects uploads with 403 when disabled,
+         so surface that here instead of letting users fill the form first. -->
+    <template v-else-if="serverSettings?.uploads?.enabled === false">
+      <UAlert
+          icon="i-lucide-lock"
+          color="warning"
+          title="Uploads are disabled"
+          description="Uploads are currently disabled server-wide by the administrator."
       />
     </template>
 

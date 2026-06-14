@@ -231,3 +231,76 @@ func TestRegisterUploadedFileWithSize_IndexesRemotePath(t *testing.T) {
 		t.Errorf("item.Type = %s, want video (inferred from .mp4)", item.Type)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ReindexMovedFile (autodiscovery apply-suggestion re-key)
+// ---------------------------------------------------------------------------
+
+func TestReindexMovedFile_RekeysIndexes(t *testing.T) {
+	// After autodiscovery moves a file on disk, ReindexMovedFile must re-key the
+	// in-memory catalog so the item is no longer indexed under the old path.
+	m := &Module{
+		media:            make(map[string]*models.MediaItem),
+		mediaByID:        make(map[string]*models.MediaItem),
+		metadata:         make(map[string]*Metadata),
+		fingerprintIndex: make(map[string]string),
+		log:              logger.New("media-test"),
+	}
+	oldPath := "/videos/unsorted/clip.mp4"
+	newPath := "/videos/sorted/Studio/clip-720p.mp4"
+	item := &models.MediaItem{ID: "id1", Path: oldPath, Name: "clip.mp4"}
+	m.media[oldPath] = item
+	m.mediaByID[item.ID] = item
+	m.metadata[oldPath] = &Metadata{ContentFingerprint: "fp-abc"}
+	m.fingerprintIndex["fp-abc"] = oldPath
+	beforeVersion := m.version
+
+	m.ReindexMovedFile(oldPath, newPath)
+
+	if _, ok := m.media[oldPath]; ok {
+		t.Error("old path should be removed from the media index")
+	}
+	got, ok := m.media[newPath]
+	if !ok {
+		t.Fatal("new path should be present in the media index")
+	}
+	if got.Path != newPath {
+		t.Errorf("item.Path = %q, want %q", got.Path, newPath)
+	}
+	if got.Name != "clip-720p.mp4" {
+		t.Errorf("item.Name = %q, want clip-720p.mp4", got.Name)
+	}
+	// Same *MediaItem retained, so existing ID lookups still resolve.
+	if m.mediaByID["id1"] != got {
+		t.Error("mediaByID should still point at the moved item")
+	}
+	if _, ok := m.metadata[oldPath]; ok {
+		t.Error("old metadata key should be removed")
+	}
+	if _, ok := m.metadata[newPath]; !ok {
+		t.Error("metadata should be re-keyed to the new path")
+	}
+	if m.fingerprintIndex["fp-abc"] != newPath {
+		t.Errorf("fingerprintIndex should map to new path, got %q", m.fingerprintIndex["fp-abc"])
+	}
+	if m.version == beforeVersion {
+		t.Error("catalog version should bump after a move")
+	}
+}
+
+func TestReindexMovedFile_NoopGuards(t *testing.T) {
+	m := &Module{
+		media:            make(map[string]*models.MediaItem),
+		metadata:         make(map[string]*Metadata),
+		fingerprintIndex: make(map[string]string),
+		log:              logger.New("media-test"),
+	}
+	// Unknown old path: must not create a phantom entry or panic.
+	m.ReindexMovedFile("/videos/missing.mp4", "/videos/new.mp4")
+	if len(m.media) != 0 {
+		t.Error("reindex of an unindexed path must not add entries")
+	}
+	// Empty / identical paths are no-ops.
+	m.ReindexMovedFile("", "/x")
+	m.ReindexMovedFile("/x", "/x")
+}

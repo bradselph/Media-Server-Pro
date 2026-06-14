@@ -150,7 +150,7 @@ onMounted(() => {
             <span class="text-muted">Disk Usage</span>
             <span>{{ formatBytes(stats.disk_usage ?? 0) }} / {{ formatBytes(stats.disk_total ?? 0) }}</span>
           </div>
-          <UProgress :value="diskPct" :color="diskColor" size="sm"/>
+          <UProgress :model-value="diskPct" :color="diskColor" size="sm"/>
           <p class="text-xs text-muted">{{ diskPct }}% used · {{ formatBytes(stats.disk_free ?? 0) }} free</p>
           <template v-if="mediaStats">
             <div class="border-t border-default pt-2 mt-2 grid grid-cols-2 gap-2 text-sm">
@@ -189,7 +189,7 @@ onMounted(() => {
             {{ formatBytes(row.original.bytes_sent ?? 0) }}
           </template>
           <template #started_at-cell="{ row }">
-            {{ row.original.started_at ? new Date(row.original.started_at).toLocaleTimeString() : '—' }}
+            {{ row.original.started_at ? new Date(row.original.started_at * 1000).toLocaleTimeString() : '—' }}
           </template>
         </UTable>
       </UCard>
@@ -234,7 +234,7 @@ onMounted(() => {
         <div>
           <span class="text-muted">Memory:</span>
           {{ formatBytes(system.memory_used) }} / {{ formatBytes(system.memory_total) }}
-          <UProgress :value="memPct" size="xs" class="mt-1"/>
+          <UProgress :model-value="memPct" size="xs" class="mt-1"/>
         </div>
       </div>
       <div v-if="system.modules?.length" class="space-y-1">

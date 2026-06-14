@@ -166,7 +166,7 @@ function playlistMenuItemsFor(itemId: string) {
   const plItems = myPlaylists.value.map(pl => ({
     label: pl.name,
     icon: 'i-lucide-list-music',
-    click: () => quickAddToPlaylist(itemId, pl.id),
+    onSelect: () => quickAddToPlaylist(itemId, pl.id),
   }))
   const newPl = [{label: 'New Playlist…', icon: 'i-lucide-plus', to: '/playlists'}]
   return plItems.length > 0 ? [plItems, newPl] : [newPl]
@@ -810,20 +810,24 @@ watch([() => params.type, () => params.category, () => params.sort_by, () => par
   load()
 })
 
-// Persist filter preferences when logged-in users change the type or category filter.
+// Persist filter and sort preferences when logged-in users change them, so the
+// browse page reopens the way they left it (params seed from preferences above).
 // Saves silently in the background — failures are non-critical.
 let filterSaveTimer: ReturnType<typeof setTimeout> | null = null
-watch([() => params.type, () => params.category], ([newType, newCategory]) => {
-  if (!authStore.isLoggedIn) return
-  if (filterSaveTimer) clearTimeout(filterSaveTimer)
-  filterSaveTimer = setTimeout(() => {
-    updatePreferences({
-      filter_media_type: newType,
-      filter_category: newCategory,
-    }).catch(() => { /* non-critical */
+watch([() => params.type, () => params.category, () => params.sort_by, () => params.sort_order],
+    ([newType, newCategory, newSortBy, newSortOrder]) => {
+      if (!authStore.isLoggedIn) return
+      if (filterSaveTimer) clearTimeout(filterSaveTimer)
+      filterSaveTimer = setTimeout(() => {
+        updatePreferences({
+          filter_media_type: newType,
+          filter_category: newCategory,
+          sort_by: newSortBy,
+          sort_order: newSortOrder,
+        }).catch(() => { /* non-critical */
+        })
+      }, 1000)
     })
-  }, 1000)
-})
 
 onMounted(() => {
   // Apply user preferences before the first load so we don't need a second request.
@@ -869,6 +873,14 @@ const viewMode = ref<ViewMode>(
         ? (authStore.user?.preferences?.view_mode as ViewMode)
         : 'grid'
 )
+
+// Persist the grid/list/compact choice when a logged-in user toggles it here,
+// matching how sort/filter persist above (previously view_mode was only saved
+// from the profile page, so index-page toggles silently reverted on reload).
+watch(viewMode, (mode) => {
+  if (!authStore.isLoggedIn) return
+  updatePreferences({view_mode: mode}).catch(() => { /* non-critical */ })
+})
 
 // Mature content gate — true only when logged in, show_mature enabled, and can_view_mature permission granted
 const canViewMature = computed(() =>

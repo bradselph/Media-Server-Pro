@@ -23,7 +23,7 @@ const props = defineProps<{
   favoriteIds?: Set<string>
   // Parent-provided builder for the "add to playlist" dropdown menu items.
   // When omitted, the playlist action is not shown.
-  playlistMenuItems?: (mediaId: string) => { label: string; icon?: string; click?: () => void; to?: string }[][]
+  playlistMenuItems?: (mediaId: string) => { label: string; icon?: string; onSelect?: () => void; to?: string }[][]
 }>()
 
 const emit = defineEmits<{

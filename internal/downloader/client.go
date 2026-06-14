@@ -57,6 +57,7 @@ type HealthResponse struct {
 	QueuedDownloads    int     `json:"queuedDownloads"`
 	Uptime             float64 `json:"uptime"`
 	AllowServerStorage bool    `json:"allowServerStorage"`
+	AnySiteForAdmin    bool    `json:"anySiteForAdmin"` // v1.5.0: admins may download from any URL
 	Dependencies       struct {
 		YtDlp  *DepInfo `json:"ytdlp"`
 		FFmpeg *DepInfo `json:"ffmpeg"`
@@ -80,6 +81,8 @@ type DetectResponse struct {
 	Previews        []string     `json:"previews"`
 	PageURL         string       `json:"pageUrl"`
 	RelayID         string       `json:"relayId"`
+	Engine          string       `json:"engine"`        // v1.5.0: "ytdlp" (hand the page URL to yt-dlp) | "stream"
+	AdminUnlocked   bool         `json:"adminUnlocked"` // v1.5.0: true when an admin bypassed the curated-site gate
 }
 
 // StreamInfo holds info about a detected stream.
@@ -101,6 +104,13 @@ type DownloadParams struct {
 	IsYouTube      bool   `json:"isYouTube"`
 	IsYouTubeMusic bool   `json:"isYouTubeMusic"`
 	RelayID        string `json:"relayId,omitempty"`
+
+	// v1.5.0 universal-engine options (all optional; omitempty keeps the wire
+	// format byte-for-byte when unused).
+	AudioOnly    bool   `json:"audioOnly,omitempty"`
+	AudioFormat  string `json:"audioFormat,omitempty"`
+	AudioQuality *int   `json:"audioQuality,omitempty"` // *int so an explicit 0 (best) is still sent
+	Format       string `json:"format,omitempty"`
 }
 
 // DownloadResponse holds the downloader's /api/download response.
@@ -133,6 +143,9 @@ type SettingsResponse struct {
 	AudioFormat            string   `json:"audioFormat"`
 	BrowserRelayConfigured bool     `json:"browserRelayConfigured"`
 	ProxyPoolSize          int      `json:"proxyPoolSize"`
+	AnySiteForAdmin        bool     `json:"anySiteForAdmin"` // v1.5.0
+	AudioFormats           []string `json:"audioFormats"`    // v1.5.0: selectable audio formats
+	YtDlpAvailable         bool     `json:"ytdlpAvailable"`  // v1.5.0
 }
 
 // Health checks the downloader's health endpoint.
@@ -207,6 +220,95 @@ func (c *Client) GetSettings() (*SettingsResponse, error) {
 	}
 	var resp SettingsResponse
 	if err := c.get("/api/settings", &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// BatchDownloadItem is one URL plus optional per-job overrides (v1.5.0).
+type BatchDownloadItem struct {
+	URL          string `json:"url"`
+	Title        string `json:"title,omitempty"`
+	AudioOnly    bool   `json:"audioOnly,omitempty"`
+	AudioFormat  string `json:"audioFormat,omitempty"`
+	AudioQuality *int   `json:"audioQuality,omitempty"`
+	Format       string `json:"format,omitempty"`
+}
+
+// BatchDownloadParams queues many URLs in one /api/download/batch call (v1.5.0).
+type BatchDownloadParams struct {
+	URLs         []BatchDownloadItem `json:"urls"`
+	ClientID     string              `json:"clientId"`
+	SaveLocation string              `json:"saveLocation,omitempty"`
+}
+
+// BatchAccepted is one queued job from a batch request.
+type BatchAccepted struct {
+	URL        string `json:"url"`
+	DownloadID string `json:"downloadId"`
+}
+
+// BatchRejected is one URL the downloader refused, with a reason.
+type BatchRejected struct {
+	URL    string `json:"url"`
+	Reason string `json:"reason"`
+}
+
+// BatchDownloadResponse holds the downloader's /api/download/batch response.
+type BatchDownloadResponse struct {
+	Success  bool            `json:"success"`
+	Queued   int             `json:"queued"`
+	Accepted []BatchAccepted `json:"accepted"`
+	Rejected []BatchRejected `json:"rejected"`
+}
+
+// QueueActiveItem is a job the downloader is actively processing.
+type QueueActiveItem struct {
+	DownloadID string `json:"downloadId"`
+	Type       string `json:"type"`
+	ClientID   string `json:"clientId"`
+}
+
+// QueueQueuedItem is a job waiting in the downloader's queue.
+type QueueQueuedItem struct {
+	DownloadID   string `json:"downloadId"`
+	URL          string `json:"url"`
+	Title        string `json:"title"`
+	SaveLocation string `json:"saveLocation"`
+	ClientID     string `json:"clientId"`
+	AudioOnly    bool   `json:"audioOnly"`
+}
+
+// QueueResponse holds the downloader's /api/queue response (v1.5.0).
+type QueueResponse struct {
+	Success       bool              `json:"success"`
+	Processing    int               `json:"processing"`
+	MaxConcurrent int               `json:"maxConcurrent"`
+	Active        []QueueActiveItem `json:"active"`
+	Queued        []QueueQueuedItem `json:"queued"`
+}
+
+// BatchDownload queues many URLs in one call. Forwards the admin session ID
+// (like Download) for parity; the internal token is the primary trust.
+func (c *Client) BatchDownload(params BatchDownloadParams, mspSessionID string) (*BatchDownloadResponse, error) {
+	if c == nil {
+		return nil, fmt.Errorf("downloader client not initialized")
+	}
+	var resp BatchDownloadResponse
+	if err := c.postWithSession("/api/download/batch", params, &resp, mspSessionID); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// Queue returns the downloader's active + queued jobs. Uses get(), which already
+// attaches X-MSP-Internal-Token, so an admin-configured client is authorized.
+func (c *Client) Queue() (*QueueResponse, error) {
+	if c == nil {
+		return nil, fmt.Errorf("downloader client not initialized")
+	}
+	var resp QueueResponse
+	if err := c.get("/api/queue", &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

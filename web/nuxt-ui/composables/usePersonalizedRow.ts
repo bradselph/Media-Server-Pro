@@ -113,7 +113,7 @@ export function usePersonalizedRow(limit = 12) {
         const plItems = myPlaylists.value.map(pl => ({
             label: pl.name,
             icon: 'i-lucide-list-music',
-            click: () => quickAddToPlaylist(itemId, pl.id),
+            onSelect: () => quickAddToPlaylist(itemId, pl.id),
         }))
         const newPl = [{label: 'New Playlist…', icon: 'i-lucide-plus', to: '/playlists'}]
         return plItems.length > 0 ? [plItems, newPl] : [newPl]

@@ -192,7 +192,11 @@ async function openPlaylist(pl: Playlist) {
   activePlaylist.value = pl
   try {
     activePlaylist.value = await playlistApi.get(pl.id)
-  } catch { /* keep the partial data */
+  } catch (e: unknown) {
+    // Surface the failure instead of silently showing the partial card data as
+    // if the playlist were empty.
+    activePlaylist.value = null
+    toast.add({title: e instanceof Error ? e.message : 'Failed to open playlist', color: 'error', icon: 'i-lucide-x'})
   } finally {
     activeLoading.value = false
   }
@@ -255,8 +259,9 @@ async function loadPublicPlaylists(force = false) {
   try {
     publicPlaylists.value = (await playlistApi.listPublic()) ?? []
     publicLastFetched = Date.now()
-  } catch {
+  } catch (e: unknown) {
     publicPlaylists.value = []
+    toast.add({title: e instanceof Error ? e.message : 'Failed to load public playlists', color: 'error', icon: 'i-lucide-x'})
   } finally {
     publicLoading.value = false
   }
@@ -401,6 +406,30 @@ function condKey(c: SmartCondition & { __cid?: number }): number {
     Object.defineProperty(c, '__cid', {value: ++_condUID, enumerable: false, writable: false, configurable: false})
   }
   return c.__cid as number
+}
+
+// Operators each smart-rule field actually supports server-side (see
+// matchSmartCondition in smart_playlists.go). The builder must not offer
+// operators the backend ignores, or the rule silently matches nothing.
+function spOpsForField(field: string): string[] {
+  switch (field) {
+    case 'duration':
+    case 'views':
+      return ['gte', 'lte', 'eq']
+    case 'date_added_days':
+      return ['lte']
+    case 'tags':
+      return ['includes']
+    default: // type, category, is_mature
+      return ['eq']
+  }
+}
+
+// On field change, snap the operator to a valid one for the new field so a
+// stale operator (e.g. 'includes' carried over to 'duration') can't persist.
+function onSpFieldChange(cond: { op: string }, newField: unknown): void {
+  const ops = spOpsForField(String(newField))
+  if (!ops.includes(cond.op)) cond.op = ops[0]
 }
 
 async function createSmartPlaylist() {
@@ -885,7 +914,7 @@ onMounted(() => {
       </UModal>
 
       <!-- Create smart playlist modal -->
-      <UModal v-model:open="spCreateOpen" title="New Smart Playlist" size="lg">
+      <UModal v-model:open="spCreateOpen" title="New Smart Playlist" :ui="{ content: 'max-w-2xl' }">
         <template #body>
           <div class="space-y-4 max-h-96 overflow-y-auto">
             <UFormField label="Name" required>
@@ -901,7 +930,7 @@ onMounted(() => {
                   <span class="text-xs text-muted">Match</span>
                   <USelect
                       v-model="spNewRules.match"
-                      :options="['all', 'any']"
+                      :items="['all', 'any']"
                       size="sm"
                   />
                 </div>
@@ -909,13 +938,14 @@ onMounted(() => {
                   <div v-for="(cond, idx) in spNewRules.conditions" :key="condKey(cond)" class="flex items-end gap-2">
                     <USelect
                         v-model="cond.field"
-                        :options="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
+                        :items="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
                         size="sm"
                         class="flex-1"
+                        @update:model-value="(v) => onSpFieldChange(cond, v)"
                     />
                     <USelect
                         v-model="cond.op"
-                        :options="['eq', 'gte', 'lte', 'includes']"
+                        :items="spOpsForField(cond.field)"
                         size="sm"
                         class="w-20"
                     />
@@ -946,12 +976,12 @@ onMounted(() => {
                   <span class="text-xs text-muted">Order by</span>
                   <USelect
                       v-model="spNewRules.order_by"
-                      :options="['date_added', 'name', 'duration', 'views']"
+                      :items="['date_added', 'name', 'duration', 'views']"
                       size="sm"
                   />
                   <USelect
                       v-model="spNewRules.order_dir"
-                      :options="['asc', 'desc']"
+                      :items="['asc', 'desc']"
                       size="sm"
                       class="w-24"
                   />
@@ -978,7 +1008,7 @@ onMounted(() => {
       </UModal>
 
       <!-- Edit smart playlist modal -->
-      <UModal v-model:open="spEditOpen" title="Edit Smart Playlist" size="lg">
+      <UModal v-model:open="spEditOpen" title="Edit Smart Playlist" :ui="{ content: 'max-w-2xl' }">
         <template #body>
           <div class="space-y-4 max-h-96 overflow-y-auto">
             <UFormField label="Name" required>
@@ -994,7 +1024,7 @@ onMounted(() => {
                   <span class="text-xs text-muted">Match</span>
                   <USelect
                       v-model="spEditRules.match"
-                      :options="['all', 'any']"
+                      :items="['all', 'any']"
                       size="sm"
                   />
                 </div>
@@ -1002,13 +1032,14 @@ onMounted(() => {
                   <div v-for="(cond, idx) in spEditRules.conditions" :key="condKey(cond)" class="flex items-end gap-2">
                     <USelect
                         v-model="cond.field"
-                        :options="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
+                        :items="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
                         size="sm"
                         class="flex-1"
+                        @update:model-value="(v) => onSpFieldChange(cond, v)"
                     />
                     <USelect
                         v-model="cond.op"
-                        :options="['eq', 'gte', 'lte', 'includes']"
+                        :items="spOpsForField(cond.field)"
                         size="sm"
                         class="w-20"
                     />
@@ -1039,12 +1070,12 @@ onMounted(() => {
                   <span class="text-xs text-muted">Order by</span>
                   <USelect
                       v-model="spEditRules.order_by"
-                      :options="['date_added', 'name', 'duration', 'views']"
+                      :items="['date_added', 'name', 'duration', 'views']"
                       size="sm"
                   />
                   <USelect
                       v-model="spEditRules.order_dir"
-                      :options="['asc', 'desc']"
+                      :items="['asc', 'desc']"
                       size="sm"
                       class="w-24"
                   />
@@ -1080,7 +1111,7 @@ onMounted(() => {
       </UModal>
 
       <!-- Preview smart playlist modal -->
-      <UModal v-model:open="spPreviewOpen" title="Smart Playlist Preview" size="lg">
+      <UModal v-model:open="spPreviewOpen" title="Smart Playlist Preview" :ui="{ content: 'max-w-2xl' }">
         <template #body>
           <div class="max-h-96 overflow-y-auto">
             <div v-if="spPreviewLoading" class="flex justify-center py-6">
