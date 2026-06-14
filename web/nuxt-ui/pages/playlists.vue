@@ -403,6 +403,30 @@ function condKey(c: SmartCondition & { __cid?: number }): number {
   return c.__cid as number
 }
 
+// Operators each smart-rule field actually supports server-side (see
+// matchSmartCondition in smart_playlists.go). The builder must not offer
+// operators the backend ignores, or the rule silently matches nothing.
+function spOpsForField(field: string): string[] {
+  switch (field) {
+    case 'duration':
+    case 'views':
+      return ['gte', 'lte', 'eq']
+    case 'date_added_days':
+      return ['lte']
+    case 'tags':
+      return ['includes']
+    default: // type, category, is_mature
+      return ['eq']
+  }
+}
+
+// On field change, snap the operator to a valid one for the new field so a
+// stale operator (e.g. 'includes' carried over to 'duration') can't persist.
+function onSpFieldChange(cond: { op: string }, newField: unknown): void {
+  const ops = spOpsForField(String(newField))
+  if (!ops.includes(cond.op)) cond.op = ops[0]
+}
+
 async function createSmartPlaylist() {
   if (!spNewName.value.trim()) return
   spCreating.value = true
@@ -912,10 +936,11 @@ onMounted(() => {
                         :items="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
                         size="sm"
                         class="flex-1"
+                        @update:model-value="(v) => onSpFieldChange(cond, v)"
                     />
                     <USelect
                         v-model="cond.op"
-                        :items="['eq', 'gte', 'lte', 'includes']"
+                        :items="spOpsForField(cond.field)"
                         size="sm"
                         class="w-20"
                     />
@@ -1005,10 +1030,11 @@ onMounted(() => {
                         :items="['type', 'category', 'tags', 'duration', 'date_added_days', 'views', 'is_mature']"
                         size="sm"
                         class="flex-1"
+                        @update:model-value="(v) => onSpFieldChange(cond, v)"
                     />
                     <USelect
                         v-model="cond.op"
-                        :items="['eq', 'gte', 'lte', 'includes']"
+                        :items="spOpsForField(cond.field)"
                         size="sm"
                         class="w-20"
                     />
