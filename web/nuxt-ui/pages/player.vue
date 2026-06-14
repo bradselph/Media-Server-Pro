@@ -171,6 +171,12 @@ useHead(computed(() => {
 // Player refs
 const videoRef = ref<HTMLVideoElement | null>(null)
 const isPlaying = ref(false)
+// Mirror local play/pause state into the shared playback store so the
+// NowPlayingSidebar's play indicator + animated EQ bars reflect reality — the
+// store field was previously only ever reset to false, never set true.
+watch(isPlaying, (v) => {
+  playbackStore.isPlaying = v
+})
 const volume = ref(userPrefs.value?.volume ?? 1)
 const currentTime = ref(0)
 const duration = ref(0)
@@ -542,6 +548,7 @@ const {
   activateHLS,
   jobProgress,
   jobRunning,
+  recheck: recheckHls,
 } = useHLS(videoRef, mediaIdRef, {defaultQuality: () => userPrefs.value?.default_quality})
 
 // Request on-demand HLS generation
@@ -554,6 +561,9 @@ async function requestHlsGeneration() {
   try {
     await hlsApi.generate(mediaId.value)
     toast.add({title: 'HLS generation started', color: 'info', icon: 'i-lucide-info'})
+    // Re-check now so the in-progress poll + progress banner start immediately
+    // instead of only after the user navigates away and back to this item.
+    recheckHls()
   } catch (e: unknown) {
     toast.add({
       title: e instanceof Error ? e.message : 'Failed to start HLS generation',
@@ -1448,6 +1458,9 @@ onUnmounted(() => {
   // saves the user's progress, not just browser close / refresh.
   playbackStore.savePosition()
   playbackStore.stopAutoSave()
+  // Player is unmounting (SPA nav away) so playback has stopped — clear the
+  // shared flag so the NowPlayingSidebar doesn't show a stuck "playing" state.
+  playbackStore.isPlaying = false
   if (controlsTimer) clearTimeout(controlsTimer)
   if (seekTimer) clearTimeout(seekTimer)
   if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
