@@ -396,8 +396,9 @@ function startLiveTail() {
         stopLiveTail()
       }
     })
-  } catch (e: unknown) {
+  } catch {
     notifyError('Failed to open live tail')
+    stopLiveTail()
   }
 }
 
@@ -406,6 +407,9 @@ function stopLiveTail() {
     liveTailSource.close()
     liveTailSource = null
   }
+  // Collapse the panel + reset the toggle so a disconnect/error doesn't leave a
+  // green "Live" button and an empty panel implying an active stream.
+  liveTailOpen.value = false
 }
 
 function toggleLiveTail() {
