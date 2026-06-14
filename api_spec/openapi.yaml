@@ -7689,6 +7689,18 @@ paths:
                   type: boolean
                 relayId:
                   type: string
+                audioOnly:
+                  type: boolean
+                  description: Extract audio only (yt-dlp -x). v1.5.0.
+                audioFormat:
+                  type: string
+                  description: mp3|m4a|aac|opus|flac|wav, used with audioOnly. v1.5.0.
+                audioQuality:
+                  type: integer
+                  description: 0 best … 10 worst, used with audioOnly. v1.5.0.
+                format:
+                  type: string
+                  description: Explicit yt-dlp -f selector for video. v1.5.0.
       responses:
         '200':
           description: Download started
@@ -7710,6 +7722,130 @@ paths:
                             type: string
                           message:
                             type: string
+
+  /api/admin/downloader/download/batch:
+    post:
+      tags: [ admin-downloader ]
+      summary: Queue multiple downloads in one request (v1.5.0)
+      security:
+        - sessionCookie: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ clientId, urls ]
+              properties:
+                clientId:
+                  type: string
+                urls:
+                  type: array
+                  items:
+                    type: object
+                    required: [ url ]
+                    properties:
+                      url:
+                        type: string
+                      title:
+                        type: string
+                      audioOnly:
+                        type: boolean
+                      audioFormat:
+                        type: string
+                      audioQuality:
+                        type: integer
+                      format:
+                        type: string
+      responses:
+        '200':
+          description: Batch queued
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          success:
+                            type: boolean
+                          queued:
+                            type: integer
+                          accepted:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                url:
+                                  type: string
+                                downloadId:
+                                  type: string
+                          rejected:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                url:
+                                  type: string
+                                reason:
+                                  type: string
+
+  /api/admin/downloader/queue:
+    get:
+      tags: [ admin-downloader ]
+      summary: List the downloader's active and queued jobs (v1.5.0)
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Queue snapshot
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          success:
+                            type: boolean
+                          processing:
+                            type: integer
+                          maxConcurrent:
+                            type: integer
+                          active:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                downloadId:
+                                  type: string
+                                type:
+                                  type: string
+                                clientId:
+                                  type: string
+                          queued:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                downloadId:
+                                  type: string
+                                url:
+                                  type: string
+                                title:
+                                  type: string
+                                saveLocation:
+                                  type: string
+                                clientId:
+                                  type: string
+                                audioOnly:
+                                  type: boolean
 
   /api/admin/downloader/cancel/{id}:
     post:

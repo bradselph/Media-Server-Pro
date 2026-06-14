@@ -952,6 +952,8 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/downloader/health", h.AdminDownloaderHealth)
 	adminGrp.POST("/downloader/detect", h.AdminDownloaderDetect)
 	adminGrp.POST("/downloader/download", h.AdminDownloaderDownload)
+	adminGrp.POST("/downloader/download/batch", h.AdminDownloaderBatchDownload)
+	adminGrp.GET("/downloader/queue", h.AdminDownloaderQueue)
 	adminGrp.POST("/downloader/cancel/:id", h.AdminDownloaderCancel)
 	adminGrp.GET("/downloader/downloads", h.AdminDownloaderListDownloads)
 	adminGrp.DELETE("/downloader/downloads/:filename", h.AdminDownloaderDeleteDownload)

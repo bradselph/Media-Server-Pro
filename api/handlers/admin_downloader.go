@@ -65,6 +65,7 @@ func (h *Handler) AdminDownloaderHealth(c *gin.Context) {
 			result["activeDownloads"] = health.ActiveDownloads
 			result["queuedDownloads"] = health.QueuedDownloads
 			result["uptime"] = health.Uptime
+			result["anySiteForAdmin"] = health.AnySiteForAdmin
 			// Frontend expects dependencies as Record<string, string> (name -> version)
 			deps := make(map[string]string)
 			if health.Dependencies.YtDlp != nil && health.Dependencies.YtDlp.Available {
@@ -133,6 +134,8 @@ func (h *Handler) AdminDownloaderDetect(c *gin.Context) {
 		"isYouTubeMusic": result.IsYouTubeMusic,
 		"streams":        streams,
 		"relayId":        result.RelayID,
+		"engine":         result.Engine,        // v1.5.0: "ytdlp" | "stream"
+		"adminUnlocked":  result.AdminUnlocked, // v1.5.0: any-site download unlocked for this admin
 	})
 }
 
@@ -155,6 +158,11 @@ func (h *Handler) AdminDownloaderDownload(c *gin.Context) {
 		IsYouTube      bool   `json:"isYouTube"`
 		IsYouTubeMusic bool   `json:"isYouTubeMusic"`
 		RelayID        string `json:"relayId"`
+		// v1.5.0 universal-engine options
+		AudioOnly    bool   `json:"audioOnly"`
+		AudioFormat  string `json:"audioFormat"`
+		AudioQuality *int   `json:"audioQuality"`
+		Format       string `json:"format"`
 	}
 	if !BindJSON(c, &req, "") {
 		return
@@ -187,6 +195,10 @@ func (h *Handler) AdminDownloaderDownload(c *gin.Context) {
 		IsYouTube:      req.IsYouTube,
 		IsYouTubeMusic: req.IsYouTubeMusic,
 		RelayID:        req.RelayID,
+		AudioOnly:      req.AudioOnly,
+		AudioFormat:    req.AudioFormat,
+		AudioQuality:   req.AudioQuality,
+		Format:         req.Format,
 	}
 
 	result, err := h.downloader.GetClient().Download(params, sessionID)
@@ -306,14 +318,21 @@ func (h *Handler) AdminDownloaderSettings(c *gin.Context) {
 	if sites == nil {
 		sites = []string{}
 	}
+	audioFormats := resp.AudioFormats
+	if audioFormats == nil {
+		audioFormats = []string{}
+	}
 	writeSuccess(c, map[string]any{
 		"allowServerStorage":     resp.AllowServerStorage,
 		"audioFormat":            resp.AudioFormat,
+		"audioFormats":           audioFormats,
 		"supportedSites":         sites,
 		"theme":                  resp.Theme,
 		"browserRelayConfigured": resp.BrowserRelayConfigured,
 		"downloadsDir":           h.config.Get().Downloader.DownloadsDir,
 		"proxyPoolSize":          resp.ProxyPoolSize,
+		"anySiteForAdmin":        resp.AnySiteForAdmin,
+		"ytdlpAvailable":         resp.YtDlpAvailable,
 	})
 }
 
@@ -386,6 +405,80 @@ func (h *Handler) AdminDownloaderImport(c *gin.Context) {
 		"scanTriggered": req.TriggerScan,
 		"sourceDeleted": sourceDeleted,
 	})
+}
+
+// AdminDownloaderBatchDownload queues multiple URLs in one request (v1.5.0).
+func (h *Handler) AdminDownloaderBatchDownload(c *gin.Context) {
+	if !h.checkDownloaderEnabled(c) {
+		return
+	}
+	if !h.downloader.IsOnline() {
+		writeError(c, http.StatusServiceUnavailable, msgDownloaderOffline)
+		return
+	}
+
+	var req struct {
+		ClientID string                         `json:"clientId" binding:"required"`
+		URLs     []downloader.BatchDownloadItem `json:"urls" binding:"required"`
+	}
+	if !BindJSON(c, &req, "clientId and urls are required") {
+		return
+	}
+	if len(req.URLs) == 0 {
+		writeError(c, http.StatusBadRequest, "urls must be a non-empty array")
+		return
+	}
+
+	// SSRF-validate every URL before forwarding.
+	for _, item := range req.URLs {
+		if len(item.URL) > maxDownloaderURLLength {
+			writeError(c, http.StatusBadRequest, "URL is too long")
+			return
+		}
+		if err := helpers.ValidateURLForSSRF(item.URL); err != nil {
+			writeError(c, http.StatusBadRequest, "Invalid URL: "+err.Error())
+			return
+		}
+	}
+
+	var sessionID string
+	if session := getSession(c); session != nil {
+		sessionID = session.ID
+	}
+
+	resp, err := h.downloader.GetClient().BatchDownload(downloader.BatchDownloadParams{
+		URLs:         req.URLs,
+		ClientID:     req.ClientID,
+		SaveLocation: "server",
+	}, sessionID)
+	if err != nil {
+		writeError(c, http.StatusBadGateway, "Batch download failed: "+err.Error())
+		return
+	}
+
+	h.trackServerEvent(c, analytics.EventDownloaderJobCreate, map[string]any{
+		"scope": "batch",
+		"count": resp.Queued,
+	})
+	writeSuccess(c, resp)
+}
+
+// AdminDownloaderQueue returns the downloader's active + queued jobs (v1.5.0).
+func (h *Handler) AdminDownloaderQueue(c *gin.Context) {
+	if !h.checkDownloaderEnabled(c) {
+		return
+	}
+	if !h.downloader.IsOnline() {
+		writeError(c, http.StatusServiceUnavailable, msgDownloaderOffline)
+		return
+	}
+
+	resp, err := h.downloader.GetClient().Queue()
+	if err != nil {
+		writeError(c, http.StatusBadGateway, "Failed to get queue: "+err.Error())
+		return
+	}
+	writeSuccess(c, resp)
 }
 
 // AdminDownloaderWebSocket upgrades to WebSocket and proxies to the downloader.

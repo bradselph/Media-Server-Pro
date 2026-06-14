@@ -33,9 +33,11 @@ import type {
     DataDeletionRequest,
     DeviceBucket,
     DiscoverySuggestion,
+    DownloaderBatchResult,
     DownloaderDetectResult,
     DownloaderHealth,
     DownloaderJob,
+    DownloaderQueue,
     DownloaderSettings,
     ErrorPathEntry,
     EventStats,
@@ -853,7 +855,12 @@ export function useAdminApi() {
             clientId: string;
             isYouTube?: boolean;
             isYouTubeMusic?: boolean;
-            relayId?: string
+            relayId?: string;
+            // v1.5.0 universal-engine options
+            audioOnly?: boolean;
+            audioFormat?: string;
+            audioQuality?: number;
+            format?: string;
         }) =>
             api.post<{
                 success: boolean;
@@ -861,6 +868,13 @@ export function useAdminApi() {
                 streamUrl: string;
                 message: string
             }>(`${base}/downloader/download`, params),
+        // v1.5.0: queue many URLs in one call. Each item is a URL or an object with per-job options.
+        batchDownloaderJobs: (params: {
+            clientId: string;
+            urls: Array<{ url: string; title?: string; audioOnly?: boolean; audioFormat?: string; audioQuality?: number; format?: string }>;
+        }) => api.post<DownloaderBatchResult>(`${base}/downloader/download/batch`, params),
+        // v1.5.0: the downloader's active + queued jobs.
+        getDownloaderQueue: () => api.get<DownloaderQueue>(`${base}/downloader/queue`),
         cancelDownloaderJob: (id: string) =>
             api.post<void>(`${base}/downloader/cancel/${encodeURIComponent(id)}`),
         deleteDownloaderJob: (filename: string) =>

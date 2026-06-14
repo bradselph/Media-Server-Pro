@@ -1440,6 +1440,8 @@ export interface DownloaderHealth {
     uptime?: number
     dependencies?: Record<string, unknown>
     error?: string
+    /** v1.5.0: admins may download from any URL (yt-dlp universal engine). */
+    anySiteForAdmin?: boolean
 }
 
 export interface DownloaderStreamInfo {
@@ -1458,6 +1460,10 @@ export interface DownloaderDetectResult {
     isYouTubeMusic: boolean
     streams: DownloaderStreamInfo[]
     relayId?: string
+    /** v1.5.0: "ytdlp" = the page URL is handed to yt-dlp; "stream" = a stream URL is downloaded. */
+    engine?: 'ytdlp' | 'stream'
+    /** v1.5.0: true when this admin bypassed the curated-site gate (any-site unlocked). */
+    adminUnlocked?: boolean
 }
 
 export interface DownloaderProgress {
@@ -1479,6 +1485,44 @@ export interface DownloaderSettings {
     browserRelayConfigured?: boolean
     downloadsDir?: string
     proxyPoolSize?: number
+    /** v1.5.0: admins may download from any URL. */
+    anySiteForAdmin?: boolean
+    /** v1.5.0: selectable audio formats for audio-only downloads. */
+    audioFormats?: string[]
+    /** v1.5.0: whether yt-dlp is installed on the downloader. */
+    ytdlpAvailable?: boolean
+}
+
+export interface DownloaderQueueActiveItem {
+    downloadId: string
+    type: string
+    clientId: string
+}
+
+export interface DownloaderQueueQueuedItem {
+    downloadId: string
+    url: string
+    title: string
+    saveLocation: string
+    clientId: string
+    audioOnly: boolean
+}
+
+/** v1.5.0: GET /downloader/queue — the downloader's active + queued jobs. */
+export interface DownloaderQueue {
+    success: boolean
+    processing: number
+    maxConcurrent: number
+    active: DownloaderQueueActiveItem[]
+    queued: DownloaderQueueQueuedItem[]
+}
+
+/** v1.5.0: POST /downloader/download/batch result. */
+export interface DownloaderBatchResult {
+    success: boolean
+    queued: number
+    accepted: { url: string; downloadId: string }[]
+    rejected: { url: string; reason: string }[]
 }
 
 export interface ImportableFile {

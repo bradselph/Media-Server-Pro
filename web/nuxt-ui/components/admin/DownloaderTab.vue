@@ -4,6 +4,7 @@ import type {
   DownloaderHealth,
   DownloaderJob,
   DownloaderProgress,
+  DownloaderQueue,
   DownloaderSettings,
   DownloaderStreamInfo,
   ImportableFile,
@@ -134,6 +135,7 @@ function startAutoRefresh() {
     if (destroyed || document.hidden) return
     load()
     loadImportable()
+    loadQueue()
   }, 5000)
 }
 
@@ -144,6 +146,7 @@ onMounted(() => {
   loadDownloadConfig()
   load()
   loadImportable()
+  loadQueue()
   loadDestinations()
   startAutoRefresh()
 })
@@ -268,6 +271,7 @@ async function startDownload(streamUrl?: string) {
       isYouTube: detected.value.isYouTube,
       isYouTubeMusic: detected.value.isYouTubeMusic,
       relayId: detected.value.relayId,
+      ...downloadOptions(),
     })
     notifySuccess('Download started')
     if (result?.downloadId) {
@@ -405,6 +409,73 @@ function progressBarColor(status: DownloaderProgress['status']) {
   if (status === 'error') return 'error'
   if (status === 'complete' || status === 'completed') return 'success'
   return 'primary'
+}
+
+// ── Download options (downloader v1.5.0) ──────────────────────────────────────
+// Apply to both detect-based downloads and batch downloads.
+const audioOnly = ref(false)
+const audioFormat = ref('mp3')
+const videoFormat = ref('')
+
+// Audio formats advertised by the downloader; fall back to a standard set.
+const audioFormatOptions = computed<string[]>(() =>
+    settings.value?.audioFormats?.length ? settings.value.audioFormats : ['mp3', 'm4a', 'aac', 'opus', 'flac', 'wav'],
+)
+
+// Per-job option object spread into download/batch params. Hoisted so
+// startDownload (declared above) can call it; the refs are read at call time.
+function downloadOptions(): { audioOnly?: boolean; audioFormat?: string; format?: string } {
+  if (audioOnly.value) return {audioOnly: true, audioFormat: audioFormat.value}
+  const f = videoFormat.value.trim()
+  return f ? {format: f} : {}
+}
+
+// ── Batch download (v1.5.0) ───────────────────────────────────────────────────
+const batchUrls = ref('')
+const batchRunning = ref(false)
+
+async function startBatch() {
+  const urls = batchUrls.value.split('\n').map(u => u.trim()).filter(Boolean)
+  if (!urls.length) {
+    notifyError('Enter at least one URL (one per line)')
+    return
+  }
+  batchRunning.value = true
+  const clientId = wsClientId.value ?? `admin-${Date.now()}`
+  const opts = downloadOptions()
+  try {
+    const result = await adminApi.batchDownloaderJobs({
+      clientId,
+      urls: urls.map(url => ({url, ...opts})),
+    })
+    const rejected = result?.rejected?.length ?? 0
+    if (result?.queued) {
+      notifySuccess(`Queued ${result.queued} download${result.queued === 1 ? '' : 's'}${rejected ? `, ${rejected} rejected` : ''}`)
+      batchUrls.value = ''
+    } else {
+      notifyError(`Nothing queued${rejected ? ` — ${rejected} rejected (unsupported or invalid)` : ''}`)
+    }
+    await Promise.allSettled([load(), loadQueue()])
+  } catch (e: unknown) {
+    notifyError(e, 'Batch download failed')
+  } finally {
+    batchRunning.value = false
+  }
+}
+
+// ── Downloader queue (server-side active + queued jobs, v1.5.0) ────────────────
+const queue = ref<DownloaderQueue | null>(null)
+
+async function loadQueue() {
+  if (!isOnline.value) {
+    queue.value = null
+    return
+  }
+  try {
+    queue.value = await adminApi.getDownloaderQueue()
+  } catch {
+    queue.value = null
+  }
 }
 </script>
 
@@ -556,10 +627,39 @@ function progressBarColor(status: DownloaderProgress['status']) {
         <p v-if="!isOnline" class="text-xs text-warning">Downloader is offline — detection and downloads are
           unavailable.</p>
 
+        <!-- Download options (v1.5.0) — applied to detect-based and batch downloads -->
+        <div class="flex flex-wrap items-center gap-3 rounded bg-muted px-3 py-2">
+          <USwitch v-model="audioOnly" :disabled="!isOnline" label="Audio only" size="sm"/>
+          <USelect
+              v-if="audioOnly"
+              v-model="audioFormat"
+              :items="audioFormatOptions"
+              size="sm"
+              class="w-28"
+              aria-label="Audio format"
+          />
+          <UInput
+              v-else
+              v-model="videoFormat"
+              placeholder="yt-dlp -f format (optional)"
+              size="sm"
+              class="flex-1 min-w-48"
+              aria-label="Video format selector"
+          />
+        </div>
+
         <!-- Stream options from detect -->
         <template v-if="detected">
           <UCard :ui="{ body: 'p-3' }">
             <p class="text-sm font-medium mb-2">{{ detected.title || 'Detected Streams' }}</p>
+
+            <div v-if="detected.engine === 'ytdlp' || detected.adminUnlocked"
+                 class="flex flex-wrap items-center gap-1.5 mb-2">
+              <UBadge v-if="detected.engine === 'ytdlp'" label="yt-dlp engine" color="info" variant="subtle" size="xs"
+                      icon="i-lucide-wand-2"/>
+              <UBadge v-if="detected.adminUnlocked" label="Any-site unlocked" color="success" variant="subtle" size="xs"
+                      icon="i-lucide-unlock"/>
+            </div>
 
             <!-- Multiple streams to choose from (ad streams filtered) -->
             <div v-if="filteredStreams.length > 0" class="space-y-1.5">
@@ -601,6 +701,73 @@ function progressBarColor(status: DownloaderProgress['status']) {
             />
           </UCard>
         </template>
+      </div>
+    </UCard>
+
+    <!-- Batch download (v1.5.0) — queue many URLs at once -->
+    <UCard :ui="{ body: 'p-4' }">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-list-plus" class="size-4"/>
+          Batch download
+        </div>
+      </template>
+      <div class="space-y-2">
+        <p class="text-xs text-muted">
+          Paste one URL per line to queue many downloads at once. The audio-only / format options above apply to every
+          URL.
+        </p>
+        <UTextarea
+            v-model="batchUrls"
+            :rows="4"
+            placeholder="One URL per line…"
+            :disabled="!isOnline"
+            class="w-full font-mono text-xs"
+        />
+        <div class="flex justify-end">
+          <UButton
+              :loading="batchRunning"
+              icon="i-lucide-list-plus"
+              label="Queue batch"
+              color="primary"
+              :disabled="!isOnline || !batchUrls.trim()"
+              @click="startBatch"
+          />
+        </div>
+      </div>
+    </UCard>
+
+    <!-- Downloader queue: server-side active + queued jobs (v1.5.0) -->
+    <UCard v-if="queue && (queue.active.length > 0 || queue.queued.length > 0)">
+      <template #header>
+        <div class="font-semibold flex items-center gap-2">
+          <UIcon name="i-lucide-list-ordered" class="size-4"/>
+          Queue
+          <UBadge :label="`${queue.processing}/${queue.maxConcurrent} processing`" color="info" variant="subtle"
+                  size="xs"/>
+        </div>
+      </template>
+      <div class="space-y-3">
+        <div v-if="queue.active.length > 0">
+          <p class="text-xs font-medium text-muted mb-1">Active</p>
+          <div class="space-y-1">
+            <div v-for="a in queue.active" :key="a.downloadId"
+                 class="flex items-center gap-2 text-xs rounded bg-muted px-2 py-1">
+              <UBadge :label="a.type" color="primary" variant="subtle" size="xs"/>
+              <span class="font-mono truncate">{{ a.downloadId }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-if="queue.queued.length > 0">
+          <p class="text-xs font-medium text-muted mb-1">Queued ({{ queue.queued.length }})</p>
+          <div class="space-y-1">
+            <div v-for="q in queue.queued" :key="q.downloadId"
+                 class="flex items-center gap-2 text-xs rounded bg-muted px-2 py-1">
+              <UBadge v-if="q.audioOnly" label="audio" color="neutral" variant="subtle" size="xs"/>
+              <span class="flex-1 truncate">{{ q.title || q.url }}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </UCard>
 
