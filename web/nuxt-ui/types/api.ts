@@ -1429,6 +1429,8 @@ export interface CrawlerStats {
     total_discoveries: number
     pending_discoveries: number
     crawling: boolean
+    browser_enabled?: boolean
+    browser_available?: boolean
 }
 
 // ── Downloader ────────────────────────────────────────────────────────────────

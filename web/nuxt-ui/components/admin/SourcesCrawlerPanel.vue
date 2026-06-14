@@ -213,6 +213,15 @@ onMounted(() => {
         </UCard>
       </div>
 
+      <UAlert
+          v-if="crawlerStats && crawlerStats.browser_enabled && !crawlerStats.browser_available"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-alert-circle"
+          title="Browser detection unavailable"
+          description="crawler.browser_enabled is on, but no Chrome/Chromium binary was found on the server. The crawler falls back to HTML-only parsing, so JavaScript-heavy sites will return no stream discoveries until Chrome/Chromium is installed."
+      />
+
       <!-- Add target -->
       <UCard>
         <template #header>

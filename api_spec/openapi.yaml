@@ -1833,6 +1833,12 @@ components:
           type: integer
         crawling:
           type: boolean
+        browser_enabled:
+          type: boolean
+          description: The crawler.browser_enabled config flag.
+        browser_available:
+          type: boolean
+          description: True only when browser detection is enabled AND a Chrome/Chromium binary was found on the server.
 
     DownloaderHealth:
       type: object

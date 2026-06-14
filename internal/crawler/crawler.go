@@ -78,6 +78,8 @@ type Stats struct {
 	TotalDiscoveries   int  `json:"total_discoveries"`
 	PendingDiscoveries int  `json:"pending_discoveries"`
 	Crawling           bool `json:"crawling"`
+	BrowserEnabled     bool `json:"browser_enabled"`   // crawler.browser_enabled config flag
+	BrowserAvailable   bool `json:"browser_available"` // true only if enabled AND a Chrome/Chromium binary was found
 }
 
 // NewModule creates a new crawler module.
@@ -645,6 +647,13 @@ func (m *Module) DeleteDiscovery(id string) error {
 // GetStats returns crawler statistics (loads all targets and discoveries to compute counts).
 func (m *Module) GetStats() Stats {
 	stats := Stats{}
+	// Surface browser-detection state so the admin UI can warn when detection is
+	// enabled by config but no Chrome/Chromium was found (JS-heavy sites then
+	// yield zero discoveries via the HTML-only fallback).
+	if m.config != nil {
+		stats.BrowserEnabled = m.config.Get().Crawler.BrowserEnabled
+	}
+	stats.BrowserAvailable = m.browser != nil && m.browser.available()
 
 	m.crawlMu.RLock()
 	stats.Crawling = len(m.activeCrawls) > 0
