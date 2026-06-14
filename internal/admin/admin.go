@@ -663,6 +663,7 @@ func buildConfigStorageMap(cfg *config.Config, _ []string) map[string]any {
 			"region":         cfg.Storage.S3.Region,
 			"bucket":         cfg.Storage.S3.Bucket,
 			"use_path_style": cfg.Storage.S3.UsePathStyle,
+			"prefixes":       cfg.Storage.S3.Prefixes,
 			"access_key_set": cfg.Storage.S3.AccessKeyID != "",
 			"secret_key_set": cfg.Storage.S3.SecretAccessKey != "",
 		},
