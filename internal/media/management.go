@@ -237,6 +237,51 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 	return newPath, nil
 }
 
+// ReindexMovedFile updates the in-memory media/metadata/fingerprint indexes and
+// DB rows to reflect a file that has ALREADY been moved on disk from oldPath to
+// newPath by an external actor (e.g. the autodiscovery "apply suggestion" flow,
+// which performs its own os.Rename). It does no filesystem I/O and is a no-op
+// when oldPath isn't indexed. Mirrors the index-update half of RenameMedia.
+func (m *Module) ReindexMovedFile(oldPath, newPath string) {
+	if oldPath == "" || newPath == "" || oldPath == newPath {
+		return
+	}
+	newName := filepath.Base(newPath)
+
+	m.mu.Lock()
+	if item, exists := m.media[oldPath]; exists {
+		item.Path = newPath
+		item.Name = newName
+		delete(m.media, oldPath)
+		m.media[newPath] = item
+	}
+	if meta, exists := m.metadata[oldPath]; exists {
+		delete(m.metadata, oldPath)
+		m.metadata[newPath] = meta
+		if meta.ContentFingerprint != "" {
+			m.fingerprintIndex[meta.ContentFingerprint] = newPath
+		}
+	}
+	m.version++ // catalog mutated — poll-based consumers must see a bump
+	m.mu.Unlock()
+
+	m.log.Info("Reindexed moved media: %s -> %s", oldPath, newPath)
+
+	// Delete the old DB row so the ghost does not re-appear after a restart.
+	if m.metadataRepo != nil {
+		dbCtx, dbCancel := context.WithTimeout(context.Background(), 8*time.Second)
+		if err := m.metadataRepo.Delete(dbCtx, oldPath); err != nil {
+			m.log.Warn("Failed to delete old metadata row after move of %s: %v", oldPath, err)
+		}
+		dbCancel()
+	}
+
+	// Upsert the new path row. Non-fatal: the DB reconciles on the next scan.
+	if err := m.saveMetadataItem(newPath); err != nil {
+		m.log.Error("Failed to save metadata after move of %s to %s: %v", oldPath, newPath, err)
+	}
+}
+
 // MoveMedia moves a media file to a new directory.
 // fingerprintIndex is updated so the fingerprint maps to the new path.
 func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {

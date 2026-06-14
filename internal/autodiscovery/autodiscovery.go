@@ -519,27 +519,30 @@ func applySuggestionPreconditions(pathStr, destPath, suggestedPath string) error
 	return nil
 }
 
-// ApplySuggestion applies a naming suggestion
-func (m *Module) ApplySuggestion(originalPath FilePath) error {
+// ApplySuggestion applies a naming suggestion, moving the file on disk. It
+// returns the new path so the caller can re-key the media catalog (this module
+// has no reference to the media index). Returns "" when there is no suggestion
+// for the path or when the move fails.
+func (m *Module) ApplySuggestion(originalPath FilePath) (string, error) {
 	pathStr := string(originalPath)
 	m.mu.RLock()
 	suggestion, ok := m.suggestions[SuggestionKey(pathStr)]
 	m.mu.RUnlock()
 
 	if !ok {
-		return nil // No suggestion for this file
+		return "", nil // No suggestion for this file
 	}
 
 	destPath, _, err := m.applySuggestionResolveDest(pathStr, suggestion)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := applySuggestionPreconditions(pathStr, destPath, suggestion.SuggestedPath); err != nil {
-		return err
+		return "", err
 	}
 
 	if err := os.Rename(pathStr, destPath); err != nil {
-		return fmt.Errorf("failed to rename %q to %q: %w", pathStr, destPath, err)
+		return "", fmt.Errorf("failed to rename %q to %q: %w", pathStr, destPath, err)
 	}
 
 	m.log.Info("Applied suggestion: %s -> %s", pathStr, destPath)
@@ -559,7 +562,7 @@ func (m *Module) ApplySuggestion(originalPath FilePath) error {
 		m.log.Warn("Failed to persist suggestions after apply: %v", saveErr)
 	}
 
-	return nil
+	return destPath, nil
 }
 
 // ApplyAllSuggestions applies all pending suggestions with at least the given confidence.
@@ -586,7 +589,7 @@ func (m *Module) applyAllSuggestionsRun(toApply []*models.AutoDiscoverySuggestio
 	applied := 0
 	var errors []error
 	for _, s := range toApply {
-		if err := m.ApplySuggestion(FilePath(s.OriginalPath)); err != nil {
+		if _, err := m.ApplySuggestion(FilePath(s.OriginalPath)); err != nil {
 			errors = append(errors, err)
 			continue
 		}
