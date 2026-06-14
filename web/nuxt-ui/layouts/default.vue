@@ -162,6 +162,7 @@ const navLinks = computed(() => {
     links.push(
         {label: 'Categories', to: '/categories', icon: 'i-lucide-layers'},
         {label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music'},
+        {label: 'Collections', to: '/collections', icon: 'i-lucide-library'},
     )
     if (authStore.user?.permissions?.can_upload && serverSettings.value?.uploads?.enabled !== false) {
       links.push({label: 'Upload', to: '/upload', icon: 'i-lucide-upload'})
@@ -180,6 +181,7 @@ const mobileNavLinks = computed(() => {
     links.push(
         {label: 'Categories', to: '/categories', icon: 'i-lucide-layers'},
         {label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music'},
+        {label: 'Collections', to: '/collections', icon: 'i-lucide-library'},
         {label: 'Favorites', to: '/favorites', icon: 'i-lucide-heart'},
         {label: 'History', to: '/history', icon: 'i-lucide-history'},
     )
