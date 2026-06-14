@@ -655,7 +655,8 @@ async function loadMedia(id: string) {
     const fetched = await mediaApi.getById(id)
     if (!playerMounted || gen !== loadGeneration) return
     media.value = fetched
-    userRating.value = 0
+    // Restore the user's own rating so the stars reflect their prior choice on reload.
+    userRating.value = fetched.user_rating ?? 0
     playbackStore.setMedia(id, {
       id,
       name: media.value ? (media.value.metadata?.title || media.value.name) : id,
@@ -2311,7 +2312,7 @@ watch(mediaId, (id, oldId) => {
               variant="outline"
               color="neutral"
               class="justify-start"
-              :to="`/download?id=${encodeURIComponent(media?.id ?? '')}&quality=${q.index}`"
+              :to="`/download?id=${encodeURIComponent(media?.id ?? '')}&quality=${encodeURIComponent(q.name)}`"
               target="_blank"
               @click="downloadModalOpen = false"
           />

@@ -514,6 +514,19 @@ func (h *Handler) GetMedia(c *gin.Context) {
 		item.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
 	}
 
+	// Per-user rating: surface the caller's own star rating so the player can
+	// pre-fill the stars they set previously. item is a deepCopyItem copy, so
+	// mutating it can't leak into another request. Mark the response private so a
+	// shared cache never serves one user's rating to another.
+	if session := getSession(c); session != nil {
+		c.Header(headerCacheControl, "private, no-cache")
+		if ratings := h.userRatingsByPath(c); ratings != nil {
+			if r := ratings[item.Path]; r > 0 {
+				item.UserRating = r
+			}
+		}
+	}
+
 	writeSuccess(c, item)
 }
 
@@ -914,6 +927,27 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 	}
 }
 
+// variantDownloadName builds a safe attachment filename for a per-quality HLS
+// download, e.g. ("My Clip.mp4", "720p") -> "My Clip_720p.mp4". Strips any
+// existing extension and neutralizes header-unsafe characters.
+func variantDownloadName(name, quality string) string {
+	base := name
+	if i := strings.LastIndexByte(base, '.'); i > 0 {
+		base = base[:i]
+	}
+	repl := func(r rune) rune {
+		if r < 0x20 || r == '"' || r == '\\' || r == '/' || r == '\r' || r == '\n' {
+			return '_'
+		}
+		return r
+	}
+	base = strings.Map(repl, base)
+	if base == "" {
+		base = "video"
+	}
+	return fmt.Sprintf("%s_%s.mp4", base, strings.Map(repl, quality))
+}
+
 // DownloadMedia downloads a media file
 func (h *Handler) DownloadMedia(c *gin.Context) {
 	cfg := h.media.GetConfig()
@@ -986,6 +1020,25 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 
 	if !h.checkMatureAccess(c, localItem.IsMature) {
 		return
+	}
+
+	// Per-quality HLS download: when a quality is requested and a completed HLS
+	// rendition exists, remux that variant into an MP4 and serve it. Falls through
+	// to the original file when HLS isn't ready or ffmpeg is unavailable.
+	if q := strings.TrimSpace(c.Query("quality")); q != "" && h.hls != nil {
+		if plPath, verr := h.hls.VariantDownloadPath(id, q); verr == nil {
+			c.Header("Content-Type", "video/mp4")
+			c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", variantDownloadName(localItem.Name, q)))
+			serr := h.hls.StreamVariantMP4(c.Request.Context(), id, plPath, c.Writer)
+			if serr == nil || isClientDisconnect(serr) || c.Writer.Written() {
+				h.trackDownloadCompleted(c, session, id)
+				return
+			}
+			// ffmpeg failed before any bytes were written — fall through to original.
+			h.log.Warn("Variant download failed for %s (%s), serving original: %v", id, q, serr)
+		} else {
+			h.log.Debug("No HLS variant %q for %s, serving original file: %v", q, id, verr)
+		}
 	}
 
 	dlErr := h.streaming.Download(c.Writer, c.Request, absPath)

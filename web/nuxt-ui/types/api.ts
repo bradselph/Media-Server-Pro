@@ -116,6 +116,8 @@ export interface MediaItem {
     last_played?: string
     is_mature: boolean
     mature_score?: number
+    /** The requesting user's own star rating (1-5); present only on single-item GetMedia for authenticated users. */
+    user_rating?: number
     metadata?: Record<string, string>
 }
 
