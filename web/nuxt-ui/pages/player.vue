@@ -2235,6 +2235,14 @@ watch(mediaId, (id, oldId) => {
             <button
                 v-if="authStore.isLoggedIn"
                 class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+                aria-label="Play next"
+                @click="queueStore.addNext({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Playing next', color: 'success', icon: 'i-lucide-list-start' })"
+            >
+              <UIcon name="i-lucide-list-start" class="size-4 text-muted"/>
+            </button>
+            <button
+                v-if="authStore.isLoggedIn"
+                class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
                 aria-label="Add to queue"
                 @click="queueStore.addToQueue({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Added to queue', color: 'success', icon: 'i-lucide-list-ordered' })"
             >
@@ -2275,6 +2283,13 @@ watch(mediaId, (id, oldId) => {
                    :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
               </div>
             </NuxtLink>
+            <button
+                class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+                aria-label="Play next"
+                @click="queueStore.addNext({ id: item.media_id, name: getDisplayTitle(item), type: 'video', duration: item.duration ?? 0, thumbnail_url: mediaApi.getThumbnailUrl(item.media_id) }); toast.add({ title: 'Playing next', color: 'success', icon: 'i-lucide-list-start' })"
+            >
+              <UIcon name="i-lucide-list-start" class="size-4 text-muted"/>
+            </button>
             <button
                 class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
                 aria-label="Add to queue"
