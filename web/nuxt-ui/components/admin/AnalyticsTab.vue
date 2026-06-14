@@ -1512,9 +1512,9 @@ const hasTrafficActivity = computed(() =>
       </template>
       <div class="space-y-4">
         <template v-for="row in [
-          { label: 'Overall', stages: funnel.stages },
-          { label: 'Authenticated', stages: funnel.authenticated },
-          { label: 'Anonymous', stages: funnel.anonymous },
+          { label: 'Overall', stages: funnel.stages ?? [] },
+          { label: 'Authenticated', stages: funnel.authenticated ?? [] },
+          { label: 'Anonymous', stages: funnel.anonymous ?? [] },
         ]" :key="row.label">
           <div v-if="row.stages.length > 0">
             <div class="flex items-center justify-between mb-1.5">
