@@ -829,14 +829,6 @@ watch([() => params.type, () => params.category, () => params.sort_by, () => par
       }, 1000)
     })
 
-// Persist the grid/list/compact choice when a logged-in user toggles it on the
-// browse page, matching how sort/filter persist above (previously view_mode was
-// only saved from the profile page, so index-page toggles reverted on reload).
-watch(viewMode, (mode) => {
-  if (!authStore.isLoggedIn) return
-  updatePreferences({view_mode: mode}).catch(() => { /* non-critical */ })
-})
-
 onMounted(() => {
   // Apply user preferences before the first load so we don't need a second request.
   const prefs = authStore.user?.preferences
@@ -881,6 +873,14 @@ const viewMode = ref<ViewMode>(
         ? (authStore.user?.preferences?.view_mode as ViewMode)
         : 'grid'
 )
+
+// Persist the grid/list/compact choice when a logged-in user toggles it here,
+// matching how sort/filter persist above (previously view_mode was only saved
+// from the profile page, so index-page toggles silently reverted on reload).
+watch(viewMode, (mode) => {
+  if (!authStore.isLoggedIn) return
+  updatePreferences({view_mode: mode}).catch(() => { /* non-critical */ })
+})
 
 // Mature content gate — true only when logged in, show_mature enabled, and can_view_mature permission granted
 const canViewMature = computed(() =>
