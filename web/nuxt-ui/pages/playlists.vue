@@ -192,7 +192,11 @@ async function openPlaylist(pl: Playlist) {
   activePlaylist.value = pl
   try {
     activePlaylist.value = await playlistApi.get(pl.id)
-  } catch { /* keep the partial data */
+  } catch (e: unknown) {
+    // Surface the failure instead of silently showing the partial card data as
+    // if the playlist were empty.
+    activePlaylist.value = null
+    toast.add({title: e instanceof Error ? e.message : 'Failed to open playlist', color: 'error', icon: 'i-lucide-x'})
   } finally {
     activeLoading.value = false
   }
@@ -255,8 +259,9 @@ async function loadPublicPlaylists(force = false) {
   try {
     publicPlaylists.value = (await playlistApi.listPublic()) ?? []
     publicLastFetched = Date.now()
-  } catch {
+  } catch (e: unknown) {
     publicPlaylists.value = []
+    toast.add({title: e instanceof Error ? e.message : 'Failed to load public playlists', color: 'error', icon: 'i-lucide-x'})
   } finally {
     publicLoading.value = false
   }
