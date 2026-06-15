@@ -1,35 +1,35 @@
 <script setup lang="ts">
-import type {MediaCollection, MediaItem} from '~/types/api'
+import type {MediaCategory, MediaItem} from '~/types/api'
 import {getDisplayTitle} from '~/utils/mediaTitle'
 import {formatDuration} from '~/utils/format'
 import {blurHashBgStyle} from '~/utils/blurhash'
-import {useCollectionsApi} from '~/composables/useApiEndpoints'
+import {useCategoriesApi} from '~/composables/useApiEndpoints'
 
-definePageMeta({layout: 'default', title: 'Collection'})
+definePageMeta({layout: 'default', title: 'Category'})
 
 const route = useRoute()
-const collectionsApi = useCollectionsApi()
+const categoriesApi = useCategoriesApi()
 const mediaApi = useMediaApi()
 const toast = useToast()
 
-const collectionId = computed(() => String(route.params.id ?? ''))
-const collection = ref<MediaCollection | null>(null)
+const categoryId = computed(() => String(route.params.id ?? ''))
+const category = ref<MediaCategory | null>(null)
 const mediaMap = ref<Record<string, MediaItem>>({})
 const loading = ref(true)
 const notFound = ref(false)
 const failedThumbnails = reactive(new Set<string>())
 
-const orderedItems = computed(() => collection.value?.items ?? [])
+const orderedItems = computed(() => category.value?.items ?? [])
 
 async function load() {
   loading.value = true
   notFound.value = false
   try {
-    const col = await collectionsApi.get(collectionId.value)
-    collection.value = col
+    const cat = await categoriesApi.get(categoryId.value)
+    category.value = cat
     // Resolve full media items by ID so cards show thumbnails/duration, mirroring
-    // the favorites page. The collection only stores media_id + name.
-    const ids = (col.items ?? []).map(i => i.media_id)
+    // the favorites page. The category only stores media_id + name.
+    const ids = (cat.items ?? []).map(i => i.media_id)
     if (ids.length > 0) {
       const res = await mediaApi.getBatch(ids)
       mediaMap.value = res?.items ?? {}
@@ -37,7 +37,7 @@ async function load() {
       mediaMap.value = {}
     }
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Failed to load collection'
+    const msg = e instanceof Error ? e.message : 'Failed to load category'
     if (msg.toLowerCase().includes('not found')) {
       notFound.value = true
     } else {
@@ -49,35 +49,35 @@ async function load() {
 }
 
 onMounted(load)
-watch(collectionId, load)
+watch(categoryId, load)
 </script>
 
 <template>
   <UContainer class="py-6 max-w-5xl">
-    <UButton to="/collections" variant="ghost" color="neutral" size="sm" icon="i-lucide-arrow-left" label="Collections"
+    <UButton to="/categories" variant="ghost" color="neutral" size="sm" icon="i-lucide-arrow-left" label="Categories"
              class="mb-4"/>
 
     <div v-if="notFound" class="text-center py-16 text-muted">
       <UIcon name="i-lucide-folder-x" class="size-10 mb-3 mx-auto opacity-40"/>
-      <p class="text-lg font-medium">Collection not found</p>
-      <UButton class="mt-4" label="All Collections" to="/collections" variant="outline"/>
+      <p class="text-lg font-medium">Category not found</p>
+      <UButton class="mt-4" label="All Categories" to="/categories" variant="outline"/>
     </div>
 
     <template v-else>
       <div class="flex items-center gap-2 mb-1">
         <UIcon name="i-lucide-library" class="size-5 text-primary"/>
-        <h1 class="text-xl font-semibold">{{ collection?.name || 'Collection' }}</h1>
+        <h1 class="text-xl font-semibold">{{ category?.name || 'Category' }}</h1>
         <UBadge v-if="orderedItems.length > 0" :label="String(orderedItems.length)" color="neutral" variant="subtle"
                 size="xs"/>
       </div>
-      <p v-if="collection?.description" class="text-sm text-muted mb-6">{{ collection.description }}</p>
+      <p v-if="category?.description" class="text-sm text-muted mb-6">{{ category.description }}</p>
       <div v-else class="mb-6"/>
 
       <MediaCardSkeleton v-if="loading" :count="10"/>
 
       <div v-else-if="orderedItems.length === 0" class="text-center py-16 text-muted">
         <UIcon name="i-lucide-film" class="size-10 mb-3 mx-auto opacity-40"/>
-        <p class="text-lg font-medium">This collection has no items</p>
+        <p class="text-lg font-medium">This category has no items</p>
       </div>
 
       <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">

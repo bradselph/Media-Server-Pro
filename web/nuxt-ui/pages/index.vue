@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type {
-  MediaCategory,
   MediaItem,
   MediaStats,
+  MediaTypeCategory,
   NewSinceResponse,
   Playlist,
   RecentItem,
@@ -263,7 +263,7 @@ const general = ref<Suggestion[]>([])
 // at page-load time (e.g. page refresh). An immediate watcher fires synchronously
 // during setup; if `params` isn't yet declared, `params.limit` throws TDZ.
 const items = ref<MediaItem[]>([])
-const categories = ref<MediaCategory[]>([])
+const categories = ref<MediaTypeCategory[]>([])
 const total = ref(0)
 const loading = ref(true)
 const loadError = ref('')

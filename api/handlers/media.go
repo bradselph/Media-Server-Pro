@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/analytics"
-	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/streaming"
 	"media-server-pro/internal/suggestions"
@@ -599,108 +598,6 @@ func (h *Handler) GetTagCounts(c *gin.Context) {
 	writeSuccess(c, tags)
 }
 
-// GetCategoryBrowse returns user-facing categorized items for a given category.
-// When no category is specified, returns category counts (stats).
-// Accepts ?category=TV+Shows&limit=N&offset=N (default limit 200, max 500).
-// Response always includes the full category total so the SPA can paginate
-// across the slice — without it, categories with >limit items silently truncate.
-func (h *Handler) GetCategoryBrowse(c *gin.Context) {
-	if !h.requireCategorizer(c) {
-		return
-	}
-	category := c.Query("category")
-	limit := 200
-	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 500 {
-		limit = l
-	}
-	offset := 0
-	if o, err := strconv.Atoi(c.Query("offset")); err == nil && o >= 0 {
-		offset = o
-	}
-
-	if category == "" {
-		stats := h.categorizer.GetStats()
-		writeSuccess(c, stats)
-		return
-	}
-
-	items := h.categorizer.GetByCategory(categorizer.Category(category))
-
-	// Resolve each categorized path to its live media item. The categorizer
-	// assigns its own internal UUIDs, which the media module and thumbnail
-	// store don't know — by-ID lookups always missed, leaving browse items
-	// with no duration, no thumbnail, and dead /player?id= links. Resolution
-	// happens before windowing so mature-gated items don't shift pages.
-	canMature := h.canViewMatureContent(c)
-	type resolvedItem struct {
-		cat   *categorizer.CategorizedItem
-		media *models.MediaItem
-	}
-	resolved := make([]resolvedItem, 0, len(items))
-	for _, item := range items {
-		var mi *models.MediaItem
-		if h.media != nil && item.Path != "" {
-			if found, err := h.media.GetMedia(item.Path); err == nil {
-				mi = found
-			}
-		}
-		// Unresolved items (mi == nil: deleted or not yet scanned) have an
-		// unknown mature flag — fail closed for viewers without mature access.
-		if !canMature && (mi == nil || mi.IsMature) {
-			continue
-		}
-		resolved = append(resolved, resolvedItem{cat: item, media: mi})
-	}
-	total := len(resolved)
-
-	end := offset + limit
-	if offset > total {
-		offset = total
-	}
-	if end > total {
-		end = total
-	}
-	pageItems := resolved[offset:end]
-
-	type browseItem struct {
-		ID           string  `json:"id"`
-		Name         string  `json:"name"`
-		Category     string  `json:"category"`
-		Confidence   float64 `json:"confidence"`
-		Duration     float64 `json:"duration,omitempty"`
-		DetectedInfo any     `json:"detected_info,omitempty"`
-		ThumbnailURL string  `json:"thumbnail_url,omitempty"`
-	}
-	results := make([]browseItem, 0, len(pageItems))
-	for _, ri := range pageItems {
-		item := ri.cat
-		bi := browseItem{
-			ID:           item.ID,
-			Name:         item.Name,
-			Category:     string(item.Category),
-			Confidence:   item.Confidence,
-			DetectedInfo: item.DetectedInfo,
-		}
-		if ri.media != nil {
-			// The media module's stable ID makes /player?id= links and
-			// thumbnail lookups actually resolve.
-			bi.ID = ri.media.ID
-			bi.Duration = ri.media.Duration
-		}
-		if h.thumbnails != nil && ri.media != nil {
-			bi.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(ri.media.ID))
-		}
-		results = append(results, bi)
-	}
-
-	writeSuccess(c, map[string]any{
-		"category": category,
-		"items":    results,
-		"total":    total,
-		"offset":   offset,
-		"limit":    limit,
-	})
-}
 
 // StreamMedia streams a media file
 func (h *Handler) StreamMedia(c *gin.Context) {

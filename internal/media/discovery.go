@@ -80,7 +80,7 @@ type Module struct {
 	dbModule     *database.Module
 	media        map[string]*models.MediaItem
 	mediaByID    map[string]*models.MediaItem // secondary index: ID -> item for O(1) lookups
-	categories   map[string]*models.MediaCategory
+	categories   map[string]*models.MediaTypeCategory
 	metadata     map[string]*Metadata
 	metadataRepo repositories.MediaMetadataRepository
 	// fingerprintIndex maps content fingerprints to the metadata path that owns them.
@@ -238,7 +238,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 		dbModule:         dbModule,
 		media:            make(map[string]*models.MediaItem),
 		mediaByID:        make(map[string]*models.MediaItem),
-		categories:       make(map[string]*models.MediaCategory),
+		categories:       make(map[string]*models.MediaTypeCategory),
 		metadata:         make(map[string]*Metadata),
 		fingerprintIndex: make(map[string]string),
 		dataDir:          cfg.Get().Directories.Data,
@@ -984,7 +984,7 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		m.mu.Unlock()
 	}
 
-	// Use stored category from DB when available (from categorizer or admin), else auto-detect from path and persist
+	// Use stored category from DB when available (set by admin), else auto-detect from path and persist
 	if hasMeta && meta.Category != "" {
 		item.Category = meta.Category
 	} else {
@@ -1172,9 +1172,9 @@ func (m *Module) updateCategories() {
 		counts[item.Category]++
 	}
 
-	m.categories = make(map[string]*models.MediaCategory)
+	m.categories = make(map[string]*models.MediaTypeCategory)
 	for name, count := range counts {
-		m.categories[name] = &models.MediaCategory{
+		m.categories[name] = &models.MediaTypeCategory{
 			Name:        name,
 			DisplayName: cases.Title(language.English).String(strings.ReplaceAll(name, "_", " ")),
 			Count:       count,
@@ -1198,7 +1198,7 @@ func (m *Module) adjustCategoryCount(name string, delta int) {
 		delete(m.categories, name)
 		return
 	}
-	m.categories[name] = &models.MediaCategory{
+	m.categories[name] = &models.MediaTypeCategory{
 		Name:        name,
 		DisplayName: cases.Title(language.English).String(strings.ReplaceAll(name, "_", " ")),
 		Count:       count,
@@ -1512,11 +1512,11 @@ func (f Filter) matchesTags(item *models.MediaItem) bool {
 }
 
 // GetCategories returns all categories
-func (m *Module) GetCategories() []*models.MediaCategory {
+func (m *Module) GetCategories() []*models.MediaTypeCategory {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	cats := make([]*models.MediaCategory, 0, len(m.categories))
+	cats := make([]*models.MediaTypeCategory, 0, len(m.categories))
 	for _, cat := range m.categories {
 		cats = append(cats, cat)
 	}

@@ -211,7 +211,7 @@ The API surface covers:
 - `receiver` (slave-facing) and `admin-receiver` (admin-facing)
 - All `admin-*` modules: `admin-users`, `admin-media`, `admin-config`, `admin-tasks`, `admin-audit`, `admin-backups`,
   `admin-scanner`, `admin-hls`, `admin-thumbnails`, `admin-validator`, `admin-playlists`, `admin-security`,
-  `admin-categorizer`, `admin-discovery`, `admin-suggestions`, `admin-remote`, `admin-updates`, `admin-database`,
+  `admin-discovery`, `admin-suggestions`, `admin-remote`, `admin-updates`, `admin-database`,
   `admin-analytics`, `admin-classify`, `admin-extractor`, `admin-crawler`, `admin-downloader`, `admin-duplicates`,
   `admin-streams`
 

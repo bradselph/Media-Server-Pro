@@ -40,6 +40,7 @@ const TAB_ALIASES: Record<string, string> = {
   settings: 'system',
   streaming: 'system',
   updates: 'system',
+  categories: 'library',
   collections: 'library',
   playlists: 'library',
   duplicates: 'media',

@@ -53,8 +53,11 @@ type MediaItem struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
-// MediaCategory represents a category of media files
-type MediaCategory struct {
+// MediaTypeCategory represents an auto-derived media "type" bucket (e.g. movies,
+// tv_shows, music) aggregated from the media-type field on each item. This powers
+// the library type filter and is distinct from MediaCategory, the admin-curated
+// grouping feature below.
+type MediaTypeCategory struct {
 	Name        string   `json:"name"`
 	DisplayName string   `json:"display_name"`
 	Count       int      `json:"count"`
@@ -481,8 +484,8 @@ type AutoTagRule struct {
 
 func (AutoTagRule) TableName() string { return "auto_tag_rules" }
 
-// MediaCollection groups related media items into a named series or collection.
-type MediaCollection struct {
+// MediaCategory groups related media items into a named, admin-curated category.
+type MediaCategory struct {
 	ID           string    `json:"id" db:"id" gorm:"primaryKey;size:36"`
 	Name         string    `json:"name" db:"name" gorm:"size:255;not null"`
 	Description  string    `json:"description,omitempty" db:"description" gorm:"type:text"`
@@ -491,17 +494,17 @@ type MediaCollection struct {
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at" gorm:"autoUpdateTime"`
 }
 
-func (MediaCollection) TableName() string { return "media_collections" }
+func (MediaCategory) TableName() string { return "media_categories" }
 
-// MediaCollectionItem links a media item into a collection with an optional order.
-type MediaCollectionItem struct {
-	CollectionID string    `json:"collection_id" db:"collection_id" gorm:"primaryKey;size:36"`
-	MediaID      string    `json:"media_id" db:"media_id" gorm:"primaryKey;size:36"`
-	Position     int       `json:"position" db:"position" gorm:"default:0"`
-	AddedAt      time.Time `json:"added_at" db:"added_at" gorm:"autoCreateTime"`
+// MediaCategoryItem links a media item into a category with an optional order.
+type MediaCategoryItem struct {
+	CategoryID string    `json:"category_id" db:"category_id" gorm:"primaryKey;size:36"`
+	MediaID    string    `json:"media_id" db:"media_id" gorm:"primaryKey;size:36"`
+	Position   int       `json:"position" db:"position" gorm:"default:0"`
+	AddedAt    time.Time `json:"added_at" db:"added_at" gorm:"autoCreateTime"`
 }
 
-func (MediaCollectionItem) TableName() string { return "media_collection_items" }
+func (MediaCategoryItem) TableName() string { return "media_category_items" }
 
 // AnalyticsEvent represents a tracked event
 type AnalyticsEvent struct {

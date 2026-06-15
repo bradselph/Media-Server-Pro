@@ -1,29 +1,29 @@
 <script setup lang="ts">
-import type {MediaCollection, MediaCollectionItem, MediaItem} from '~/types/api'
-import {useCollectionsApi} from '~/composables/useApiEndpoints'
+import type {MediaCategory, MediaCategoryItem, MediaItem} from '~/types/api'
+import {useCategoriesApi} from '~/composables/useApiEndpoints'
 import {getDisplayTitle} from '~/utils/mediaTitle'
 import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
-const collectionsApi = useCollectionsApi()
+const categoriesApi = useCategoriesApi()
 const adminApi = useAdminApi()
 const mediaApi = useMediaApi()
 const {notifyError, notifySuccess} = useAdminFeedback()
 
-const collections = ref<MediaCollection[]>([])
+const categories = ref<MediaCategory[]>([])
 const loading = ref(false)
 const deletingId = ref<string | null>(null)
 const confirmDeleteId = ref<string | null>(null)
 
 // Create / Edit modal
 const formOpen = ref(false)
-const editTarget = ref<MediaCollection | null>(null)
+const editTarget = ref<MediaCategory | null>(null)
 const form = reactive({name: '', description: '', cover_media_id: ''})
 const saving = ref(false)
 
-// Detail view (view a collection's items)
+// Detail view (view a category's items)
 const detailOpen = ref(false)
-const detailCollection = ref<MediaCollection | null>(null)
-const detailItems = ref<MediaCollectionItem[]>([])
+const detailCategory = ref<MediaCategory | null>(null)
+const detailItems = ref<MediaCategoryItem[]>([])
 const detailLoading = ref(false)
 const removingItemId = ref<string | null>(null)
 
@@ -41,9 +41,9 @@ let addItemsFetchNonce = 0
 async function load() {
   loading.value = true
   try {
-    collections.value = (await collectionsApi.list()) ?? []
+    categories.value = (await categoriesApi.list()) ?? []
   } catch (e: unknown) {
-    notifyError(e, 'Failed to load collections')
+    notifyError(e, 'Failed to load categories')
   } finally {
     loading.value = false
   }
@@ -57,11 +57,11 @@ function openCreate() {
   formOpen.value = true
 }
 
-function openEdit(col: MediaCollection) {
-  editTarget.value = col
-  form.name = col.name
-  form.description = col.description ?? ''
-  form.cover_media_id = col.cover_media_id ?? ''
+function openEdit(cat: MediaCategory) {
+  editTarget.value = cat
+  form.name = cat.name
+  form.description = cat.description ?? ''
+  form.cover_media_id = cat.cover_media_id ?? ''
   formOpen.value = true
 }
 
@@ -78,11 +78,11 @@ async function save() {
   try {
     const data = {name: form.name, description: form.description, cover_media_id: form.cover_media_id || undefined}
     if (editTarget.value) {
-      await collectionsApi.update(editTarget.value.id, data)
-      notifySuccess('Collection updated')
+      await categoriesApi.update(editTarget.value.id, data)
+      notifySuccess('Category updated')
     } else {
-      await collectionsApi.create(data)
-      notifySuccess('Collection created')
+      await categoriesApi.create(data)
+      notifySuccess('Category created')
     }
     await load()
     formOpen.value = false
@@ -96,13 +96,13 @@ async function save() {
   }
 }
 
-async function deleteCollection(id: string) {
+async function deleteCategory(id: string) {
   if (deletingId.value) return
   deletingId.value = id
   try {
-    await collectionsApi.delete(id)
-    collections.value = collections.value.filter(c => c.id !== id)
-    notifySuccess('Collection deleted')
+    await categoriesApi.delete(id)
+    categories.value = categories.value.filter(c => c.id !== id)
+    notifySuccess('Category deleted')
   } catch (e: unknown) {
     notifyError(e, 'Delete failed')
   } finally {
@@ -110,12 +110,12 @@ async function deleteCollection(id: string) {
   }
 }
 
-async function openDetail(col: MediaCollection) {
-  detailCollection.value = col
+async function openDetail(cat: MediaCategory) {
+  detailCategory.value = cat
   detailOpen.value = true
   detailLoading.value = true
   try {
-    const full = await collectionsApi.get(col.id)
+    const full = await categoriesApi.get(cat.id)
     detailItems.value = full.items ?? []
   } catch (e: unknown) {
     notifyError(e, 'Failed to load items')
@@ -125,10 +125,10 @@ async function openDetail(col: MediaCollection) {
 }
 
 async function removeItem(mediaId: string) {
-  if (!detailCollection.value || removingItemId.value) return
+  if (!detailCategory.value || removingItemId.value) return
   removingItemId.value = mediaId
   try {
-    await collectionsApi.removeItem(detailCollection.value.id, mediaId)
+    await categoriesApi.removeItem(detailCategory.value.id, mediaId)
     detailItems.value = detailItems.value.filter(i => i.media_id !== mediaId)
     notifySuccess('Item removed')
   } catch (e: unknown) {
@@ -138,21 +138,21 @@ async function removeItem(mediaId: string) {
   }
 }
 
-function openAddItems(collectionId: string) {
-  addItemsTarget.value = collectionId
+function openAddItems(categoryId: string) {
+  addItemsTarget.value = categoryId
   mediaSearch.value = ''
   mediaResults.value = []
-  // Load current items so alreadyInCollection reflects actual membership.
+  // Load current items so alreadyInCategory reflects actual membership.
   // Capture nonce so a stale response that arrives after addItem's own refresh
   // doesn't overwrite the fresher detailItems state.
-  if (detailCollection.value?.id !== collectionId) {
+  if (detailCategory.value?.id !== categoryId) {
     const nonce = ++addItemsFetchNonce
-    collectionsApi.get(collectionId).then(full => {
+    categoriesApi.get(categoryId).then(full => {
       if (addItemsFetchNonce === nonce) {
         detailItems.value = full.items ?? []
       }
     }).catch((err: unknown) => {
-      console.warn('[collections] Failed to pre-load collection items:', err)
+      console.warn('[categories] Failed to pre-load category items:', err)
     })
   }
   addItemsOpen.value = true
@@ -193,13 +193,13 @@ async function addItem(mediaId: string) {
   addingIds.value = next
   try {
     const pos = detailItems.value.length
-    await collectionsApi.addItems(addItemsTarget.value, [mediaId], pos)
-    notifySuccess('Added to collection')
+    await categoriesApi.addItems(addItemsTarget.value, [mediaId], pos)
+    notifySuccess('Added to category')
     // Always refresh detailItems for the current add target. Bump nonce so any
     // concurrent background fetch from openAddItems doesn't clobber this result.
     if (addItemsTarget.value) {
       addItemsFetchNonce++
-      const full = await collectionsApi.get(addItemsTarget.value)
+      const full = await categoriesApi.get(addItemsTarget.value)
       detailItems.value = full.items ?? []
     }
   } catch (e: unknown) {
@@ -211,7 +211,7 @@ async function addItem(mediaId: string) {
   }
 }
 
-const alreadyInCollection = computed(() => new Set(detailItems.value.map(i => i.media_id)))
+const alreadyInCategory = computed(() => new Set(detailItems.value.map(i => i.media_id)))
 
 onMounted(load)
 </script>
@@ -221,11 +221,11 @@ onMounted(load)
     <!-- Header -->
     <div class="flex items-center justify-between flex-wrap gap-3">
       <div>
-        <h2 class="text-lg font-semibold text-highlighted">Collections</h2>
-        <p class="text-sm text-muted">Group media into named series or collections for browsing and navigation.</p>
+        <h2 class="text-lg font-semibold text-highlighted">Categories</h2>
+        <p class="text-sm text-muted">Group media into named, curated categories for browsing and navigation.</p>
       </div>
       <div class="flex gap-2">
-        <UButton icon="i-lucide-plus" label="New Collection" size="sm" color="primary" @click="openCreate"/>
+        <UButton icon="i-lucide-plus" label="New Category" size="sm" color="primary" @click="openCreate"/>
         <UButton icon="i-lucide-refresh-cw" aria-label="Refresh" size="sm" variant="ghost" color="neutral"
                  :loading="loading" @click="load"/>
       </div>
@@ -237,25 +237,25 @@ onMounted(load)
     </div>
 
     <!-- Empty -->
-    <div v-else-if="collections.length === 0" class="text-center py-12 text-muted">
+    <div v-else-if="categories.length === 0" class="text-center py-12 text-muted">
       <UIcon name="i-lucide-layers" class="size-8 mb-2 opacity-50"/>
-      <p>No collections yet.</p>
-      <p class="text-xs mt-1">Create a collection to group related media into a series.</p>
+      <p>No categories yet.</p>
+      <p class="text-xs mt-1">Create a category to group related media together.</p>
     </div>
 
-    <!-- Collections grid -->
+    <!-- Categories grid -->
     <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <UCard
-          v-for="col in collections"
-          :key="col.id"
+          v-for="cat in categories"
+          :key="cat.id"
           :ui="{ body: 'p-4' }"
           class="cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
-          @click="openDetail(col)"
+          @click="openDetail(cat)"
       >
         <div class="flex items-start justify-between gap-2">
           <div class="flex-1 min-w-0">
-            <p class="font-semibold text-highlighted truncate">{{ col.name }}</p>
-            <p v-if="col.description" class="text-xs text-muted mt-0.5 line-clamp-2">{{ col.description }}</p>
+            <p class="font-semibold text-highlighted truncate">{{ cat.name }}</p>
+            <p v-if="cat.description" class="text-xs text-muted mt-0.5 line-clamp-2">{{ cat.description }}</p>
           </div>
           <div class="flex gap-1 shrink-0">
             <UButton
@@ -263,15 +263,15 @@ onMounted(load)
                 size="xs"
                 variant="ghost"
                 color="neutral"
-                @click.stop="openEdit(col)"
+                @click.stop="openEdit(cat)"
             />
             <UButton
                 icon="i-lucide-trash-2"
                 size="xs"
                 variant="ghost"
                 color="error"
-                :loading="deletingId === col.id"
-                @click.stop="confirmDeleteId = col.id"
+                :loading="deletingId === cat.id"
+                @click.stop="confirmDeleteId = cat.id"
             />
           </div>
         </div>
@@ -282,7 +282,7 @@ onMounted(load)
               size="xs"
               variant="outline"
               color="neutral"
-              @click.stop="openAddItems(col.id); detailCollection = col"
+              @click.stop="openAddItems(cat.id); detailCategory = cat"
           />
         </div>
       </UCard>
@@ -291,7 +291,7 @@ onMounted(load)
     <!-- Create / Edit modal -->
     <UModal
         v-model:open="formOpen"
-        :title="editTarget ? 'Edit Collection' : 'New Collection'"
+        :title="editTarget ? 'Edit Category' : 'New Category'"
     >
       <template #body>
         <div class="space-y-4">
@@ -302,7 +302,7 @@ onMounted(load)
             <UTextarea v-model="form.description" placeholder="Optional description" :rows="2" class="w-full"
                        maxlength="2000"/>
           </UFormField>
-          <UFormField label="Cover Media ID" hint="Optional: media ID whose thumbnail is used as the collection cover">
+          <UFormField label="Cover Media ID" hint="Optional: media ID whose thumbnail is used as the category cover">
             <UInput v-model="form.cover_media_id" placeholder="Media UUID" class="w-full font-mono text-xs"/>
           </UFormField>
         </div>
@@ -316,25 +316,25 @@ onMounted(load)
     <!-- Delete confirmation -->
     <UModal
         :open="!!confirmDeleteId"
-        title="Delete Collection"
+        title="Delete Category"
         @update:open="val => { if (!val) confirmDeleteId = null }"
     >
       <template #body>
         <p class="text-sm">Are you sure you want to delete
-          <strong>{{ collections.find(c => c.id === confirmDeleteId)?.name }}</strong>? All items will be removed from
-          the collection. This cannot be undone.</p>
+          <strong>{{ categories.find(c => c.id === confirmDeleteId)?.name }}</strong>? All items will be removed from
+          the category. This cannot be undone.</p>
       </template>
       <template #footer>
         <UButton color="error" label="Delete" :loading="deletingId === confirmDeleteId"
-                 @click="deleteCollection(confirmDeleteId!); confirmDeleteId = null"/>
+                 @click="deleteCategory(confirmDeleteId!); confirmDeleteId = null"/>
         <UButton label="Cancel" variant="ghost" color="neutral" @click="confirmDeleteId = null"/>
       </template>
     </UModal>
 
-    <!-- Collection detail / item management -->
+    <!-- Category detail / item management -->
     <UModal
         v-model:open="detailOpen"
-        :title="detailCollection?.name ?? 'Collection'"
+        :title="detailCategory?.name ?? 'Category'"
         :ui="{ content: 'max-w-2xl' }"
     >
       <template #body>
@@ -346,14 +346,14 @@ onMounted(load)
                 size="sm"
                 variant="outline"
                 color="neutral"
-                @click="addItemsTarget = detailCollection?.id ?? null; addItemsOpen = true; mediaSearch = ''; mediaResults = []"
+                @click="addItemsTarget = detailCategory?.id ?? null; addItemsOpen = true; mediaSearch = ''; mediaResults = []"
             />
           </div>
           <div v-if="detailLoading" class="flex justify-center py-6">
             <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
           </div>
           <div v-else-if="detailItems.length === 0" class="text-center py-6 text-muted text-sm">
-            No items in this collection yet.
+            No items in this category yet.
           </div>
           <div v-else class="divide-y divide-default max-h-96 overflow-y-auto">
             <div
@@ -398,7 +398,7 @@ onMounted(load)
     <!-- Add items search modal -->
     <UModal
         v-model:open="addItemsOpen"
-        title="Add Media to Collection"
+        title="Add Media to Category"
         :ui="{ content: 'max-w-lg' }"
     >
       <template #body>
@@ -431,8 +431,8 @@ onMounted(load)
               </div>
               <span class="flex-1 text-sm truncate">{{ getDisplayTitle(item) }}</span>
               <UBadge
-                  v-if="alreadyInCollection.has(item.id)"
-                  label="In collection"
+                  v-if="alreadyInCategory.has(item.id)"
+                  label="In category"
                   color="success"
                   variant="subtle"
                   size="xs"

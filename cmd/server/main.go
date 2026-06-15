@@ -16,7 +16,6 @@ import (
 	"media-server-pro/internal/auth"
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
-	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
@@ -118,7 +117,7 @@ func main() {
 	// ── Register background tasks ──────────────────────────────────────────
 	registerTasks(mods.tasks, mods.media, mods.scanner, mods.thumbnails,
 		mods.auth, mods.backup, mods.suggestions, mods.duplicates, mods.admin, mods.hls,
-		mods.categorizer, mods.remote, mods.streaming, mods.analytics, cfg, log)
+		mods.remote, mods.streaming, mods.analytics, cfg, log)
 
 	// ── Wire up routes ─────────────────────────────────────────────────────
 	setupRoutes(srv, cfg, mods, ageGate, cookieConsent)
@@ -256,7 +255,6 @@ type modules struct {
 	backup        *backup.Module
 	autodiscovery *autodiscovery.Module
 	suggestions   *suggestions.Module
-	categorizer   *categorizer.Module
 	updater       *updater.Module
 	remote        *remote.Module
 	duplicates    *duplicates.Module
@@ -423,10 +421,6 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	m.suggestions = suggestions.NewModule(cfg, m.database)
 	mustRegister(srv, m.suggestions)
 
-	// Categorizer (non-critical — requires database for categorization data)
-	m.categorizer = categorizer.NewModule(cfg, m.database)
-	mustRegister(srv, m.categorizer)
-
 	// Updater (non-critical — needs version string)
 	m.updater = updater.NewModule(cfg, Version)
 	mustRegister(srv, m.updater)
@@ -543,7 +537,6 @@ func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate 
 			Autodiscovery: mods.autodiscovery,
 			Suggestions:   mods.suggestions,
 			Security:      mods.security,
-			Categorizer:   mods.categorizer,
 			Updater:       mods.updater,
 			Remote:        mods.remote,
 			Receiver:      mods.receiver,
@@ -677,7 +670,6 @@ func registerTasks(
 	duplicatesModule *duplicates.Module,
 	adminModule *admin.Module,
 	hlsModule *hls.Module,
-	categorizerModule *categorizer.Module,
 	remoteModule *remote.Module,
 	streamingModule *streaming.Module,
 	analyticsModule *analytics.Module,
@@ -707,7 +699,7 @@ func registerTasks(
 	registerScannerTasks(registerWithOverride, cfg, mediaModule, scannerModule, duplicatesModule, log)
 	registerAdminHealthTasks(registerWithOverride, cfg, adminModule, log)
 	registerHLSStreamingTasks(registerWithOverride, cfg, mediaModule, hlsModule, streamingModule, analyticsModule, log)
-	registerCacheCleanupTasks(registerWithOverride, cfg, hlsModule, analyticsModule, categorizerModule, remoteModule, log)
+	registerCacheCleanupTasks(registerWithOverride, cfg, hlsModule, analyticsModule, remoteModule, log)
 	registerScheduleWatcher(scheduler, cfg, log)
 }
 
@@ -1172,8 +1164,8 @@ func registerHLSStreamingTasks(registerWithOverride func(tasks.TaskRegistration)
 }
 
 // registerCacheCleanupTasks registers retention/eviction passes for analytics
-// data, stale HLS locks, categorizer rows, and the remote-media cache.
-func registerCacheCleanupTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, hlsModule *hls.Module, analyticsModule *analytics.Module, categorizerModule *categorizer.Module, remoteModule *remote.Module, log *logger.Logger) {
+// data, stale HLS locks, and the remote-media cache.
+func registerCacheCleanupTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, hlsModule *hls.Module, analyticsModule *analytics.Module, remoteModule *remote.Module, log *logger.Logger) {
 	// Analytics cleanup — trims events, daily-stats rows, and in-memory
 	// caches older than Analytics.RetentionDays. Hot-path flushing of
 	// dirty rows still happens on the analytics module's own 30s flush
@@ -1212,26 +1204,6 @@ func registerCacheCleanupTasks(registerWithOverride func(tasks.TaskRegistration)
 			return nil
 		},
 	})
-
-	// Categorizer stale cleanup — drops categorization rows whose media file no
-	// longer exists. The full media scan eventually removes media_metadata
-	// rows; this task tidies the categorizer side on its own cadence so
-	// admin queries don't return ghost categories.
-	if categorizerModule != nil {
-		registerWithOverride(tasks.TaskRegistration{
-			ID:          "categorizer-stale-cleanup",
-			Name:        "Categorizer Stale Cleanup",
-			Description: "Removes categorization entries pointing at files that no longer exist on disk",
-			Schedule:    24 * time.Hour,
-			Func: func(_ context.Context) error {
-				removed := categorizerModule.CleanStale()
-				if removed > 0 {
-					log.Info("Categorizer cleanup removed %d stale entr(ies)", removed)
-				}
-				return nil
-			},
-		})
-	}
 
 	// Remote-media cache cleanup — TTL/LRU pass over the on-disk remote cache.
 	// The remote module already calls CleanCache after every fetch (so a hot

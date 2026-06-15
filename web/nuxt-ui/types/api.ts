@@ -154,18 +154,21 @@ export interface SmartPlaylist {
     updated_at: string
 }
 
-export interface MediaCollectionItem {
+export interface MediaCategoryItem {
     media_id: string
     media_name?: string
     position: number
 }
 
-export interface MediaCollection {
+// MediaCategory is an admin-curated, ordered grouping of media items (the
+// "Categories" feature). Distinct from MediaTypeCategory below, which is the
+// auto-derived media-type bucket used by the library type filter.
+export interface MediaCategory {
     id: string
     name: string
     description?: string
     cover_media_id?: string
-    items?: MediaCollectionItem[]
+    items?: MediaCategoryItem[]
     created_at: string
     updated_at: string
 }
@@ -215,7 +218,10 @@ export interface MediaListResponse {
     type_counts?: Record<string, number>
 }
 
-export interface MediaCategory {
+// MediaTypeCategory is an auto-derived media-type bucket (movies, tv_shows,
+// music, …) aggregated for the library type filter. Distinct from MediaCategory
+// (the admin-curated grouping feature).
+export interface MediaTypeCategory {
     name: string
     display_name: string
     count: number
@@ -1189,50 +1195,6 @@ export interface ValidatorStats {
     fixed: number
     failed: number
     unsupported: number
-}
-
-// ── Categorizer ───────────────────────────────────────────────────────────────
-
-export interface CategorizedItem {
-    id: string
-    name: string
-    category: string
-    confidence: number
-    detected_info?: Record<string, unknown>
-    categorized_at: string
-    manual_override: boolean
-}
-
-export interface CategoryStats {
-    total_items: number
-    by_category: Record<string, number>
-    manual_overrides: number
-}
-
-export interface CategoryBrowseItem {
-    id: string
-    name: string
-    category: string
-    confidence: number
-    duration?: number
-    detected_info?: {
-        title?: string
-        year?: number
-        season?: number
-        episode?: number
-        show_name?: string
-        artist?: string
-        album?: string
-    }
-    thumbnail_url?: string
-}
-
-export interface CategoryBrowseResponse {
-    category: string
-    items: CategoryBrowseItem[]
-    total: number
-    offset?: number
-    limit?: number
 }
 
 // Generated from api_spec/openapi.yaml — do not edit manually

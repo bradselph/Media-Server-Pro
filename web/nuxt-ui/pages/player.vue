@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type {MediaChapter, MediaCollection, MediaItem, Playlist, PlaylistItem, Suggestion} from '~/types/api'
+import type {MediaCategory, MediaChapter, MediaItem, Playlist, PlaylistItem, Suggestion} from '~/types/api'
 import {getDisplayTitle} from '~/utils/mediaTitle'
 import {formatBitrate, formatBytes, formatDuration, formatRelativeDate} from '~/utils/format'
 import {safeJsonLD} from '~/utils/jsonld'
 import {getMediaGradient} from '~/utils/gradient'
 import {hlsQualityName} from '~/utils/hlsQuality'
 import {useQueueStore} from '~/stores/queue'
-import {useCollectionsApi} from '~/composables/useApiEndpoints'
+import {useCategoriesApi} from '~/composables/useApiEndpoints'
 
 definePageMeta({layout: 'default', title: 'Player'})
 
@@ -582,9 +582,9 @@ const thumbnailPreviews = ref<string[]>([])
 const similar = ref<Suggestion[]>([])
 const personalized = ref<Suggestion[]>([])
 
-// Collections this media belongs to
-const collectionsApi = useCollectionsApi()
-const mediaCollections = ref<MediaCollection[]>([])
+// Categories this media belongs to
+const categoriesApi = useCategoriesApi()
+const mediaCategories = ref<MediaCategory[]>([])
 
 // Mature content gate
 const canViewMature = computed(() =>
@@ -659,7 +659,7 @@ async function loadMedia(id: string) {
   error.value = ''
   similar.value = []
   personalized.value = []
-  mediaCollections.value = []
+  mediaCategories.value = []
   thumbnailPreviews.value = []
   try {
     const fetched = await mediaApi.getById(id)
@@ -682,10 +682,10 @@ async function loadMedia(id: string) {
     }).catch((e: unknown) => {
       console.warn('[player] similar load failed:', e)
     })
-    collectionsApi.getForMedia(id).then(r => {
-      if (playerMounted && gen === loadGeneration) mediaCollections.value = r ?? []
+    categoriesApi.getForMedia(id).then(r => {
+      if (playerMounted && gen === loadGeneration) mediaCategories.value = r ?? []
     }).catch((e: unknown) => {
-      console.warn('[player] collections load failed:', e)
+      console.warn('[player] categories load failed:', e)
     })
     if (authStore.isLoggedIn) {
       suggestionsApi.getPersonalized(8).then(r => {
@@ -2180,18 +2180,18 @@ watch(mediaId, (id, oldId) => {
 
       <!-- Sidebar: similar + personalized -->
       <div class="space-y-6 max-md:px-4 max-md:pb-6 md:pb-0">
-        <!-- Collections this media belongs to -->
-        <div v-if="mediaCollections.length > 0" class="space-y-3">
-          <h3 class="section-title">In Collection</h3>
+        <!-- Categories this media belongs to -->
+        <div v-if="mediaCategories.length > 0" class="space-y-3">
+          <h3 class="section-title">In Category</h3>
           <div
-              v-for="col in mediaCollections"
-              :key="col.id"
+              v-for="cat in mediaCategories"
+              :key="cat.id"
               class="space-y-1.5"
           >
-            <p class="section-title">{{ col.name }}</p>
+            <p class="section-title">{{ cat.name }}</p>
             <div class="space-y-1">
               <NuxtLink
-                  v-for="(item, idx) in (col.items ?? [])"
+                  v-for="(item, idx) in (cat.items ?? [])"
                   :key="item.media_id"
                   :to="`/player?id=${encodeURIComponent(item.media_id)}`"
                   class="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors text-sm"
