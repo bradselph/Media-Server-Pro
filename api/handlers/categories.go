@@ -107,6 +107,43 @@ func (h *Handler) ListCategories(c *gin.Context) {
 	for i := range cats {
 		cats[i].ItemCount = countByID[cats[i].ID]
 	}
+
+	// Up to 4 preview media IDs per category, ordered to match GetCategory
+	// (position ASC, added_at ASC), so surfaces like the categories gallery can
+	// render a mosaic thumbnail when no explicit cover is set. The derived-table
+	// filter (rn <= 4) keeps the result to at most four rows per category instead
+	// of streaming the entire membership table. Best-effort: a failure (or a DB
+	// that lacks window functions) leaves PreviewMediaIDs nil rather than failing
+	// the whole listing.
+	//
+	// Items that tie on (position, added_at) — e.g. a bulk import that drops many
+	// rows at position 0 within the same second — have undefined order here, which
+	// only affects which four of N members surface in the preview (cosmetic). This
+	// matches GetCategory's identical ORDER BY, so the preview stays consistent
+	// with the full item list a caller sees on the category page.
+	type previewRow struct {
+		CategoryID string
+		MediaID    string
+	}
+	var previews []previewRow
+	if err := db.Raw(`
+		SELECT category_id, media_id FROM (
+			SELECT category_id, media_id,
+			       ROW_NUMBER() OVER (PARTITION BY category_id ORDER BY position ASC, added_at ASC) AS rn
+			FROM media_category_items
+		) ranked
+		WHERE rn <= 4
+		ORDER BY category_id, rn`).Scan(&previews).Error; err != nil {
+		h.log.Warn("ListCategories: failed to load preview IDs: %v", err)
+	}
+	previewsByID := make(map[string][]string, len(cats))
+	for _, p := range previews {
+		previewsByID[p.CategoryID] = append(previewsByID[p.CategoryID], p.MediaID)
+	}
+	for i := range cats {
+		cats[i].PreviewMediaIDs = previewsByID[cats[i].ID]
+	}
+
 	writeSuccess(c, cats)
 }
 

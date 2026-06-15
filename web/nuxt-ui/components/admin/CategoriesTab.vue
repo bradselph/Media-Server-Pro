@@ -249,9 +249,16 @@ onMounted(load)
           v-for="cat in categories"
           :key="cat.id"
           :ui="{ body: 'p-4' }"
-          class="cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
+          class="group cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
           @click="openDetail(cat)"
       >
+        <div class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-3 scanline-thumb">
+          <CategoryThumbnail
+              :cover-media-id="cat.cover_media_id"
+              :preview-media-ids="cat.preview_media_ids"
+              :alt="cat.name"
+          />
+        </div>
         <div class="flex items-start justify-between gap-2">
           <div class="flex-1 min-w-0">
             <p class="font-semibold text-highlighted truncate">{{ cat.name }}</p>
