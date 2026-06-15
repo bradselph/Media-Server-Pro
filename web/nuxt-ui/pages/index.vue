@@ -289,7 +289,7 @@ let loadSeq = 0
 // path-detected bucket like "movies" left in a saved preference from before the
 // categories unification) so it doesn't auto-apply a filter that matches nothing.
 function isCategoryId(v: unknown): v is string {
-  return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v)
+  return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 }
 
 // URL deep-link: query params take precedence over saved preferences so that
@@ -1535,6 +1535,7 @@ onUnmounted(() => {
             v-if="categories.length > 0"
             v-model="params.category"
             :items="[{ label: 'All Categories', value: 'all' }, ...categories.map(c => ({ label: c.item_count ? `${c.name} (${c.item_count})` : c.name, value: c.id }))]"
+            aria-label="Filter by category"
             class="w-48"
         />
         <USelect

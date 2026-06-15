@@ -973,6 +973,7 @@ onMounted(() => {
                         v-model="cond.value"
                         :items="spCategoryItems"
                         placeholder="Select category"
+                        aria-label="Category"
                         size="sm"
                         class="flex-1"
                     />
@@ -1076,6 +1077,7 @@ onMounted(() => {
                         v-model="cond.value"
                         :items="spCategoryItems"
                         placeholder="Select category"
+                        aria-label="Category"
                         size="sm"
                         class="flex-1"
                     />
@@ -1176,7 +1178,6 @@ onMounted(() => {
                   <div class="flex items-center gap-2 text-xs text-muted mt-0.5">
                     <span>{{ item.type }}</span>
                     <span v-if="item.duration">· {{ Math.round(item.duration) }}s</span>
-                    <span v-if="item.category">· {{ item.category }}</span>
                   </div>
                 </div>
                 <NuxtLink

@@ -464,7 +464,9 @@ func (h *Handler) PreviewSmartPlaylist(c *gin.Context) {
 func (h *Handler) buildSmartCategoryMembers(ctx context.Context, rules *SmartPlaylistRules) map[string]map[string]bool {
 	out := make(map[string]map[string]bool)
 	for _, cond := range rules.Conditions {
-		if cond.Field != "category" || cond.Value == "" {
+		// Only "category" + "eq" conditions consult membership; skip anything else
+		// so we don't issue a DB lookup that matchSmartCondition would never use.
+		if cond.Field != "category" || cond.Op != "eq" || cond.Value == "" {
 			continue
 		}
 		if _, done := out[cond.Value]; done {

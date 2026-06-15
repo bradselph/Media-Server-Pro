@@ -481,7 +481,7 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
               v-html="highlightMatch(getDisplayTitle(item), query)"
           />
           <p class="text-[10px] text-muted truncate">
-            <span v-html="highlightMatch(item.category || item.type, query)"/>
+            <span v-html="highlightMatch(item.type, query)"/>
             <span v-if="item.size"> · {{ formatBytes(item.size) }}</span>
           </p>
         </component>

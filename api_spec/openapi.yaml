@@ -50,6 +50,8 @@ tags:
     description: Storage usage
   - name: system
     description: System health and metrics
+  - name: admin
+    description: Admin operations not covered by a more specific admin-* tag (e.g. curated category CRUD)
   - name: admin-dashboard
     description: Admin dashboard and system info
   - name: admin-users
@@ -229,6 +231,10 @@ components:
           type: string
         filter_category:
           type: string
+          description: >-
+            Persisted library category filter — a curated MediaCategory id (UUID),
+            or empty for no filter. Legacy path-detected values are ignored by the
+            frontend.
         filter_media_type:
           type: string
         show_continue_watching:
@@ -593,7 +599,7 @@ components:
 
     Suggestion:
       type: object
-      required: [ media_id, title, category, media_type, score ]
+      required: [ media_id, title, media_type, score ]
       properties:
         media_id:
           type: string
@@ -601,6 +607,7 @@ components:
           type: string
         category:
           type: string
+          description: Human-readable curated category name (resolved server-side); empty when the item has no category.
         media_type:
           type: string
         score:
@@ -1522,10 +1529,11 @@ components:
 
     ViewHistory:
       type: object
-      required: [ category, media_type, view_count, total_time, last_viewed ]
+      required: [ media_type, view_count, total_time, last_viewed ]
       properties:
         category:
           type: string
+          description: Primary curated MediaCategory id of the viewed item; empty when uncategorised.
         media_type:
           type: string
         view_count:
@@ -1544,7 +1552,7 @@ components:
 
     RecentItem:
       type: object
-      required: [ id, name, type, category, date_added ]
+      required: [ id, name, type, date_added ]
       properties:
         id:
           type: string
@@ -1554,6 +1562,7 @@ components:
           type: string
         category:
           type: string
+          description: Deprecated path-detected field; omitted (empty) since the curated-category migration.
         date_added:
           type: string
           format: date-time
@@ -1564,7 +1573,7 @@ components:
 
     RatedItem:
       type: object
-      required: [ media_id, name, category, media_type, rating ]
+      required: [ media_id, name, media_type, rating ]
       properties:
         media_id:
           type: string
@@ -1572,6 +1581,7 @@ components:
           type: string
         category:
           type: string
+          description: Resolved curated category name; empty when the category was deleted or predates curated categories.
         media_type:
           type: string
         rating:
@@ -1595,6 +1605,12 @@ components:
           type: object
           additionalProperties:
             type: number
+          description: Keys are curated MediaCategory ids; values are accumulated view scores.
+        category_names:
+          type: object
+          additionalProperties:
+            type: string
+          description: Maps the category ids in category_scores to display names; only ids that still resolve to a live category are present.
         type_preferences:
           type: object
           additionalProperties:
@@ -5562,8 +5578,6 @@ paths:
                   type: array
                   items:
                     type: string
-                category:
-                  type: string
                 is_mature:
                   type: boolean
                 metadata:

@@ -149,7 +149,7 @@ function dropRecent(e: Event, q: string) {
             class="size-3.5 text-muted shrink-0"
         />
         <span class="truncate">{{ getDisplayTitle(item) }}</span>
-        <span v-if="item.category" class="ml-auto text-[10px] text-muted shrink-0">{{ item.category }}</span>
+        <span class="ml-auto text-[10px] text-muted shrink-0 capitalize">{{ item.type }}</span>
       </button>
     </div>
   </div>

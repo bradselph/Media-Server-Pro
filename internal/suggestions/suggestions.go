@@ -322,6 +322,10 @@ func (m *Module) RecordView(userID, mediaPath string, categoryIDs []string, medi
 		profile.ViewHistory[i].ViewCount++
 		profile.ViewHistory[i].TotalTime += duration
 		profile.ViewHistory[i].LastViewed = time.Now()
+		// Refresh the stored primary category so a pre-migration entry holding a
+		// stale path-detected bucket string is lazily corrected to a curated id
+		// (otherwise scoreRecentlyViewed could never match it).
+		profile.ViewHistory[i].Category = primaryCategory(categoryIDs)
 		found = true
 		break
 	}

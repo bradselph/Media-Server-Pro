@@ -416,10 +416,12 @@ func (h *Handler) GetRecentContent(c *gin.Context) {
 
 // mediaRecentItem is the response shape for GetRecentContent.
 type mediaRecentItem struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Type         string    `json:"type"`
-	Category     string    `json:"category"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+	// Category is the retired path-detected field — empty for all items since the
+	// curated-category migration, so it is omitted rather than emitting "".
+	Category     string    `json:"category,omitempty"`
 	Duration     float64   `json:"duration,omitempty"`
 	DateAdded    time.Time `json:"date_added"`
 	ThumbnailURL string    `json:"thumbnail_url,omitempty"`

@@ -27,6 +27,16 @@ func (h *Handler) categoryNamesByIDs(ctx context.Context, ids []string) map[stri
 	if gdb == nil {
 		return out
 	}
+	// Deduplicate so a batch of items sharing a category doesn't bloat the IN clause.
+	seen := make(map[string]struct{}, len(ids))
+	uniq := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniq = append(uniq, id)
+	}
 	type row struct {
 		ID   string
 		Name string
@@ -35,7 +45,7 @@ func (h *Handler) categoryNamesByIDs(ctx context.Context, ids []string) map[stri
 	if err := gdb.WithContext(ctx).
 		Model(&models.MediaCategory{}).
 		Select("id, name").
-		Where("id IN ?", ids).
+		Where("id IN ?", uniq).
 		Scan(&rows).Error; err != nil {
 		h.log.Warn("categoryNamesByIDs: %v", err)
 		return out
