@@ -27,10 +27,21 @@ appear as one to users, with the master proxying byte streams from the slave on 
 - Self-serve account deletion request flow (admin-approved; no automatic erase).
 - Mature-content age gate with cookie/IP TTL.
 
+**Browsing and discovery**
+
+- Admin-curated **Categories** — named, ordered groupings of media. This is the single category concept: categories are
+  browsable at `/categories`, selectable as a library-grid filter, surfaced as a "Top categories" strip, and used to
+  personalize recommendations. (The old auto path-detected category buckets have been retired.)
+- Tag-cloud browse (`/browse`) with AND/OR multi-select, plus search with type / category / minimum-rating filters.
+- Personalized recommendation rows — Continue Watching, Trending, Recommended For You — scored from each user's view
+  history and curated-category affinity.
+- Rule-based smart playlists (live-previewed) and saved searches that resurface new matches on the home page.
+
 **Admin surface**
 
-- Full admin UI: users, media library, scanner, classifier, HLS jobs, thumbnails, validator, suggestions, playlists,
-  sources, security, audit log, backups, updates, system config, and analytics.
+- Full admin UI: users, media library, categories, scanner, mature-content classifier, HLS jobs, thumbnails, validator,
+  suggestions, playlists, sources, downloader, crawler, security, audit log, backups, updates, system config, and
+  analytics.
 - Live config reload — most security and feature settings flip without a server restart.
 - Hot-reloadable rate limits, CORS origins, security headers, trusted-proxy CIDRs.
 - Built-in backup/restore with pre-upgrade DB snapshots taken on deploy.
@@ -191,8 +202,8 @@ the most common cause of "admin login fails" reports. `setup.sh` quotes automati
 | `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`                                     | off, 1000/60s | Per-IP rate limit                                                        |
 | `NUXT_PUBLIC_GA_ID`                                                                                          | empty         | Google Analytics 4 measurement id (baked into the bundle by `deploy.sh`) |
 
-The full matrix lives in `internal/config/env_overrides_*.go` (one file per concern: auth, server, storage, hls,
-security, receiver, follower, etc.).
+The full matrix lives in `internal/config/env_overrides_*.go` (one file per concern: auth, hls, security, database,
+downloader, analytics, features, dirs, logging, misc).
 
 ---
 
@@ -205,11 +216,12 @@ OpenAPI 3.0.3 spec at [`api_spec/openapi.yaml`](api_spec/openapi.yaml). Routes a
 The API surface covers:
 
 - `auth`, `users`, `tokens`, `permissions`, `preferences`
-- `media`, `streaming`, `hls`, `playback`, `watch-history`, `favorites`, `ratings`, `playlists`
-- `analytics`, `suggestions`, `feed`, `browse`
+- `media`, `categories`, `streaming`, `hls`, `playback`, `watch-history`, `favorites`, `ratings`, `playlists`,
+  `smart-playlists`
+- `analytics`, `suggestions`, `feed`, `tags` (browse)
 - `upload`, `thumbnails`, `storage`
 - `receiver` (slave-facing) and `admin-receiver` (admin-facing)
-- All `admin-*` modules: `admin-users`, `admin-media`, `admin-config`, `admin-tasks`, `admin-audit`, `admin-backups`,
+- All `admin-*` modules: `admin-users`, `admin-media`, `admin-dashboard`, `admin-config`, `admin-tasks`, `admin-audit`, `admin-backups`,
   `admin-scanner`, `admin-hls`, `admin-thumbnails`, `admin-validator`, `admin-playlists`, `admin-security`,
   `admin-discovery`, `admin-suggestions`, `admin-remote`, `admin-updates`, `admin-database`,
   `admin-analytics`, `admin-classify`, `admin-extractor`, `admin-crawler`, `admin-downloader`, `admin-duplicates`,
@@ -243,15 +255,15 @@ internal/
   extractor/           # external URL HLS proxy
   crawler/             # external library discovery
   scanner/             # local-disk media discovery
-  classify/            # mature-content tagging
+  suggestions/         # personalized recommendations + curated-category scoring
+  repositories/        # GORM-backed persistence (media metadata, categories, profiles)
   ...
 pkg/
   models/              # domain types
   helpers/             # cross-cutting utilities (SafeHTTPTransport, etc.)
   middleware/          # gin middleware (rate limit, IP filter, security headers)
   storage/             # S3/MinIO backend
-  huggingface/         # HF API client
-repositories/          # GORM-backed persistence
+  huggingface/         # HF mature-content classifier client
 web/
   nuxt-ui/             # Nuxt 3 SPA (frontend source)
   static/              # Embedded SPA build output
@@ -271,15 +283,15 @@ setup.sh / install.sh  # Interactive native setup
 ## Development
 
 ```bash
-# Backend (Go 1.26.2)
+# Backend (Go 1.26.4)
 go build ./...
 go test ./...
 
-# Frontend (Node 22, npm)
+# Frontend (Node 22+, npm)
 cd web/nuxt-ui
 npm install
-npm run dev          # standalone dev server (proxy to Go on :8080)
-npm run check        # codegen + typecheck + generate
+npm run dev          # standalone dev server (proxies /api + /media to the Go server on :8080)
+npm run check        # codegen from openapi.yaml → openapi-type verify → typecheck → static build
 npm run build        # writes static SPA into web/static
 ```
 
