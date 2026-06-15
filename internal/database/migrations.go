@@ -2,6 +2,8 @@ package database
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"regexp"
 )
@@ -236,25 +238,6 @@ var tableDefs = []struct {
 			reason TEXT,
 			PRIMARY KEY (path, reason(191)),
 			FOREIGN KEY (path) REFERENCES scan_results(path) ON DELETE CASCADE
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-	{"categorized_items", `
-		CREATE TABLE IF NOT EXISTS categorized_items (
-			path            VARCHAR(500) PRIMARY KEY,
-			id              VARCHAR(64)  NOT NULL,
-			name            VARCHAR(255) NOT NULL,
-			category        VARCHAR(50)  NOT NULL DEFAULT 'uncategorized',
-			confidence      FLOAT        DEFAULT 0.0,
-			detected_title  VARCHAR(255),
-			detected_year   INT,
-			detected_season INT,
-			detected_episode INT,
-			detected_show   VARCHAR(255),
-			detected_artist VARCHAR(255),
-			detected_album  VARCHAR(255),
-			categorized_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-			manual_override BOOLEAN      DEFAULT FALSE,
-			INDEX idx_category (category),
-			INDEX idx_id       (id)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"hls_jobs", `
 		CREATE TABLE IF NOT EXISTS hls_jobs (
@@ -563,25 +546,25 @@ var tableDefs = []struct {
 				updated_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 				INDEX idx_auto_tag_rules_priority (priority)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-	{"media_collections", `
-			CREATE TABLE IF NOT EXISTS media_collections (
+	{"media_categories", `
+			CREATE TABLE IF NOT EXISTS media_categories (
 				id             VARCHAR(36)  PRIMARY KEY,
 				name           VARCHAR(255) NOT NULL,
 				description    TEXT,
 				cover_media_id VARCHAR(36),
 				created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
 				updated_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-				INDEX idx_media_collections_name (name)
+				INDEX idx_media_categories_name (name)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
-	{"media_collection_items", `
-			CREATE TABLE IF NOT EXISTS media_collection_items (
-				collection_id VARCHAR(36) NOT NULL,
-				media_id      VARCHAR(36) NOT NULL,
-				position      INT         NOT NULL DEFAULT 0,
-				added_at      TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
-				PRIMARY KEY (collection_id, media_id),
-				INDEX idx_collection_items_media (media_id),
-				INDEX idx_collection_items_position (collection_id, position)
+	{"media_category_items", `
+			CREATE TABLE IF NOT EXISTS media_category_items (
+				category_id VARCHAR(36) NOT NULL,
+				media_id    VARCHAR(36) NOT NULL,
+				position    INT         NOT NULL DEFAULT 0,
+				added_at    TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (category_id, media_id),
+				INDEX idx_category_items_media (media_id),
+				INDEX idx_category_items_position (category_id, position)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 }
 
@@ -593,6 +576,9 @@ var tableDefs = []struct {
 // No migration tracking files or version numbers — just checks information_schema.
 func (m *Module) ensureSchema(ctx context.Context) error {
 	m.log.Info("Ensuring database schema...")
+	if err := m.migrateCollectionsToCategories(ctx); err != nil {
+		return err
+	}
 	if err := m.createTables(ctx); err != nil {
 		return err
 	}
@@ -932,10 +918,10 @@ func (m *Module) ensureSchemaForeignKeys(ctx context.Context) error {
 			alterSQL:   "ALTER TABLE user_favorites ADD CONSTRAINT fk_user_favorites_media FOREIGN KEY (media_path) REFERENCES media_metadata(path) ON DELETE CASCADE",
 		},
 		{
-			table:      "media_collection_items",
-			constraint: "fk_media_collection_items_collection",
-			cleanupSQL: "DELETE FROM media_collection_items WHERE collection_id NOT IN (SELECT id FROM media_collections)",
-			alterSQL:   "ALTER TABLE media_collection_items ADD CONSTRAINT fk_media_collection_items_collection FOREIGN KEY (collection_id) REFERENCES media_collections(id) ON DELETE CASCADE",
+			table:      "media_category_items",
+			constraint: "fk_media_category_items_category",
+			cleanupSQL: "DELETE FROM media_category_items WHERE category_id NOT IN (SELECT id FROM media_categories)",
+			alterSQL:   "ALTER TABLE media_category_items ADD CONSTRAINT fk_media_category_items_category FOREIGN KEY (category_id) REFERENCES media_categories(id) ON DELETE CASCADE",
 		},
 	}
 	for _, fk := range fks {
@@ -979,6 +965,73 @@ func (m *Module) ensureForeignKey(ctx context.Context, table, constraint, cleanu
 	if _, err := m.sqlDB.ExecContext(ctx, alterSQL); err != nil {
 		return fmt.Errorf("add FK %s.%s: %w", table, constraint, err)
 	}
+	return nil
+}
+
+// migrateCollectionsToCategories renames the legacy "media collections" tables
+// to the unified "media categories" naming. The collections feature was merged
+// into categories (they did the same thing), so existing deployments need their
+// data carried over rather than left behind in orphaned tables.
+//
+// It only runs when the old tables still exist and the new ones do not, so it is
+// a no-op on fresh installs (createTables makes the new tables directly) and on
+// already-migrated databases.
+func (m *Module) migrateCollectionsToCategories(ctx context.Context) error {
+	var oldExists, newExists bool
+	if err := m.sqlDB.QueryRowContext(ctx, `
+		SELECT COUNT(*) > 0 FROM information_schema.TABLES
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'media_collections'
+	`).Scan(&oldExists); err != nil {
+		return fmt.Errorf("check media_collections existence: %w", err)
+	}
+	if err := m.sqlDB.QueryRowContext(ctx, `
+		SELECT COUNT(*) > 0 FROM information_schema.TABLES
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'media_categories'
+	`).Scan(&newExists); err != nil {
+		return fmt.Errorf("check media_categories existence: %w", err)
+	}
+	if !oldExists || newExists {
+		return nil
+	}
+
+	m.log.Info("Migrating media_collections → media_categories")
+
+	// Drop the legacy FK first (if present) so the collection_id column rename
+	// below is unencumbered; ensureSchemaForeignKeys re-creates it afterwards
+	// under the new name (fk_media_category_items_category).
+	var fkName string
+	err := m.sqlDB.QueryRowContext(ctx, `
+		SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+		WHERE TABLE_SCHEMA    = DATABASE()
+		  AND TABLE_NAME      = 'media_collection_items'
+		  AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+		LIMIT 1
+	`).Scan(&fkName)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		// No FK to drop — fine.
+	case err != nil:
+		return fmt.Errorf("look up legacy collection FK: %w", err)
+	default:
+		if _, err := m.sqlDB.ExecContext(ctx,
+			fmt.Sprintf("ALTER TABLE media_collection_items DROP FOREIGN KEY `%s`", fkName)); err != nil {
+			return fmt.Errorf("drop legacy collection FK %s: %w", fkName, err)
+		}
+	}
+
+	if _, err := m.sqlDB.ExecContext(ctx,
+		"RENAME TABLE media_collections TO media_categories, media_collection_items TO media_category_items"); err != nil {
+		return fmt.Errorf("rename collection tables: %w", err)
+	}
+
+	// Rename the join column collection_id → category_id. CHANGE (rather than
+	// RENAME COLUMN) keeps this working on MySQL 5.7 as well as 8.0+.
+	if _, err := m.sqlDB.ExecContext(ctx,
+		"ALTER TABLE media_category_items CHANGE collection_id category_id VARCHAR(36) NOT NULL"); err != nil {
+		return fmt.Errorf("rename collection_id column: %w", err)
+	}
+
+	m.log.Info("Migrated media_collections → media_categories")
 	return nil
 }
 

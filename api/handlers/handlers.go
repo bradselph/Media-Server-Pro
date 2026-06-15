@@ -17,7 +17,6 @@
 //   - admin_remote.go        - Admin remote media handlers
 //   - admin_backups.go       - Admin backup handlers
 //   - admin_discovery.go     - Admin discovery handlers
-//   - admin_categorizer.go   - Admin categorizer handlers
 //   - admin_playlists.go     - Admin playlist handlers
 //   - admin_thumbnails.go    - Admin thumbnail handlers (delegates to thumbnails.go)
 //   - admin_validator.go     - Admin validator handlers

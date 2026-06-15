@@ -271,11 +271,6 @@ func (h *Handler) applyAdminRenameIfNeeded(path, reqName string) (string, error)
 	if h.suggestions != nil {
 		h.suggestions.RenameMediaPath(path, newPath)
 	}
-	// Re-key the categorization entry — category browse resolves items by
-	// path, so a stale key leaves dead player links until stale cleanup.
-	if h.categorizer != nil {
-		h.categorizer.RenamePath(path, newPath)
-	}
 	return newPath, nil
 }
 
@@ -390,16 +385,16 @@ func (h *Handler) cleanupDeletedMedia(ctx context.Context, mediaID, mediaPath st
 	if h.media != nil {
 		h.media.DeletePlaybackPositionsByPath(ctx, mediaPath)
 	}
-	// media_chapters and media_collection_items have no FK on media_id, so rows
+	// media_chapters and media_category_items have no FK on media_id, so rows
 	// must be purged explicitly to avoid orphans that still appear in
-	// ListChapters / collection views after the media is gone.
+	// ListChapters / category views after the media is gone.
 	if h.database != nil {
 		if gdb := h.database.GORM(); gdb != nil {
 			if err := gdb.WithContext(ctx).Exec("DELETE FROM media_chapters WHERE media_id = ?", mediaID).Error; err != nil {
 				h.log.Warn("Failed to cleanup chapters for deleted media %s: %v", mediaID, err)
 			}
-			if err := gdb.WithContext(ctx).Exec("DELETE FROM media_collection_items WHERE media_id = ?", mediaID).Error; err != nil {
-				h.log.Warn("Failed to cleanup collection items for deleted media %s: %v", mediaID, err)
+			if err := gdb.WithContext(ctx).Exec("DELETE FROM media_category_items WHERE media_id = ?", mediaID).Error; err != nil {
+				h.log.Warn("Failed to cleanup category items for deleted media %s: %v", mediaID, err)
 			}
 		}
 	}
@@ -414,9 +409,6 @@ func (h *Handler) cleanupDeletedMedia(ctx context.Context, mediaID, mediaPath st
 	}
 	if h.validator != nil {
 		h.validator.ClearResult(mediaPath)
-	}
-	if h.categorizer != nil {
-		h.categorizer.RemoveByPath(mediaPath)
 	}
 }
 

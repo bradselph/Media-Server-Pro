@@ -234,32 +234,6 @@ type AuditLogFilter struct {
 	Offset    int
 }
 
-// CategorizedItemRepository provides categorized media item storage
-type CategorizedItemRepository interface {
-	Upsert(ctx context.Context, item *CategorizedItemRecord) error
-	Get(ctx context.Context, path string) (*CategorizedItemRecord, error)
-	Delete(ctx context.Context, path string) error
-	List(ctx context.Context) ([]*CategorizedItemRecord, error)
-}
-
-// CategorizedItemRecord represents a categorized media item in the database
-type CategorizedItemRecord struct {
-	Path            string
-	ID              string
-	Name            string
-	Category        string
-	Confidence      float64
-	DetectedTitle   string
-	DetectedYear    int
-	DetectedSeason  int
-	DetectedEpisode int
-	DetectedShow    string
-	DetectedArtist  string
-	DetectedAlbum   string
-	CategorizedAt   time.Time
-	ManualOverride  bool
-}
-
 // HLSJobRepository provides HLS job persistence
 type HLSJobRepository interface {
 	Save(ctx context.Context, job *models.HLSJob) error
