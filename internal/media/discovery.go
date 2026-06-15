@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -24,8 +23,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/database"
@@ -50,29 +47,6 @@ var partialDownloadExtensions = map[string]bool{
 	".download": true, ".partial": true, ".tmp": true,
 }
 
-// Pre-compiled category detection patterns
-var (
-	// TV Show patterns
-	tvPatternSxE     = regexp.MustCompile(`s\d{1,2}e\d{1,2}`)
-	tvPatternNxN     = regexp.MustCompile(`\d{1,2}x\d{1,2}`)
-	tvPatternSeason  = regexp.MustCompile(`season\s*\d`)
-	tvPatternEpisode = regexp.MustCompile(`episode\s*\d`)
-	tvPatternDir     = regexp.MustCompile(`/tv\s*shows?/`)
-	tvPatternSeries  = regexp.MustCompile(`/series/`)
-
-	// Movie patterns
-	moviePatternDir     = regexp.MustCompile(`/movies?/`)
-	moviePatternFilms   = regexp.MustCompile(`/films?/`)
-	moviePatternYear    = regexp.MustCompile(`\(\d{4}\)`)
-	moviePatternDotYear = regexp.MustCompile(`\.\d{4}\.`)
-
-	// Music patterns
-	musicPatternDir    = regexp.MustCompile(`/music/`)
-	musicPatternAlbum  = regexp.MustCompile(`/albums?/`)
-	musicPatternArtist = regexp.MustCompile(`/artists?/`)
-	musicPatternSong   = regexp.MustCompile(`/songs?/`)
-)
-
 // Module implements media discovery and management
 type Module struct {
 	config       *config.Manager
@@ -80,7 +54,6 @@ type Module struct {
 	dbModule     *database.Module
 	media        map[string]*models.MediaItem
 	mediaByID    map[string]*models.MediaItem // secondary index: ID -> item for O(1) lookups
-	categories   map[string]*models.MediaCategory
 	metadata     map[string]*Metadata
 	metadataRepo repositories.MediaMetadataRepository
 	// fingerprintIndex maps content fingerprints to the metadata path that owns them.
@@ -238,7 +211,6 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) (*Module, error) 
 		dbModule:         dbModule,
 		media:            make(map[string]*models.MediaItem),
 		mediaByID:        make(map[string]*models.MediaItem),
-		categories:       make(map[string]*models.MediaCategory),
 		metadata:         make(map[string]*Metadata),
 		fingerprintIndex: make(map[string]string),
 		dataDir:          cfg.Get().Directories.Data,
@@ -600,9 +572,6 @@ func (m *Module) Scan() error {
 	}
 	m.mu.Unlock()
 
-	// Update categories
-	m.updateCategories()
-
 	duration := time.Since(start)
 	m.log.Info("Media scan complete: %d items found in %v", itemCount, duration)
 	m.healthMu.Lock()
@@ -772,6 +741,8 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 			item.Tags = make([]string, len(meta.Tags))
 			copy(item.Tags, meta.Tags)
 		}
+		// Category is set only by admin-curated category membership now; the old
+		// path-detection heuristic was retired. Carry forward any stored value.
 		if meta.Category != "" {
 			item.Category = meta.Category
 		}
@@ -780,15 +751,6 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 		}
 		item.DateAdded = meta.DateAdded
 		m.mu.Unlock()
-		// Auto-detect category from path when none is stored (mirrors createMediaItem).
-		if item.Category == "" {
-			item.Category = m.detectCategory(absKey)
-			m.mu.Lock()
-			if m.metadata[absKey] != nil {
-				m.metadata[absKey].Category = item.Category
-			}
-			m.mu.Unlock()
-		}
 	} else {
 		item.ID = uuid.New().String()
 		item.DateAdded = time.Now()
@@ -797,13 +759,6 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 			DateAdded:   item.DateAdded,
 			PlaybackPos: make(map[string]float64),
 			CustomMeta:  make(map[string]string),
-		}
-		m.mu.Unlock()
-		// Auto-detect category (no stored metadata yet).
-		item.Category = m.detectCategory(absKey)
-		m.mu.Lock()
-		if m.metadata[absKey] != nil {
-			m.metadata[absKey].Category = item.Category
 		}
 		m.mu.Unlock()
 	}
@@ -984,17 +939,11 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		m.mu.Unlock()
 	}
 
-	// Use stored category from DB when available (from categorizer or admin), else auto-detect from path and persist
+	// Carry forward any stored category. The old path-detection heuristic was
+	// retired — item categorisation is now driven entirely by admin-curated
+	// MediaCategory membership (media_category_items), not the path.
 	if hasMeta && meta.Category != "" {
 		item.Category = meta.Category
-	} else {
-		item.Category = m.detectCategory(path)
-		// Persist auto-detected category into metadata so it is saved to DB and used on next load
-		m.mu.Lock()
-		if m.metadata[path] != nil {
-			m.metadata[path].Category = item.Category
-		}
-		m.mu.Unlock()
 	}
 
 	// Check whether a thumbnail already exists on disk and pre-populate the URL.
@@ -1103,105 +1052,6 @@ func applyStreamData(current *models.MediaItem, probe *ffprobeResult) {
 		if stream.CodecType == "audio" && current.Codec == "" {
 			current.Codec = stream.CodecName
 		}
-	}
-}
-
-// detectCategory auto-detects media category from path
-func (m *Module) detectCategory(path string) string {
-	// Path already contains the full file path, just normalize it
-	lower := strings.ToLower(path)
-	// Normalize path separators to forward slash for regex matching
-	lower = strings.ReplaceAll(lower, "\\", "/")
-
-	// TV Show patterns
-	tvPatterns := []*regexp.Regexp{
-		tvPatternSxE, tvPatternNxN, tvPatternSeason,
-		tvPatternEpisode, tvPatternDir, tvPatternSeries,
-	}
-	for _, re := range tvPatterns {
-		if re.MatchString(lower) {
-			return "tv_shows"
-		}
-	}
-
-	// Movie patterns
-	moviePatterns := []*regexp.Regexp{
-		moviePatternDir, moviePatternFilms, moviePatternYear, moviePatternDotYear,
-	}
-	for _, re := range moviePatterns {
-		if re.MatchString(lower) {
-			return "movies"
-		}
-	}
-
-	// Music patterns
-	musicPatterns := []*regexp.Regexp{
-		musicPatternDir, musicPatternAlbum, musicPatternArtist, musicPatternSong,
-	}
-	for _, re := range musicPatterns {
-		if re.MatchString(lower) {
-			return "music"
-		}
-	}
-
-	// Default based on type
-	// Use filepath.Rel to check if path is contained within music directory
-	// This prevents false matches like "/media/music" matching "/media/musicvideos"
-	if m.config == nil {
-		return "uncategorized"
-	}
-	musicDir := m.config.Get().Directories.Music
-	if musicDir != "" {
-		rel, err := filepath.Rel(musicDir, path)
-		// If path is inside musicDir, rel will not start with ".." and will not error
-		if err == nil && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !strings.HasPrefix(rel, "..") {
-			return "music"
-		}
-	}
-
-	return "uncategorized"
-}
-
-// updateCategories updates category counts
-func (m *Module) updateCategories() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	counts := make(map[string]int)
-	for _, item := range m.media {
-		counts[item.Category]++
-	}
-
-	m.categories = make(map[string]*models.MediaCategory)
-	for name, count := range counts {
-		m.categories[name] = &models.MediaCategory{
-			Name:        name,
-			DisplayName: cases.Title(language.English).String(strings.ReplaceAll(name, "_", " ")),
-			Count:       count,
-		}
-	}
-}
-
-// adjustCategoryCount applies an incremental delta to one category's count so
-// per-item category updates don't need a full O(library) rebuild.
-// Must be called with m.mu held. The map entry is replaced with a fresh struct
-// (never mutated in place) because GetCategories hands out the live pointers.
-func (m *Module) adjustCategoryCount(name string, delta int) {
-	if name == "" {
-		return
-	}
-	count := delta
-	if cur, ok := m.categories[name]; ok {
-		count += cur.Count
-	}
-	if count <= 0 {
-		delete(m.categories, name)
-		return
-	}
-	m.categories[name] = &models.MediaCategory{
-		Name:        name,
-		DisplayName: cases.Title(language.English).String(strings.ReplaceAll(name, "_", " ")),
-		Count:       count,
 	}
 }
 
@@ -1335,8 +1185,8 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 	}
 
 	repoFilter := repositories.MediaFilter{
-		Category: filter.Category,
-		IsMature: filter.IsMature,
+		CategoryID: filter.CategoryID,
+		IsMature:   filter.IsMature,
 		Search:   filter.Search,
 		Type:     string(filter.Type),
 		Tags:     filter.Tags,
@@ -1382,10 +1232,19 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 
 // Filter defines filtering options for media listing.
 type Filter struct {
-	Type     models.MediaType
-	Category string
-	Search   string
-	Tags     []string
+	Type models.MediaType
+	// CategoryID is the curated MediaCategory.id to filter by (empty = no
+	// category filter). Used by ListMediaPaginated for the DB-level membership
+	// subquery against media_category_items.
+	CategoryID string
+	// CategoryIDSet is the expanded set of media IDs belonging to CategoryID,
+	// built by the handler so the in-memory Matches() can filter without a DB
+	// round-trip. When non-nil, only items whose ID is present pass — so a
+	// category with no members yields an empty result (fail closed), never the
+	// whole library.
+	CategoryIDSet map[string]bool
+	Search        string
+	Tags          []string
 	// TagsAll switches tag matching to AND mode: when true, an item must
 	// carry every tag in Tags; default (false) is OR — at least one match.
 	TagsAll  bool
@@ -1414,8 +1273,6 @@ func (f Filter) SortItems(items []*models.MediaItem) {
 			return items[i].Duration < items[j].Duration
 		case "type":
 			return items[i].Type < items[j].Type
-		case "category":
-			return items[i].Category < items[j].Category
 		case "bitrate":
 			return items[i].Bitrate < items[j].Bitrate
 		case "codec":
@@ -1453,7 +1310,10 @@ func (f Filter) Matches(item *models.MediaItem) bool {
 	if f.Type != "" && f.Type != models.MediaTypeUnknown && item.Type != f.Type {
 		return false
 	}
-	if f.Category != "" && item.Category != f.Category {
+	// Curated-category membership filter. When the handler set a category filter
+	// it expands the category's members into CategoryIDSet; a non-nil set means
+	// only those IDs pass (an empty set => no matches, never the whole library).
+	if f.CategoryIDSet != nil && !f.CategoryIDSet[item.ID] {
 		return false
 	}
 	if !f.matchesSearch(item) {
@@ -1469,17 +1329,14 @@ func (f Filter) Matches(item *models.MediaItem) bool {
 }
 
 // matchesSearch checks whether the item matches the search term in the filter.
-// Matches against item name, category, and tags — NOT the filesystem path,
-// which is an internal implementation detail hidden from API consumers.
+// Matches against item name and tags — NOT the filesystem path, which is an
+// internal implementation detail hidden from API consumers.
 func (f Filter) matchesSearch(item *models.MediaItem) bool {
 	if f.Search == "" {
 		return true
 	}
 	search := strings.ToLower(f.Search)
 	if strings.Contains(strings.ToLower(item.Name), search) {
-		return true
-	}
-	if strings.Contains(strings.ToLower(item.Category), search) {
 		return true
 	}
 	for _, tag := range item.Tags {
@@ -1509,18 +1366,6 @@ func (f Filter) matchesTags(item *models.MediaItem) bool {
 	return slices.ContainsFunc(f.Tags, func(tag string) bool {
 		return slices.Contains(item.Tags, tag)
 	})
-}
-
-// GetCategories returns all categories
-func (m *Module) GetCategories() []*models.MediaCategory {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	cats := make([]*models.MediaCategory, 0, len(m.categories))
-	for _, cat := range m.categories {
-		cats = append(cats, cat)
-	}
-	return cats
 }
 
 // TagCount pairs a tag name with the number of media items that carry it.

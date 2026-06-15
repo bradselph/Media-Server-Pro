@@ -22,7 +22,7 @@ func TestCriticalModules_Contains(t *testing.T) {
 }
 
 func TestCriticalModules_ExcludesNonCritical(t *testing.T) {
-	excluded := []string{"hls", "analytics", "playlist", "admin", "upload", "validator", "backup", "autodiscovery", "suggestions", "categorizer", "updater", "remote", "receiver"}
+	excluded := []string{"hls", "analytics", "playlist", "admin", "upload", "validator", "backup", "autodiscovery", "suggestions", "updater", "remote", "receiver"}
 	for _, name := range excluded {
 		if CriticalModules[name] {
 			t.Errorf("CriticalModules should NOT contain %q", name)

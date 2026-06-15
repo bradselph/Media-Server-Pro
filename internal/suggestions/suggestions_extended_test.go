@@ -15,7 +15,7 @@ func TestScoreRecentlyViewed_MatchingCategory(t *testing.T) {
 			{Category: "movies", LastViewed: time.Now().Add(-1 * time.Hour)},
 		},
 	}
-	media := &MediaInfo{Category: "movies", MediaType: "video"}
+	media := &MediaInfo{CategoryIDs: []string{"movies"}, MediaType: "video"}
 	var reasons []string
 	score := scoreRecentlyViewed(profile, media, &reasons)
 	if score <= 0 {
@@ -32,7 +32,7 @@ func TestScoreRecentlyViewed_OldHistory(t *testing.T) {
 			{Category: "movies", LastViewed: time.Now().Add(-30 * 24 * time.Hour)},
 		},
 	}
-	media := &MediaInfo{Category: "movies"}
+	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
 	score := scoreRecentlyViewed(profile, media, &reasons)
 	if score != 0 {
@@ -46,7 +46,7 @@ func TestScoreRecentlyViewed_DifferentCategory(t *testing.T) {
 			{Category: "anime", LastViewed: time.Now().Add(-1 * time.Hour)},
 		},
 	}
-	media := &MediaInfo{Category: "movies"}
+	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
 	score := scoreRecentlyViewed(profile, media, &reasons)
 	if score != 0 {
@@ -56,7 +56,7 @@ func TestScoreRecentlyViewed_DifferentCategory(t *testing.T) {
 
 func TestScoreRecentlyViewed_EmptyHistory(t *testing.T) {
 	profile := &UserProfile{}
-	media := &MediaInfo{Category: "movies"}
+	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
 	score := scoreRecentlyViewed(profile, media, &reasons)
 	if score != 0 {
@@ -73,7 +73,7 @@ func TestScoreCategoryPreference_HighScore(t *testing.T) {
 		CategoryScores: map[string]float64{"movies": 0.9, "anime": 0.3},
 		TotalViews:     20,
 	}
-	media := &MediaInfo{Category: "movies"}
+	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
 	score := scoreCategoryPreference(profile, media, &reasons)
 	if score <= 0 {
@@ -86,7 +86,7 @@ func TestScoreCategoryPreference_NoPreference(t *testing.T) {
 		CategoryScores: map[string]float64{"anime": 0.5},
 		TotalViews:     10,
 	}
-	media := &MediaInfo{Category: "movies"}
+	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
 	score := scoreCategoryPreference(profile, media, &reasons)
 	if score != 0 {
@@ -115,8 +115,8 @@ func TestScoreTypePreference_EmptyPreferences(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestComputeSimilarity_DifferentMedia(t *testing.T) {
-	a := &MediaInfo{Category: "movies", MediaType: "video", Title: "Action Movie", Tags: []string{"action"}}
-	b := &MediaInfo{Category: "music", MediaType: "audio", Title: "Jazz Album", Tags: []string{"jazz"}}
+	a := &MediaInfo{CategoryIDs: []string{"movies"}, MediaType: "video", Title: "Action Movie", Tags: []string{"action"}}
+	b := &MediaInfo{CategoryIDs: []string{"music"}, MediaType: "audio", Title: "Jazz Album", Tags: []string{"jazz"}}
 	score, _ := computeSimilarity(a, b)
 	if score > 0.5 {
 		t.Errorf("very different media should have low similarity, got %f", score)
@@ -124,8 +124,8 @@ func TestComputeSimilarity_DifferentMedia(t *testing.T) {
 }
 
 func TestComputeSimilarity_IdenticalMedia(t *testing.T) {
-	a := &MediaInfo{Category: "movies", MediaType: "video", Title: "Test Movie", Tags: []string{"action", "sci-fi"}}
-	b := &MediaInfo{Category: "movies", MediaType: "video", Title: "Test Movie", Tags: []string{"action", "sci-fi"}}
+	a := &MediaInfo{CategoryIDs: []string{"movies"}, MediaType: "video", Title: "Test Movie", Tags: []string{"action", "sci-fi"}}
+	b := &MediaInfo{CategoryIDs: []string{"movies"}, MediaType: "video", Title: "Test Movie", Tags: []string{"action", "sci-fi"}}
 	score, _ := computeSimilarity(a, b)
 	if score < 0.5 {
 		t.Errorf("identical media should have high similarity, got %f", score)

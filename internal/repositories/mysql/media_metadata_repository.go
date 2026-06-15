@@ -304,18 +304,20 @@ func (r *MediaMetadataRepository) ListFiltered(ctx context.Context, filter repos
 	query := r.db.WithContext(ctx).Model(&mediaMetadataRow{})
 
 	// Apply filters
-	if filter.Category != "" {
-		query = query.Where("category = ?", filter.Category)
+	if filter.CategoryID != "" {
+		// Restrict to items belonging to the curated category via membership table.
+		query = query.Where("stable_id IN (SELECT media_id FROM media_category_items WHERE category_id = ?)", filter.CategoryID)
 	}
 	if filter.IsMature != nil {
 		query = query.Where("is_mature = ?", *filter.IsMature)
 	}
 	if filter.Search != "" {
-		// Split into words so "blonde sassy" matches items containing both words
-		// anywhere in path or category (AND logic: every word must appear).
+		// Split into words so "blonde sassy" matches items whose path contains
+		// every word (AND logic). Curated category names are intentionally not
+		// searched here — category filtering goes through CategoryID above.
 		for word := range strings.FieldsSeq(filter.Search) {
 			like := "%" + escapeLike(word) + "%"
-			query = query.Where("(path LIKE ? ESCAPE '\\\\' OR category LIKE ? ESCAPE '\\\\')", like, like)
+			query = query.Where("path LIKE ? ESCAPE '\\\\'", like)
 		}
 	}
 	switch filter.Type {

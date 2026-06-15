@@ -230,11 +230,11 @@ const adminActions = ref<AuditLogEntry[]>([])
 const adminActionsLoading = ref(false)
 const adminActionsCategory = ref<'all' | 'governance' | 'curation' | 'config' | 'tasks'>('all')
 // Map of category → audit_log action prefixes / exact matches. The audit_log
-// `action` column carries the analytics event name (collection_create,
+// `action` column carries the analytics event name (category_create,
 // backup_restore, etc.), so simple prefix matching is enough for grouping.
 const ADMIN_ACTION_CATEGORIES: Record<string, (action: string) => boolean> = {
   governance: a => a.startsWith('user_role') || a.startsWith('deletion_request') || a === 'admin_action' || a === 'bulk_delete' || a === 'bulk_update' || a === 'account_delete',
-  curation: a => a.startsWith('collection_') || a.startsWith('smart_playlist_') || a.startsWith('chapter_') || a.startsWith('auto_tag_') || a === 'thumbnail_upload',
+  curation: a => a.startsWith('category_') || a.startsWith('smart_playlist_') || a.startsWith('chapter_') || a.startsWith('auto_tag_') || a === 'thumbnail_upload',
   config: a => a === 'config_update' || a === 'follower_settings_update' || a.startsWith('api_token_'),
   tasks: a => a.startsWith('admin_task_') || a.startsWith('backup_') || a.startsWith('scan_') || a === 'thumbnail_cleanup',
 }

@@ -17,9 +17,6 @@ import type {
     AutoTagRule,
     BackupEntry,
     BannedIP,
-    CategorizedItem,
-    CategoryBrowseResponse,
-    CategoryStats,
     ClassifyStats,
     ClassifyStatus,
     CohortMetrics,
@@ -67,7 +64,6 @@ import type {
     LoginResponse,
     MediaCategory,
     MediaChapter,
-    MediaCollection,
     MediaDetail,
     MediaItem,
     MediaListParams,
@@ -264,7 +260,6 @@ export function useMediaApi() {
                 items: Record<string, MediaItem>
             }>(`/api/media/batch?ids=${ids.map(encodeURIComponent).join(',')}`),
         getStats: () => api.get<MediaStats>('/api/media/stats'),
-        getCategories: () => api.get<MediaCategory[]>('/api/media/categories'),
         getThumbnailUrl: (id: string) => `/thumbnail?id=${encodeURIComponent(id)}`,
         getThumbnailPreviews: (id: string) => api.get<ThumbnailPreviews>(`/api/thumbnails/previews?id=${encodeURIComponent(id)}`),
         getThumbnailBatch: (ids: string[], width?: number) => {
@@ -495,17 +490,6 @@ export function useTagsApi() {
     }
 }
 
-export function useCategoryBrowseApi() {
-    return {
-        getStats: () => api.get<CategoryStats>('/api/browse/categories'),
-        getByCategory: (category: string, limit?: number, offset?: number) => {
-            const limitPart = limit ? `&limit=${limit}` : ''
-            const offsetPart = offset ? `&offset=${offset}` : ''
-            return api.get<CategoryBrowseResponse>(`/api/browse/categories?category=${encodeURIComponent(category)}${limitPart}${offsetPart}`)
-        },
-    }
-}
-
 // ── Upload ────────────────────────────────────────────────────────────────────
 
 export function useUploadApi() {
@@ -569,7 +553,7 @@ export function useAdminApi() {
         updateMedia: (id: string, data: Partial<MediaItem>) =>
             api.put<MediaItem | { message: string }>(`${base}/media/${encodeURIComponent(id)}`, data),
         deleteMedia: (id: string) => api.delete<void>(`${base}/media/${encodeURIComponent(id)}`),
-        bulkMedia: (ids: string[], action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) =>
+        bulkMedia: (ids: string[], action: 'delete' | 'update', data?: { is_mature?: boolean }) =>
             api.post<{ success: number; failed: number; errors: string[] }>(`${base}/media/bulk`, {ids, action, data}),
         generateThumbnail: (id: string, isAudio?: boolean) =>
             api.post<void>(`${base}/thumbnails/generate`, {id, is_audio: isAudio ?? false}),
@@ -707,18 +691,6 @@ export function useAdminApi() {
         banIP: (ip: string, durationMinutes?: number, reason?: string) =>
             api.post<void>(`${base}/security/ban`, {ip, ...(durationMinutes ? {duration_minutes: durationMinutes} : {}), ...(reason ? {reason} : {})}),
         unbanIP: (ip: string) => api.post<void>(`${base}/security/unban`, {ip}),
-
-        // Categorizer
-        categorizeFile: (path: string) =>
-            api.post<CategorizedItem>(`${base}/categorizer/file`, {path}),
-        categorizeDirectory: (dir: string) =>
-            api.post<CategorizedItem[]>(`${base}/categorizer/directory`, {directory: dir}),
-        getCategoryStats: () => api.get<CategoryStats>(`${base}/categorizer/stats`),
-        setMediaCategory: (path: string, category: string) =>
-            api.post<{ message: string }>(`${base}/categorizer/set`, {path, category}),
-        getByCategory: (category: string) =>
-            api.get<CategorizedItem[]>(`${base}/categorizer/by-category?category=${encodeURIComponent(category)}`),
-        cleanStaleCategories: () => api.post<{ removed: number }>(`${base}/categorizer/clean`),
 
         // Database
         getDatabaseStatus: () => api.get<DatabaseStatus>(`${base}/database/status`),
@@ -1168,28 +1140,29 @@ export function useChaptersApi() {
 }
 
 
-// ── Collections ───────────────────────────────────────────────────────────────
+// ── Categories ──────────────────────────────────────────────────────────────
+// Admin-curated, ordered groupings of media items (formerly "collections").
 
-export function useCollectionsApi() {
+export function useCategoriesApi() {
     const adminBase = '/api/admin'
     return {
-        list: () => api.get<MediaCollection[]>('/api/collections'),
-        get: (id: string) => api.get<MediaCollection>(`/api/collections/${encodeURIComponent(id)}`),
-        getForMedia: (mediaId: string) => api.get<MediaCollection[]>(`/api/media/${encodeURIComponent(mediaId)}/collections`),
+        list: () => api.get<MediaCategory[]>('/api/categories'),
+        get: (id: string) => api.get<MediaCategory>(`/api/categories/${encodeURIComponent(id)}`),
+        getForMedia: (mediaId: string) => api.get<MediaCategory[]>(`/api/media/${encodeURIComponent(mediaId)}/categories`),
         create: (data: { name: string; description?: string; cover_media_id?: string }) =>
-            api.post<MediaCollection>(`${adminBase}/collections`, data),
+            api.post<MediaCategory>(`${adminBase}/categories`, data),
         update: (id: string, data: Partial<{ name: string; description: string; cover_media_id: string }>) =>
-            api.put<MediaCollection>(`${adminBase}/collections/${encodeURIComponent(id)}`, data),
-        delete: (id: string) => api.delete<void>(`${adminBase}/collections/${encodeURIComponent(id)}`),
-        addItems: (collectionId: string, mediaIds: string[], positionStart = 0) =>
+            api.put<MediaCategory>(`${adminBase}/categories/${encodeURIComponent(id)}`, data),
+        delete: (id: string) => api.delete<void>(`${adminBase}/categories/${encodeURIComponent(id)}`),
+        addItems: (categoryId: string, mediaIds: string[], positionStart = 0) =>
             api.post<{
                 message: string;
                 count: number
-            }>(`${adminBase}/collections/${encodeURIComponent(collectionId)}/items`, {
+            }>(`${adminBase}/categories/${encodeURIComponent(categoryId)}/items`, {
                 media_ids: mediaIds,
                 position_start: positionStart,
             }),
-        removeItem: (collectionId: string, mediaId: string) =>
-            api.delete<void>(`${adminBase}/collections/${encodeURIComponent(collectionId)}/items/${encodeURIComponent(mediaId)}`),
+        removeItem: (categoryId: string, mediaId: string) =>
+            api.delete<void>(`${adminBase}/categories/${encodeURIComponent(categoryId)}/items/${encodeURIComponent(mediaId)}`),
     }
 }

@@ -40,7 +40,6 @@ func TestAdminEndpoints_RequireAuth(t *testing.T) {
 		{"GET", "/api/admin/security/stats"},
 		{"GET", "/api/admin/database/status"},
 		{"GET", "/api/admin/validator/stats"},
-		{"GET", "/api/admin/categorizer/stats"},
 		{"GET", "/api/admin/playlists"},
 		{"GET", "/api/admin/playlists/stats"},
 		{"GET", "/api/admin/suggestions/stats"},

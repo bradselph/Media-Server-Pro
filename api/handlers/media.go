@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/analytics"
-	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/streaming"
 	"media-server-pro/internal/suggestions"
@@ -88,13 +88,28 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 	filterNoPagination := media.Filter{
 		Type:     models.MediaType(c.Query("type")),
-		Category: c.Query("category"),
 		Search:   truncateQuery(c.Query("search"), 200),
 		Tags:     tags,
 		TagsAll:  strings.EqualFold(c.Query("tag_mode"), "and"),
 		IsMature: isMature,
 		SortBy:   sortBy,
 		SortDesc: c.Query("sort_order") == "desc",
+	}
+	// Curated-category filter: ?category=<MediaCategory.id> restricts the listing
+	// to items in that category (via media_category_items). Resolve the member-ID
+	// set so the in-memory fast path and the receiver/extractor merge both honour
+	// it. Fail closed on a DB error so a hiccup can't leak the whole library past
+	// a category filter.
+	if catID := c.Query("category"); catID != "" && catID != "all" {
+		filterNoPagination.CategoryID = catID
+		members, err := h.media.GetCategoryMemberIDs(c.Request.Context(), catID)
+		if err != nil {
+			h.log.Warn("Category member lookup failed for %s: %v", catID, err)
+			members = map[string]bool{}
+		} else if members == nil {
+			members = map[string]bool{}
+		}
+		filterNoPagination.CategoryIDSet = members
 	}
 
 	// Fast path: a plain public browse/search needs neither cross-module merge
@@ -545,19 +560,31 @@ func (h *Handler) refreshSuggestionsCatalog() {
 		return
 	}
 	items := h.media.ListMedia(media.Filter{})
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	// Resolve curated-category membership in one batch so suggestions score
+	// against real categories instead of the retired path-detected buckets.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	catIDs, err := h.media.GetCategoryIDsForItems(ctx, ids)
+	cancel()
+	if err != nil {
+		h.log.Warn("Failed to load category membership for suggestions refresh: %v", err)
+	}
 	mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
 	for _, item := range items {
 		mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
-			Path:      item.Path,
-			StableID:  item.ID,
-			Title:     item.Name,
-			Category:  item.Category,
-			MediaType: string(item.Type),
-			Tags:      item.Tags,
-			Views:     item.Views,
-			Duration:  item.Duration,
-			AddedAt:   item.DateAdded,
-			IsMature:  item.IsMature,
+			Path:        item.Path,
+			StableID:    item.ID,
+			Title:       item.Name,
+			CategoryIDs: catIDs[item.ID],
+			MediaType:   string(item.Type),
+			Tags:        item.Tags,
+			Views:       item.Views,
+			Duration:    item.Duration,
+			AddedAt:     item.DateAdded,
+			IsMature:    item.IsMature,
 		})
 	}
 	h.suggestions.UpdateMediaData(mediaInfos)
@@ -579,12 +606,6 @@ func (h *Handler) ScanMedia(c *gin.Context) {
 	writeSuccess(c, map[string]string{"message": "Scan started"})
 }
 
-// GetCategories returns media categories
-func (h *Handler) GetCategories(c *gin.Context) {
-	categories := h.media.GetCategories()
-	writeSuccess(c, categories)
-}
-
 // GetTagCounts returns the aggregate tag → item-count distribution across
 // the library, powering the tag-cloud browse page (retention plan B.1).
 // Mature tags are filtered out for callers without the mature-view permission
@@ -599,108 +620,6 @@ func (h *Handler) GetTagCounts(c *gin.Context) {
 	writeSuccess(c, tags)
 }
 
-// GetCategoryBrowse returns user-facing categorized items for a given category.
-// When no category is specified, returns category counts (stats).
-// Accepts ?category=TV+Shows&limit=N&offset=N (default limit 200, max 500).
-// Response always includes the full category total so the SPA can paginate
-// across the slice — without it, categories with >limit items silently truncate.
-func (h *Handler) GetCategoryBrowse(c *gin.Context) {
-	if !h.requireCategorizer(c) {
-		return
-	}
-	category := c.Query("category")
-	limit := 200
-	if l, err := strconv.Atoi(c.Query("limit")); err == nil && l > 0 && l <= 500 {
-		limit = l
-	}
-	offset := 0
-	if o, err := strconv.Atoi(c.Query("offset")); err == nil && o >= 0 {
-		offset = o
-	}
-
-	if category == "" {
-		stats := h.categorizer.GetStats()
-		writeSuccess(c, stats)
-		return
-	}
-
-	items := h.categorizer.GetByCategory(categorizer.Category(category))
-
-	// Resolve each categorized path to its live media item. The categorizer
-	// assigns its own internal UUIDs, which the media module and thumbnail
-	// store don't know — by-ID lookups always missed, leaving browse items
-	// with no duration, no thumbnail, and dead /player?id= links. Resolution
-	// happens before windowing so mature-gated items don't shift pages.
-	canMature := h.canViewMatureContent(c)
-	type resolvedItem struct {
-		cat   *categorizer.CategorizedItem
-		media *models.MediaItem
-	}
-	resolved := make([]resolvedItem, 0, len(items))
-	for _, item := range items {
-		var mi *models.MediaItem
-		if h.media != nil && item.Path != "" {
-			if found, err := h.media.GetMedia(item.Path); err == nil {
-				mi = found
-			}
-		}
-		// Unresolved items (mi == nil: deleted or not yet scanned) have an
-		// unknown mature flag — fail closed for viewers without mature access.
-		if !canMature && (mi == nil || mi.IsMature) {
-			continue
-		}
-		resolved = append(resolved, resolvedItem{cat: item, media: mi})
-	}
-	total := len(resolved)
-
-	end := offset + limit
-	if offset > total {
-		offset = total
-	}
-	if end > total {
-		end = total
-	}
-	pageItems := resolved[offset:end]
-
-	type browseItem struct {
-		ID           string  `json:"id"`
-		Name         string  `json:"name"`
-		Category     string  `json:"category"`
-		Confidence   float64 `json:"confidence"`
-		Duration     float64 `json:"duration,omitempty"`
-		DetectedInfo any     `json:"detected_info,omitempty"`
-		ThumbnailURL string  `json:"thumbnail_url,omitempty"`
-	}
-	results := make([]browseItem, 0, len(pageItems))
-	for _, ri := range pageItems {
-		item := ri.cat
-		bi := browseItem{
-			ID:           item.ID,
-			Name:         item.Name,
-			Category:     string(item.Category),
-			Confidence:   item.Confidence,
-			DetectedInfo: item.DetectedInfo,
-		}
-		if ri.media != nil {
-			// The media module's stable ID makes /player?id= links and
-			// thumbnail lookups actually resolve.
-			bi.ID = ri.media.ID
-			bi.Duration = ri.media.Duration
-		}
-		if h.thumbnails != nil && ri.media != nil {
-			bi.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(ri.media.ID))
-		}
-		results = append(results, bi)
-	}
-
-	writeSuccess(c, map[string]any{
-		"category": category,
-		"items":    results,
-		"total":    total,
-		"offset":   offset,
-		"limit":    limit,
-	})
-}
 
 // StreamMedia streams a media file
 func (h *Handler) StreamMedia(c *gin.Context) {
@@ -792,7 +711,11 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 						})
 					}
 					if h.suggestions != nil && trackUserID != "" {
-						h.suggestions.RecordView(trackUserID, id, "", item.MediaType, item.Duration)
+						// Receiver items can be added to curated categories too;
+						// look up membership by ID so federated views still build
+						// category affinity.
+						catIDs := h.media.GetCategoryIDsForItem(c.Request.Context(), id)
+						h.suggestions.RecordView(trackUserID, id, catIDs, item.MediaType, item.Duration)
 					}
 				}
 				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
@@ -906,7 +829,8 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		}
 
 		if h.suggestions != nil && userID != "" && localItem != nil {
-			h.suggestions.RecordView(userID, absPath, localItem.Category, string(localItem.Type), localItem.Duration)
+			catIDs := h.media.GetCategoryIDsForItem(c.Request.Context(), localItem.ID)
+			h.suggestions.RecordView(userID, absPath, catIDs, string(localItem.Type), localItem.Duration)
 		}
 
 		if err := h.media.IncrementViews(c.Request.Context(), absPath); err != nil {

@@ -88,11 +88,11 @@ const (
 	// admin actions panel and audit log, but intentionally NOT mapped to a
 	// daily_stats column. Adding a column for every micro-action would balloon
 	// the schema; counts come from event-by-type queries on demand.
-	EventCollectionCreate     = "collection_create"
-	EventCollectionUpdate     = "collection_update"
-	EventCollectionDelete     = "collection_delete"
-	EventCollectionItemsAdd   = "collection_items_add"
-	EventCollectionItemRemove = "collection_item_remove"
+	EventCategoryCreate     = "category_create"
+	EventCategoryUpdate     = "category_update"
+	EventCategoryDelete     = "category_delete"
+	EventCategoryItemsAdd   = "category_items_add"
+	EventCategoryItemRemove = "category_item_remove"
 	EventSmartPlaylistCreate  = "smart_playlist_create"
 	EventSmartPlaylistUpdate  = "smart_playlist_update"
 	EventSmartPlaylistDelete  = "smart_playlist_delete"
@@ -152,9 +152,8 @@ const (
 	EventUpdaterConfigUpdate      = "updater_config_update"
 
 	// Classification + scanner-pipeline events, emitted by their respective
-	// admin handlers (classify/categorizer/validator/discovery/downloader/etc.).
+	// admin handlers (classify/validator/discovery/downloader/etc.).
 	EventClassifyRun          = "classify_run"
-	EventCategorizerRun       = "categorizer_run"
 	EventValidatorRun         = "validator_run"
 	EventDiscoveryRun         = "discovery_run"
 	EventDownloaderJobCreate  = "downloader_job_create"

@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import type {
-  CategorizedItem,
-  CategoryStats,
   ClassifyStats,
   ClassifyStatus,
   DiscoverySuggestion,
@@ -14,108 +12,12 @@ import {useAdminFeedback} from '~/composables/useAdminFeedback'
 const adminApi = useAdminApi()
 const {notifyError, notifySuccess} = useAdminFeedback()
 
-const subTab = ref('categorizer')
+const subTab = ref('discovery')
 const subTabs = [
-  {label: 'Categorizer', value: 'categorizer', icon: 'i-lucide-tag'},
   {label: 'Auto-Discovery', value: 'discovery', icon: 'i-lucide-compass'},
   {label: 'Rec. Engine', value: 'suggestions', icon: 'i-lucide-sparkles'},
   {label: 'Classification', value: 'classify', icon: 'i-lucide-brain'},
 ]
-
-// ── Categorizer ────────────────────────────────────────────────────────────────
-const categoryStats = ref<CategoryStats | null>(null)
-const categorizerLoading = ref(false)
-const categorizePath = ref('')
-const categorizeCategory = ref('')
-const categorizing = ref(false)
-const categorizeResult = ref<unknown>(null)
-
-async function loadCategorizer() {
-  categorizerLoading.value = true
-  try {
-    categoryStats.value = await adminApi.getCategoryStats()
-  } catch (e: unknown) {
-    notifyError(e, 'Failed to load categorizer', 'i-lucide-alert-circle')
-  } finally {
-    categorizerLoading.value = false
-  }
-}
-
-async function categorizeFile() {
-  if (!categorizePath.value.trim()) return
-  categorizing.value = true
-  try {
-    categorizeResult.value = await adminApi.categorizeFile(categorizePath.value.trim())
-    notifySuccess('File categorized')
-    await loadCategorizer()
-  } catch (e: unknown) {
-    notifyError(e, 'Failed')
-  } finally {
-    categorizing.value = false
-  }
-}
-
-async function categorizeDirectory() {
-  if (!categorizePath.value.trim()) return
-  categorizing.value = true
-  try {
-    const results = await adminApi.categorizeDirectory(categorizePath.value.trim())
-    categorizeResult.value = results
-    notifySuccess(`Categorized ${Array.isArray(results) ? results.length : 0} files`)
-    await loadCategorizer()
-  } catch (e: unknown) {
-    notifyError(e, 'Failed')
-  } finally {
-    categorizing.value = false
-  }
-}
-
-async function setCategory() {
-  if (!categorizePath.value.trim() || !categorizeCategory.value.trim()) return
-  categorizing.value = true
-  try {
-    await adminApi.setMediaCategory(categorizePath.value.trim(), categorizeCategory.value.trim())
-    notifySuccess('Category set')
-    await loadCategorizer()
-  } catch (e: unknown) {
-    notifyError(e, 'Failed')
-  } finally {
-    categorizing.value = false
-  }
-}
-
-const browseCategory = ref('')
-const categoryItems = ref<CategorizedItem[]>([])
-const categoryItemsLoading = ref(false)
-
-async function browseByCategory() {
-  if (!browseCategory.value.trim()) return
-  categoryItemsLoading.value = true
-  try {
-    categoryItems.value = (await adminApi.getByCategory(browseCategory.value.trim())) ?? []
-  } catch (e: unknown) {
-    notifyError(e, 'Failed')
-  } finally {
-    categoryItemsLoading.value = false
-  }
-}
-
-const cleaningStale = ref(false)
-
-async function cleanStaleCategories() {
-  if (cleaningStale.value) return
-  cleaningStale.value = true
-  try {
-    const res = await adminApi.cleanStaleCategories()
-    const removed = asRecord(res)?.removed
-    notifySuccess(`Cleaned ${typeof removed === 'number' ? removed : 0} stale entries`)
-    await loadCategorizer()
-  } catch (e: unknown) {
-    notifyError(e, 'Failed')
-  } finally {
-    cleaningStale.value = false
-  }
-}
 
 // ── Auto-Discovery ─────────────────────────────────────────────────────────────
 const discoverySuggestions = ref<DiscoverySuggestion[]>([])
@@ -296,8 +198,7 @@ async function clearClassificationTags() {
 
 // Tab-switching lazy load
 watch(subTab, (tab) => {
-  if (tab === 'categorizer' && !categoryStats.value && !categorizerLoading.value) loadCategorizer()
-  else if (tab === 'discovery' && discoverySuggestions.value.length === 0 && !discoveryLoading.value) loadDiscovery()
+  if (tab === 'discovery' && discoverySuggestions.value.length === 0 && !discoveryLoading.value) loadDiscovery()
   else if (tab === 'suggestions' && !suggestionStats.value && !suggestionsLoading.value) loadSuggestions()
   else if (tab === 'classify' && !classifyStatus.value && !classifyLoading.value) loadClassify()
 }, {immediate: true})
@@ -309,94 +210,8 @@ watch(subTab, (tab) => {
       <template #content="{ item }">
         <div class="pt-3 space-y-4">
 
-          <!-- ── Categorizer ─────────────────────────────────────────────── -->
-          <template v-if="item.value === 'categorizer'">
-            <div v-if="categoryStats" class="space-y-4">
-              <!-- Stats -->
-              <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <UCard>
-                  <p class="text-2xl font-bold">{{ categoryStats.total_items }}</p>
-                  <p class="text-xs text-muted mt-1">Total Categorized</p>
-                </UCard>
-                <UCard>
-                  <p class="text-2xl font-bold">{{ categoryStats.manual_overrides }}</p>
-                  <p class="text-xs text-muted mt-1">Manual Overrides</p>
-                </UCard>
-                <UCard>
-                  <p class="text-2xl font-bold">{{ Object.keys(categoryStats.by_category).length }}</p>
-                  <p class="text-xs text-muted mt-1">Categories</p>
-                </UCard>
-              </div>
-              <!-- By-category breakdown -->
-              <UCard v-if="Object.keys(categoryStats.by_category).length > 0">
-                <template #header><span class="font-semibold">By Category</span></template>
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <div v-for="(count, cat) in categoryStats.by_category" :key="cat"
-                       class="flex items-center justify-between p-2 rounded bg-muted/30">
-                    <span class="text-sm font-medium capitalize">{{ cat }}</span>
-                    <UBadge :label="String(count)" color="neutral" variant="subtle" size="xs"/>
-                  </div>
-                </div>
-              </UCard>
-            </div>
-            <div v-else-if="categorizerLoading" class="flex justify-center py-8">
-              <UIcon name="i-lucide-loader-2" class="animate-spin size-6"/>
-            </div>
-
-            <!-- Actions -->
-            <UCard>
-              <template #header><span class="font-semibold">Categorize / Set Category</span></template>
-              <div class="space-y-2">
-                <UInput v-model="categorizePath" placeholder="File path"/>
-                <div class="flex gap-2">
-                  <UInput v-model="categorizeCategory" placeholder="Category (for manual set)" class="flex-1"/>
-                </div>
-                <div class="flex gap-2 flex-wrap">
-                  <UButton :loading="categorizing" icon="i-lucide-tag" label="Auto-Categorize File"
-                           :disabled="!categorizePath.trim()" @click="categorizeFile"/>
-                  <UButton :loading="categorizing" icon="i-lucide-folder-sync" label="Categorize Directory"
-                           :disabled="!categorizePath.trim()" color="neutral" variant="outline"
-                           @click="categorizeDirectory"/>
-                  <UButton :loading="categorizing" icon="i-lucide-pen" label="Set Category"
-                           :disabled="!categorizePath.trim() || !categorizeCategory.trim()" color="neutral"
-                           @click="setCategory"/>
-                  <UButton icon="i-lucide-trash-2" label="Clean Stale" color="warning" variant="outline"
-                           :loading="cleaningStale" @click="cleanStaleCategories"/>
-                  <UButton icon="i-lucide-refresh-cw" aria-label="Refresh stats" variant="ghost" color="neutral"
-                           @click="loadCategorizer"/>
-                </div>
-              </div>
-              <pre v-if="categorizeResult" class="mt-3 p-2 rounded bg-muted text-xs overflow-x-auto">{{
-                  JSON.stringify(categorizeResult, null, 2)
-                }}</pre>
-            </UCard>
-
-            <!-- Browse by category -->
-            <UCard>
-              <template #header><span class="font-semibold">Browse by Category</span></template>
-              <div class="flex gap-2">
-                <UInput v-model="browseCategory" placeholder="Category name" class="flex-1"
-                        @keyup.enter="browseByCategory"
-                />
-                <UButton :loading="categoryItemsLoading" icon="i-lucide-search" label="Browse"
-                         :disabled="!browseCategory.trim()" @click="browseByCategory"/>
-              </div>
-              <div v-if="categoryItemsLoading" class="flex justify-center py-4 mt-2">
-                <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
-              </div>
-              <div v-else-if="categoryItems.length > 0" class="mt-3 divide-y divide-default max-h-64 overflow-y-auto">
-                <div v-for="item in categoryItems" :key="item.id" class="py-2 text-sm">
-                  <p class="font-medium truncate">{{ item.name }}</p>
-                  <p class="text-xs text-muted truncate">{{ item.category }}</p>
-                </div>
-              </div>
-              <p v-else-if="!categoryItemsLoading && browseCategory && categoryItems.length === 0"
-                 class="text-center py-4 text-muted text-sm mt-2">No items in this category.</p>
-            </UCard>
-          </template>
-
           <!-- ── Auto-Discovery ──────────────────────────────────────────── -->
-          <template v-else-if="item.value === 'discovery'">
+          <template v-if="item.value === 'discovery'">
             <UCard>
               <template #header><span class="font-semibold">Scan Directory</span></template>
               <div class="flex gap-2">

@@ -1,23 +1,23 @@
 <script setup lang="ts">
-import type {MediaCollection} from '~/types/api'
-import {useCollectionsApi} from '~/composables/useApiEndpoints'
+import type {MediaCategory} from '~/types/api'
+import {useCategoriesApi} from '~/composables/useApiEndpoints'
 
-definePageMeta({layout: 'default', title: 'Collections'})
+definePageMeta({layout: 'default', title: 'Categories'})
 
-const collectionsApi = useCollectionsApi()
+const categoriesApi = useCategoriesApi()
 const mediaApi = useMediaApi()
 const toast = useToast()
 
-const collections = ref<MediaCollection[]>([])
+const categories = ref<MediaCategory[]>([])
 const loading = ref(true)
 
 async function load() {
   loading.value = true
   try {
-    collections.value = (await collectionsApi.list()) ?? []
+    categories.value = (await categoriesApi.list()) ?? []
   } catch (e: unknown) {
     toast.add({
-      title: e instanceof Error ? e.message : 'Failed to load collections',
+      title: e instanceof Error ? e.message : 'Failed to load categories',
       color: 'error',
       icon: 'i-lucide-alert-circle',
     })
@@ -33,32 +33,32 @@ onMounted(load)
   <UContainer class="py-6 max-w-5xl">
     <div class="flex items-center gap-2 mb-6">
       <UIcon name="i-lucide-library" class="size-5 text-primary"/>
-      <h1 class="text-xl font-semibold">Collections</h1>
-      <UBadge v-if="collections.length > 0" :label="String(collections.length)" color="neutral" variant="subtle"
+      <h1 class="text-xl font-semibold">Categories</h1>
+      <UBadge v-if="categories.length > 0" :label="String(categories.length)" color="neutral" variant="subtle"
               size="xs"/>
     </div>
 
     <MediaCardSkeleton v-if="loading" :count="8"/>
 
-    <div v-else-if="collections.length === 0" class="text-center py-16 text-muted">
+    <div v-else-if="categories.length === 0" class="text-center py-16 text-muted">
       <UIcon name="i-lucide-library" class="size-10 mb-3 mx-auto opacity-40"/>
-      <p class="text-lg font-medium">No collections yet</p>
-      <p class="text-sm mt-1">Curated collections appear here once an administrator creates them.</p>
+      <p class="text-lg font-medium">No categories yet</p>
+      <p class="text-sm mt-1">Curated categories appear here once an administrator creates them.</p>
       <UButton class="mt-4" label="Browse Media" to="/" variant="outline"/>
     </div>
 
     <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
       <NuxtLink
-          v-for="col in collections"
-          :key="col.id"
-          :to="`/collections/${encodeURIComponent(col.id)}`"
+          v-for="cat in categories"
+          :key="cat.id"
+          :to="`/categories/${encodeURIComponent(cat.id)}`"
           class="group block"
       >
         <div class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift">
           <img
-              v-if="col.cover_media_id"
-              :src="mediaApi.getThumbnailUrl(col.cover_media_id)"
-              :alt="col.name"
+              v-if="cat.cover_media_id"
+              :src="mediaApi.getThumbnailUrl(cat.cover_media_id)"
+              :alt="cat.name"
               class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               loading="lazy"
               @error="($event.target as HTMLImageElement).style.display='none'"
@@ -67,8 +67,8 @@ onMounted(load)
             <UIcon name="i-lucide-library" class="size-8 text-muted"/>
           </div>
         </div>
-        <p class="text-sm font-semibold truncate" :title="col.name">{{ col.name }}</p>
-        <p v-if="col.description" class="text-xs text-muted truncate" :title="col.description">{{ col.description }}</p>
+        <p class="text-sm font-semibold truncate" :title="cat.name">{{ cat.name }}</p>
+        <p v-if="cat.description" class="text-xs text-muted truncate" :title="cat.description">{{ cat.description }}</p>
       </NuxtLink>
     </div>
   </UContainer>

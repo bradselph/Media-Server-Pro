@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,7 +64,9 @@ func parseSmartRules(raw string) (*SmartPlaylistRules, error) {
 // Filtering runs in-memory against the live media module — this is consistent with how all
 // other media endpoints operate and avoids any dependency on the DB having a separate
 // denormalised "media" table (which does not exist; media metadata lives in media_metadata).
-func applySmartRules(all []*models.MediaItem, rules *SmartPlaylistRules) []*models.MediaItem {
+// catMembers maps a curated category ID to the set of media IDs in it, used to
+// evaluate "category" conditions against curated MediaCategory membership.
+func applySmartRules(all []*models.MediaItem, rules *SmartPlaylistRules, catMembers map[string]map[string]bool) []*models.MediaItem {
 	matchAll := rules.Match != "any"
 	var out []*models.MediaItem
 	if len(rules.Conditions) == 0 {
@@ -74,7 +77,7 @@ func applySmartRules(all []*models.MediaItem, rules *SmartPlaylistRules) []*mode
 		// Length stays 0 so the makezero linter is satisfied too.
 		out = make([]*models.MediaItem, 0, len(all))
 		for _, item := range all {
-			if matchesSmartRules(item, rules.Conditions, matchAll) {
+			if matchesSmartRules(item, rules.Conditions, matchAll, catMembers) {
 				out = append(out, item) //nolint:makezero // out was made with length 0 in this branch; the linter conflates with the if-branch's len(all) allocation
 			}
 		}
@@ -104,9 +107,9 @@ func applySmartRules(all []*models.MediaItem, rules *SmartPlaylistRules) []*mode
 	return out
 }
 
-func matchesSmartRules(item *models.MediaItem, conds []SmartCondition, matchAll bool) bool {
+func matchesSmartRules(item *models.MediaItem, conds []SmartCondition, matchAll bool, catMembers map[string]map[string]bool) bool {
 	for _, cond := range conds {
-		matched := matchSmartCondition(item, cond)
+		matched := matchSmartCondition(item, cond, catMembers)
 		if matchAll && !matched {
 			return false
 		}
@@ -117,12 +120,19 @@ func matchesSmartRules(item *models.MediaItem, conds []SmartCondition, matchAll 
 	return matchAll
 }
 
-func matchSmartCondition(item *models.MediaItem, cond SmartCondition) bool {
+func matchSmartCondition(item *models.MediaItem, cond SmartCondition, catMembers map[string]map[string]bool) bool {
 	switch cond.Field {
 	case "type":
 		return cond.Op == "eq" && string(item.Type) == cond.Value
 	case "category":
-		return cond.Op == "eq" && item.Category == cond.Value
+		// cond.Value is a curated MediaCategory.id; the item matches when it is a
+		// member of that category. (Legacy rules holding a path-detected bucket
+		// name like "movies" simply match nothing now.)
+		if cond.Op != "eq" {
+			return false
+		}
+		members, ok := catMembers[cond.Value]
+		return ok && members[item.ID]
 	case "tags":
 		needle := strings.ToLower(strings.ReplaceAll(cond.Value, " ", ""))
 		if needle == "" {
@@ -440,9 +450,31 @@ func (h *Handler) PreviewSmartPlaylist(c *gin.Context) {
 		return
 	}
 	all := h.media.ListMedia(media.Filter{})
-	items := applySmartRules(all, rules)
+	catMembers := h.buildSmartCategoryMembers(c.Request.Context(), rules)
+	items := applySmartRules(all, rules, catMembers)
 	if items == nil {
 		items = []*models.MediaItem{}
 	}
 	writeSuccess(c, items)
+}
+
+// buildSmartCategoryMembers pre-loads curated category membership for every
+// distinct "category" condition in the rules, so matchSmartCondition can resolve
+// membership without a per-item DB query.
+func (h *Handler) buildSmartCategoryMembers(ctx context.Context, rules *SmartPlaylistRules) map[string]map[string]bool {
+	out := make(map[string]map[string]bool)
+	for _, cond := range rules.Conditions {
+		if cond.Field != "category" || cond.Value == "" {
+			continue
+		}
+		if _, done := out[cond.Value]; done {
+			continue
+		}
+		members, err := h.media.GetCategoryMemberIDs(ctx, cond.Value)
+		if err != nil || members == nil {
+			members = map[string]bool{}
+		}
+		out[cond.Value] = members
+	}
+	return out
 }

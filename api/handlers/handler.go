@@ -24,7 +24,6 @@ import (
 	"media-server-pro/internal/auth"
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
-	"media-server-pro/internal/categorizer"
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
@@ -120,7 +119,6 @@ type HandlerOptionalDeps struct {
 	Autodiscovery *autodiscovery.Module
 	Suggestions   *suggestions.Module
 	Security      *security.Module
-	Categorizer   *categorizer.Module
 	Updater       *updater.Module
 	Remote        *remote.Module
 	Receiver      *receiver.Module
@@ -168,7 +166,6 @@ type Handler struct {
 	autodiscovery       *autodiscovery.Module
 	suggestions         *suggestions.Module
 	security            *security.Module
-	categorizer         *categorizer.Module
 	updater             *updater.Module
 	remote              *remote.Module
 	receiver            *receiver.Module
@@ -337,7 +334,6 @@ func NewHandler(deps HandlerDeps) *Handler {
 		autodiscovery: o.Autodiscovery,
 		suggestions:   o.Suggestions,
 		security:      o.Security,
-		categorizer:   o.Categorizer,
 		updater:       o.Updater,
 		remote:        o.Remote,
 		receiver:      o.Receiver,
@@ -428,11 +424,11 @@ var auditableEventTypes = map[string]bool{
 	analytics.EventServerError:       true,
 
 	// Round-12 coverage: curation, governance, and admin infrastructure events.
-	analytics.EventCollectionCreate:       true,
-	analytics.EventCollectionUpdate:       true,
-	analytics.EventCollectionDelete:       true,
-	analytics.EventCollectionItemsAdd:     true,
-	analytics.EventCollectionItemRemove:   true,
+	analytics.EventCategoryCreate:         true,
+	analytics.EventCategoryUpdate:         true,
+	analytics.EventCategoryDelete:         true,
+	analytics.EventCategoryItemsAdd:       true,
+	analytics.EventCategoryItemRemove:     true,
 	analytics.EventSmartPlaylistCreate:    true,
 	analytics.EventSmartPlaylistUpdate:    true,
 	analytics.EventSmartPlaylistDelete:    true,
@@ -478,7 +474,6 @@ var auditableEventTypes = map[string]bool{
 	analytics.EventUpdaterApply:             true,
 	analytics.EventUpdaterConfigUpdate:      true,
 	analytics.EventClassifyRun:              true,
-	analytics.EventCategorizerRun:           true,
 	analytics.EventValidatorRun:             true,
 	analytics.EventDiscoveryRun:             true,
 	analytics.EventDownloaderJobCreate:      true,
@@ -679,9 +674,6 @@ func (h *Handler) requireValidator(c *gin.Context) bool {
 }
 func (h *Handler) requireBackup(c *gin.Context) bool {
 	return requireModule(c, h.backup, "Backup feature")
-}
-func (h *Handler) requireCategorizer(c *gin.Context) bool {
-	return requireModule(c, h.categorizer, "Categorizer")
 }
 func (h *Handler) requireAutodiscovery(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.autodiscovery, "Auto-discovery", func() bool {

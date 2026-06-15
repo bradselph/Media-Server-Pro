@@ -53,8 +53,14 @@ type MediaItem struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
-// MediaCategory represents a category of media files
-type MediaCategory struct {
+// MediaTypeCategory represents an auto-derived media "type" bucket (e.g. movies,
+// tv_shows, music) aggregated from the media-type field on each item.
+//
+// Deprecated: the auto path-detected category system has been retired in favour
+// of the admin-curated MediaCategory feature below. This type is no longer
+// populated or served by any endpoint and is kept only so older generated
+// clients still compile. It will be removed in a future cleanup.
+type MediaTypeCategory struct {
 	Name        string   `json:"name"`
 	DisplayName string   `json:"display_name"`
 	Count       int      `json:"count"`
@@ -481,27 +487,32 @@ type AutoTagRule struct {
 
 func (AutoTagRule) TableName() string { return "auto_tag_rules" }
 
-// MediaCollection groups related media items into a named series or collection.
-type MediaCollection struct {
+// MediaCategory groups related media items into a named, admin-curated category.
+type MediaCategory struct {
 	ID           string    `json:"id" db:"id" gorm:"primaryKey;size:36"`
 	Name         string    `json:"name" db:"name" gorm:"size:255;not null"`
 	Description  string    `json:"description,omitempty" db:"description" gorm:"type:text"`
 	CoverMediaID string    `json:"cover_media_id,omitempty" db:"cover_media_id" gorm:"size:36"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at" gorm:"autoUpdateTime"`
+	// ItemCount is the number of media items in this category. It is not a
+	// stored column (gorm:"-"); handlers populate it from a COUNT over
+	// media_category_items so surfaces like the home "Top categories" strip can
+	// rank categories by size.
+	ItemCount int `json:"item_count" db:"-" gorm:"-"`
 }
 
-func (MediaCollection) TableName() string { return "media_collections" }
+func (MediaCategory) TableName() string { return "media_categories" }
 
-// MediaCollectionItem links a media item into a collection with an optional order.
-type MediaCollectionItem struct {
-	CollectionID string    `json:"collection_id" db:"collection_id" gorm:"primaryKey;size:36"`
-	MediaID      string    `json:"media_id" db:"media_id" gorm:"primaryKey;size:36"`
-	Position     int       `json:"position" db:"position" gorm:"default:0"`
-	AddedAt      time.Time `json:"added_at" db:"added_at" gorm:"autoCreateTime"`
+// MediaCategoryItem links a media item into a category with an optional order.
+type MediaCategoryItem struct {
+	CategoryID string    `json:"category_id" db:"category_id" gorm:"primaryKey;size:36"`
+	MediaID    string    `json:"media_id" db:"media_id" gorm:"primaryKey;size:36"`
+	Position   int       `json:"position" db:"position" gorm:"default:0"`
+	AddedAt    time.Time `json:"added_at" db:"added_at" gorm:"autoCreateTime"`
 }
 
-func (MediaCollectionItem) TableName() string { return "media_collection_items" }
+func (MediaCategoryItem) TableName() string { return "media_category_items" }
 
 // AnalyticsEvent represents a tracked event
 type AnalyticsEvent struct {

@@ -76,8 +76,6 @@ tags:
     description: Admin playlist management
   - name: admin-security
     description: Admin IP security management
-  - name: admin-categorizer
-    description: Admin media categorization
   - name: admin-discovery
     description: Admin auto-discovery
   - name: admin-suggestions
@@ -350,20 +348,6 @@ components:
         initializing:
           type: boolean
           description: True when media library is still loading
-
-    MediaCategory:
-      type: object
-      properties:
-        name:
-          type: string
-        display_name:
-          type: string
-        count:
-          type: integer
-        tags:
-          type: array
-          items:
-            type: string
 
     MediaStats:
       type: object
@@ -1315,38 +1299,6 @@ components:
           type: string
         last_seen_at:
           type: string
-
-    CategorizedItem:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        category:
-          type: string
-        confidence:
-          type: number
-        detected_info:
-          type: object
-          additionalProperties: true
-        categorized_at:
-          type: string
-          format: date-time
-        manual_override:
-          type: boolean
-
-    CategoryStats:
-      type: object
-      properties:
-        total_items:
-          type: integer
-        by_category:
-          type: object
-          additionalProperties:
-            type: integer
-        manual_overrides:
-          type: integer
 
     DiscoverySuggestion:
       type: object
@@ -2680,6 +2632,10 @@ paths:
       parameters:
         - name: category
           in: query
+          description: >-
+            Curated category id (MediaCategory.id). Restricts results to items
+            that belong to that category via media_category_items. The retired
+            path-detected category buckets are no longer accepted.
           schema:
             type: string
         - name: type
@@ -2912,6 +2868,10 @@ paths:
             type: string
         - name: category
           in: query
+          description: >-
+            Curated category id (MediaCategory.id). Restricts results to items
+            that belong to that category via media_category_items. The retired
+            path-detected category buckets are no longer accepted.
           schema:
             type: string
         - name: search
@@ -2957,25 +2917,6 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/MediaStats'
-
-  /api/media/categories:
-    get:
-      tags: [ media ]
-      summary: Get media categories
-      responses:
-        '200':
-          description: Categories
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/APIEnvelope'
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/MediaCategory'
 
   /api/media/batch:
     get:
@@ -4274,46 +4215,6 @@ paths:
       responses:
         '200':
           description: Removed from favorites
-
-  /api/browse/categories:
-    get:
-      tags: [ browse ]
-      summary: Browse media by category
-      security:
-        - sessionCookie: [ ]
-      parameters:
-        - name: category
-          in: query
-          schema:
-            type: string
-          description: Filter to specific category; omit for category stats overview
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 200
-            maximum: 500
-      responses:
-        '200':
-          description: Category browse results
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/APIEnvelope'
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          category:
-                            type: string
-                          items:
-                            type: array
-                            items:
-                              $ref: '#/components/schemas/MediaItem'
-                          total:
-                            type: integer
 
   /api/upload:
     post:
@@ -6488,122 +6389,6 @@ paths:
         '200':
           description: IP unbanned
 
-  /api/admin/categorizer/file:
-    post:
-      tags: [ admin-categorizer ]
-      summary: Categorize single file
-      security:
-        - sessionCookie: [ ]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [ path ]
-              properties:
-                path:
-                  type: string
-      responses:
-        '200':
-          description: Categorization result
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/APIEnvelope'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/CategorizedItem'
-
-  /api/admin/categorizer/directory:
-    post:
-      tags: [ admin-categorizer ]
-      summary: Categorize directory
-      security:
-        - sessionCookie: [ ]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [ directory ]
-              properties:
-                directory:
-                  type: string
-      responses:
-        '200':
-          description: Categorization results
-
-  /api/admin/categorizer/stats:
-    get:
-      tags: [ admin-categorizer ]
-      summary: Get category stats
-      security:
-        - sessionCookie: [ ]
-      responses:
-        '200':
-          description: Category stats
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/APIEnvelope'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/CategoryStats'
-
-  /api/admin/categorizer/set:
-    post:
-      tags: [ admin-categorizer ]
-      summary: Set media category
-      security:
-        - sessionCookie: [ ]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [ path, category ]
-              properties:
-                path:
-                  type: string
-                category:
-                  type: string
-      responses:
-        '200':
-          description: Category set
-
-  /api/admin/categorizer/by-category:
-    get:
-      tags: [ admin-categorizer ]
-      summary: Get media by category
-      security:
-        - sessionCookie: [ ]
-      parameters:
-        - name: category
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Items in category
-
-  /api/admin/categorizer/clean:
-    post:
-      tags: [ admin-categorizer ]
-      summary: Clean stale categories
-      security:
-        - sessionCookie: [ ]
-      responses:
-        '200':
-          description: Stale categories removed
-
   /api/admin/discovery/scan:
     post:
       tags: [ admin-discovery ]
@@ -8144,10 +7929,10 @@ paths:
         '200':
           description: Chapter deleted
 
-  /api/media/{id}/collections:
+  /api/media/{id}/categories:
     get:
       tags: [ media ]
-      summary: Get collections for media item
+      summary: Get categories for media item
       parameters:
         - name: id
           in: path
@@ -8156,20 +7941,44 @@ paths:
             type: string
       responses:
         '200':
-          description: Collections list
+          description: Categories list
 
-  /api/collections:
+  /api/categories:
     get:
       tags: [ media ]
-      summary: List collections
+      summary: List categories
+      description: >-
+        Lists all admin-curated categories (the single "Categories" feature),
+        ordered by name. Each carries item_count, the number of media items in
+        the category — used to rank the home "Top categories" strip and label the
+        library category filter.
       responses:
         '200':
-          description: Collections list
+          description: Categories list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string }
+                            name: { type: string }
+                            description: { type: string }
+                            cover_media_id: { type: string }
+                            item_count: { type: integer }
+                            created_at: { type: string, format: date-time }
+                            updated_at: { type: string, format: date-time }
 
-  /api/admin/collections:
+  /api/admin/categories:
     post:
       tags: [ admin ]
-      summary: Create collection
+      summary: Create category
       security:
         - sessionCookie: [ ]
       requestBody:
@@ -8186,12 +7995,12 @@ paths:
                   type: string
       responses:
         '200':
-          description: Collection created
+          description: Category created
 
-  /api/admin/collections/{id}/items:
+  /api/admin/categories/{id}/items:
     post:
       tags: [ admin ]
-      summary: Add items to collection
+      summary: Add items to category
       security:
         - sessionCookie: [ ]
       parameters:
@@ -8210,10 +8019,10 @@ paths:
         '200':
           description: Items added
 
-  /api/admin/collections/{id}/items/{media_id}:
+  /api/admin/categories/{id}/items/{media_id}:
     delete:
       tags: [ admin ]
-      summary: Remove item from collection
+      summary: Remove item from category
       security:
         - sessionCookie: [ ]
       parameters:
@@ -8231,10 +8040,10 @@ paths:
         '200':
           description: Item removed
 
-  /api/collections/{id}:
+  /api/categories/{id}:
     get:
       tags: [ media ]
-      summary: Get a single collection
+      summary: Get a single category
       parameters:
         - name: id
           in: path
@@ -8243,12 +8052,12 @@ paths:
             type: string
       responses:
         '200':
-          description: Collection
+          description: Category
 
-  /api/admin/collections/{id}:
+  /api/admin/categories/{id}:
     put:
       tags: [ admin ]
-      summary: Update collection
+      summary: Update category
       security:
         - sessionCookie: [ ]
       parameters:
@@ -8265,10 +8074,10 @@ paths:
               type: object
       responses:
         '200':
-          description: Collection updated
+          description: Category updated
     delete:
       tags: [ admin ]
-      summary: Delete collection
+      summary: Delete category
       security:
         - sessionCookie: [ ]
       parameters:
@@ -8279,7 +8088,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Collection deleted
+          description: Category deleted
 
   /api/smart-playlists:
     get:

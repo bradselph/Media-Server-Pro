@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type {MediaChapter, MediaCollection, MediaItem, Playlist, PlaylistItem, Suggestion} from '~/types/api'
+import type {MediaCategory, MediaChapter, MediaItem, Playlist, PlaylistItem, Suggestion} from '~/types/api'
 import {getDisplayTitle} from '~/utils/mediaTitle'
 import {formatBitrate, formatBytes, formatDuration, formatRelativeDate} from '~/utils/format'
 import {safeJsonLD} from '~/utils/jsonld'
 import {getMediaGradient} from '~/utils/gradient'
 import {hlsQualityName} from '~/utils/hlsQuality'
 import {useQueueStore} from '~/stores/queue'
-import {useCollectionsApi} from '~/composables/useApiEndpoints'
+import {useCategoriesApi} from '~/composables/useApiEndpoints'
 
 definePageMeta({layout: 'default', title: 'Player'})
 
@@ -95,7 +95,8 @@ const playerDescription = computed(() => {
   const item = media.value
   if (!item) return ''
   const parts: string[] = []
-  if (item.category) parts.push(item.category)
+  const catName = mediaCategories.value[0]?.name
+  if (catName) parts.push(catName)
   if (item.tags && item.tags.length > 0) parts.push(item.tags.slice(0, 6).join(', '))
   if (item.duration > 0) {
     const mins = Math.floor(item.duration / 60)
@@ -582,9 +583,9 @@ const thumbnailPreviews = ref<string[]>([])
 const similar = ref<Suggestion[]>([])
 const personalized = ref<Suggestion[]>([])
 
-// Collections this media belongs to
-const collectionsApi = useCollectionsApi()
-const mediaCollections = ref<MediaCollection[]>([])
+// Categories this media belongs to
+const categoriesApi = useCategoriesApi()
+const mediaCategories = ref<MediaCategory[]>([])
 
 // Mature content gate
 const canViewMature = computed(() =>
@@ -659,7 +660,7 @@ async function loadMedia(id: string) {
   error.value = ''
   similar.value = []
   personalized.value = []
-  mediaCollections.value = []
+  mediaCategories.value = []
   thumbnailPreviews.value = []
   try {
     const fetched = await mediaApi.getById(id)
@@ -682,10 +683,10 @@ async function loadMedia(id: string) {
     }).catch((e: unknown) => {
       console.warn('[player] similar load failed:', e)
     })
-    collectionsApi.getForMedia(id).then(r => {
-      if (playerMounted && gen === loadGeneration) mediaCollections.value = r ?? []
+    categoriesApi.getForMedia(id).then(r => {
+      if (playerMounted && gen === loadGeneration) mediaCategories.value = r ?? []
     }).catch((e: unknown) => {
-      console.warn('[player] collections load failed:', e)
+      console.warn('[player] categories load failed:', e)
     })
     if (authStore.isLoggedIn) {
       suggestionsApi.getPersonalized(8).then(r => {
@@ -1744,8 +1745,16 @@ watch(mediaId, (id, oldId) => {
                 <span v-if="(media.codec || media.bitrate) && media.size">·</span>
                 <span v-if="media.size">{{ formatBytes(media.size) }}</span>
               </div>
-              <div v-if="media.category" class="mt-2">
-                <UBadge :label="media.category" color="primary" variant="subtle" size="xs"/>
+              <div v-if="mediaCategories.length > 0" class="mt-2 flex flex-wrap gap-1.5">
+                <NuxtLink
+                    v-for="cat in mediaCategories"
+                    :key="cat.id"
+                    :to="`/categories/${encodeURIComponent(cat.id)}`"
+                    class="no-underline"
+                >
+                  <UBadge :label="cat.name" color="primary" variant="subtle" size="xs"
+                          class="cursor-pointer hover:opacity-80"/>
+                </NuxtLink>
               </div>
             </div>
             <audio
@@ -1839,16 +1848,19 @@ watch(mediaId, (id, oldId) => {
 
           <!-- Media info -->
           <UCard>
-            <!-- Badge row: type, category, mature -->
+            <!-- Badge row: type, curated categories, mature -->
             <div class="flex flex-wrap gap-1.5 mb-3">
             <span v-if="media.type"
                   class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
                   style="background: var(--accent-bg-weak); border: 1px solid var(--accent-border); color: var(--accent-soft);"
             >{{ media.type }}</span>
-              <span v-if="media.category"
-                    class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium text-muted"
-                    style="background: rgba(255,255,255,0.07);"
-              >{{ media.category }}</span>
+              <NuxtLink
+                  v-for="cat in mediaCategories"
+                  :key="cat.id"
+                  :to="`/categories/${encodeURIComponent(cat.id)}`"
+                  class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium text-muted no-underline hover:text-default"
+                  style="background: rgba(255,255,255,0.07);"
+              >{{ cat.name }}</NuxtLink>
               <span v-if="media.is_mature"
                     class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold"
                     style="background: rgba(220,38,38,0.12); color: #f87171;"
@@ -2180,18 +2192,18 @@ watch(mediaId, (id, oldId) => {
 
       <!-- Sidebar: similar + personalized -->
       <div class="space-y-6 max-md:px-4 max-md:pb-6 md:pb-0">
-        <!-- Collections this media belongs to -->
-        <div v-if="mediaCollections.length > 0" class="space-y-3">
-          <h3 class="section-title">In Collection</h3>
+        <!-- Categories this media belongs to -->
+        <div v-if="mediaCategories.length > 0" class="space-y-3">
+          <h3 class="section-title">In Category</h3>
           <div
-              v-for="col in mediaCollections"
-              :key="col.id"
+              v-for="cat in mediaCategories"
+              :key="cat.id"
               class="space-y-1.5"
           >
-            <p class="section-title">{{ col.name }}</p>
+            <p class="section-title">{{ cat.name }}</p>
             <div class="space-y-1">
               <NuxtLink
-                  v-for="(item, idx) in (col.items ?? [])"
+                  v-for="(item, idx) in (cat.items ?? [])"
                   :key="item.media_id"
                   :to="`/player?id=${encodeURIComponent(item.media_id)}`"
                   class="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors text-sm"
@@ -2240,7 +2252,6 @@ watch(mediaId, (id, oldId) => {
               </div>
               <div class="min-w-0">
                 <p class="text-sm font-semibold truncate">{{ getDisplayTitle(item) }}</p>
-                <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
                 <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate"
                    :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
               </div>
@@ -2291,7 +2302,6 @@ watch(mediaId, (id, oldId) => {
               </div>
               <div class="min-w-0">
                 <p class="text-sm font-semibold truncate">{{ getDisplayTitle(item) }}</p>
-                <p v-if="item.category" class="text-xs text-muted">{{ item.category }}</p>
                 <p v-if="item.reasons && item.reasons.length > 0" class="text-xs text-primary/70 truncate"
                    :title="item.reasons.join(' · ')">{{ item.reasons[0] }}</p>
               </div>

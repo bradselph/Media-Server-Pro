@@ -513,10 +513,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Media routes (mostly public)
 	api.GET(pathMedia, h.ListMedia)
 	api.GET(pathMedia+pathStats, h.GetMediaStats)
-	api.GET(pathMedia+"/categories", h.GetCategories)
 	api.GET(pathMedia+"/batch", h.GetBatchMedia)
 	api.GET(pathMedia+"/:id", h.GetMedia)
-	api.GET(pathMedia+"/:id/collections", h.GetMediaCollections)
+	// Curated categories a media item belongs to (admin-curated MediaCategory).
+	api.GET(pathMedia+"/:id/categories", h.GetMediaCategories)
 
 	// Tag cloud — public read; the handler filters out mature tags for
 	// callers without the mature-view permission. Powers /browse.
@@ -640,11 +640,11 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.DELETE(routePlaylistByID+"/clear", requireAuth(), h.ClearPlaylist)
 	api.POST(routePlaylistByID+"/copy", requireAuth(), h.CopyPlaylist)
 
-	// Smart playlists routes (protected)
-	// Collections (public read)
-	api.GET("/collections", h.ListCollections)
-	api.GET("/collections/:id", h.GetCollection)
+	// Categories (public read) — admin-curated, ordered groupings of media items
+	api.GET("/categories", h.ListCategories)
+	api.GET("/categories/:id", h.GetCategory)
 
+	// Smart playlists routes (protected)
 	api.GET("/smart-playlists", requireAuth(), h.ListSmartPlaylists)
 	api.POST("/smart-playlists", requireAuth(), h.CreateSmartPlaylist)
 	api.GET("/smart-playlists/:id", requireAuth(), h.GetSmartPlaylist)
@@ -687,9 +687,6 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/suggestions/new", requireAuth(), h.GetNewSinceLastVisit)
 	api.POST("/ratings", requireAuth(), h.RecordRating)
 	api.GET("/ratings", requireAuth(), h.GetMyRatings)
-
-	// User-facing category browse (requires auth, returns categorized items)
-	api.GET("/browse/categories", requireAuth(), h.GetCategoryBrowse)
 
 	// Upload routes — auth enforced in handler based on cfg.Uploads.RequireAuth
 	api.POST("/upload", h.UploadMedia)
@@ -840,12 +837,12 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.DELETE("/auto-tag-rules/:id", h.DeleteAutoTagRule)
 	adminGrp.POST("/auto-tag-rules/apply", h.ApplyAutoTagRules)
 
-	// Collections (admin management)
-	adminGrp.POST("/collections", h.CreateCollection)
-	adminGrp.PUT("/collections/:id", h.UpdateCollection)
-	adminGrp.DELETE("/collections/:id", h.DeleteCollection)
-	adminGrp.POST("/collections/:id/items", h.AddCollectionItems)
-	adminGrp.DELETE("/collections/:id/items/:media_id", h.RemoveCollectionItem)
+	// Categories (admin management) — admin-curated, ordered groupings of media items
+	adminGrp.POST("/categories", h.CreateCategory)
+	adminGrp.PUT("/categories/:id", h.UpdateCategory)
+	adminGrp.DELETE("/categories/:id", h.DeleteCategory)
+	adminGrp.POST("/categories/:id/items", h.AddCategoryItems)
+	adminGrp.DELETE("/categories/:id/items/:media_id", h.RemoveCategoryItem)
 
 	// HLS admin routes
 	adminGrp.GET("/hls/stats", h.GetHLSStats)
@@ -891,14 +888,6 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/security/banned", h.GetBannedIPs)
 	adminGrp.POST("/security/ban", h.BanIP)
 	adminGrp.POST("/security/unban", h.UnbanIP)
-
-	// Categorizer routes (admin)
-	adminGrp.POST("/categorizer/file", h.CategorizeFile)
-	adminGrp.POST("/categorizer/directory", h.CategorizeDirectory)
-	adminGrp.GET("/categorizer/stats", h.GetCategoryStats)
-	adminGrp.POST("/categorizer/set", h.SetMediaCategory)
-	adminGrp.GET("/categorizer/by-category", h.GetByCategory)
-	adminGrp.POST("/categorizer/clean", h.CleanStaleCategories)
 
 	// Remote media routes (admin)
 	adminGrp.GET("/remote/sources", h.GetRemoteSources)

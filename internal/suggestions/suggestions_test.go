@@ -33,7 +33,7 @@ func TestScoreMediaBase_PopularMedia(t *testing.T) {
 
 func TestScoreMediaForProfile_EmptyProfile(t *testing.T) {
 	profile := &UserProfile{}
-	media := &MediaInfo{Path: testMediaPath, Category: "movies", MediaType: "video"}
+	media := &MediaInfo{Path: testMediaPath, CategoryIDs: []string{"movies"}, MediaType: "video"}
 	score, _ := scoreMediaForProfile(profile, media)
 	if score < 0 {
 		t.Error("score should not be negative")
@@ -46,7 +46,7 @@ func TestScoreMediaForProfile_MatchingCategory(t *testing.T) {
 		TypePreferences: map[string]float64{"video": 0.9},
 		TotalViews:      12,
 	}
-	media := &MediaInfo{Path: testMediaPath, Category: "movies", MediaType: "video"}
+	media := &MediaInfo{Path: testMediaPath, CategoryIDs: []string{"movies"}, MediaType: "video"}
 	score, _ := scoreMediaForProfile(profile, media)
 	if score <= 0 {
 		t.Error("matching category should give positive score")
@@ -62,7 +62,7 @@ func TestScoreCategoryPreference_Match(t *testing.T) {
 		CategoryScores: map[string]float64{"movies": 0.8},
 		TotalViews:     10,
 	}
-	media := &MediaInfo{Category: "movies"}
+	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
 	score := scoreCategoryPreference(profile, media, &reasons)
 	if score <= 0 {
@@ -75,7 +75,7 @@ func TestScoreCategoryPreference_NoMatch(t *testing.T) {
 		CategoryScores: map[string]float64{"movies": 0.8},
 		TotalViews:     10,
 	}
-	media := &MediaInfo{Category: "music"}
+	media := &MediaInfo{CategoryIDs: []string{"music"}}
 	var reasons []string
 	score := scoreCategoryPreference(profile, media, &reasons)
 	if score != 0 {
@@ -88,7 +88,7 @@ func TestScoreCategoryPreference_ZeroTotal(t *testing.T) {
 		CategoryScores: map[string]float64{},
 		TotalViews:     0,
 	}
-	media := &MediaInfo{Category: "movies"}
+	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
 	score := scoreCategoryPreference(profile, media, &reasons)
 	if score != 0 {
@@ -129,8 +129,8 @@ func TestScoreTypePreference_NoMatch(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestComputeSimilarity_SameCategory(t *testing.T) {
-	source := &MediaInfo{Path: "/s.mp4", Category: "movies", MediaType: "video", Tags: []string{"action"}}
-	candidate := &MediaInfo{Path: "/c.mp4", Category: "movies", MediaType: "video", Tags: []string{"action"}}
+	source := &MediaInfo{Path: "/s.mp4", CategoryIDs: []string{"movies"}, MediaType: "video", Tags: []string{"action"}}
+	candidate := &MediaInfo{Path: "/c.mp4", CategoryIDs: []string{"movies"}, MediaType: "video", Tags: []string{"action"}}
 	score, _ := computeSimilarity(source, candidate)
 	if score <= 0 {
 		t.Error("same category+type should give positive similarity")

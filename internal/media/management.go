@@ -349,43 +349,25 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 		}
 	}
 
-	// Update in-memory indexes (media + metadata share mu); keep fingerprintIndex in sync
+	// Update in-memory indexes (media + metadata share mu); keep fingerprintIndex in sync.
+	// A move no longer re-derives the category from the path — categorisation is
+	// driven solely by admin-curated MediaCategory membership, which is keyed by
+	// the stable media ID and is unaffected by a path change.
 	m.mu.Lock()
-	var newCategory string
-	var categoryUpdated bool
 	if item, exists := m.media[oldPath]; exists {
 		item.Path = newPath
 		delete(m.media, oldPath)
 		m.media[newPath] = item
-		item.Category = m.detectCategory(newPath)
-		newCategory = item.Category
-		categoryUpdated = true
 	}
 	if meta, exists := m.metadata[oldPath]; exists {
 		delete(m.metadata, oldPath)
 		m.metadata[newPath] = meta
-		if categoryUpdated {
-			// Keep Metadata.Category in sync with the re-detected category so that
-			// saveMetadataItem (which reads m.metadata, not m.media) persists the
-			// correct category to the DB. Without this, moving a file into a
-			// directory with a different category pattern would leave the DB row
-			// with the old category until the next full scan.
-			meta.Category = newCategory
-		}
 		if meta.ContentFingerprint != "" {
 			m.fingerprintIndex[meta.ContentFingerprint] = newPath
 		}
 	}
 	m.version++ // catalog mutated — poll-based consumers must see a bump
 	m.mu.Unlock()
-
-	// Rebuild m.categories: a cross-category move otherwise leaves the old
-	// category's count one too high and the new one too low (or missing)
-	// until the next full scan, since GetCategories reads m.categories
-	// directly. Must run after Unlock — updateCategories takes m.mu itself.
-	if categoryUpdated {
-		m.updateCategories()
-	}
 
 	m.log.Info("Moved media: %s -> %s", oldPath, newPath)
 
@@ -588,10 +570,6 @@ func applyMetadataField(meta *Metadata, key string, value any) {
 		if s, ok := value.(string); ok && s != "" {
 			meta.MatureReasons = append(meta.MatureReasons, s)
 		}
-	case "category":
-		if cat, ok := value.(string); ok {
-			meta.Category = cat
-		}
 	case "views":
 		switch views := value.(type) {
 		case float64:
@@ -633,17 +611,6 @@ func (m *Module) syncMediaItem(mediaPath string, updates map[string]any) {
 		case "mature_reason":
 			// Suppress default fallthrough: mature_reason is tracked in Metadata.MatureReasons
 			// (not CustomMeta), so it must not bleed into the MediaItem.Metadata custom-key map.
-		case "category":
-			if cat, ok := value.(string); ok {
-				// Keep the m.categories counts (served by GetCategories) in
-				// step — they were previously only rebuilt on a full scan, so
-				// categorization left them stale for up to a scan interval.
-				if cat != item.Category {
-					m.adjustCategoryCount(item.Category, -1)
-					m.adjustCategoryCount(cat, +1)
-				}
-				item.Category = cat
-			}
 		case "views":
 			switch views := value.(type) {
 			case float64:

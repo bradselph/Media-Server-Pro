@@ -89,16 +89,16 @@ type MediaMetadataRepository interface {
 
 // MediaFilter defines DB-level filtering and pagination for media queries.
 type MediaFilter struct {
-	Category string   // exact match on category
-	IsMature *bool    // filter by mature flag
-	Search   string   // substring match on path or category (LIKE %search%)
-	Type     string   // "video" or "audio" — filters by path extension (matches discovery logic)
-	Tags     []string // filter by tags (default OR — item must have at least one of these)
-	TagsAll  bool     // when true, item must have ALL of the listed tags (AND mode)
-	SortBy   string   // column to sort by: "views", "date_added", "path"
-	SortDesc bool     // descending sort
-	Limit    int      // max results (0 = no limit)
-	Offset   int      // skip N results
+	CategoryID string   // curated MediaCategory.id — restricts to items in media_category_items for that category (empty = no filter)
+	IsMature   *bool    // filter by mature flag
+	Search     string   // substring match on path (LIKE %search%)
+	Type       string   // "video" or "audio" — filters by path extension (matches discovery logic)
+	Tags       []string // filter by tags (default OR — item must have at least one of these)
+	TagsAll    bool     // when true, item must have ALL of the listed tags (AND mode)
+	SortBy     string   // column to sort by: "views", "date_added", "path"
+	SortDesc   bool     // descending sort
+	Limit      int      // max results (0 = no limit)
+	Offset     int      // skip N results
 }
 
 // ScanResultRepository provides mature content scan result storage.
@@ -232,32 +232,6 @@ type AuditLogFilter struct {
 	EndDate   string
 	Limit     int
 	Offset    int
-}
-
-// CategorizedItemRepository provides categorized media item storage
-type CategorizedItemRepository interface {
-	Upsert(ctx context.Context, item *CategorizedItemRecord) error
-	Get(ctx context.Context, path string) (*CategorizedItemRecord, error)
-	Delete(ctx context.Context, path string) error
-	List(ctx context.Context) ([]*CategorizedItemRecord, error)
-}
-
-// CategorizedItemRecord represents a categorized media item in the database
-type CategorizedItemRecord struct {
-	Path            string
-	ID              string
-	Name            string
-	Category        string
-	Confidence      float64
-	DetectedTitle   string
-	DetectedYear    int
-	DetectedSeason  int
-	DetectedEpisode int
-	DetectedShow    string
-	DetectedArtist  string
-	DetectedAlbum   string
-	CategorizedAt   time.Time
-	ManualOverride  bool
 }
 
 // HLSJobRepository provides HLS job persistence

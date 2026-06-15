@@ -52,7 +52,7 @@ function toggleSelect(id: string) {
 
 const bulkRunning = ref(false)
 
-async function runBulk(action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) {
+async function runBulk(action: 'delete' | 'update', data?: { is_mature?: boolean }) {
   const ids = [...selectedIds.value]
   if (!ids.length) return
   if (action === 'delete') {
@@ -62,7 +62,7 @@ async function runBulk(action: 'delete' | 'update', data?: { category?: string; 
   await executeBulk(action, data)
 }
 
-async function executeBulk(action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) {
+async function executeBulk(action: 'delete' | 'update', data?: { is_mature?: boolean }) {
   const ids = [...selectedIds.value]
   if (!ids.length) return
   bulkRunning.value = true
@@ -87,7 +87,7 @@ const editOpen = computed({
     if (!v) editTarget.value = null
   },
 })
-const editForm = reactive({name: '', category: '', is_mature: false, tags: '', description: ''})
+const editForm = reactive({name: '', is_mature: false, tags: '', description: ''})
 const editSaving = ref(false)
 
 // Thumbnail upload state
@@ -99,7 +99,6 @@ const thumbUploading = ref(false)
 function openEdit(item: MediaItem) {
   editTarget.value = item
   editForm.name = item.name
-  editForm.category = item.category ?? ''
   editForm.is_mature = item.is_mature ?? false
   editForm.tags = (item.tags ?? []).join(', ')
   editForm.description = String(item.metadata?.description ?? '')
@@ -138,7 +137,6 @@ async function saveEdit() {
   try {
     await adminApi.updateMedia(editTarget.value.id, {
       name: editForm.name,
-      category: editForm.category,
       is_mature: editForm.is_mature,
       tags: editForm.tags.split(',').map((t: string) => t.trim()).filter(Boolean),
       metadata: {...editTarget.value.metadata, description: editForm.description},
@@ -589,7 +587,6 @@ onUnmounted(() => {
           { accessorKey: 'type', header: 'Type' },
           { accessorKey: 'size', header: 'Size' },
           { accessorKey: 'duration', header: 'Duration' },
-          { accessorKey: 'category', header: 'Category' },
           { accessorKey: 'views', header: 'Views' },
           { accessorKey: 'is_mature', header: 'Mature' },
           { accessorKey: 'actions', header: '' },
@@ -623,9 +620,6 @@ onUnmounted(() => {
         </template>
         <template #duration-cell="{ row }">
           <span class="text-sm font-mono">{{ formatDuration(row.original.duration) }}</span>
-        </template>
-        <template #category-cell="{ row }">
-          <span class="text-sm text-muted">{{ row.original.category || '—' }}</span>
         </template>
         <template #views-cell="{ row }">
           <span class="text-sm">{{ (row.original.views ?? 0).toLocaleString() }}</span>
@@ -744,9 +738,6 @@ onUnmounted(() => {
         <div class="space-y-4">
           <UFormField label="Name">
             <UInput v-model="editForm.name" class="w-full"/>
-          </UFormField>
-          <UFormField label="Category">
-            <UInput v-model="editForm.category" placeholder="e.g. Entertainment" class="w-full"/>
           </UFormField>
           <UFormField label="Tags" hint="Comma-separated (e.g. action, sci-fi)">
             <UInput v-model="editForm.tags" placeholder="e.g. action, comedy" class="w-full"/>

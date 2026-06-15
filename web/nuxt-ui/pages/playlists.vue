@@ -7,8 +7,24 @@ definePageMeta({layout: 'default', title: 'Playlists', middleware: 'auth'})
 const playlistApi = usePlaylistApi()
 const smartPlaylistsApi = useSmartPlaylistsApi()
 const mediaApi = useMediaApi()
+const categoriesApi = useCategoriesApi()
 const authStore = useAuthStore()
 const toast = useToast()
+
+// Curated categories for the smart-playlist "category" condition picker. A
+// category condition's value is a MediaCategory id, so users pick from a list
+// rather than typing a raw UUID.
+const spCategoryItems = ref<{ label: string; value: string }[]>([])
+
+async function loadSpCategories() {
+  try {
+    const cats = await categoriesApi.list()
+    spCategoryItems.value = (cats ?? []).map(c => ({label: c.name, value: c.id}))
+  } catch { /* non-critical — the picker just renders empty */
+  }
+}
+
+onMounted(loadSpCategories)
 
 let mounted = true
 onUnmounted(() => {
@@ -426,10 +442,13 @@ function spOpsForField(field: string): string[] {
 }
 
 // On field change, snap the operator to a valid one for the new field so a
-// stale operator (e.g. 'includes' carried over to 'duration') can't persist.
-function onSpFieldChange(cond: { op: string }, newField: unknown): void {
+// stale operator (e.g. 'includes' carried over to 'duration') can't persist,
+// and clear the value so a stale value (e.g. a duration number left over when
+// switching to 'category', which expects a category id) can't silently persist.
+function onSpFieldChange(cond: { op: string; value: string }, newField: unknown): void {
   const ops = spOpsForField(String(newField))
   if (!ops.includes(cond.op)) cond.op = ops[0]
+  cond.value = ''
 }
 
 async function createSmartPlaylist() {
@@ -949,7 +968,16 @@ onMounted(() => {
                         size="sm"
                         class="w-20"
                     />
+                    <USelect
+                        v-if="cond.field === 'category'"
+                        v-model="cond.value"
+                        :items="spCategoryItems"
+                        placeholder="Select category"
+                        size="sm"
+                        class="flex-1"
+                    />
                     <UInput
+                        v-else
                         v-model="cond.value"
                         placeholder="Value"
                         size="sm"
@@ -1043,7 +1071,16 @@ onMounted(() => {
                         size="sm"
                         class="w-20"
                     />
+                    <USelect
+                        v-if="cond.field === 'category'"
+                        v-model="cond.value"
+                        :items="spCategoryItems"
+                        placeholder="Select category"
+                        size="sm"
+                        class="flex-1"
+                    />
                     <UInput
+                        v-else
                         v-model="cond.value"
                         placeholder="Value"
                         size="sm"
