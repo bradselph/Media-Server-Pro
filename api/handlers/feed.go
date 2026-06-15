@@ -51,7 +51,7 @@ type atomSummary struct {
 
 // GetRSSFeed returns an Atom feed of recently-added media items.
 // Optional query params:
-//   - category — filter by media category (e.g. "Movies", "TV Shows")
+//   - category — filter by curated category (MediaCategory.id)
 //   - type     — filter by media type ("video" or "audio")
 //   - limit    — number of items (1–50, default 20)
 //
@@ -96,10 +96,25 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 	h.feedCacheMu.Unlock()
 
 	filter := media.Filter{
-		Category: c.Query("category"),
 		Type:     models.MediaType(c.Query("type")),
 		SortBy:   "date_added",
 		SortDesc: true,
+	}
+	// ?category=<MediaCategory.id> restricts the feed to a curated category.
+	categoryName := ""
+	if catID := c.Query("category"); catID != "" && catID != "all" {
+		filter.CategoryID = catID
+		members, err := h.media.GetCategoryMemberIDs(c.Request.Context(), catID)
+		if err != nil || members == nil {
+			members = map[string]bool{}
+		}
+		filter.CategoryIDSet = members
+		if gdb := h.database.GORM(); gdb != nil {
+			var cat models.MediaCategory
+			if gdb.WithContext(c.Request.Context()).Select("name").First(&cat, "id = ?", catID).Error == nil {
+				categoryName = cat.Name
+			}
+		}
 	}
 
 	allItems := h.media.ListMedia(filter)
@@ -137,8 +152,8 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 
 	// Build feed title
 	feedTitle := "Media Server — Latest Media"
-	if filter.Category != "" {
-		feedTitle = fmt.Sprintf("Media Server — %s", filter.Category)
+	if categoryName != "" {
+		feedTitle = fmt.Sprintf("Media Server — %s", categoryName)
 	} else if filter.Type != "" {
 		typeStr := string(filter.Type)
 		if typeStr != "" {
@@ -173,7 +188,7 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 		if typeStr != "" {
 			typeStr = strings.ToUpper(typeStr[:1]) + typeStr[1:]
 		}
-		summary := fmt.Sprintf("%s — %s", typeStr, item.Category)
+		summary := typeStr
 		if item.Duration > 0 {
 			mins := int(item.Duration) / 60
 			secs := int(item.Duration) % 60

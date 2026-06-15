@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -87,13 +88,28 @@ func (h *Handler) ListMedia(c *gin.Context) {
 
 	filterNoPagination := media.Filter{
 		Type:     models.MediaType(c.Query("type")),
-		Category: c.Query("category"),
 		Search:   truncateQuery(c.Query("search"), 200),
 		Tags:     tags,
 		TagsAll:  strings.EqualFold(c.Query("tag_mode"), "and"),
 		IsMature: isMature,
 		SortBy:   sortBy,
 		SortDesc: c.Query("sort_order") == "desc",
+	}
+	// Curated-category filter: ?category=<MediaCategory.id> restricts the listing
+	// to items in that category (via media_category_items). Resolve the member-ID
+	// set so the in-memory fast path and the receiver/extractor merge both honour
+	// it. Fail closed on a DB error so a hiccup can't leak the whole library past
+	// a category filter.
+	if catID := c.Query("category"); catID != "" && catID != "all" {
+		filterNoPagination.CategoryID = catID
+		members, err := h.media.GetCategoryMemberIDs(c.Request.Context(), catID)
+		if err != nil {
+			h.log.Warn("Category member lookup failed for %s: %v", catID, err)
+			members = map[string]bool{}
+		} else if members == nil {
+			members = map[string]bool{}
+		}
+		filterNoPagination.CategoryIDSet = members
 	}
 
 	// Fast path: a plain public browse/search needs neither cross-module merge
@@ -544,19 +560,31 @@ func (h *Handler) refreshSuggestionsCatalog() {
 		return
 	}
 	items := h.media.ListMedia(media.Filter{})
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	// Resolve curated-category membership in one batch so suggestions score
+	// against real categories instead of the retired path-detected buckets.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	catIDs, err := h.media.GetCategoryIDsForItems(ctx, ids)
+	cancel()
+	if err != nil {
+		h.log.Warn("Failed to load category membership for suggestions refresh: %v", err)
+	}
 	mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
 	for _, item := range items {
 		mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
-			Path:      item.Path,
-			StableID:  item.ID,
-			Title:     item.Name,
-			Category:  item.Category,
-			MediaType: string(item.Type),
-			Tags:      item.Tags,
-			Views:     item.Views,
-			Duration:  item.Duration,
-			AddedAt:   item.DateAdded,
-			IsMature:  item.IsMature,
+			Path:        item.Path,
+			StableID:    item.ID,
+			Title:       item.Name,
+			CategoryIDs: catIDs[item.ID],
+			MediaType:   string(item.Type),
+			Tags:        item.Tags,
+			Views:       item.Views,
+			Duration:    item.Duration,
+			AddedAt:     item.DateAdded,
+			IsMature:    item.IsMature,
 		})
 	}
 	h.suggestions.UpdateMediaData(mediaInfos)
@@ -576,12 +604,6 @@ func (h *Handler) ScanMedia(c *gin.Context) {
 		h.refreshSuggestionsCatalog()
 	}()
 	writeSuccess(c, map[string]string{"message": "Scan started"})
-}
-
-// GetCategories returns media categories
-func (h *Handler) GetCategories(c *gin.Context) {
-	categories := h.media.GetCategories()
-	writeSuccess(c, categories)
 }
 
 // GetTagCounts returns the aggregate tag → item-count distribution across
@@ -689,7 +711,11 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 						})
 					}
 					if h.suggestions != nil && trackUserID != "" {
-						h.suggestions.RecordView(trackUserID, id, "", item.MediaType, item.Duration)
+						// Receiver items can be added to curated categories too;
+						// look up membership by ID so federated views still build
+						// category affinity.
+						catIDs := h.media.GetCategoryIDsForItem(c.Request.Context(), id)
+						h.suggestions.RecordView(trackUserID, id, catIDs, item.MediaType, item.Duration)
 					}
 				}
 				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
@@ -803,7 +829,8 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		}
 
 		if h.suggestions != nil && userID != "" && localItem != nil {
-			h.suggestions.RecordView(userID, absPath, localItem.Category, string(localItem.Type), localItem.Duration)
+			catIDs := h.media.GetCategoryIDsForItem(c.Request.Context(), localItem.ID)
+			h.suggestions.RecordView(userID, absPath, catIDs, string(localItem.Type), localItem.Duration)
 		}
 
 		if err := h.media.IncrementViews(c.Request.Context(), absPath); err != nil {

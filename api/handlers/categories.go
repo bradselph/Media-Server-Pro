@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -11,6 +12,39 @@ import (
 	"media-server-pro/internal/analytics"
 	"media-server-pro/pkg/models"
 )
+
+// categoryNamesByIDs resolves curated category IDs to their names, omitting any
+// ID that no longer corresponds to a category. Used by personalization surfaces
+// (profile "Top categories", rated items) to render names instead of leaking
+// opaque UUIDs, and to drop stale scores whose category was deleted (or that
+// predate the curated-category migration).
+func (h *Handler) categoryNamesByIDs(ctx context.Context, ids []string) map[string]string {
+	out := make(map[string]string)
+	if len(ids) == 0 {
+		return out
+	}
+	gdb := h.database.GORM()
+	if gdb == nil {
+		return out
+	}
+	type row struct {
+		ID   string
+		Name string
+	}
+	var rows []row
+	if err := gdb.WithContext(ctx).
+		Model(&models.MediaCategory{}).
+		Select("id, name").
+		Where("id IN ?", ids).
+		Scan(&rows).Error; err != nil {
+		h.log.Warn("categoryNamesByIDs: %v", err)
+		return out
+	}
+	for _, r := range rows {
+		out[r.ID] = r.Name
+	}
+	return out
+}
 
 // Bounds for category inputs. Name maps to a VARCHAR(255) column; the
 // description goes into a TEXT column but is still capped to keep payloads
@@ -32,7 +66,8 @@ type categoryItemResponse struct {
 	Position  int    `json:"position"`
 }
 
-// ListCategories returns all categories ordered by name.
+// ListCategories returns all categories ordered by name, each with its member
+// count so callers (e.g. the home "Top categories" strip) can rank by size.
 // GET /api/categories
 func (h *Handler) ListCategories(c *gin.Context) {
 	db := h.database.GORM().WithContext(c.Request.Context())
@@ -40,6 +75,27 @@ func (h *Handler) ListCategories(c *gin.Context) {
 	if err := db.Order("name ASC").Find(&cats).Error; err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to list categories: "+err.Error())
 		return
+	}
+	// One grouped query for all member counts, then fan out onto each category.
+	type catCount struct {
+		CategoryID string
+		Cnt        int
+	}
+	var counts []catCount
+	if err := db.Model(&models.MediaCategoryItem{}).
+		Select("category_id, COUNT(*) as cnt").
+		Group("category_id").
+		Scan(&counts).Error; err != nil {
+		// Counts are best-effort; a failure leaves item_count at 0 rather than
+		// failing the whole listing.
+		h.log.Warn("ListCategories: failed to load item counts: %v", err)
+	}
+	countByID := make(map[string]int, len(counts))
+	for _, cc := range counts {
+		countByID[cc.CategoryID] = cc.Cnt
+	}
+	for i := range cats {
+		cats[i].ItemCount = countByID[cats[i].ID]
 	}
 	writeSuccess(c, cats)
 }

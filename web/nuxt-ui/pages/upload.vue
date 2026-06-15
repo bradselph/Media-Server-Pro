@@ -229,9 +229,10 @@ async function handleUpload() {
         <input ref="fileInputRef" type="file" multiple accept="video/*,audio/*" class="hidden" @change="onFileInput"/>
       </div>
 
-      <!-- Category -->
-      <UFormField label="Category (optional)">
-        <UInput v-model="category" placeholder="e.g. Entertainment, Music, Sports…" class="w-full"/>
+      <!-- Destination subfolder. This is a storage path, NOT a curated category
+           (categories are admin-managed groupings created in the admin panel). -->
+      <UFormField label="Subfolder (optional)" hint="Organises the uploaded files into a folder on disk">
+        <UInput v-model="category" placeholder="e.g. clips, archive…" class="w-full"/>
       </UFormField>
 
       <!-- Selected files -->

@@ -74,7 +74,10 @@ export interface UserProfile {
     user_id: string
     total_views: number
     total_watch_time: number
+    /** Keys are curated MediaCategory ids; values are accumulated view scores. */
     category_scores: Record<string, number>
+    /** Maps the category ids in category_scores to their display names. */
+    category_names?: Record<string, string>
     type_preferences: Record<string, number>
     last_updated?: string
 }
@@ -160,15 +163,17 @@ export interface MediaCategoryItem {
     position: number
 }
 
-// MediaCategory is an admin-curated, ordered grouping of media items (the
-// "Categories" feature). Distinct from MediaTypeCategory below, which is the
-// auto-derived media-type bucket used by the library type filter.
+// MediaCategory is an admin-curated, ordered grouping of media items — the one
+// and only "Categories" feature. The retired path-detected MediaTypeCategory
+// below is no longer used by any surface.
 export interface MediaCategory {
     id: string
     name: string
     description?: string
     cover_media_id?: string
     items?: MediaCategoryItem[]
+    /** Number of media items in this category. Present on the list endpoint; used to rank the home "Top categories" strip. */
+    item_count?: number
     created_at: string
     updated_at: string
 }
@@ -218,9 +223,11 @@ export interface MediaListResponse {
     type_counts?: Record<string, number>
 }
 
-// MediaTypeCategory is an auto-derived media-type bucket (movies, tv_shows,
-// music, …) aggregated for the library type filter. Distinct from MediaCategory
-// (the admin-curated grouping feature).
+// MediaTypeCategory is the retired path-detected media-type bucket (movies,
+// tv_shows, music, …). No endpoint returns it anymore — categories are the
+// curated MediaCategory feature. Kept only so older generated code still
+// type-checks.
+// @deprecated use MediaCategory
 export interface MediaTypeCategory {
     name: string
     display_name: string

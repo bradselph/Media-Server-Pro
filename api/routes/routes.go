@@ -513,9 +513,9 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Media routes (mostly public)
 	api.GET(pathMedia, h.ListMedia)
 	api.GET(pathMedia+pathStats, h.GetMediaStats)
-	api.GET(pathMedia+"/categories", h.GetCategories)
 	api.GET(pathMedia+"/batch", h.GetBatchMedia)
 	api.GET(pathMedia+"/:id", h.GetMedia)
+	// Curated categories a media item belongs to (admin-curated MediaCategory).
 	api.GET(pathMedia+"/:id/categories", h.GetMediaCategories)
 
 	// Tag cloud — public read; the handler filters out mature tags for

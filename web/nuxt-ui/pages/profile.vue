@@ -166,11 +166,15 @@ function formatWatchTime(seconds: number): string {
 }
 
 const topCategories = computed(() => {
-  if (!myProfile.value?.category_scores) return []
-  return Object.entries(myProfile.value.category_scores)
+  const scores = myProfile.value?.category_scores
+  if (!scores) return []
+  // category_scores is keyed by curated category id; resolve to display names
+  // (the backend only returns ids that still map to a real category).
+  const names = myProfile.value?.category_names ?? {}
+  return Object.entries(scores)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 5)
-      .map(([name, score]) => ({name, score}))
+      .map(([id, score]) => ({id, name: names[id] || id, score}))
 })
 
 const topTypes = computed(() => {
@@ -707,9 +711,9 @@ watch(() => authStore.user, (user) => {
           </div>
         </div>
         <div v-if="topCategories.length > 0">
-          <p class="section-title mb-2">Top Genres</p>
+          <p class="section-title mb-2">Top Categories</p>
           <div class="space-y-1.5">
-            <div v-for="cat in topCategories" :key="cat.name" class="flex items-center gap-2">
+            <div v-for="cat in topCategories" :key="cat.id" class="flex items-center gap-2">
               <span class="text-sm w-28 truncate capitalize">{{ cat.name }}</span>
               <div class="flex-1 bg-muted/20 rounded-full h-1.5 overflow-hidden">
                 <div

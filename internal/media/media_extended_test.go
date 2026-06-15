@@ -35,14 +35,25 @@ func TestFilter_Matches_ByType(t *testing.T) {
 }
 
 func TestFilter_Matches_ByCategory(t *testing.T) {
-	f := Filter{Category: "movies"}
-	movie := &models.MediaItem{Category: "movies"}
-	music := &models.MediaItem{Category: "music"}
-	if !f.Matches(movie) {
-		t.Error("movies should match movies filter")
+	// Category filtering is now curated-membership based: CategoryIDSet holds the
+	// member media IDs, so only those items pass.
+	f := Filter{CategoryIDSet: map[string]bool{"id-member": true}}
+	member := &models.MediaItem{ID: "id-member"}
+	nonMember := &models.MediaItem{ID: "id-other"}
+	if !f.Matches(member) {
+		t.Error("member item should match category filter")
 	}
-	if f.Matches(music) {
-		t.Error("music should not match movies filter")
+	if f.Matches(nonMember) {
+		t.Error("non-member item should not match category filter")
+	}
+}
+
+func TestFilter_Matches_EmptyCategorySetFailsClosed(t *testing.T) {
+	// A non-nil but empty member set (category with no items) must match nothing,
+	// never fall through to matching the whole library.
+	f := Filter{CategoryIDSet: map[string]bool{}}
+	if f.Matches(&models.MediaItem{ID: "anything"}) {
+		t.Error("empty category set should match no items (fail closed)")
 	}
 }
 
@@ -66,11 +77,13 @@ func TestFilter_Matches_BySearchTag(t *testing.T) {
 	}
 }
 
-func TestFilter_Matches_BySearchCategory(t *testing.T) {
+func TestFilter_Matches_SearchIgnoresCategory(t *testing.T) {
+	// Search now matches only name and tags — the retired path-detected category
+	// string is no longer part of the search surface.
 	f := Filter{Search: "anime"}
 	item := &models.MediaItem{Name: "Some Show", Category: "anime"}
-	if !f.Matches(item) {
-		t.Error("item in 'anime' category should match 'anime' search")
+	if f.Matches(item) {
+		t.Error("search should not match against the category field")
 	}
 }
 
@@ -87,10 +100,10 @@ func TestFilter_Matches_ByMature(t *testing.T) {
 }
 
 func TestFilter_Matches_Combined(t *testing.T) {
-	f := Filter{Type: models.MediaTypeVideo, Category: "movies", Search: "star"}
-	match := &models.MediaItem{Name: testStarWars, Type: models.MediaTypeVideo, Category: "movies"}
-	wrongType := &models.MediaItem{Name: testStarWars, Type: models.MediaTypeAudio, Category: "movies"}
-	wrongCat := &models.MediaItem{Name: testStarWars, Type: models.MediaTypeVideo, Category: "music"}
+	f := Filter{Type: models.MediaTypeVideo, CategoryIDSet: map[string]bool{"m1": true}, Search: "star"}
+	match := &models.MediaItem{ID: "m1", Name: testStarWars, Type: models.MediaTypeVideo}
+	wrongType := &models.MediaItem{ID: "m1", Name: testStarWars, Type: models.MediaTypeAudio}
+	wrongCat := &models.MediaItem{ID: "other", Name: testStarWars, Type: models.MediaTypeVideo}
 	if !f.Matches(match) {
 		t.Error("should match all criteria")
 	}
@@ -98,7 +111,7 @@ func TestFilter_Matches_Combined(t *testing.T) {
 		t.Error("wrong type should not match")
 	}
 	if f.Matches(wrongCat) {
-		t.Error("wrong category should not match")
+		t.Error("non-member category should not match")
 	}
 }
 

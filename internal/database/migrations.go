@@ -731,6 +731,14 @@ func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 			"ALTER TABLE media_metadata ADD INDEX idx_media_mature_views (is_mature, views)"},
 		{"receiver_media", "idx_receiver_media_fingerprint",
 			"ALTER TABLE receiver_media ADD INDEX idx_receiver_media_fingerprint (content_fingerprint)"},
+		// Curated-category membership is keyed by (category_id, media_id) PK, which
+		// serves category->members lookups but NOT member->categories ones. The
+		// media_id index powers per-view category attribution (RecordView), the
+		// suggestion-seeding batch lookup, and the on-delete cleanup. Fresh DBs get
+		// it from the CREATE TABLE; this backfills deployments renamed from the old
+		// media_collection_items table.
+		{"media_category_items", "idx_category_items_media",
+			"ALTER TABLE media_category_items ADD INDEX idx_category_items_media (media_id)"},
 		// Prevent duplicate items in the same playlist after PK migration from
 		// composite (playlist_id, media_path) to single-column (id).
 		{"playlist_items", "uniq_playlist_media",

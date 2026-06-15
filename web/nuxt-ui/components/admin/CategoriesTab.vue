@@ -255,6 +255,7 @@ onMounted(load)
         <div class="flex items-start justify-between gap-2">
           <div class="flex-1 min-w-0">
             <p class="font-semibold text-highlighted truncate">{{ cat.name }}</p>
+            <p class="text-xs text-muted mt-0.5">{{ cat.item_count ?? 0 }} {{ (cat.item_count ?? 0) === 1 ? 'item' : 'items' }}</p>
             <p v-if="cat.description" class="text-xs text-muted mt-0.5 line-clamp-2">{{ cat.description }}</p>
           </div>
           <div class="flex gap-1 shrink-0">

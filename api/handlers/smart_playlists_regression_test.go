@@ -37,11 +37,20 @@ func TestSmartCondition_EqOpSupportedForNumericFields(t *testing.T) {
 		// Sanity: gte/lte still work after the change.
 		{"duration gte still works", &models.MediaItem{Duration: 120.0}, SmartCondition{Field: "duration", Op: "gte", Value: "60"}, true},
 		{"views lte still works", &models.MediaItem{Views: 50}, SmartCondition{Field: "views", Op: "lte", Value: "100"}, true},
+
+		// Category is curated-membership based: cond.Value is a MediaCategory.id and
+		// the item matches only when it is a member of that category.
+		{"category eq member", &models.MediaItem{ID: "m1"}, SmartCondition{Field: "category", Op: "eq", Value: "cat1"}, true},
+		{"category eq non-member", &models.MediaItem{ID: "m2"}, SmartCondition{Field: "category", Op: "eq", Value: "cat1"}, false},
+		{"category eq unknown category", &models.MediaItem{ID: "m1"}, SmartCondition{Field: "category", Op: "eq", Value: "nope"}, false},
 	}
+
+	// Membership for the curated-category cases above.
+	catMembers := map[string]map[string]bool{"cat1": {"m1": true}}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := matchSmartCondition(tc.item, tc.cond)
+			got := matchSmartCondition(tc.item, tc.cond, catMembers)
 			if got != tc.want {
 				t.Errorf("matchSmartCondition(%+v) = %v, want %v", tc.cond, got, tc.want)
 			}

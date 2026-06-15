@@ -59,15 +59,19 @@ func parseAdminListPage(c *gin.Context) int {
 }
 
 func parseAdminListQuery(c *gin.Context) adminListParams {
+	catID := c.Query("category")
+	if catID == "all" {
+		catID = ""
+	}
 	return adminListParams{
 		filter: media.Filter{
-			Type:     models.MediaType(c.Query("type")),
-			Category: c.Query("category"),
-			Search:   truncateQuery(c.Query("search"), 200),
-			Tags:     parseAdminListTags(c),
-			IsMature: parseAdminListIsMature(c),
-			SortBy:   parseAdminListSortBy(c),
-			SortDesc: c.Query("sort_order") == "desc",
+			Type:       models.MediaType(c.Query("type")),
+			CategoryID: catID, // curated MediaCategory.id; member set is expanded in fetchAdminListItems
+			Search:     truncateQuery(c.Query("search"), 200),
+			Tags:       parseAdminListTags(c),
+			IsMature:   parseAdminListIsMature(c),
+			SortBy:     parseAdminListSortBy(c),
+			SortDesc:   c.Query("sort_order") == "desc",
 		},
 		limit: parseAdminListLimit(c),
 		page:  parseAdminListPage(c),
@@ -75,13 +79,32 @@ func parseAdminListQuery(c *gin.Context) adminListParams {
 }
 
 func (h *Handler) fetchAdminListItems(ctx context.Context, filter media.Filter, limit, offset int) (items []*models.MediaItem, total int64) {
+	// expandCategoryFilter populates CategoryIDSet from CategoryID for the
+	// IN-MEMORY code paths (ListMedia), which filter by member-id set. The DB
+	// path (ListMediaPaginated) filters via the CategoryID subquery instead and
+	// must NOT also carry CategoryIDSet — re-filtering the DB results against a
+	// separately-fetched snapshot would make `total` (DB count) disagree with the
+	// returned page and could blank the page on a transient lookup error. Fail
+	// closed (empty set) on lookup error.
+	expandCategoryFilter := func(f media.Filter) media.Filter {
+		if f.CategoryID != "" && f.CategoryIDSet == nil {
+			members, err := h.media.GetCategoryMemberIDs(ctx, f.CategoryID)
+			if err != nil || members == nil {
+				members = map[string]bool{}
+			}
+			f.CategoryIDSet = members
+		}
+		return f
+	}
 	if limit > 0 {
+		// DB-paginated path: CategoryID drives the membership subquery; leave
+		// CategoryIDSet nil so the post-query Matches does not double-filter.
 		items, total, err := h.media.ListMediaPaginated(ctx, filter, limit, offset)
 		if err == nil {
 			return items, total
 		}
 		h.log.Warn("ListMediaPaginated failed, falling back to in-memory list: %v", err)
-		allItems := h.media.ListMedia(filter)
+		allItems := h.media.ListMedia(expandCategoryFilter(filter))
 		if allItems == nil {
 			allItems = make([]*models.MediaItem, 0)
 		}
@@ -95,7 +118,7 @@ func (h *Handler) fetchAdminListItems(ctx context.Context, filter media.Filter, 
 		}
 		return items, total
 	}
-	allItems := h.media.ListMedia(filter)
+	allItems := h.media.ListMedia(expandCategoryFilter(filter))
 	if allItems == nil {
 		allItems = make([]*models.MediaItem, 0)
 	}
@@ -189,7 +212,6 @@ func validateAdminMetadata(metadata map[string]string) (sanitized map[string]str
 func parseAdminUpdateBody(rawBody map[string]json.RawMessage) (req adminUpdateRequest, errMsg string) {
 	var reqName string
 	var reqTags []string
-	var reqCategory string
 	var reqIsMature bool
 	var reqMatureContent bool
 	var reqMetadata map[string]string
@@ -198,9 +220,6 @@ func parseAdminUpdateBody(rawBody map[string]json.RawMessage) (req adminUpdateRe
 		return adminUpdateRequest{}, msg
 	}
 	if msg := decodeAdminUpdateField(rawBody, "tags", &reqTags, "Invalid 'tags' field"); msg != "" {
-		return adminUpdateRequest{}, msg
-	}
-	if msg := decodeAdminUpdateField(rawBody, "category", &reqCategory, "Invalid 'category' field"); msg != "" {
 		return adminUpdateRequest{}, msg
 	}
 	if msg := decodeAdminUpdateField(rawBody, "metadata", &reqMetadata, "Invalid 'metadata' field"); msg != "" {
@@ -218,9 +237,10 @@ func parseAdminUpdateBody(rawBody map[string]json.RawMessage) (req adminUpdateRe
 	if reqTags != nil {
 		updates["tags"] = reqTags
 	}
-	if _, ok := rawBody["category"]; ok {
-		updates["category"] = reqCategory
-	}
+	// Per-item "category" is retired: an item's categories are now managed via
+	// curated MediaCategory membership (POST /api/admin/categories/:id/items),
+	// not a free-text field on the media row. A "category" key in the body is
+	// ignored (and stays reserved below so it never bleeds into custom metadata).
 	if msg := decodeAdminUpdateField(rawBody, "is_mature", &reqIsMature, "Invalid 'is_mature' field"); msg != "" {
 		return adminUpdateRequest{}, msg
 	}
@@ -432,10 +452,8 @@ func extractStringSlice(tagsRaw any) ([]string, bool) {
 func buildBulkUpdateFields(data map[string]any) (map[string]any, bool) {
 	updates := make(map[string]any)
 	hasValid := false
-	if cat, ok := data["category"].(string); ok {
-		updates["category"] = cat
-		hasValid = true
-	}
+	// Per-item "category" is retired in favour of curated MediaCategory
+	// membership; bulk category assignment goes through the categories admin API.
 	if mature, ok := data["is_mature"].(bool); ok {
 		updates["is_mature"] = mature
 		hasValid = true

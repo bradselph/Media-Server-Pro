@@ -555,19 +555,29 @@ func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate 
 
 func wireSuggestionsSeeding(mediaModule *media.Module, suggestionsModule *suggestions.Module, log *logger.Logger) {
 	mediaModule.SetOnInitialScanDone(func(items []*models.MediaItem) {
+		ids := make([]string, 0, len(items))
+		for _, item := range items {
+			ids = append(ids, item.ID)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		catIDs, err := mediaModule.GetCategoryIDsForItems(ctx, ids)
+		cancel()
+		if err != nil {
+			log.Warn("Failed to load category membership for suggestion seeding: %v", err)
+		}
 		mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
 		for _, item := range items {
 			mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
-				Path:      item.Path,
-				StableID:  item.ID,
-				Title:     item.Name,
-				Category:  item.Category,
-				MediaType: string(item.Type),
-				Tags:      item.Tags,
-				Views:     item.Views,
-				Duration:  item.Duration,
-				AddedAt:   item.DateAdded,
-				IsMature:  item.IsMature,
+				Path:        item.Path,
+				StableID:    item.ID,
+				Title:       item.Name,
+				CategoryIDs: catIDs[item.ID],
+				MediaType:   string(item.Type),
+				Tags:        item.Tags,
+				Views:       item.Views,
+				Duration:    item.Duration,
+				AddedAt:     item.DateAdded,
+				IsMature:    item.IsMature,
 			})
 		}
 		suggestionsModule.UpdateMediaData(mediaInfos)
@@ -751,19 +761,28 @@ func feedSuggestions(mediaModule *media.Module, suggestionsModule *suggestions.M
 		return
 	}
 	items := mediaModule.ListMedia(media.Filter{})
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Best-effort: on a transient DB error the catalogue is seeded without
+	// category affinity and corrected on the next periodic re-feed.
+	catIDs, _ := mediaModule.GetCategoryIDsForItems(ctx, ids)
+	cancel()
 	mediaInfos := make([]*suggestions.MediaInfo, 0, len(items))
 	for _, item := range items {
 		mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
-			Path:      item.Path,
-			StableID:  item.ID,
-			Title:     item.Name,
-			Category:  item.Category,
-			MediaType: string(item.Type),
-			Tags:      item.Tags,
-			Views:     item.Views,
-			Duration:  item.Duration,
-			AddedAt:   item.DateAdded,
-			IsMature:  item.IsMature,
+			Path:        item.Path,
+			StableID:    item.ID,
+			Title:       item.Name,
+			CategoryIDs: catIDs[item.ID],
+			MediaType:   string(item.Type),
+			Tags:        item.Tags,
+			Views:       item.Views,
+			Duration:    item.Duration,
+			AddedAt:     item.DateAdded,
+			IsMature:    item.IsMature,
 		})
 	}
 	suggestionsModule.UpdateMediaData(mediaInfos)

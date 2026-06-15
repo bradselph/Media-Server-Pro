@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type {
+  MediaCategory,
   MediaItem,
   MediaStats,
-  MediaTypeCategory,
   NewSinceResponse,
   Playlist,
   RecentItem,
@@ -10,7 +10,7 @@ import type {
 } from '~/types/api'
 import {getDisplayTitle} from '~/utils/mediaTitle'
 import type {SavedSearch} from '~/composables/useApiEndpoints'
-import {useApiEndpoints, useFavoritesApi, usePlaylistApi, useSavedSearchesApi} from '~/composables/useApiEndpoints'
+import {useApiEndpoints, useCategoriesApi, useFavoritesApi, usePlaylistApi, useSavedSearchesApi} from '~/composables/useApiEndpoints'
 import {resolveComponent} from 'vue'
 import {formatBytes, formatDuration, formatRelativeDate, formatResolution} from '~/utils/format'
 import {blurHashToDataUrl} from '~/utils/blurhash'
@@ -54,6 +54,7 @@ const suggestionsApi = useSuggestionsApi()
 const playbackApi = usePlaybackApi()
 const favoritesApi = useFavoritesApi()
 const playlistApi = usePlaylistApi()
+const categoriesApi = useCategoriesApi()
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
@@ -263,7 +264,15 @@ const general = ref<Suggestion[]>([])
 // at page-load time (e.g. page refresh). An immediate watcher fires synchronously
 // during setup; if `params` isn't yet declared, `params.limit` throws TDZ.
 const items = ref<MediaItem[]>([])
-const categories = ref<MediaTypeCategory[]>([])
+// Curated categories (admin-managed MediaCategory) — powers the "Top categories"
+// strip and the library Category filter. There is one category concept now.
+const categories = ref<MediaCategory[]>([])
+// Largest categories by member count, capped at 8 for the discovery strip.
+const topCategories = computed(() =>
+    [...categories.value]
+        .sort((a, b) => (b.item_count ?? 0) - (a.item_count ?? 0))
+        .slice(0, 8)
+)
 const total = ref(0)
 const loading = ref(true)
 const loadError = ref('')
@@ -276,6 +285,13 @@ const typeCounts = ref<Record<string, number>>({})
 // discarded rather than overwriting a more recent result.
 let loadSeq = 0
 
+// A curated category id is a UUID. Reject anything else (e.g. a stale
+// path-detected bucket like "movies" left in a saved preference from before the
+// categories unification) so it doesn't auto-apply a filter that matches nothing.
+function isCategoryId(v: unknown): v is string {
+  return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v)
+}
+
 // URL deep-link: query params take precedence over saved preferences so that
 // shared / bookmarked URLs open with the exact filters the sender intended.
 const params = reactive({
@@ -283,7 +299,7 @@ const params = reactive({
   limit: authStore.user?.preferences?.items_per_page ?? 24,
   search: typeof route.query.search === 'string' ? route.query.search : '',
   type: typeof route.query.type === 'string' ? route.query.type : (authStore.user?.preferences?.filter_media_type || 'all'),
-  category: typeof route.query.category === 'string' ? route.query.category : (authStore.user?.preferences?.filter_category || 'all'),
+  category: isCategoryId(route.query.category) ? route.query.category : (isCategoryId(authStore.user?.preferences?.filter_category) ? authStore.user!.preferences!.filter_category : 'all'),
   sort_by: typeof route.query.sort_by === 'string' ? route.query.sort_by : (authStore.user?.preferences?.sort_by || 'name'),
   sort_order: (typeof route.query.sort_order === 'string' ? route.query.sort_order : (authStore.user?.preferences?.sort_order ?? 'asc')) as 'asc' | 'desc',
   min_rating: typeof route.query.min_rating === 'string' ? (Number.parseInt(route.query.min_rating, 10) || 0) : 0,
@@ -799,8 +815,14 @@ async function load() {
 
 async function loadCategories() {
   try {
-    const result = await mediaApi.getCategories()
-    if (indexMounted) categories.value = result ?? []
+    const result = await categoriesApi.list()
+    if (!indexMounted) return
+    categories.value = result ?? []
+    // Self-heal a selected category that no longer exists (deleted, or a stale
+    // saved preference). Resetting to 'all' triggers the params watcher → reload.
+    if (params.category !== 'all' && !categories.value.some(c => c.id === params.category)) {
+      params.category = 'all'
+    }
   } catch { /* categories are non-critical; silently skip */
   }
 }
@@ -821,7 +843,8 @@ watch([() => params.type, () => params.category, () => params.sort_by, () => par
       filterSaveTimer = setTimeout(() => {
         updatePreferences({
           filter_media_type: newType,
-          filter_category: newCategory,
+          // Store '' for the "all" sentinel; otherwise the curated category id.
+          filter_category: newCategory === 'all' ? '' : newCategory,
           sort_by: newSortBy,
           sort_order: newSortOrder,
         }).catch(() => { /* non-critical */
@@ -1075,25 +1098,17 @@ onUnmounted(() => {
                   :style="{ width: `${Math.min(100, (resumeHero.position / resumeHero.duration) * 100)}%` }"
               />
             </div>
-            <!-- Tag chips — pulled from the suggestion's reasons (max 3) so
-                 the hero stays in sync with whichever categorisation the
-                 server is using; if reasons aren't available we fall back
-                 to the single category label. No emoji per plan §3.1. -->
-            <div class="flex gap-1.5 flex-wrap">
-              <template
-                  v-if="(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).reasons?.length">
-                <span
-                    v-for="r in (resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).reasons!.slice(0, 3)"
-                    :key="r"
-                    class="inline-flex items-center gap-1 bg-white/10 border border-white/15 backdrop-blur-md rounded-full px-2 py-0.5 text-[10px] font-semibold text-white/85"
-                >{{ r }}</span>
-              </template>
+            <!-- Tag chips — pulled from the suggestion's reasons (max 3) so the
+                 hero reflects why it was surfaced. No emoji per plan §3.1. -->
+            <div
+                v-if="(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).reasons?.length"
+                class="flex gap-1.5 flex-wrap"
+            >
               <span
-                  v-else-if="(resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).category"
+                  v-for="r in (resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).reasons!.slice(0, 3)"
+                  :key="r"
                   class="inline-flex items-center gap-1 bg-white/10 border border-white/15 backdrop-blur-md rounded-full px-2 py-0.5 text-[10px] font-semibold text-white/85"
-              >{{
-                  (resumeHero ? resumeHero.suggestion : (authStore.isLoggedIn ? trending[0] : general[0])).category
-                }}</span>
+              >{{ r }}</span>
             </div>
           </div>
           <div class="flex gap-2 flex-wrap shrink-0">
@@ -1377,7 +1392,7 @@ onUnmounted(() => {
             </div>
             <p class="text-xs font-medium truncate group-hover:text-primary transition-colors"
                :title="getDisplayTitle(r)">{{ getDisplayTitle(r) }}</p>
-            <p class="text-xs text-muted truncate">{{ r.category || r.type }}</p>
+            <p class="text-xs text-muted truncate">{{ r.type }}</p>
           </NuxtLink>
         </div>
       </div>
@@ -1400,22 +1415,22 @@ onUnmounted(() => {
 
     <!-- Top categories chip strip — discovery nudge for everyone. Renders right
          after either branch's last row (guests: Popular; logged-in: the rec
-         rows), so the guest layout is unchanged. Sorted by item count, capped
-         at 8 so it stays on one row on most viewports. -->
-    <div v-if="categories.length > 0" class="space-y-2">
+         rows), so the guest layout is unchanged. Shows the largest curated
+         categories (by item count), capped at 8, each linking to its page. -->
+    <div v-if="topCategories.length > 0" class="space-y-2">
       <h2 class="text-sm font-bold text-[var(--text-strong)] flex items-center gap-2">
         <UIcon name="i-lucide-tag" class="size-4 text-[var(--accent)]"/>
         Top categories
       </h2>
       <div class="flex flex-wrap gap-1.5">
         <NuxtLink
-            v-for="c in [...categories].sort((a, b) => b.count - a.count).slice(0, 8)"
-            :key="c.name"
-            :to="`/browse?category=${encodeURIComponent(c.name)}`"
+            v-for="c in topCategories"
+            :key="c.id"
+            :to="`/categories/${encodeURIComponent(c.id)}`"
             class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[var(--hairline)] bg-[var(--surface-card)] hover:border-[var(--accent)] hover:text-default text-xs text-muted no-underline transition-colors"
         >
-          {{ c.display_name || c.name }}
-          <span class="text-[10px] font-mono opacity-70">{{ c.count.toLocaleString() }}</span>
+          {{ c.name }}
+          <span v-if="c.item_count" class="text-[10px] font-mono opacity-70">{{ c.item_count.toLocaleString() }}</span>
         </NuxtLink>
       </div>
     </div>
@@ -1519,7 +1534,7 @@ onUnmounted(() => {
         <USelect
             v-if="categories.length > 0"
             v-model="params.category"
-            :items="[{ label: 'All Categories', value: 'all' }, ...categories.map(c => ({ label: `${c.name} (${c.count})`, value: c.name }))]"
+            :items="[{ label: 'All Categories', value: 'all' }, ...categories.map(c => ({ label: c.item_count ? `${c.name} (${c.item_count})` : c.name, value: c.id }))]"
             class="w-48"
         />
         <USelect
@@ -1926,14 +1941,13 @@ onUnmounted(() => {
            :title="getDisplayTitle(item)">
           {{ getDisplayTitle(item) }}
         </p>
-        <p v-if="!(item.is_mature && !canViewMature) && (item.category || item.codec || item.height || item.size || item.views)"
+        <p v-if="!(item.is_mature && !canViewMature) && (item.codec || item.height || item.size || item.views)"
            class="text-xs text-muted truncate">
           {{
             [
-              item.category,
               item.type === 'audio' && item.codec ? item.codec.toUpperCase() : null,
               item.type === 'video' && item.height ? formatResolution(item.width, item.height) : null,
-              !item.category && !item.codec && !item.height && item.size ? formatBytes(item.size) : null,
+              !item.codec && !item.height && item.size ? formatBytes(item.size) : null,
               item.views > 0 ? item.views.toLocaleString() + (item.views === 1 ? ' view' : ' views') : null,
             ].filter(Boolean).join(' · ')
           }}
@@ -2043,7 +2057,6 @@ onUnmounted(() => {
           { accessorKey: 'type', header: 'Type' },
           { accessorKey: 'duration', header: 'Duration' },
           { accessorKey: 'size', header: 'Size' },
-          { accessorKey: 'category', header: 'Category' },
           { accessorKey: 'views', header: 'Views' },
           { accessorKey: 'date_added', header: 'Added' },
         ]"

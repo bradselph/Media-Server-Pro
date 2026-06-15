@@ -70,7 +70,6 @@ import type {
     MediaListResponse,
     MediaReport,
     MediaStats,
-    MediaTypeCategory,
     MetricForecast,
     MetricTimelineEntry,
     ModuleDiagnostics,
@@ -261,7 +260,6 @@ export function useMediaApi() {
                 items: Record<string, MediaItem>
             }>(`/api/media/batch?ids=${ids.map(encodeURIComponent).join(',')}`),
         getStats: () => api.get<MediaStats>('/api/media/stats'),
-        getCategories: () => api.get<MediaTypeCategory[]>('/api/media/categories'),
         getThumbnailUrl: (id: string) => `/thumbnail?id=${encodeURIComponent(id)}`,
         getThumbnailPreviews: (id: string) => api.get<ThumbnailPreviews>(`/api/thumbnails/previews?id=${encodeURIComponent(id)}`),
         getThumbnailBatch: (ids: string[], width?: number) => {
@@ -555,7 +553,7 @@ export function useAdminApi() {
         updateMedia: (id: string, data: Partial<MediaItem>) =>
             api.put<MediaItem | { message: string }>(`${base}/media/${encodeURIComponent(id)}`, data),
         deleteMedia: (id: string) => api.delete<void>(`${base}/media/${encodeURIComponent(id)}`),
-        bulkMedia: (ids: string[], action: 'delete' | 'update', data?: { category?: string; is_mature?: boolean }) =>
+        bulkMedia: (ids: string[], action: 'delete' | 'update', data?: { is_mature?: boolean }) =>
             api.post<{ success: number; failed: number; errors: string[] }>(`${base}/media/bulk`, {ids, action, data}),
         generateThumbnail: (id: string, isAudio?: boolean) =>
             api.post<void>(`${base}/thumbnails/generate`, {id, is_audio: isAudio ?? false}),

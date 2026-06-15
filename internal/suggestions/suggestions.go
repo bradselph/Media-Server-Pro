@@ -7,6 +7,7 @@ import (
 	"maps"
 	"math"
 	"math/rand" // Go 1.20+ auto-seeds the default source
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -87,17 +88,46 @@ type Module struct {
 
 // MediaInfo holds information about a media file for suggestions
 type MediaInfo struct {
-	Path      string
-	StableID  string // UUID assigned by the media module; used as the public-facing MediaID
-	Title     string
-	Category  string
-	MediaType string
-	Tags      []string
-	Views     int
-	Rating    float64
-	Duration  float64
-	AddedAt   time.Time
-	IsMature  bool // flagged by the scanner — used to exclude from public suggestions
+	Path     string
+	StableID string // UUID assigned by the media module; used as the public-facing MediaID
+	Title    string
+	// CategoryIDs are the curated MediaCategory IDs this item belongs to
+	// (from media_category_items). Replaces the retired single path-detected
+	// category string; personalization scores against these.
+	CategoryIDs []string
+	MediaType   string
+	Tags        []string
+	Views       int
+	Rating      float64
+	Duration    float64
+	AddedAt     time.Time
+	IsMature    bool // flagged by the scanner — used to exclude from public suggestions
+}
+
+// primaryCategory returns the first curated category ID for grouping/diversity,
+// or "" when the item belongs to no category.
+func primaryCategory(ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	return ids[0]
+}
+
+// hasCommonCategory reports whether two curated-category-ID slices intersect.
+func hasCommonCategory(a, b []string) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	set := make(map[string]struct{}, len(a))
+	for _, x := range a {
+		set[x] = struct{}{}
+	}
+	for _, y := range b {
+		if _, ok := set[y]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // NewModule creates a new suggestions module
@@ -264,7 +294,11 @@ func (m *Module) Health() models.HealthStatus {
 
 // RecordView records a view for a user.
 // mediaPath is the filesystem path used to key ViewHistory entries.
-func (m *Module) RecordView(userID, mediaPath, category, mediaType string, duration float64) {
+// categoryIDs are the curated MediaCategory IDs the viewed item belongs to; each
+// gets a score bump so personalization reflects real categories. The item's
+// primary category is stored on the ViewHistory entry for "recently viewed"
+// similarity matching.
+func (m *Module) RecordView(userID, mediaPath string, categoryIDs []string, mediaType string, duration float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -295,7 +329,7 @@ func (m *Module) RecordView(userID, mediaPath, category, mediaType string, durat
 	if !found {
 		profile.ViewHistory = append(profile.ViewHistory, ViewHistory{
 			MediaPath:  mediaPath,
-			Category:   category,
+			Category:   primaryCategory(categoryIDs),
 			MediaType:  mediaType,
 			ViewCount:  1,
 			TotalTime:  duration,
@@ -308,15 +342,17 @@ func (m *Module) RecordView(userID, mediaPath, category, mediaType string, durat
 		}
 	}
 
-	// Update category scores
-	profile.CategoryScores[category] += 1.0
+	// Bump the score for every curated category the item belongs to.
+	for _, cid := range categoryIDs {
+		profile.CategoryScores[cid] += 1.0
+	}
 	profile.TypePreferences[mediaType] += 1.0
 	profile.TotalViews++
 	profile.TotalWatchTime += duration
 	profile.LastUpdated = time.Now()
 	profile.dirty = true
 
-	m.log.Debug("Recorded view for user %s: %s (category: %s)", userID, mediaPath, category)
+	m.log.Debug("Recorded view for user %s: %s (categories: %v)", userID, mediaPath, categoryIDs)
 }
 
 // RecordCompletion marks a media item as completed.
@@ -508,7 +544,7 @@ func (m *Module) GetSuggestions(userID string, limit int, canViewMature bool) []
 			MediaID:   media.StableID,
 			MediaPath: media.Path,
 			Title:     media.Title,
-			Category:  media.Category,
+			Category:  primaryCategory(media.CategoryIDs),
 			MediaType: media.MediaType,
 			Score:     score,
 			Reasons:   reasons,
@@ -638,10 +674,20 @@ func scoreMediaForProfile(profile *UserProfile, media *MediaInfo) (score float64
 	return score, reasons
 }
 
-// scoreCategoryPreference calculates the category preference boost.
+// scoreCategoryPreference calculates the category preference boost. An item can
+// belong to several curated categories; it is scored by its strongest matching
+// category against the user's accumulated category scores.
 func scoreCategoryPreference(profile *UserProfile, media *MediaInfo, reasons *[]string) float64 {
-	categoryScore, ok := profile.CategoryScores[media.Category]
-	if !ok {
+	if len(media.CategoryIDs) == 0 {
+		return 0
+	}
+	bestScore := 0.0
+	for _, cid := range media.CategoryIDs {
+		if s, ok := profile.CategoryScores[cid]; ok && s > bestScore {
+			bestScore = s
+		}
+	}
+	if bestScore <= 0 {
 		return 0
 	}
 	totalCategoryScore := 0.0
@@ -651,9 +697,11 @@ func scoreCategoryPreference(profile *UserProfile, media *MediaInfo, reasons *[]
 	if totalCategoryScore <= 0 {
 		return 0
 	}
-	normalizedCategoryScore := (categoryScore / totalCategoryScore) * 0.5
+	normalizedCategoryScore := (bestScore / totalCategoryScore) * 0.5
 	if normalizedCategoryScore > 0.1 {
-		*reasons = append(*reasons, "Matches your interests in "+media.Category)
+		// Category IDs are opaque UUIDs, so the reason stays generic rather than
+		// leaking an ID into a user-facing string.
+		*reasons = append(*reasons, "Matches your interests")
 	}
 	return normalizedCategoryScore
 }
@@ -674,10 +722,18 @@ func scoreTypePreference(profile *UserProfile, media *MediaInfo) float64 {
 	return (typeScore / totalTypeScore) * 0.3
 }
 
-// scoreRecentlyViewed adds a boost if the user recently viewed content in the same category.
+// scoreRecentlyViewed adds a boost if the user recently viewed content in one of
+// the same curated categories. ViewHistory stores the primary category of the
+// viewed item, so a match means the candidate shares that category.
 func scoreRecentlyViewed(profile *UserProfile, media *MediaInfo, reasons *[]string) float64 {
+	if len(media.CategoryIDs) == 0 {
+		return 0
+	}
 	for _, vh := range profile.ViewHistory {
-		if vh.Category == media.Category && time.Since(vh.LastViewed) < 7*24*time.Hour {
+		if vh.Category == "" {
+			continue
+		}
+		if slices.Contains(media.CategoryIDs, vh.Category) && time.Since(vh.LastViewed) < 7*24*time.Hour {
 			*reasons = append(*reasons, "Similar to recently viewed")
 			return 0.1
 		}
@@ -722,7 +778,7 @@ func (m *Module) GetTrendingSuggestions(limit int, canViewMature bool) []*Sugges
 			MediaID:   media.StableID,
 			MediaPath: media.Path,
 			Title:     media.Title,
-			Category:  media.Category,
+			Category:  primaryCategory(media.CategoryIDs),
 			MediaType: media.MediaType,
 			Score:     score,
 			Reasons:   []string{"Trending"},
@@ -785,7 +841,7 @@ func (m *Module) GetSimilarMedia(mediaID string, limit int, canViewMature bool) 
 				MediaID:   media.StableID,
 				MediaPath: media.Path,
 				Title:     media.Title,
-				Category:  media.Category,
+				Category:  primaryCategory(media.CategoryIDs),
 				MediaType: media.MediaType,
 				Score:     score,
 				Reasons:   reasons,
@@ -832,7 +888,7 @@ func (m *Module) randomSample(excludeID string, n int, canViewMature bool) []*Su
 			MediaID:   media.StableID,
 			MediaPath: media.Path,
 			Title:     media.Title,
-			Category:  media.Category,
+			Category:  primaryCategory(media.CategoryIDs),
 			MediaType: media.MediaType,
 			Score:     rand.Float64(), //nolint:gosec // G404: math/rand acceptable for non-security suggestions
 			Reasons:   []string{"Discover something new"},
@@ -847,7 +903,7 @@ func (m *Module) randomSample(excludeID string, n int, canViewMature bool) []*Su
 
 // computeSimilarity calculates how similar two media items are by category, type, tags, and title.
 func computeSimilarity(source, candidate *MediaInfo) (score float64, reasons []string) {
-	if candidate.Category == source.Category {
+	if hasCommonCategory(candidate.CategoryIDs, source.CategoryIDs) {
 		score += 0.3
 		reasons = append(reasons, "Same category")
 	}

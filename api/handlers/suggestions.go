@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,6 +12,31 @@ import (
 	"media-server-pro/internal/suggestions"
 	"media-server-pro/internal/thumbnails"
 )
+
+// enrichSuggestionCategoryNames replaces each suggestion's Category field — which
+// the engine populates with a curated category id (used internally for diversity)
+// — with the category's human-readable name, so the frontend never renders a raw
+// UUID. Ids that no longer resolve to a category become "" (hidden by the UI).
+func (h *Handler) enrichSuggestionCategoryNames(ctx context.Context, items []*suggestions.Suggestion) {
+	if len(items) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(items))
+	for _, s := range items {
+		if s.Category != "" {
+			ids = append(ids, s.Category)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	names := h.categoryNamesByIDs(ctx, ids)
+	for _, s := range items {
+		if s.Category != "" {
+			s.Category = names[s.Category]
+		}
+	}
+}
 
 // requireSuggestionsCatalogue checks that the suggestions module's media
 // catalog has been seeded. Returns 503 with Retry-After if the catalog
@@ -70,6 +96,7 @@ func (h *Handler) respondSuggestions(c *gin.Context, userID string, defaultLimit
 	suggestions := h.suggestions.GetSuggestions(userID, limit, canViewMature)
 	h.enrichSuggestionThumbnails(suggestions)
 	h.enrichSuggestionUserRatings(suggestions, userID)
+	h.enrichSuggestionCategoryNames(c.Request.Context(), suggestions)
 	writeSuccess(c, suggestions)
 }
 
@@ -105,6 +132,7 @@ func (h *Handler) GetTrendingSuggestions(c *gin.Context) {
 	trending := h.suggestions.GetTrendingSuggestions(limit, canViewMature)
 	h.enrichSuggestionThumbnails(trending)
 	h.enrichSuggestionUserRatings(trending, userIDFromSession(c))
+	h.enrichSuggestionCategoryNames(c.Request.Context(), trending)
 	writeSuccess(c, trending)
 }
 
@@ -131,6 +159,7 @@ func (h *Handler) GetSimilarMedia(c *gin.Context) {
 	similar := h.suggestions.GetSimilarMedia(id, limit, canViewMature)
 	h.enrichSuggestionThumbnails(similar)
 	h.enrichSuggestionUserRatings(similar, userIDFromSession(c))
+	h.enrichSuggestionCategoryNames(c.Request.Context(), similar)
 	writeSuccess(c, similar)
 }
 
@@ -150,6 +179,7 @@ func (h *Handler) GetContinueWatching(c *gin.Context) {
 	items := h.suggestions.GetContinueWatching(session.UserID, limit, canViewMature)
 	h.enrichSuggestionThumbnails(items)
 	h.enrichSuggestionUserRatings(items, session.UserID)
+	h.enrichSuggestionCategoryNames(c.Request.Context(), items)
 	writeSuccess(c, items)
 }
 
@@ -221,11 +251,35 @@ func (h *Handler) GetMyProfile(c *gin.Context) {
 			"total_views":      0,
 			"total_watch_time": 0.0,
 			"category_scores":  map[string]float64{},
+			"category_names":   map[string]string{},
 			"type_preferences": map[string]float64{},
 		})
 		return
 	}
-	writeSuccess(c, profile)
+	// category_scores is keyed by curated MediaCategory.id. Resolve the IDs to
+	// names so the profile UI can label its "Top categories" chart, and drop any
+	// score whose category no longer exists (deleted, or a stale path-detected
+	// bucket from before the migration) so retired buckets stop surfacing.
+	ids := make([]string, 0, len(profile.CategoryScores))
+	for id := range profile.CategoryScores {
+		ids = append(ids, id)
+	}
+	names := h.categoryNamesByIDs(c.Request.Context(), ids)
+	scores := make(map[string]float64, len(names))
+	for id, score := range profile.CategoryScores {
+		if _, ok := names[id]; ok {
+			scores[id] = score
+		}
+	}
+	writeSuccess(c, map[string]any{
+		"user_id":          profile.UserID,
+		"total_views":      profile.TotalViews,
+		"total_watch_time": profile.TotalWatchTime,
+		"category_scores":  scores,
+		"category_names":   names,
+		"type_preferences": profile.TypePreferences,
+		"last_updated":     profile.LastUpdated,
+	})
 }
 
 // ResetMyProfile deletes the calling user's suggestion profile and view history,
@@ -285,7 +339,7 @@ func (h *Handler) GetMyRatings(c *gin.Context) {
 			continue
 		}
 		ri := ratedItem{
-			Category:  vh.Category,
+			Category:  vh.Category, // primary curated category ID; resolved to a name below
 			MediaType: vh.MediaType,
 			Rating:    vh.Rating,
 		}
@@ -302,6 +356,19 @@ func (h *Handler) GetMyRatings(c *gin.Context) {
 			continue // skip if media was deleted
 		}
 		results = append(results, ri)
+	}
+
+	// Resolve the primary category IDs to names (drop unresolved/stale IDs so the
+	// UI never shows a raw UUID — it falls back to the media type).
+	ids := make([]string, 0, len(results))
+	for _, ri := range results {
+		if ri.Category != "" {
+			ids = append(ids, ri.Category)
+		}
+	}
+	names := h.categoryNamesByIDs(c.Request.Context(), ids)
+	for i := range results {
+		results[i].Category = names[results[i].Category]
 	}
 
 	writeSuccess(c, results)

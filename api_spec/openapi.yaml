@@ -349,20 +349,6 @@ components:
           type: boolean
           description: True when media library is still loading
 
-    MediaTypeCategory:
-      type: object
-      properties:
-        name:
-          type: string
-        display_name:
-          type: string
-        count:
-          type: integer
-        tags:
-          type: array
-          items:
-            type: string
-
     MediaStats:
       type: object
       properties:
@@ -2646,6 +2632,10 @@ paths:
       parameters:
         - name: category
           in: query
+          description: >-
+            Curated category id (MediaCategory.id). Restricts results to items
+            that belong to that category via media_category_items. The retired
+            path-detected category buckets are no longer accepted.
           schema:
             type: string
         - name: type
@@ -2878,6 +2868,10 @@ paths:
             type: string
         - name: category
           in: query
+          description: >-
+            Curated category id (MediaCategory.id). Restricts results to items
+            that belong to that category via media_category_items. The retired
+            path-detected category buckets are no longer accepted.
           schema:
             type: string
         - name: search
@@ -2923,25 +2917,6 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/MediaStats'
-
-  /api/media/categories:
-    get:
-      tags: [ media ]
-      summary: Get media categories
-      responses:
-        '200':
-          description: Categories
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/APIEnvelope'
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/MediaTypeCategory'
 
   /api/media/batch:
     get:
@@ -7972,9 +7947,33 @@ paths:
     get:
       tags: [ media ]
       summary: List categories
+      description: >-
+        Lists all admin-curated categories (the single "Categories" feature),
+        ordered by name. Each carries item_count, the number of media items in
+        the category — used to rank the home "Top categories" strip and label the
+        library category filter.
       responses:
         '200':
           description: Categories list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/APIEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string }
+                            name: { type: string }
+                            description: { type: string }
+                            cover_media_id: { type: string }
+                            item_count: { type: integer }
+                            created_at: { type: string, format: date-time }
+                            updated_at: { type: string, format: date-time }
 
   /api/admin/categories:
     post:

@@ -175,11 +175,13 @@ func TestStreamMedia_MissingID(t *testing.T) {
 	}
 }
 
-// TestGetCategories tests the categories endpoint.
-func TestGetCategories(t *testing.T) {
+// TestListCuratedCategories tests the curated categories listing endpoint. The
+// old path-detected /api/media/categories endpoint was retired; categories are
+// now the admin-curated MediaCategory feature served at /api/categories.
+func TestListCuratedCategories(t *testing.T) {
 	ts := testutil.NewTestServer(t)
 
-	resp := ts.Request("GET", "/api/media/categories", nil)
+	resp := ts.Request("GET", "/api/categories", nil)
 	defer resp.Body.Close()
 	result := ts.ParseJSON(resp)
 

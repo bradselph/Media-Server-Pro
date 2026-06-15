@@ -54,9 +54,12 @@ type MediaItem struct {
 }
 
 // MediaTypeCategory represents an auto-derived media "type" bucket (e.g. movies,
-// tv_shows, music) aggregated from the media-type field on each item. This powers
-// the library type filter and is distinct from MediaCategory, the admin-curated
-// grouping feature below.
+// tv_shows, music) aggregated from the media-type field on each item.
+//
+// Deprecated: the auto path-detected category system has been retired in favour
+// of the admin-curated MediaCategory feature below. This type is no longer
+// populated or served by any endpoint and is kept only so older generated
+// clients still compile. It will be removed in a future cleanup.
 type MediaTypeCategory struct {
 	Name        string   `json:"name"`
 	DisplayName string   `json:"display_name"`
@@ -492,6 +495,11 @@ type MediaCategory struct {
 	CoverMediaID string    `json:"cover_media_id,omitempty" db:"cover_media_id" gorm:"size:36"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at" gorm:"autoUpdateTime"`
+	// ItemCount is the number of media items in this category. It is not a
+	// stored column (gorm:"-"); handlers populate it from a COUNT over
+	// media_category_items so surfaces like the home "Top categories" strip can
+	// rank categories by size.
+	ItemCount int `json:"item_count" db:"-" gorm:"-"`
 }
 
 func (MediaCategory) TableName() string { return "media_categories" }

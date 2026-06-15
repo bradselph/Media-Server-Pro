@@ -89,16 +89,16 @@ type MediaMetadataRepository interface {
 
 // MediaFilter defines DB-level filtering and pagination for media queries.
 type MediaFilter struct {
-	Category string   // exact match on category
-	IsMature *bool    // filter by mature flag
-	Search   string   // substring match on path or category (LIKE %search%)
-	Type     string   // "video" or "audio" — filters by path extension (matches discovery logic)
-	Tags     []string // filter by tags (default OR — item must have at least one of these)
-	TagsAll  bool     // when true, item must have ALL of the listed tags (AND mode)
-	SortBy   string   // column to sort by: "views", "date_added", "path"
-	SortDesc bool     // descending sort
-	Limit    int      // max results (0 = no limit)
-	Offset   int      // skip N results
+	CategoryID string   // curated MediaCategory.id — restricts to items in media_category_items for that category (empty = no filter)
+	IsMature   *bool    // filter by mature flag
+	Search     string   // substring match on path (LIKE %search%)
+	Type       string   // "video" or "audio" — filters by path extension (matches discovery logic)
+	Tags       []string // filter by tags (default OR — item must have at least one of these)
+	TagsAll    bool     // when true, item must have ALL of the listed tags (AND mode)
+	SortBy     string   // column to sort by: "views", "date_added", "path"
+	SortDesc   bool     // descending sort
+	Limit      int      // max results (0 = no limit)
+	Offset     int      // skip N results
 }
 
 // ScanResultRepository provides mature content scan result storage.
