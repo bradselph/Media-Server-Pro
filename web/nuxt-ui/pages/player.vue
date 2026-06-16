@@ -1859,11 +1859,11 @@ watch(mediaId, (id, oldId) => {
                   :key="cat.id"
                   :to="`/categories/${encodeURIComponent(cat.id)}`"
                   class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium text-muted no-underline hover:text-default"
-                  style="background: rgba(255,255,255,0.07);"
+                  style="background: var(--tint-hover-strong);"
               >{{ cat.name }}</NuxtLink>
               <span v-if="media.is_mature"
-                    class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold"
-                    style="background: rgba(220,38,38,0.12); color: #f87171;"
+                    class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold text-error"
+                    style="background: rgba(220,38,38,0.12);"
               >18+</span>
             </div>
             <!-- Title -->

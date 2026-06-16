@@ -1463,7 +1463,7 @@ onUnmounted(() => {
             'hidden md:inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
             params.type === opt.value
               ? 'bg-primary text-white border-primary'
-              : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
+              : 'bg-transparent text-muted border-[var(--hairline)] hover:border-[var(--hairline-strong)] hover:text-default'
           ]"
             @click="params.type = opt.value"
         >
@@ -1480,7 +1480,7 @@ onUnmounted(() => {
             'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
             activePreset === 'trending'
               ? 'bg-[var(--accent-bg-med)] text-[var(--accent-soft)] border-[var(--accent-border)]'
-              : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
+              : 'bg-transparent text-muted border-[var(--hairline)] hover:border-[var(--hairline-strong)] hover:text-default'
           ]"
             aria-label="Filter by trending (most viewed)"
             :aria-pressed="activePreset === 'trending'"
@@ -1494,7 +1494,7 @@ onUnmounted(() => {
             'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
             activePreset === 'new'
               ? 'bg-[var(--accent-bg-med)] text-[var(--accent-soft)] border-[var(--accent-border)]'
-              : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
+              : 'bg-transparent text-muted border-[var(--hairline)] hover:border-[var(--hairline-strong)] hover:text-default'
           ]"
             aria-label="Filter by new (recently added)"
             :aria-pressed="activePreset === 'new'"

@@ -288,7 +288,7 @@ async function handleUpload() {
           <span>{{ uploadPct < 100 ? 'Uploading…' : 'Processing…' }}</span>
           <span>{{ uploadPct }}%</span>
         </div>
-        <div class="h-2 rounded-full bg-[var(--surface-elevated)] overflow-hidden">
+        <div class="h-2 rounded-full bg-elevated overflow-hidden">
           <div
               class="h-full rounded-full bg-primary transition-all duration-200"
               :style="{ width: uploadPct + '%' }"
