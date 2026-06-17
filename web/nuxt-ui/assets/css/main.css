@@ -20,6 +20,11 @@
 
 body {
     font-family: var(--font-sans);
+    /* Paint the page from the theme's --surface-page (overrides @nuxt/ui's
+       body{background:var(--ui-bg)}). Light mode reads as a soft gray instead
+       of pure white, each named theme paints its own page colour, and cards /
+       inputs keep --ui-bg / --surface-card so they elevate above the page. */
+    background-color: var(--surface-page);
 }
 
 /* Custom scrollbar */
@@ -187,8 +192,9 @@ body {
     --accent-bg-med: oklch(48% var(--accent-chroma) var(--accent-hue) / 0.15);
     --accent-border: oklch(48% var(--accent-chroma) var(--accent-hue) / 0.45);
 
-    /* Neutral surfaces — inverted from the dark stack */
-    --surface-page: #f4f4f8;
+    /* Neutral surfaces — soft cool-gray page so light mode isn't a harsh white
+       expanse; cards stay white to elevate above it (page < card in lightness). */
+    --surface-page: #eaedf2;
     --surface-card: #ffffff;
     --surface-elev: rgba(0, 0, 0, 0.06);
 

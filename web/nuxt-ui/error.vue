@@ -9,7 +9,7 @@ function handleBack() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-default text-default flex items-center justify-center px-4">
+  <div class="min-h-screen bg-[var(--surface-page)] text-default flex items-center justify-center px-4">
     <div class="text-center space-y-4 max-w-md">
       <p class="text-6xl font-bold text-primary">{{ error.statusCode || 500 }}</p>
       <h1 class="text-xl font-semibold text-highlighted">

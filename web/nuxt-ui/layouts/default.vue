@@ -350,7 +350,7 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
 </script>
 
 <template>
-  <div class="min-h-screen bg-default text-default">
+  <div class="min-h-screen bg-[var(--surface-page)] text-default">
     <a href="#main-content"
        class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-md focus:text-sm focus:font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
       Skip to main content
@@ -358,7 +358,7 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
     <!-- Full-page gate: nothing is rendered until the age-gate check resolves.
          Once resolved, if the gate is open the modal covers everything.
          Content only appears after the gate is cleared. -->
-    <div v-if="!ageGateChecked || ageGateOpen" class="fixed inset-0 z-40 bg-default"/>
+    <div v-if="!ageGateChecked || ageGateOpen" class="fixed inset-0 z-40 bg-[var(--surface-page)]"/>
 
     <!-- Nav -->
     <header v-if="ageGateChecked && !ageGateOpen"
