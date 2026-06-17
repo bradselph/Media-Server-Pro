@@ -1,5 +1,5 @@
 // Package media handles media file discovery, management, and metadata.
-// It provides scanning, caching, and categorization of media files.
+// It provides scanning, caching, and metadata management of media files.
 package media
 
 import (
@@ -741,11 +741,9 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 			item.Tags = make([]string, len(meta.Tags))
 			copy(item.Tags, meta.Tags)
 		}
-		// Category is set only by admin-curated category membership now; the old
-		// path-detection heuristic was retired. Carry forward any stored value.
-		if meta.Category != "" {
-			item.Category = meta.Category
-		}
+		// MediaItem.Category is no longer populated — categorisation is driven by
+		// curated MediaCategory membership (media_category_items), not the path or
+		// the legacy DB column. Any stale column value is left untouched but unused.
 		if meta.LastPlayed != nil {
 			item.LastPlayed = new(*meta.LastPlayed)
 		}
@@ -939,12 +937,9 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		m.mu.Unlock()
 	}
 
-	// Carry forward any stored category. The old path-detection heuristic was
-	// retired — item categorisation is now driven entirely by admin-curated
-	// MediaCategory membership (media_category_items), not the path.
-	if hasMeta && meta.Category != "" {
-		item.Category = meta.Category
-	}
+	// MediaItem.Category is intentionally left empty — item categorisation is
+	// driven entirely by curated MediaCategory membership (media_category_items),
+	// not the path or the legacy DB column.
 
 	// Check whether a thumbnail already exists on disk and pre-populate the URL.
 	// Thumbnail files are named by stable UUID; the public URL uses the same ID

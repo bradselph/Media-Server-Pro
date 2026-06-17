@@ -957,8 +957,11 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.PUT(pathMedia+"/:id", h.AdminUpdateMedia)
 	adminGrp.DELETE(pathMedia+"/:id", h.AdminDeleteMedia)
 
-	// Static file serving and template routes (using embedded filesystem)
-	web.RegisterStaticRoutes(r)
+	// Static file serving and template routes (using embedded filesystem).
+	// h.EnrichSPAShell injects per-route SEO metadata + a <noscript> fallback
+	// into the served SPA shell so non-JS crawlers (Heritrix/archive.org,
+	// social-card scrapers) get real HTML instead of an empty <div id="__nuxt">.
+	web.RegisterStaticRoutes(r, h.EnrichSPAShell)
 
 	log.Info("Routes configured")
 }

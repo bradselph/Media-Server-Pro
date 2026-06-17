@@ -151,7 +151,7 @@ onMounted(loadConfig)
   <div class="space-y-4">
     <!-- Loading -->
     <div v-if="loading" class="flex justify-center py-12">
-      <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-neutral-400"/>
+      <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-muted"/>
     </div>
 
     <template v-else>
@@ -271,7 +271,7 @@ onMounted(loadConfig)
                        @update:model-value="set('features', 'enable_downloader', $event)"/>
             </div>
           </div>
-          <p class="text-xs text-neutral-500 mt-3">Some toggles require a server restart to take effect.</p>
+          <p class="text-xs text-muted mt-3">Some toggles require a server restart to take effect.</p>
         </UCard>
 
         <!-- ── Server ──────────────────────────────────────────────── -->
@@ -317,7 +317,7 @@ onMounted(loadConfig)
                       @update:model-value="set('server', 'memory_limit_percent', Number($event))"/>
             </UFormField>
           </div>
-          <p class="text-xs text-neutral-500 mt-3">Server address/port and HTTP timeouts (read/write/idle/shutdown)
+          <p class="text-xs text-muted mt-3">Server address/port and HTTP timeouts (read/write/idle/shutdown)
             require a restart and live in raw JSON.</p>
         </UCard>
 
@@ -384,16 +384,16 @@ onMounted(loadConfig)
                 />
               </UFormField>
             </div>
-            <p class="text-xs text-neutral-500 mt-2">
+            <p class="text-xs text-muted mt-2">
               Defaults to <code>&lt;role&gt;/</code>. Useful when sharing a bucket across
               environments (e.g. set <code>prod/videos/</code> and <code>staging/videos/</code>).
             </p>
           </div>
-          <p v-if="get('storage', 'backend') === 's3'" class="text-xs text-neutral-500 mt-3">
+          <p v-if="get('storage', 'backend') === 's3'" class="text-xs text-muted mt-3">
             S3-compatible storage works with Backblaze B2, AWS S3, MinIO, Cloudflare R2, and Wasabi. Changing storage
             backend requires a server restart.
           </p>
-          <p v-else class="text-xs text-neutral-500 mt-3">
+          <p v-else class="text-xs text-muted mt-3">
             Files are stored on the local filesystem. Switch to S3 for cloud/CDN-backed storage.
           </p>
         </UCard>
@@ -515,7 +515,7 @@ onMounted(loadConfig)
               />
             </UFormField>
           </div>
-          <p class="text-xs text-neutral-500 mt-3">CSP, HSTS, CORS, IP toggles and rate limits all hot-reload — no
+          <p class="text-xs text-muted mt-3">CSP, HSTS, CORS, IP toggles and rate limits all hot-reload — no
             restart needed. Rate-limit windows, burst window and ban duration live in raw JSON / config.json.</p>
         </UCard>
 
@@ -767,13 +767,13 @@ onMounted(loadConfig)
           </div>
           <!-- Quality profiles -->
           <div v-if="get('hls', 'quality_profiles')?.length" class="mt-4">
-            <p class="text-xs text-neutral-400 mb-2">Quality Profiles</p>
+            <p class="text-xs text-muted mb-2">Quality Profiles</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div
                   v-for="(p, i) in get('hls', 'quality_profiles')"
                   :key="i"
-                  class="flex items-center gap-3 rounded-lg border border-neutral-700 px-3 py-2"
-                  :class="p.enabled ? 'bg-neutral-800/50' : 'bg-neutral-900/50 opacity-50'"
+                  class="flex items-center gap-3 rounded-lg border border-default px-3 py-2"
+                  :class="p.enabled ? 'bg-elevated' : 'bg-muted opacity-50'"
               >
                 <USwitch
                     :model-value="p.enabled"
@@ -781,17 +781,17 @@ onMounted(loadConfig)
                     size="sm"
                 />
                 <div class="flex-1 min-w-0">
-                  <div class="text-sm font-medium" :class="p.enabled ? 'text-white' : 'text-neutral-500'">
+                  <div class="text-sm font-medium" :class="p.enabled ? 'text-highlighted' : 'text-muted'">
                     {{ p.name }}
                   </div>
-                  <div class="text-xs text-neutral-500">
+                  <div class="text-xs text-muted">
                     {{ p.width }}x{{ p.height }} &mdash; {{ Math.round(p.bitrate / 1000) }}k video /
                     {{ Math.round(p.audio_bitrate / 1000) }}k audio
                   </div>
                 </div>
               </div>
             </div>
-            <p class="text-xs text-neutral-500 mt-2">Toggle profiles to control which quality levels are generated. At
+            <p class="text-xs text-muted mt-2">Toggle profiles to control which quality levels are generated. At
               least one must be enabled.</p>
           </div>
         </UCard>
@@ -829,7 +829,7 @@ onMounted(loadConfig)
                       @update:model-value="set('analytics', 'max_reconstruct_events', Number($event))"/>
             </UFormField>
           </div>
-          <p class="text-xs text-neutral-500 mt-3">Session timeout, view cooldown and cleanup interval are stored as
+          <p class="text-xs text-muted mt-3">Session timeout, view cooldown and cleanup interval are stored as
             durations (ns) — edit via raw JSON if needed.</p>
         </UCard>
 
@@ -966,7 +966,7 @@ onMounted(loadConfig)
               />
             </UFormField>
           </div>
-          <p class="text-xs text-neutral-500 mt-3">IPs listed here bypass the age verification check. CIDR ranges
+          <p class="text-xs text-muted mt-3">IPs listed here bypass the age verification check. CIDR ranges
             supported. Verification TTL is set in config.json or .env.</p>
         </UCard>
 
@@ -993,7 +993,7 @@ onMounted(loadConfig)
                       @update:model-value="set('cookie_consent', 'cookie_max_age', Number($event))"/>
             </UFormField>
           </div>
-          <p class="text-xs text-neutral-500 mt-3">Controls the visitor consent banner for analytics cookies. Disable
+          <p class="text-xs text-muted mt-3">Controls the visitor consent banner for analytics cookies. Disable
             only when running purely server-side without analytics tracking.</p>
         </UCard>
 
@@ -1025,7 +1025,7 @@ onMounted(loadConfig)
                       @update:model-value="set('remote_media', 'max_concurrent_downloads', Number($event))"/>
             </UFormField>
           </div>
-          <p class="text-xs text-neutral-500 mt-3">Sync interval, cache TTL and HTTP timeout are durations (ns) — edit
+          <p class="text-xs text-muted mt-3">Sync interval, cache TTL and HTTP timeout are durations (ns) — edit
             via raw JSON if needed.</p>
         </UCard>
 
@@ -1226,7 +1226,7 @@ onMounted(loadConfig)
                        @update:model-value="set('downloader', 'enabled', $event)"/>
             </div>
           </div>
-          <p class="text-xs text-neutral-500 mt-3">Health-check interval and request timeout are durations (ns) — edit
+          <p class="text-xs text-muted mt-3">Health-check interval and request timeout are durations (ns) — edit
             via raw JSON if needed.</p>
         </UCard>
 
@@ -1269,7 +1269,7 @@ onMounted(loadConfig)
               </UBadge>
             </div>
           </div>
-          <p class="text-xs text-neutral-500 mt-3">GitHub tokens and deploy-key paths can be set via .env (GITHUB_TOKEN
+          <p class="text-xs text-muted mt-3">GitHub tokens and deploy-key paths can be set via .env (GITHUB_TOKEN
             / DEPLOY_KEY_PATH) for security. Their presence is shown here as a status badge.</p>
         </UCard>
 
@@ -1288,11 +1288,11 @@ onMounted(loadConfig)
               ['Playlists', 'playlists'], ['Uploads', 'uploads'], ['HLS Cache', 'hls_cache'],
               ['Data', 'data'], ['Logs', 'logs'], ['Temp', 'temp'],
             ]" :key="key" class="text-sm">
-              <span class="text-neutral-400">{{ label }}:</span>
+              <span class="text-muted">{{ label }}:</span>
               <span class="font-mono text-xs ml-1">{{ get('directories', key) || '—' }}</span>
             </div>
           </div>
-          <p class="text-xs text-neutral-500 mt-3">Directory paths can only be changed via environment variables or
+          <p class="text-xs text-muted mt-3">Directory paths can only be changed via environment variables or
             config file.</p>
         </UCard>
 
@@ -1316,7 +1316,7 @@ onMounted(loadConfig)
               <UInput :model-value="get('database', 'name')" disabled/>
             </UFormField>
           </div>
-          <p class="text-xs text-neutral-500 mt-3">Database settings can only be changed via environment variables or
+          <p class="text-xs text-muted mt-3">Database settings can only be changed via environment variables or
             config file.</p>
         </UCard>
 
@@ -1328,14 +1328,14 @@ onMounted(loadConfig)
               <span class="font-semibold text-sm">Environment-Only Settings</span>
             </div>
           </template>
-          <p class="text-sm text-neutral-400 mb-3">
+          <p class="text-sm text-muted mb-3">
             The following settings cannot be changed at runtime for security reasons. They must be configured via
             environment variables or by editing config.json directly.
           </p>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
             <div>
               <p class="font-medium text-highlighted mb-1">Auth</p>
-              <ul class="text-xs text-neutral-400 space-y-0.5 list-disc pl-4">
+              <ul class="text-xs text-muted space-y-0.5 list-disc pl-4">
                 <li>Session timeout</li>
                 <li>Secure cookies</li>
                 <li>Login attempts / lockout</li>
@@ -1345,7 +1345,7 @@ onMounted(loadConfig)
             </div>
             <div>
               <p class="font-medium text-highlighted mb-1">Database</p>
-              <ul class="text-xs text-neutral-400 space-y-0.5 list-disc pl-4">
+              <ul class="text-xs text-muted space-y-0.5 list-disc pl-4">
                 <li>Host / port / name</li>
                 <li>Credentials</li>
                 <li>Connection pool settings</li>
@@ -1354,7 +1354,7 @@ onMounted(loadConfig)
             </div>
             <div>
               <p class="font-medium text-highlighted mb-1">Receiver</p>
-              <ul class="text-xs text-neutral-400 space-y-0.5 list-disc pl-4">
+              <ul class="text-xs text-muted space-y-0.5 list-disc pl-4">
                 <li>API keys</li>
                 <li>Proxy timeout</li>
                 <li>Health check interval</li>

@@ -14,7 +14,8 @@ import (
 // On success it always returns a non-nil (possibly empty) map so callers can
 // fail closed: an empty set means "category has no members", which Filter.Matches
 // treats as "no items pass" rather than "no filter". It returns (nil, nil) only
-// when no DB is wired or categoryID is empty (i.e. there is nothing to filter by).
+// when there is nothing to filter by: no DB module wired, the GORM handle is nil,
+// or categoryID is empty.
 func (m *Module) GetCategoryMemberIDs(ctx context.Context, categoryID string) (map[string]bool, error) {
 	if m.dbModule == nil || categoryID == "" {
 		return nil, nil

@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+- refactor(categories): unify every feature onto the admin-curated MediaCategory; retire the path-detected category buckets
+- feat(media): filter the library by curated category (`?category=<id>`); `ListCategories` returns `item_count`
+- feat(home): "Top categories" strip + library Category filter now reflect curated categories
+- feat(suggestions): personalization (recommendations, profile "Top Categories") scored by curated-category membership; ids resolved to names
+- feat(playlists): smart-playlist "category" condition uses a category picker instead of a raw id field
+- docs(spec,readme): align OpenAPI schemas + README with the unified category model
+
 ## [1.18.2] - 2026-06-09 (patch)
 
 - perf(media): page browse hot-path, batch upserts, index mature queries

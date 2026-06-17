@@ -500,6 +500,12 @@ type MediaCategory struct {
 	// media_category_items so surfaces like the home "Top categories" strip can
 	// rank categories by size.
 	ItemCount int `json:"item_count" db:"-" gorm:"-"`
+	// PreviewMediaIDs holds up to 4 member media IDs (ordered position ASC,
+	// added_at ASC — the same order as GetCategory's item list) used to render a
+	// mosaic thumbnail when a category has no explicit CoverMediaID. Not a stored
+	// column (gorm:"-"); ListCategories populates it from a window-function query
+	// over media_category_items. Omitted from JSON when empty.
+	PreviewMediaIDs []string `json:"preview_media_ids,omitempty" db:"-" gorm:"-"`
 }
 
 func (MediaCategory) TableName() string { return "media_categories" }

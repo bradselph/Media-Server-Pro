@@ -146,6 +146,14 @@ body {
     --text-faint: #555;
     --rating-star: #fbbf24;
 
+    /* Subtle "raise" tints for hover / elevated fills inside scoped component
+       CSS (NowPlayingSidebar dock/rail/rows, where Tailwind dark: variants
+       aren't available). White-alpha on the dark stack; flipped to black-alpha
+       under .light below so the fills stay visible on light surfaces. Two
+       levels keep rest/hover states distinguishable on the same element. */
+    --tint-hover: rgba(255, 255, 255, 0.05);
+    --tint-hover-strong: rgba(255, 255, 255, 0.07);
+
     /* Motion — from design handoff §8. The handoff also specifies a 450ms
        "frame cross-fade" for media-card thumbnail hover, but the real app
        cycles real preview frames via JS src-swap (see onMediaHoverEnter in
@@ -154,6 +162,185 @@ body {
        --motion-controls-fade wires into PlayerControls overlay opacity. */
     --motion-hover: 150ms linear;
     --motion-controls-fade: 200ms linear;
+}
+
+/* ── Light-mode token overrides ──────────────────────────────────────────
+   The design tokens above live in :root with the dark (default / fallback)
+   values. @nuxtjs/color-mode adds the `light` class to <html> when the user
+   picks a light theme (classSuffix:'' in nuxt.config). Every consumer — both
+   Tailwind bg-[var(--…)] utilities and scoped-CSS var() calls — picks up the
+   corrected value automatically, so this single block flips the whole custom
+   token stack instead of patching every component that reads it.
+
+   Accent stays derived from --accent-hue / --accent-chroma so brand overrides
+   (window.APP_CONFIG → useBrandConfig) keep propagating; only the lightness
+   drops (62% → 48%) because the dark accent hits just ~3.4:1 on white, below
+   WCAG AA. Surfaces and text are perceptual inversions of the dark values;
+   white-alpha hairlines/tints flip to black-alpha (with a small bump, since
+   near-white absorbs less contrast than near-black). Text values are AA-checked
+   against #ffffff and #f4f4f8. */
+.light {
+    /* Accent — lower lightness for AA contrast on white surfaces */
+    --accent: oklch(48% var(--accent-chroma) var(--accent-hue));
+    --accent-soft: oklch(40% var(--accent-chroma) var(--accent-hue));
+    --accent-bg-weak: oklch(48% var(--accent-chroma) var(--accent-hue) / 0.10);
+    --accent-bg-med: oklch(48% var(--accent-chroma) var(--accent-hue) / 0.15);
+    --accent-border: oklch(48% var(--accent-chroma) var(--accent-hue) / 0.45);
+
+    /* Neutral surfaces — inverted from the dark stack */
+    --surface-page: #f4f4f8;
+    --surface-card: #ffffff;
+    --surface-elev: rgba(0, 0, 0, 0.06);
+
+    /* Separators / tints — white-alpha flipped to black-alpha */
+    --hairline: rgba(0, 0, 0, 0.10);
+    --hairline-strong: rgba(0, 0, 0, 0.15);
+    --tint-hover: rgba(0, 0, 0, 0.05);
+    --tint-hover-strong: rgba(0, 0, 0, 0.07);
+
+    /* Text — inverted to dark tones (AA on light surfaces) */
+    --text-strong: #111118;
+    --text-med: #3a3a50;
+    --text-muted: #5252a0;
+    --text-dim: #444444;
+    --text-faint: #aaaaaa;
+
+    /* Rating star — amber-600 stays legible on white */
+    --rating-star: #d97706;
+}
+
+/* ── Named theme palettes ────────────────────────────────────────────────
+   useThemeStore (stores/theme.ts) adds a `theme-<value>` class to <html>
+   alongside the color-mode class. "Light" and "Dark" reuse the generic
+   :root / .light stacks above; the six named variants below give each a
+   distinct surface + text + accent palette.
+
+   Cascade: these blocks come AFTER .light so a light-variant theme
+   (theme-solarized-light, which carries both `light` and `theme-…`) wins the
+   overlapping tokens. Each block sets --accent-hue/--accent-chroma as the
+   theme's signature accent; the derived --accent family recomputes from the
+   active :root/.light formula. NOTE: an explicit user accent-hue (the slider
+   in default.vue, written inline on <html>) still wins over these defaults —
+   themes then differentiate via surfaces/text, which is intended.
+
+   Dark variants mirror :root semantics (white-alpha tints/hairlines, black
+   surface-elev); the one light variant mirrors .light (black-alpha). Muted
+   text is kept ≥4.5:1 on its own surface. */
+
+/* Midnight — deep cobalt, darker and cooler than the default dark stack */
+.theme-midnight {
+    --accent-hue: 234;
+    --accent-chroma: 0.15;
+    --surface-page: #080b16;
+    --surface-card: #0f1424;
+    --surface-elev: rgba(0, 0, 0, 0.32);
+    --hairline: rgba(255, 255, 255, 0.06);
+    --hairline-strong: rgba(255, 255, 255, 0.10);
+    --tint-hover: rgba(255, 255, 255, 0.05);
+    --tint-hover-strong: rgba(255, 255, 255, 0.08);
+    --text-strong: #e7ecff;
+    --text-med: #b4bee0;
+    --text-muted: #7c8ab8;
+    --text-dim: #5e6a92;
+    --text-faint: #424c6e;
+    --rating-star: #fbbf24;
+}
+
+/* Nord — desaturated arctic blue-grey (polar night + snow storm + frost) */
+.theme-nord {
+    --accent-hue: 213;
+    --accent-chroma: 0.07;
+    --surface-page: #2e3440;
+    --surface-card: #3b4252;
+    --surface-elev: rgba(0, 0, 0, 0.18);
+    --hairline: rgba(255, 255, 255, 0.08);
+    --hairline-strong: rgba(255, 255, 255, 0.13);
+    --tint-hover: rgba(255, 255, 255, 0.05);
+    --tint-hover-strong: rgba(255, 255, 255, 0.09);
+    --text-strong: #eceff4;
+    --text-med: #d8dee9;
+    --text-muted: #a0abc0;
+    --text-dim: #7e8aa3;
+    --text-faint: #5b667d;
+    --rating-star: #ebcb8b;
+}
+
+/* Dracula — dark slate with violet accent */
+.theme-dracula {
+    --accent-hue: 280;
+    --accent-chroma: 0.16;
+    --surface-page: #282a36;
+    --surface-card: #343746;
+    --surface-elev: rgba(0, 0, 0, 0.24);
+    --hairline: rgba(255, 255, 255, 0.07);
+    --hairline-strong: rgba(255, 255, 255, 0.12);
+    --tint-hover: rgba(255, 255, 255, 0.05);
+    --tint-hover-strong: rgba(255, 255, 255, 0.08);
+    --text-strong: #f8f8f2;
+    --text-med: #d2d4e4;
+    --text-muted: #9a9fce;
+    --text-dim: #6272a4;
+    --text-faint: #515473;
+    --rating-star: #f1fa8c;
+}
+
+/* Forest — deep evergreen with green accent */
+.theme-forest {
+    --accent-hue: 152;
+    --accent-chroma: 0.12;
+    --surface-page: #0c1410;
+    --surface-card: #14201a;
+    --surface-elev: rgba(0, 0, 0, 0.26);
+    --hairline: rgba(255, 255, 255, 0.06);
+    --hairline-strong: rgba(255, 255, 255, 0.10);
+    --tint-hover: rgba(255, 255, 255, 0.05);
+    --tint-hover-strong: rgba(255, 255, 255, 0.07);
+    --text-strong: #e6f1e9;
+    --text-med: #b6cbbd;
+    --text-muted: #7fa08c;
+    --text-dim: #5f7d6a;
+    --text-faint: #46594e;
+    --rating-star: #fbbf24;
+}
+
+/* Sunset — warm dusk browns with amber-orange accent */
+.theme-sunset {
+    --accent-hue: 32;
+    --accent-chroma: 0.15;
+    --surface-page: #1a1012;
+    --surface-card: #261619;
+    --surface-elev: rgba(0, 0, 0, 0.26);
+    --hairline: rgba(255, 255, 255, 0.07);
+    --hairline-strong: rgba(255, 255, 255, 0.11);
+    --tint-hover: rgba(255, 255, 255, 0.05);
+    --tint-hover-strong: rgba(255, 255, 255, 0.08);
+    --text-strong: #f8e9e4;
+    --text-med: #dcc0b8;
+    --text-muted: #b88c80;
+    --text-dim: #8f6a60;
+    --text-faint: #604742;
+    --rating-star: #fbbf24;
+}
+
+/* Solarized Light — cream base3 with low-saturation blue accent. Light
+   variant: carries `light` too, so it inherits .light's accent formula
+   (48% lightness) and only needs to come after .light to win surfaces. */
+.theme-solarized-light {
+    --accent-hue: 245;
+    --accent-chroma: 0.13;
+    --surface-page: #fdf6e3;
+    --surface-card: #fffdf3;
+    --surface-elev: rgba(7, 54, 66, 0.05);
+    --hairline: rgba(101, 123, 131, 0.20);
+    --hairline-strong: rgba(101, 123, 131, 0.32);
+    --tint-hover: rgba(7, 54, 66, 0.05);
+    --tint-hover-strong: rgba(7, 54, 66, 0.08);
+    --text-strong: #073642;
+    --text-med: #586e75;
+    --text-muted: #657b83;
+    --text-dim: #839496;
+    --text-faint: #93a1a1;
+    --rating-star: #b58900;
 }
 
 /* Section title — 13px uppercase muted header used above ABOUT, CHAPTERS,

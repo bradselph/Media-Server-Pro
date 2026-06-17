@@ -894,7 +894,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 
 .sb__icon-btn:hover {
   color: var(--text-strong);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--tint-hover);
 }
 
 /* Now Playing card */
@@ -987,7 +987,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 
 .np__bar {
   height: 4px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--hairline);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -1035,7 +1035,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 
 .np-btn:hover {
   color: var(--text-strong);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--tint-hover);
 }
 
 .np-btn--play {
@@ -1093,7 +1093,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
   font-family: ui-monospace, monospace;
   font-size: 10px;
   padding: 1px 6px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--tint-hover);
   border-radius: 999px;
   color: var(--text-muted);
   border: 1px solid var(--hairline);
@@ -1146,7 +1146,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 
 .sb__sub-link:hover {
   color: var(--text-strong);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--tint-hover);
 }
 
 .sb__sub-link--danger:hover {
@@ -1170,7 +1170,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 }
 
 .row:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--tint-hover);
 }
 
 .row:hover .row__actions {
@@ -1262,7 +1262,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 
 .row-btn:hover:not(:disabled) {
   color: var(--text-strong);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--tint-hover-strong);
 }
 
 .row-btn:disabled {
@@ -1288,7 +1288,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
   border: 1px dashed var(--hairline-strong);
   border-radius: 12px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--tint-hover);
 }
 
 .empty__icon {
@@ -1323,7 +1323,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
   padding: 1px 5px;
   border-radius: 3px;
   border: 1px solid var(--hairline-strong);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--tint-hover);
   color: var(--text-strong);
 }
 
@@ -1368,14 +1368,14 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 }
 
 .empty__btn--ghost {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--tint-hover);
   color: var(--text-med);
   border: 1px solid var(--hairline);
 }
 
 .empty__btn--ghost:hover {
   color: var(--text-strong);
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--tint-hover-strong);
 }
 
 .empty__btn--ghost[aria-pressed="true"] {
@@ -1435,7 +1435,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 }
 
 .rail__icon-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--tint-hover);
   color: var(--text-strong);
 }
 
@@ -1576,7 +1576,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 }
 
 .dock__art--empty {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--tint-hover);
   color: var(--text-muted);
 }
 
@@ -1612,7 +1612,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 
 .dock__bar {
   height: 2px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hairline);
 }
 
 .dock__bar-fill {

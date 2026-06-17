@@ -174,6 +174,8 @@ export interface MediaCategory {
     items?: MediaCategoryItem[]
     /** Number of media items in this category. Present on the list endpoint; used to rank the home "Top categories" strip. */
     item_count?: number
+    /** Up to 4 member media IDs (display order) from the list endpoint; used to render a mosaic thumbnail when no cover_media_id is set. */
+    preview_media_ids?: string[]
     created_at: string
     updated_at: string
 }

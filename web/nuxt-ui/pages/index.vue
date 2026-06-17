@@ -289,7 +289,7 @@ let loadSeq = 0
 // path-detected bucket like "movies" left in a saved preference from before the
 // categories unification) so it doesn't auto-apply a filter that matches nothing.
 function isCategoryId(v: unknown): v is string {
-  return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(v)
+  return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
 }
 
 // URL deep-link: query params take precedence over saved preferences so that
@@ -1463,7 +1463,7 @@ onUnmounted(() => {
             'hidden md:inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
             params.type === opt.value
               ? 'bg-primary text-white border-primary'
-              : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
+              : 'bg-transparent text-muted border-[var(--hairline)] hover:border-[var(--hairline-strong)] hover:text-default'
           ]"
             @click="params.type = opt.value"
         >
@@ -1480,7 +1480,7 @@ onUnmounted(() => {
             'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
             activePreset === 'trending'
               ? 'bg-[var(--accent-bg-med)] text-[var(--accent-soft)] border-[var(--accent-border)]'
-              : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
+              : 'bg-transparent text-muted border-[var(--hairline)] hover:border-[var(--hairline-strong)] hover:text-default'
           ]"
             aria-label="Filter by trending (most viewed)"
             :aria-pressed="activePreset === 'trending'"
@@ -1494,7 +1494,7 @@ onUnmounted(() => {
             'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border',
             activePreset === 'new'
               ? 'bg-[var(--accent-bg-med)] text-[var(--accent-soft)] border-[var(--accent-border)]'
-              : 'bg-transparent text-muted border-white/10 hover:border-white/25 hover:text-default'
+              : 'bg-transparent text-muted border-[var(--hairline)] hover:border-[var(--hairline-strong)] hover:text-default'
           ]"
             aria-label="Filter by new (recently added)"
             :aria-pressed="activePreset === 'new'"
@@ -1535,6 +1535,7 @@ onUnmounted(() => {
             v-if="categories.length > 0"
             v-model="params.category"
             :items="[{ label: 'All Categories', value: 'all' }, ...categories.map(c => ({ label: c.item_count ? `${c.name} (${c.item_count})` : c.name, value: c.id }))]"
+            aria-label="Filter by category"
             class="w-48"
         />
         <USelect

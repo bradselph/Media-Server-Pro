@@ -5,7 +5,6 @@ import {useCategoriesApi} from '~/composables/useApiEndpoints'
 definePageMeta({layout: 'default', title: 'Categories'})
 
 const categoriesApi = useCategoriesApi()
-const mediaApi = useMediaApi()
 const toast = useToast()
 
 const categories = ref<MediaCategory[]>([])
@@ -54,18 +53,12 @@ onMounted(load)
           :to="`/categories/${encodeURIComponent(cat.id)}`"
           class="group block"
       >
-        <div class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift">
-          <img
-              v-if="cat.cover_media_id"
-              :src="mediaApi.getThumbnailUrl(cat.cover_media_id)"
+        <div class="aspect-video relative rounded-lg overflow-hidden bg-muted mb-1.5 media-card-lift scanline-thumb">
+          <CategoryThumbnail
+              :cover-media-id="cat.cover_media_id"
+              :preview-media-ids="cat.preview_media_ids"
               :alt="cat.name"
-              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-              loading="lazy"
-              @error="($event.target as HTMLImageElement).style.display='none'"
           />
-          <div v-else class="w-full h-full flex items-center justify-center">
-            <UIcon name="i-lucide-library" class="size-8 text-muted"/>
-          </div>
         </div>
         <p class="text-sm font-semibold truncate" :title="cat.name">{{ cat.name }}</p>
         <p v-if="cat.description" class="text-xs text-muted truncate" :title="cat.description">{{ cat.description }}</p>
