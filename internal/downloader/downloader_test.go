@@ -2,13 +2,19 @@ package downloader
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"media-server-pro/internal/config"
+	"media-server-pro/internal/logger"
 )
 
 // ---------------------------------------------------------------------------
@@ -564,6 +570,160 @@ func TestFND0498_NewClient_StripTrailingSlash(t *testing.T) {
 				t.Errorf("baseURL = %q, want %q", client.baseURL, tt.expected)
 			}
 		})
+	}
+}
+
+// Importing a downloaded file must also clear the downloader's own record of it
+// so the entry stops showing up in the admin's "Server Files" list. MSP renames
+// the file directly on disk, so without an explicit DeleteDownload call the
+// downloader's in-memory tracking stays stale until the service restarts.
+func TestImport_ClearsDownloaderRecordAfterSourceDeleted(t *testing.T) {
+	base := t.TempDir()
+	downloads := filepath.Join(base, "downloads")
+	uploads := filepath.Join(base, "uploads")
+	if err := os.MkdirAll(downloads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(uploads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	srcFile := filepath.Join(downloads, "movie.mp4")
+	if err := os.WriteFile(srcFile, []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Stand in for the downloader service: record the filename of any DELETE
+	// /api/download/<filename> request so the test can assert the cleanup happened.
+	var deleted atomic.Value
+	deleted.Store("")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/download/") {
+			name, _ := url.PathUnescape(strings.TrimPrefix(r.URL.Path, "/api/download/"))
+			deleted.Store(name)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	mgr := config.NewManager(filepath.Join(base, "config.json"))
+	if err := mgr.Update(func(c *config.Config) {
+		c.Downloader.DownloadsDir = downloads
+		c.Directories.Uploads = uploads
+	}); err != nil {
+		t.Fatalf("config update: %v", err)
+	}
+
+	m := &Module{
+		config: mgr,
+		log:    logger.New("downloader-test"),
+		client: NewClient(srv.URL, 5*time.Second, ""),
+	}
+
+	destPath, sourceDeleted, err := m.Import("movie.mp4", "", "", true, false)
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if !sourceDeleted {
+		t.Fatalf("sourceDeleted = false, want true")
+	}
+	if filepath.Dir(destPath) != uploads {
+		t.Errorf("destPath dir = %q, want %q", filepath.Dir(destPath), uploads)
+	}
+	if got := deleted.Load().(string); got != "movie.mp4" {
+		t.Errorf("downloader DeleteDownload called with %q, want %q", got, "movie.mp4")
+	}
+}
+
+// When the import is a copy (deleteSource=false), the source file stays in the
+// downloader's downloads dir and the downloader's record must NOT be cleared —
+// the operator explicitly chose to keep the original.
+func TestImport_KeepsDownloaderRecordWhenSourceKept(t *testing.T) {
+	base := t.TempDir()
+	downloads := filepath.Join(base, "downloads")
+	uploads := filepath.Join(base, "uploads")
+	if err := os.MkdirAll(downloads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(uploads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(downloads, "movie.mp4"), []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var deleteCalls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleteCalls.Add(1)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	mgr := config.NewManager(filepath.Join(base, "config.json"))
+	if err := mgr.Update(func(c *config.Config) {
+		c.Downloader.DownloadsDir = downloads
+		c.Directories.Uploads = uploads
+	}); err != nil {
+		t.Fatalf("config update: %v", err)
+	}
+
+	m := &Module{
+		config: mgr,
+		log:    logger.New("downloader-test"),
+		client: NewClient(srv.URL, 5*time.Second, ""),
+	}
+
+	if _, sourceDeleted, err := m.Import("movie.mp4", "", "", false, false); err != nil {
+		t.Fatalf("Import: %v", err)
+	} else if sourceDeleted {
+		t.Fatalf("sourceDeleted = true with deleteSource=false")
+	}
+	if n := deleteCalls.Load(); n != 0 {
+		t.Errorf("DeleteDownload called %d time(s) when source kept, want 0", n)
+	}
+}
+
+// A failure on the downloader's DeleteDownload (e.g. 404 because the downloader
+// already noticed the file was gone) must not turn a successful import into a
+// caller-facing error.
+func TestImport_DownloaderDeleteFailureIsNonFatal(t *testing.T) {
+	base := t.TempDir()
+	downloads := filepath.Join(base, "downloads")
+	uploads := filepath.Join(base, "uploads")
+	if err := os.MkdirAll(downloads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(uploads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(downloads, "movie.mp4"), []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	mgr := config.NewManager(filepath.Join(base, "config.json"))
+	if err := mgr.Update(func(c *config.Config) {
+		c.Downloader.DownloadsDir = downloads
+		c.Directories.Uploads = uploads
+	}); err != nil {
+		t.Fatalf("config update: %v", err)
+	}
+
+	m := &Module{
+		config: mgr,
+		log:    logger.New("downloader-test"),
+		client: NewClient(srv.URL, 5*time.Second, ""),
+	}
+
+	if _, _, err := m.Import("movie.mp4", "", "", true, false); err != nil {
+		t.Errorf("Import should succeed despite downloader DELETE 404, got: %v", err)
 	}
 }
 
