@@ -292,6 +292,18 @@ func (m *Module) Import(filename, destination, subfolder string, deleteSource, t
 
 	m.log.Info("Imported %s → %s", filename, destPath)
 
+	// When the source was moved out of the downloader's downloads dir, ask the
+	// downloader to drop its own record so the file stops appearing in its
+	// "Server Files" list. MSP renames the file directly on disk, so the
+	// downloader's in-memory tracking is otherwise stale until restart. The
+	// file is already gone, so a 404 from the downloader is a no-op success;
+	// any other failure is logged but doesn't fail the import.
+	if sourceDeleted && m.client != nil {
+		if delErr := m.client.DeleteDownload(filename); delErr != nil {
+			m.log.Debug("Could not clear downloader record for %s after import: %v", filename, delErr)
+		}
+	}
+
 	if triggerScan && m.mediaModule != nil {
 		m.scanWG.Go(func() {
 			if err := m.mediaModule.Scan(); err != nil {
