@@ -74,6 +74,24 @@ export function isPrivateSession(): boolean {
     return privateSessionFlag.value
 }
 
+// Module-scoped mirror of the logged-in state. useApi.ts (imported before
+// the Pinia store is mounted) reads this to decide what a 401 means: for a
+// logged-in user it's an expired/revoked session → redirect to /login; for a
+// guest it's just an auth-only endpoint they touched on a public page (e.g.
+// the player's HLS-availability or playback-position calls) → let the caller
+// handle it without yanking the guest off the page.
+const loggedInFlag = ref(false)
+
+/**
+ * Exported for useApi.ts. True when a user session is (or was very recently)
+ * active. Used to gate the automatic 401 → login redirect so guests browsing
+ * or streaming on public pages aren't bounced to login by optional
+ * auth-only background requests.
+ */
+export function isAuthenticated(): boolean {
+    return loggedInFlag.value
+}
+
 export const useAuthStore = defineStore('auth', () => {
     const user = ref<User | null>(null)
     const allowGuests = ref(false)
@@ -98,6 +116,7 @@ export const useAuthStore = defineStore('auth', () => {
             const res = await getSession()
             allowGuests.value = res.allow_guests
             user.value = res.authenticated ? (normalizeUser(res.user) ?? null) : null
+            loggedInFlag.value = !!user.value
         } catch (e) {
             // FND-0045: Log error to distinguish network failures from logged-out state.
             // Only clear user if server explicitly says "not authenticated"; preserve user
@@ -132,6 +151,7 @@ export const useAuthStore = defineStore('auth', () => {
                 permissions: defaultPermissions(),
                 preferences: defaultPreferences(),
             }
+            loggedInFlag.value = true
             // Overwrite with real server data (permissions, preferences, id).
             // Errors are intentionally swallowed — the minimal user above is sufficient fallback.
             await fetchSession().catch(() => {
@@ -156,6 +176,7 @@ export const useAuthStore = defineStore('auth', () => {
         }
         // Clear local user state even if server logout failed, for best-effort UX.
         user.value = null
+        loggedInFlag.value = false
         // Reset the private-session flag on logout so the next user that
         // signs in on this device starts in normal mode.
         privateSessionFlag.value = false

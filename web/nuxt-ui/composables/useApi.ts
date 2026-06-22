@@ -1,7 +1,7 @@
 /**
  * Typed API client that unwraps the Go JSON envelope { success, data, message }.
  */
-import {isPrivateSession} from '~/stores/auth'
+import {isAuthenticated, isPrivateSession} from '~/stores/auth'
 
 interface GoEnvelope<T> {
     success: boolean
@@ -62,11 +62,15 @@ async function parseEnvelope<T>(res: Response): Promise<T> {
 
     const envelope = await res.json() as GoEnvelope<T>
     if (!res.ok || envelope.success === false) {
-        // On 401, redirect to login so stale sessions are cleared automatically.
+        // On 401, redirect to login ONLY when a session was actually active — i.e.
+        // a logged-in user whose session expired or was revoked. Guests on public
+        // pages (player, browse, …) routinely touch auth-only optional endpoints
+        // (HLS availability, playback position); those 401s must be handled by the
+        // caller's catch and fall back gracefully, NOT bounce the guest to /login.
         // NOTE: use window.location.replace (not navigateTo) — useApi is imported at module
         // level in useApiEndpoints.ts so it must not reference Nuxt composables which require
         // the Nuxt app context; doing so creates a TDZ error in the production bundle.
-        if (res.status === 401) redirectToLogin()
+        if (res.status === 401 && isAuthenticated()) redirectToLogin()
         throw new ApiError(
             envelope.message ?? envelope.error ?? `HTTP ${res.status}`,
             res.status,
