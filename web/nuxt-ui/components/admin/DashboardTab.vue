@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type {AdminStats, MediaStats, ServerSettings, StreamSession, SystemInfo, UploadProgress} from '~/types/api'
+import type {AdminStats, MediaStats, StreamSession, SystemInfo, UploadProgress} from '~/types/api'
 import {formatBytes, formatUptime} from '~/utils/format'
-import {moduleStatusColor, useAdminFeedback} from '~/composables/useAdminFeedback'
+import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const STREAM_COLUMNS = [
   {accessorKey: 'user_id', header: 'User'},
@@ -21,10 +21,7 @@ const UPLOAD_COLUMNS = [
 
 const adminApi = useAdminApi()
 const mediaApi = useMediaApi()
-const settingsApi = useSettingsApi()
 const {notifyError, notifySuccess} = useAdminFeedback()
-
-const settings = ref<ServerSettings | null>(null)
 
 const stats = ref<AdminStats | null>(null)
 const system = ref<SystemInfo | null>(null)
@@ -53,19 +50,17 @@ const memPct = computed(() => {
 async function loadAll() {
   statsLoading.value = true
   try {
-    const [s, sys, str, upl, sett, ms] = await Promise.allSettled([
+    const [s, sys, str, upl, ms] = await Promise.allSettled([
       adminApi.getStats(),
       adminApi.getSystemInfo(),
       adminApi.getActiveStreams(),
       adminApi.getActiveUploads(),
-      settingsApi.get(),
       mediaApi.getStats(),
     ])
     if (s.status === 'fulfilled') stats.value = s.value
     if (sys.status === 'fulfilled') system.value = sys.value
     if (str.status === 'fulfilled') streams.value = str.value ?? []
     if (upl.status === 'fulfilled') uploads.value = upl.value ?? []
-    if (sett.status === 'fulfilled') settings.value = sett.value
     if (ms.status === 'fulfilled') mediaStats.value = ms.value
   } finally {
     statsLoading.value = false
@@ -237,41 +232,8 @@ onMounted(() => {
           <UProgress :model-value="memPct" size="xs" class="mt-1"/>
         </div>
       </div>
-      <div v-if="system.modules?.length" class="space-y-1">
-        <p class="text-sm font-medium text-highlighted mb-2">Module Health</p>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-          <div
-              v-for="m in system.modules"
-              :key="m.name"
-              class="flex items-center justify-between text-xs bg-muted rounded px-2 py-1"
-          >
-            <span class="text-muted truncate">{{ m.name }}</span>
-            <UBadge :label="m.status" :color="moduleStatusColor(m.status)" size="xs" variant="subtle"/>
-          </div>
-        </div>
-      </div>
-    </UCard>
-
-    <!-- Features panel -->
-    <UCard v-if="settings">
-      <template #header>
-        <div class="flex items-center gap-2 font-semibold">
-          <UIcon name="i-lucide-toggle-right" class="size-4"/>
-          Feature Flags
-        </div>
-      </template>
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-        <div
-            v-for="[name, enabled] in Object.entries(settings.features)"
-            :key="name"
-            class="flex items-center justify-between text-xs rounded px-2 py-1.5"
-            :class="enabled ? 'bg-success/10' : 'bg-muted'"
-        >
-          <span class="text-muted truncate">{{ name.replace(/^enable/, '').replace(/([A-Z])/g, ' $1').trim() }}</span>
-          <UIcon :name="enabled ? 'i-lucide-check' : 'i-lucide-minus'" :class="enabled ? 'text-success' : 'text-muted'"
-                 class="size-3 shrink-0 ml-1"/>
-        </div>
-      </div>
+      <p class="text-xs text-muted">Module health is under <span class="font-medium">System ▸ Status</span>;
+        feature flags under <span class="font-medium">System ▸ Settings</span>.</p>
     </UCard>
 
     <!-- Server controls -->
@@ -290,14 +252,6 @@ onMounted(() => {
             color="neutral"
             :loading="actionBusy.has('clear-cache')"
             @click="handleAction(adminApi.clearCache, 'Cache cleared', 'clear-cache')"
-        />
-        <UButton
-            icon="i-lucide-scan"
-            label="Scan Media"
-            variant="outline"
-            color="neutral"
-            :loading="actionBusy.has('scan-media')"
-            @click="handleAction(adminApi.scanMedia, 'Media scan triggered', 'scan-media')"
         />
         <UButton
             icon="i-lucide-rotate-cw"
