@@ -30,10 +30,19 @@ const ageGateVerifying = ref(false)
 const ageGateTermsAccepted = ref(false)
 
 async function checkAgeGate() {
+  // Returning visitors who verified before render immediately instead of staring
+  // at a blank screen during the status round-trip. The server check below still
+  // runs and re-opens the gate if the prior verification has since expired.
+  if (typeof window !== 'undefined' && localStorage.getItem('msp-age-verified') === '1') {
+    ageGateChecked.value = true
+  }
   try {
     const status = await ageGateApi.getStatus()
     if (status.enabled && !status.verified) {
       ageGateOpen.value = true
+      if (typeof window !== 'undefined') localStorage.removeItem('msp-age-verified')
+    } else if (status.verified && typeof window !== 'undefined') {
+      localStorage.setItem('msp-age-verified', '1')
     }
   } catch { /* non-critical */
   } finally {
@@ -46,6 +55,9 @@ async function verifyAge() {
   ageGateVerifying.value = true
   try {
     await ageGateApi.verify()
+    // Remember the verification client-side so the next visit renders instantly
+    // (see checkAgeGate) without waiting on the status round-trip.
+    if (typeof window !== 'undefined') localStorage.setItem('msp-age-verified', '1')
     ageGateOpen.value = false
   } catch { /* if verify fails, keep modal open */
   } finally {
