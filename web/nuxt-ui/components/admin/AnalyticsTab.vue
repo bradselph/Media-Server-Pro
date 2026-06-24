@@ -2481,6 +2481,9 @@ const hasTrafficActivity = computed(() =>
             <UIcon name="i-lucide-bell" class="size-4"/>
             Custom Alerts
             <UBadge color="neutral" variant="subtle" size="xs">{{ alertRules.length }}</UBadge>
+            <UBadge color="neutral" variant="subtle" size="xs" title="Alert rules are saved in this browser only (localStorage) — they are not shared across admins or devices.">
+              this browser only
+            </UBadge>
           </div>
           <UButton size="xs" icon="i-lucide-plus" label="New rule"
                    @click="alertEdit = { id: '', name: '', metric: 'server_errors', operator: 'gt', threshold: 5, window: 1 }; alertsEditOpen = true"/>

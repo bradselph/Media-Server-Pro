@@ -18,6 +18,14 @@ const confirmDeleteId = ref<string | null>(null)
 const formOpen = ref(false)
 const editTarget = ref<MediaCategory | null>(null)
 const form = reactive({name: '', description: '', cover_media_id: '', tag: ''})
+
+// A cover is referenced by media UUID; anything else silently renders no cover,
+// so flag a malformed value before it's saved.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const coverIdError = computed(() =>
+    form.cover_media_id.trim() && !UUID_RE.test(form.cover_media_id.trim())
+        ? 'Must be a media UUID, or leave blank.'
+        : '')
 const saving = ref(false)
 
 // Detail view (view a category's items)
@@ -78,6 +86,10 @@ async function save() {
   }
   if (form.name.length > 255) {
     notifyError('Name too long (max 255 characters)')
+    return
+  }
+  if (coverIdError.value) {
+    notifyError('Cover Media ID must be a valid media UUID or left blank')
     return
   }
   saving.value = true
@@ -344,7 +356,8 @@ onMounted(load)
             <UTextarea v-model="form.description" placeholder="Optional description" :rows="2" class="w-full"
                        maxlength="2000"/>
           </UFormField>
-          <UFormField label="Cover Media ID" hint="Optional: media ID whose thumbnail is used as the category cover">
+          <UFormField label="Cover Media ID" :error="coverIdError"
+                      hint="Optional: media ID whose thumbnail is used as the category cover">
             <UInput v-model="form.cover_media_id" placeholder="Media UUID" class="w-full font-mono text-xs"/>
           </UFormField>
           <UFormField label="Tag"

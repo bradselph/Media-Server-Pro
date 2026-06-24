@@ -510,8 +510,13 @@ onMounted(loadConfig)
               <USwitch :model-value="get('streaming', 'keep_alive_enabled')"
                        @update:model-value="set('streaming', 'keep_alive_enabled', $event)"/>
             </div>
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Adaptive Bitrate (HLS)</span>
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <span class="text-sm">Auto-activate HLS in player</span>
+                <p class="text-xs text-muted mt-0.5">When on, the player switches to the HLS stream where one is
+                  available; off forces direct progressive playback. This is a player hint — it does not control
+                  server-side transcoding or bitrate.</p>
+              </div>
               <USwitch :model-value="get('streaming', 'adaptive')"
                        @update:model-value="set('streaming', 'adaptive', $event)"/>
             </div>
@@ -780,7 +785,8 @@ onMounted(loadConfig)
               <UInput type="number" :model-value="get('analytics', 'retention_days')"
                       @update:model-value="set('analytics', 'retention_days', Number($event))"/>
             </UFormField>
-            <UFormField label="Max Reconstruct Events (startup)">
+            <UFormField label="Max Reconstruct Events"
+                        help="Only applied at server startup when rebuilding in-memory stats from the event log. Changing it has no effect until the next restart.">
               <UInput type="number" :model-value="get('analytics', 'max_reconstruct_events')"
                       @update:model-value="set('analytics', 'max_reconstruct_events', Number($event))"/>
             </UFormField>

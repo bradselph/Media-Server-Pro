@@ -667,6 +667,9 @@ export interface SearchClickthrough {
 // Field names mirror the Go UserStats struct so the codegen pipeline doesn't
 // need a translation step. All counts default to 0 for inactive users.
 export interface UserAnalytics {
+    // Set by the backend when the analytics module is disabled; the numeric
+    // fields below are then absent, so callers must check this first.
+    analytics_disabled?: boolean
     user_id: string
     total_events: number
     total_views: number

@@ -654,7 +654,7 @@ onUnmounted(() => {
                 @click="generateThumbnail(row.original.id)"
             />
             <UButton
-                v-if="row.original.type !== 'audio'"
+                v-if="row.original.type === 'video'"
                 icon="i-lucide-video"
                 size="xs"
                 variant="ghost"
