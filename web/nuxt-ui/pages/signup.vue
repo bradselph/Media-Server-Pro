@@ -168,6 +168,11 @@ async function handleSignup() {
         <p class="text-muted text-sm mt-1">Media Server Pro</p>
       </div>
 
+      <p class="text-center text-sm text-muted -mt-4 mb-6">
+        Create your free account to unlock mature content, save your watch history,
+        build playlists, and get personalized picks.
+      </p>
+
       <!-- Card -->
       <div class="rounded-xl border border-[var(--hairline)] bg-[var(--surface-card)] p-7">
         <div v-if="registrationClosed" class="text-center py-6 space-y-4">
