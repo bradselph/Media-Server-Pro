@@ -1149,9 +1149,9 @@ export function useCategoriesApi() {
         list: () => api.get<MediaCategory[]>('/api/categories'),
         get: (id: string) => api.get<MediaCategory>(`/api/categories/${encodeURIComponent(id)}`),
         getForMedia: (mediaId: string) => api.get<MediaCategory[]>(`/api/media/${encodeURIComponent(mediaId)}/categories`),
-        create: (data: { name: string; description?: string; cover_media_id?: string }) =>
+        create: (data: { name: string; description?: string; cover_media_id?: string; tag?: string }) =>
             api.post<MediaCategory>(`${adminBase}/categories`, data),
-        update: (id: string, data: Partial<{ name: string; description: string; cover_media_id: string }>) =>
+        update: (id: string, data: Partial<{ name: string; description: string; cover_media_id: string; tag: string }>) =>
             api.put<MediaCategory>(`${adminBase}/categories/${encodeURIComponent(id)}`, data),
         delete: (id: string) => api.delete<void>(`${adminBase}/categories/${encodeURIComponent(id)}`),
         addItems: (categoryId: string, mediaIds: string[], positionStart = 0) =>

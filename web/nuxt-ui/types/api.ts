@@ -161,6 +161,8 @@ export interface MediaCategoryItem {
     media_id: string
     media_name?: string
     position: number
+    /** True when this member is included live via the category's tag rather than added explicitly. Such members can't be removed individually. */
+    auto?: boolean
 }
 
 // MediaCategory is an admin-curated, ordered grouping of media items — the one
@@ -171,6 +173,8 @@ export interface MediaCategory {
     name: string
     description?: string
     cover_media_id?: string
+    /** When set, this is a tag-backed ("smart") category: every media item carrying this tag is automatically a member, alongside any explicitly added items. */
+    tag?: string
     items?: MediaCategoryItem[]
     /** Number of media items in this category. Present on the list endpoint; used to rank the home "Top categories" strip. */
     item_count?: number

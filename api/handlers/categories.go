@@ -76,6 +76,10 @@ type categoryItemResponse struct {
 	MediaID   string `json:"media_id"`
 	MediaName string `json:"media_name,omitempty"`
 	Position  int    `json:"position"`
+	// Auto is true for members included live via the category's tag (not an
+	// explicit media_category_items row). Such members can't be removed
+	// individually — they leave when the media is untagged or the tag is cleared.
+	Auto bool `json:"auto,omitempty"`
 }
 
 // ListCategories returns all categories ordered by name, each with its member
@@ -239,6 +243,7 @@ func (h *Handler) GetCategory(c *gin.Context) {
 					MediaID:   id,
 					MediaName: extraNames[id],
 					Position:  basePos + i,
+					Auto:      true,
 				})
 			}
 		}

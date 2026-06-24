@@ -17,7 +17,7 @@ const confirmDeleteId = ref<string | null>(null)
 // Create / Edit modal
 const formOpen = ref(false)
 const editTarget = ref<MediaCategory | null>(null)
-const form = reactive({name: '', description: '', cover_media_id: ''})
+const form = reactive({name: '', description: '', cover_media_id: '', tag: ''})
 const saving = ref(false)
 
 // Detail view (view a category's items)
@@ -58,6 +58,7 @@ function openCreate() {
   form.name = ''
   form.description = ''
   form.cover_media_id = ''
+  form.tag = ''
   formOpen.value = true
 }
 
@@ -66,6 +67,7 @@ function openEdit(cat: MediaCategory) {
   form.name = cat.name
   form.description = cat.description ?? ''
   form.cover_media_id = cat.cover_media_id ?? ''
+  form.tag = cat.tag ?? ''
   formOpen.value = true
 }
 
@@ -80,7 +82,8 @@ async function save() {
   }
   saving.value = true
   try {
-    const data = {name: form.name, description: form.description, cover_media_id: form.cover_media_id || undefined}
+    // tag is sent verbatim (incl. empty) so editing can clear a tag-backed category.
+    const data = {name: form.name, description: form.description, cover_media_id: form.cover_media_id || undefined, tag: form.tag.trim()}
     if (editTarget.value) {
       await categoriesApi.update(editTarget.value.id, data)
       notifySuccess('Category updated')
@@ -93,6 +96,7 @@ async function save() {
     form.name = ''
     form.description = ''
     form.cover_media_id = ''
+    form.tag = ''
   } catch (e: unknown) {
     notifyError(e, 'Save failed')
   } finally {
@@ -289,6 +293,10 @@ onMounted(load)
           <div class="flex-1 min-w-0">
             <p class="font-semibold text-highlighted truncate">{{ cat.name }}</p>
             <p class="text-xs text-muted mt-0.5">{{ cat.item_count ?? 0 }} {{ (cat.item_count ?? 0) === 1 ? 'item' : 'items' }}</p>
+            <span v-if="cat.tag"
+                  class="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-medium">
+              <UIcon name="i-lucide-tag" class="size-3"/>#{{ cat.tag }}
+            </span>
             <p v-if="cat.description" class="text-xs text-muted mt-0.5 line-clamp-2">{{ cat.description }}</p>
           </div>
           <div class="flex gap-1 shrink-0">
@@ -339,6 +347,10 @@ onMounted(load)
           <UFormField label="Cover Media ID" hint="Optional: media ID whose thumbnail is used as the category cover">
             <UInput v-model="form.cover_media_id" placeholder="Media UUID" class="w-full font-mono text-xs"/>
           </UFormField>
+          <UFormField label="Tag"
+                      hint="Optional: auto-include every media item carrying this tag (a tag-backed “smart” category). Tag media manually, or feed it automatically with Auto-Tag rules under Moderation.">
+            <UInput v-model="form.tag" placeholder="e.g. anime" class="w-full" maxlength="255"/>
+          </UFormField>
         </div>
       </template>
       <template #footer>
@@ -383,6 +395,11 @@ onMounted(load)
                 @click="detailCategory && openAddItems(detailCategory.id)"
             />
           </div>
+          <p v-if="detailCategory?.tag" class="text-xs text-muted">
+            Tag-backed category: items tagged
+            <span class="text-primary font-medium">#{{ detailCategory.tag }}</span>
+            are included automatically and marked “via tag”.
+          </p>
           <div v-if="detailLoading" class="flex justify-center py-6">
             <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
           </div>
@@ -412,7 +429,17 @@ onMounted(load)
               >
                 <UButton icon="i-lucide-play" size="xs" variant="ghost" color="neutral"/>
               </NuxtLink>
+              <UBadge
+                  v-if="item.auto"
+                  label="via tag"
+                  icon="i-lucide-tag"
+                  color="primary"
+                  variant="subtle"
+                  size="xs"
+                  class="shrink-0"
+              />
               <UButton
+                  v-else
                   icon="i-lucide-x"
                   size="xs"
                   variant="ghost"
