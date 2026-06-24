@@ -916,7 +916,8 @@ const canViewMature = computed(() =>
 
 function matureGateHref(item: MediaItem): string {
   if (item.is_mature && !canViewMature.value) {
-    return authStore.isLoggedIn ? '/profile' : '/login'
+    // Guests: send to signup (the growth goal is new accounts, not logins).
+    return authStore.isLoggedIn ? '/profile' : '/signup'
   }
   return `/player?id=${encodeURIComponent(item.id)}`
 }
@@ -1826,7 +1827,7 @@ onUnmounted(() => {
           >
             <UIcon name="i-lucide-lock" class="size-5 text-white"/>
             <p class="text-white text-xs font-semibold leading-tight">
-              {{ authStore.isLoggedIn ? 'Enable mature content\nin profile settings' : 'Sign in to view' }}
+              {{ authStore.isLoggedIn ? 'Enable mature content\nin profile settings' : 'Sign up to view' }}
             </p>
           </div>
           <!-- Hover play button overlay (desktop hover) — hidden on touch
