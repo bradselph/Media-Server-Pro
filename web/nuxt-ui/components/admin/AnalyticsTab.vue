@@ -5,7 +5,6 @@ import type {
   AnalyticsEvent,
   AnalyticsSummary,
   AnomalyReport,
-  AuditLogEntry,
   CohortMetrics,
   ContentPerformanceItem,
   DailyStats,
@@ -56,20 +55,6 @@ const topUsersLoading = ref(false)
 
 // Top-searches state.
 const topSearches = ref<SearchQueryEntry[]>([])
-
-// Active streams (live snapshot, refreshed with the page).
-const activeStreams = ref<Array<{
-  id: string;
-  media_id: string;
-  filename: string;
-  user_id: string;
-  ip_address: string;
-  quality: string;
-  position: number;
-  started_at: number;
-  last_update: number;
-  bytes_sent: number
-}>>([])
 
 // Security review.
 const failedLogins = ref<FailedLoginEntry[]>([])
@@ -222,40 +207,6 @@ onMounted(() => {
 const ipSummary = ref<IPSummary | null>(null)
 const diagnostics = ref<ModuleDiagnostics | null>(null)
 
-// Admin actions feed — pulls from the audit-log table (which trackServerEvent
-// mirrors auditable events into) so the dashboard can show "who did what" in
-// one place without cross-referencing module logs. The optional category
-// filter narrows the list to a subset of related actions (e.g. backups only).
-const adminActions = ref<AuditLogEntry[]>([])
-const adminActionsLoading = ref(false)
-const adminActionsCategory = ref<'all' | 'governance' | 'curation' | 'config' | 'tasks'>('all')
-// Map of category → audit_log action prefixes / exact matches. The audit_log
-// `action` column carries the analytics event name (category_create,
-// backup_restore, etc.), so simple prefix matching is enough for grouping.
-const ADMIN_ACTION_CATEGORIES: Record<string, (action: string) => boolean> = {
-  governance: a => a.startsWith('user_role') || a.startsWith('deletion_request') || a === 'admin_action' || a === 'bulk_delete' || a === 'bulk_update' || a === 'account_delete',
-  curation: a => a.startsWith('category_') || a.startsWith('smart_playlist_') || a.startsWith('chapter_') || a.startsWith('auto_tag_') || a === 'thumbnail_upload',
-  config: a => a === 'config_update' || a === 'follower_settings_update' || a.startsWith('api_token_'),
-  tasks: a => a.startsWith('admin_task_') || a.startsWith('backup_') || a.startsWith('scan_') || a === 'thumbnail_cleanup',
-}
-const filteredAdminActions = computed(() => {
-  if (adminActionsCategory.value === 'all') return adminActions.value
-  const pred = ADMIN_ACTION_CATEGORIES[adminActionsCategory.value]
-  return pred ? adminActions.value.filter(e => pred(e.action)) : adminActions.value
-})
-
-async function loadAdminActions() {
-  adminActionsLoading.value = true
-  try {
-    const resp = await adminApi.getAuditLog({limit: 100, offset: 0})
-    adminActions.value = resp?.items ?? []
-  } catch (e: unknown) {
-    notifyError(e, 'Failed to load admin actions')
-  } finally {
-    adminActionsLoading.value = false
-  }
-}
-
 // Forecasts — one per headline metric. Rendered next to the period
 // comparison so admins see "is this growing?" alongside "vs last week".
 const forecastViews = ref<MetricForecast | null>(null)
@@ -307,10 +258,10 @@ const mediaDetailTitle = ref('')
 const PANEL_KEYS = [
   'cohort', 'comparison', 'timeline', 'bandwidth', 'errorsChart',
   'traffic', 'distribution', 'hourly', 'heatmap', 'funnel', 'quality',
-  'gaps', 'devices', 'retention', 'topUsers', 'topSearches', 'activeStreams',
+  'gaps', 'devices', 'retention', 'topUsers', 'topSearches',
   'errorPaths', 'failedLogins', 'recent', 'drill', 'topMedia',
   'contentPerf', 'daily', 'ips', 'diagnostics', 'forecast', 'rangeCompare',
-  'alerts', 'adminActions',
+  'alerts',
 ] as const
 type PanelKey = typeof PANEL_KEYS[number]
 const panelVisibility = ref<Record<PanelKey, boolean>>(
@@ -348,10 +299,10 @@ const PRESETS: Record<string, PanelKey[] | 'all'> = {
     'distribution', 'retention', 'topUsers', 'topMedia', 'topSearches',
     'contentPerf', 'funnel', 'recent'],
   Operations: ['comparison', 'timeline', 'bandwidth', 'errorsChart',
-    'errorPaths', 'failedLogins', 'activeStreams', 'quality', 'devices',
-    'ips', 'diagnostics', 'recent', 'drill', 'adminActions'],
+    'errorPaths', 'failedLogins', 'quality', 'devices',
+    'ips', 'diagnostics', 'recent', 'drill'],
   Security: ['comparison', 'errorsChart', 'errorPaths', 'failedLogins',
-    'ips', 'recent', 'drill', 'adminActions'],
+    'ips', 'recent', 'drill'],
   Content: ['cohort', 'timeline', 'topMedia', 'contentPerf', 'topSearches',
     'gaps', 'funnel', 'quality'],
 }
@@ -575,7 +526,7 @@ async function load() {
       analyticsApi.getEventTypeCounts(),                            // 5
       analyticsApi.getTopUsers(topUserMetric.value, 10),            // 6
       analyticsApi.getTopSearches(15),                              // 7
-      analyticsApi.getActiveStreams(),                              // 8
+      Promise.resolve(null),                                        // 8 — removed (live streams shown on the Dashboard); placeholder keeps indices stable
       analyticsApi.getFailedLogins(20),                             // 9
       analyticsApi.getErrorPaths(15),                               // 10
       analyticsApi.getMetricTimeline('total_views', days4chart),    // 11
@@ -613,7 +564,7 @@ async function load() {
     if (r(5) !== null) eventTypeCounts.value = r(5) as EventTypeCounts
     if (r(6) !== null) topUsers.value = (r(6) as TopUserEntry[]) ?? []
     if (r(7) !== null) topSearches.value = (r(7) as SearchQueryEntry[]) ?? []
-    if (r(8) !== null) activeStreams.value = (r(8) as typeof activeStreams.value) ?? []
+    // index 8 intentionally unused — active streams now live only on the Dashboard
     if (r(9) !== null) failedLogins.value = (r(9) as FailedLoginEntry[]) ?? []
     if (r(10) !== null) errorPaths.value = (r(10) as ErrorPathEntry[]) ?? []
     if (r(11) !== null) tlViews.value = (r(11) as MetricTimelineEntry[]) ?? []
@@ -647,10 +598,6 @@ async function load() {
 
     const failed = results.filter(x => x.status === 'rejected')
     if (failed.length) notifyWarning(`${failed.length} analytics endpoint(s) failed`)
-    // Admin actions feed pulls from a different endpoint (audit-log table,
-    // not analytics_events) so it can't ride the Promise.allSettled batch
-    // above. Fire it alongside but don't block the dashboard render on it.
-    loadAdminActions()
   } finally {
     loading.value = false
   }
@@ -1901,64 +1848,6 @@ const hasTrafficActivity = computed(() =>
       </UCard>
     </div>
 
-    <!-- Active Streams (live snapshot) — capacity / debugging signal that the
-         existing Streaming tab also shows, but here in context with the rest
-         of the analytics. Refreshes when the page reloads / auto-refresh. -->
-    <UCard v-if="panelVisibility.activeStreams && activeStreams.length > 0">
-      <template #header>
-        <div class="font-semibold flex items-center gap-2">
-          <UIcon name="i-lucide-radio-tower" class="size-4 text-emerald-500"/>
-          Active Streams ({{ activeStreams.length }})
-          <span class="relative flex h-2 w-2 ml-1">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"/>
-            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"/>
-          </span>
-        </div>
-      </template>
-      <UTable
-          :data="activeStreams"
-          :columns="[
-          { accessorKey: 'filename', header: 'Media' },
-          { accessorKey: 'user_id', header: 'User' },
-          { accessorKey: 'ip_address', header: 'IP' },
-          { accessorKey: 'quality', header: 'Quality' },
-          { accessorKey: 'position', header: 'Position' },
-          { accessorKey: 'bytes_sent', header: 'Bytes' },
-          { accessorKey: 'throughput', header: 'Throughput' },
-          { accessorKey: 'started_at', header: 'Started' },
-        ]"
-      >
-        <template #filename-cell="{ row }">
-          <span class="text-sm font-medium truncate max-w-xs block" :title="row.original.filename">
-            {{ row.original.filename }}
-          </span>
-        </template>
-        <template #position-cell="{ row }">{{ formatWatchTime(row.original.position) }}</template>
-        <template #bytes_sent-cell="{ row }">{{ formatBytes(row.original.bytes_sent) }}</template>
-        <!-- Throughput is averaged over the session lifetime: bytes_sent /
-             (now - started_at). Cheap client-side compute — no extra
-             backend field needed. Falls back to "—" when started_at is
-             unavailable (extremely fresh streams that haven't logged yet). -->
-        <template #throughput-cell="{ row }">
-          <span class="text-sm">
-            {{
-              row.original.started_at && row.original.bytes_sent > 0
-                  ? formatBytes(row.original.bytes_sent / Math.max(1, (Date.now() / 1000 - row.original.started_at))) + '/s'
-                  : '—'
-            }}
-          </span>
-        </template>
-        <template #started_at-cell="{ row }">{{
-            new Date(row.original.started_at * 1000).toLocaleTimeString()
-          }}
-        </template>
-        <template #user_id-cell="{ row }">
-          <span v-if="row.original.user_id" class="text-sm">{{ row.original.user_id }}</span>
-          <span v-else class="italic text-xs text-muted">anonymous</span>
-        </template>
-      </UTable>
-    </UCard>
-
     <!-- Server Errors-by-Path — only renders when there's something wrong.
          Shown alongside (not inside) the health banner so the table can
          breathe and is sortable. -->
@@ -2039,64 +1928,6 @@ const hasTrafficActivity = computed(() =>
     </UCard>
 
     <!-- Recent Activity Feed -->
-    <!-- Admin actions feed — every governance/curation/config/task event
-         that flows through trackServerEvent's auditable list lands in
-         audit_log; this panel surfaces it without leaving the analytics
-         tab. Category chips narrow to a related subset for focused
-         reviews ("show me all backup ops today"). -->
-    <UCard v-if="panelVisibility.adminActions">
-      <template #header>
-        <div class="flex items-center justify-between gap-2 flex-wrap">
-          <div class="font-semibold flex items-center gap-2">
-            <UIcon name="i-lucide-shield-check" class="size-4"/>
-            Admin Actions
-            <span v-if="adminActionsLoading" class="text-xs font-normal text-muted">(loading…)</span>
-            <span v-else class="text-xs font-normal text-muted">({{ filteredAdminActions.length }})</span>
-          </div>
-          <div class="flex items-center gap-1 text-xs">
-            <UButton
-                v-for="cat in (['all','governance','curation','config','tasks'] as const)"
-                :key="cat"
-                size="xs"
-                :variant="adminActionsCategory === cat ? 'solid' : 'subtle'"
-                :color="adminActionsCategory === cat ? 'primary' : 'neutral'"
-                :label="cat"
-                @click="adminActionsCategory = cat"
-            />
-            <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-refresh-cw" @click="loadAdminActions"/>
-          </div>
-        </div>
-      </template>
-      <div v-if="!adminActionsLoading && filteredAdminActions.length === 0"
-           class="text-center text-sm text-muted py-3 italic">
-        No admin actions in this category yet.
-      </div>
-      <div v-else class="divide-y divide-default max-h-72 overflow-y-auto">
-        <div
-            v-for="a in filteredAdminActions"
-            :key="a.id"
-            class="py-1.5 px-1 flex items-start gap-2 text-sm hover:bg-muted/10 rounded"
-        >
-          <UBadge
-              :color="a.success ? 'neutral' : 'error'"
-              variant="subtle"
-              size="xs"
-          >
-            {{ a.action }}
-          </UBadge>
-          <div class="flex-1 min-w-0 text-xs">
-            <span v-if="a.username" class="font-medium">{{ a.username }}</span>
-            <span v-else class="italic text-muted">(system)</span>
-            <span v-if="a.resource" class="ml-2 font-mono text-muted truncate" :title="a.resource">{{
-                a.resource
-              }}</span>
-            <span v-if="a.ip_address" class="ml-2 font-mono text-muted/70">{{ a.ip_address }}</span>
-          </div>
-          <span class="text-xs text-muted shrink-0">{{ new Date(a.timestamp).toLocaleTimeString() }}</span>
-        </div>
-      </div>
-    </UCard>
-
     <UCard v-if="panelVisibility.recent && recentActivity.length > 0">
       <template #header>
         <div class="font-semibold flex items-center gap-2">
@@ -2650,6 +2481,9 @@ const hasTrafficActivity = computed(() =>
             <UIcon name="i-lucide-bell" class="size-4"/>
             Custom Alerts
             <UBadge color="neutral" variant="subtle" size="xs">{{ alertRules.length }}</UBadge>
+            <UBadge color="neutral" variant="subtle" size="xs" title="Alert rules are saved in this browser only (localStorage) — they are not shared across admins or devices.">
+              this browser only
+            </UBadge>
           </div>
           <UButton size="xs" icon="i-lucide-plus" label="New rule"
                    @click="alertEdit = { id: '', name: '', metric: 'server_errors', operator: 'gt', threshold: 5, window: 1 }; alertsEditOpen = true"/>

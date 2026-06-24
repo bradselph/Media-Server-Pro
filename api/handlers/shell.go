@@ -32,7 +32,8 @@ import (
 // Wired into web.RegisterStaticRoutes via the router. Returns the zero
 // web.ShellMeta for non-indexable routes, leaving the shell untouched.
 func (h *Handler) EnrichSPAShell(c *gin.Context) web.ShellMeta {
-	switch c.Request.URL.Path {
+	path := c.Request.URL.Path
+	switch path {
 	case "/player":
 		return h.shellMetaForPlayer(c)
 	case "/":
@@ -48,7 +49,29 @@ func (h *Handler) EnrichSPAShell(c *gin.Context) web.ShellMeta {
 			"Categories — Media Server Pro",
 			"Explore the Media Server Pro library by category.")
 	}
+	// Category detail pages (/categories/<id>) become their own indexable, topical
+	// landing pages with a category-specific title and description.
+	if rest, ok := strings.CutPrefix(path, "/categories/"); ok {
+		return h.shellMetaForCategory(c, rest)
+	}
 	return web.ShellMeta{}
+}
+
+// shellMetaForCategory renders category-specific SEO for /categories/<id>. Falls
+// back to the generic categories meta when the id is empty or no longer resolves
+// to a category (deleted, or a malformed path segment).
+func (h *Handler) shellMetaForCategory(c *gin.Context, id string) web.ShellMeta {
+	id = strings.Trim(strings.TrimSpace(id), "/")
+	if id != "" {
+		if name := h.categoryNamesByIDs(c.Request.Context(), []string{id})[id]; name != "" {
+			return h.shellMetaForDiscovery(c,
+				name+" — Media Server Pro",
+				"Browse "+name+" videos and media on Media Server Pro.")
+		}
+	}
+	return h.shellMetaForDiscovery(c,
+		"Categories — Media Server Pro",
+		"Explore the Media Server Pro library by category.")
 }
 
 // shellMetaForPlayer renders per-item SEO for /player?id=<id>. Mirrors the

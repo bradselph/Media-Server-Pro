@@ -17,7 +17,15 @@ const confirmDeleteId = ref<string | null>(null)
 // Create / Edit modal
 const formOpen = ref(false)
 const editTarget = ref<MediaCategory | null>(null)
-const form = reactive({name: '', description: '', cover_media_id: ''})
+const form = reactive({name: '', description: '', cover_media_id: '', tag: ''})
+
+// A cover is referenced by media UUID; anything else silently renders no cover,
+// so flag a malformed value before it's saved.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const coverIdError = computed(() =>
+    form.cover_media_id.trim() && !UUID_RE.test(form.cover_media_id.trim())
+        ? 'Must be a media UUID, or leave blank.'
+        : '')
 const saving = ref(false)
 
 // Detail view (view a category's items)
@@ -33,6 +41,10 @@ const addItemsTarget = ref<string | null>(null)
 const mediaSearch = ref('')
 const mediaResults = ref<MediaItem[]>([])
 const mediaSearching = ref(false)
+const mediaPage = ref(1)
+const mediaTotalPages = ref(1)
+const mediaLoadingMore = ref(false)
+const MEDIA_PICKER_PAGE_SIZE = 40
 const addingIds = ref(new Set<string>())
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 // Nonce to discard stale background fetches from openAddItems (incremented by addItem on success)
@@ -54,6 +66,7 @@ function openCreate() {
   form.name = ''
   form.description = ''
   form.cover_media_id = ''
+  form.tag = ''
   formOpen.value = true
 }
 
@@ -62,6 +75,7 @@ function openEdit(cat: MediaCategory) {
   form.name = cat.name
   form.description = cat.description ?? ''
   form.cover_media_id = cat.cover_media_id ?? ''
+  form.tag = cat.tag ?? ''
   formOpen.value = true
 }
 
@@ -74,9 +88,14 @@ async function save() {
     notifyError('Name too long (max 255 characters)')
     return
   }
+  if (coverIdError.value) {
+    notifyError('Cover Media ID must be a valid media UUID or left blank')
+    return
+  }
   saving.value = true
   try {
-    const data = {name: form.name, description: form.description, cover_media_id: form.cover_media_id || undefined}
+    // tag is sent verbatim (incl. empty) so editing can clear a tag-backed category.
+    const data = {name: form.name, description: form.description, cover_media_id: form.cover_media_id || undefined, tag: form.tag.trim()}
     if (editTarget.value) {
       await categoriesApi.update(editTarget.value.id, data)
       notifySuccess('Category updated')
@@ -89,6 +108,7 @@ async function save() {
     form.name = ''
     form.description = ''
     form.cover_media_id = ''
+    form.tag = ''
   } catch (e: unknown) {
     notifyError(e, 'Save failed')
   } finally {
@@ -156,27 +176,49 @@ function openAddItems(categoryId: string) {
     })
   }
   addItemsOpen.value = true
+  // Populate immediately so the picker shows recent media instead of a blank list.
+  searchMedia()
 }
 
-async function searchMedia() {
-  if (!mediaSearch.value.trim()) {
-    mediaResults.value = [];
-    return
+// Populates the media picker. With no search term it lists recent media so the
+// modal is never blank (the admin can just scroll and add); with a term it
+// searches by name. Paginated via "Load more" so the whole library is reachable,
+// not just the first page.
+async function searchMedia(append = false) {
+  if (append) {
+    mediaLoadingMore.value = true
+  } else {
+    mediaPage.value = 1
+    mediaSearching.value = true
   }
-  mediaSearching.value = true
   try {
-    const res = await adminApi.listMedia({page: 1, limit: 20, search: mediaSearch.value})
-    mediaResults.value = res.items ?? []
+    const q = mediaSearch.value.trim()
+    const res = await adminApi.listMedia({
+      page: mediaPage.value,
+      limit: MEDIA_PICKER_PAGE_SIZE,
+      ...(q ? {search: q} : {}),
+    })
+    const items = res.items ?? []
+    mediaResults.value = append ? [...mediaResults.value, ...items] : items
+    mediaTotalPages.value = res.total_pages ?? 1
   } catch {
-    mediaResults.value = []
+    if (!append) mediaResults.value = []
   } finally {
     mediaSearching.value = false
+    mediaLoadingMore.value = false
   }
+}
+
+function loadMoreMedia() {
+  if (mediaLoadingMore.value || mediaPage.value >= mediaTotalPages.value) return
+  mediaPage.value++
+  searchMedia(true)
 }
 
 function onSearchInput() {
   if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(searchMedia, 300)
+  // Reset to page 1 on a new query (searchMedia(false) resets pagination).
+  searchTimer = setTimeout(() => searchMedia(false), 300)
 }
 
 onUnmounted(() => {
@@ -263,6 +305,10 @@ onMounted(load)
           <div class="flex-1 min-w-0">
             <p class="font-semibold text-highlighted truncate">{{ cat.name }}</p>
             <p class="text-xs text-muted mt-0.5">{{ cat.item_count ?? 0 }} {{ (cat.item_count ?? 0) === 1 ? 'item' : 'items' }}</p>
+            <span v-if="cat.tag"
+                  class="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-medium">
+              <UIcon name="i-lucide-tag" class="size-3"/>#{{ cat.tag }}
+            </span>
             <p v-if="cat.description" class="text-xs text-muted mt-0.5 line-clamp-2">{{ cat.description }}</p>
           </div>
           <div class="flex gap-1 shrink-0">
@@ -310,8 +356,13 @@ onMounted(load)
             <UTextarea v-model="form.description" placeholder="Optional description" :rows="2" class="w-full"
                        maxlength="2000"/>
           </UFormField>
-          <UFormField label="Cover Media ID" hint="Optional: media ID whose thumbnail is used as the category cover">
+          <UFormField label="Cover Media ID" :error="coverIdError"
+                      hint="Optional: media ID whose thumbnail is used as the category cover">
             <UInput v-model="form.cover_media_id" placeholder="Media UUID" class="w-full font-mono text-xs"/>
+          </UFormField>
+          <UFormField label="Tag"
+                      hint="Optional: auto-include every media item carrying this tag (a tag-backed “smart” category). Tag media manually, or feed it automatically with Auto-Tag rules under Moderation.">
+            <UInput v-model="form.tag" placeholder="e.g. anime" class="w-full" maxlength="255"/>
           </UFormField>
         </div>
       </template>
@@ -354,9 +405,14 @@ onMounted(load)
                 size="sm"
                 variant="outline"
                 color="neutral"
-                @click="addItemsTarget = detailCategory?.id ?? null; addItemsOpen = true; mediaSearch = ''; mediaResults = []"
+                @click="detailCategory && openAddItems(detailCategory.id)"
             />
           </div>
+          <p v-if="detailCategory?.tag" class="text-xs text-muted">
+            Tag-backed category: items tagged
+            <span class="text-primary font-medium">#{{ detailCategory.tag }}</span>
+            are included automatically and marked “via tag”.
+          </p>
           <div v-if="detailLoading" class="flex justify-center py-6">
             <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
           </div>
@@ -386,7 +442,17 @@ onMounted(load)
               >
                 <UButton icon="i-lucide-play" size="xs" variant="ghost" color="neutral"/>
               </NuxtLink>
+              <UBadge
+                  v-if="item.auto"
+                  label="via tag"
+                  icon="i-lucide-tag"
+                  color="primary"
+                  variant="subtle"
+                  size="xs"
+                  class="shrink-0"
+              />
               <UButton
+                  v-else
                   icon="i-lucide-x"
                   size="xs"
                   variant="ghost"
@@ -419,9 +485,9 @@ onMounted(load)
               :loading="mediaSearching"
               @input="onSearchInput"
           />
-          <div v-if="mediaResults.length === 0 && mediaSearch.length > 0 && !mediaSearching"
+          <div v-if="mediaResults.length === 0 && !mediaSearching"
                class="text-center py-4 text-muted text-sm">
-            No results.
+            {{ mediaSearch.trim() ? 'No media matches your search.' : 'No media found in the library.' }}
           </div>
           <div v-else class="divide-y divide-default max-h-80 overflow-y-auto">
             <div
@@ -455,6 +521,16 @@ onMounted(load)
                   @click="addItem(item.id)"
               />
             </div>
+          </div>
+          <div v-if="mediaResults.length > 0 && mediaPage < mediaTotalPages" class="text-center pt-1">
+            <UButton
+                label="Load more"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                :loading="mediaLoadingMore"
+                @click="loadMoreMedia"
+            />
           </div>
         </div>
       </template>

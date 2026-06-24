@@ -291,22 +291,6 @@ onMounted(loadConfig)
               <UInput type="number" :model-value="get('server', 'port')"
                       @update:model-value="set('server', 'port', Number($event))"/>
             </UFormField>
-            <UFormField label="HTTPS">
-              <div class="pt-2">
-                <USwitch :model-value="get('server', 'enable_https')"
-                         @update:model-value="set('server', 'enable_https', $event)"/>
-              </div>
-            </UFormField>
-            <template v-if="get('server', 'enable_https')">
-              <UFormField label="Certificate File">
-                <UInput :model-value="get('server', 'cert_file')"
-                        @update:model-value="set('server', 'cert_file', $event)" placeholder="/path/to/cert.pem"/>
-              </UFormField>
-              <UFormField label="Key File">
-                <UInput :model-value="get('server', 'key_file')" @update:model-value="set('server', 'key_file', $event)"
-                        placeholder="/path/to/key.pem"/>
-              </UFormField>
-            </template>
             <UFormField label="Max Header Bytes">
               <UInput type="number" :model-value="get('server', 'max_header_bytes')"
                       @update:model-value="set('server', 'max_header_bytes', Number($event))"/>
@@ -318,7 +302,8 @@ onMounted(loadConfig)
             </UFormField>
           </div>
           <p class="text-xs text-muted mt-3">Server address/port and HTTP timeouts (read/write/idle/shutdown)
-            require a restart and live in raw JSON.</p>
+            require a restart and live in raw JSON. HTTPS/TLS (enable + cert/key) is managed under
+            <span class="font-medium">Security ▸ Settings</span>.</p>
         </UCard>
 
         <!-- ── Storage Backend ──────────────────────────────────────── -->
@@ -449,21 +434,6 @@ onMounted(loadConfig)
               <USwitch :model-value="get('security', 'csp_enabled')"
                        @update:model-value="set('security', 'csp_enabled', $event)"/>
             </div>
-            <div class="flex items-center justify-between">
-              <span class="text-sm">HSTS</span>
-              <USwitch :model-value="get('security', 'hsts_enabled')"
-                       @update:model-value="set('security', 'hsts_enabled', $event)"/>
-            </div>
-            <UFormField label="HSTS Max Age (s)">
-              <UInput type="number" :model-value="get('security', 'hsts_max_age')"
-                      @update:model-value="set('security', 'hsts_max_age', Number($event))"
-                      :disabled="!get('security', 'hsts_enabled')"/>
-            </UFormField>
-            <div class="flex items-center justify-between">
-              <span class="text-sm">CORS</span>
-              <USwitch :model-value="get('security', 'cors_enabled')"
-                       @update:model-value="set('security', 'cors_enabled', $event)"/>
-            </div>
             <UFormField label="Max File Size (MB, 0=no limit)">
               <UInput type="number" :model-value="get('security', 'max_file_size_mb')"
                       @update:model-value="set('security', 'max_file_size_mb', Number($event))"/>
@@ -496,15 +466,6 @@ onMounted(loadConfig)
                   :rows="3"
               />
             </UFormField>
-            <UFormField label="CORS Allowed Origins (one per line)">
-              <UTextarea
-                  :model-value="(get('security', 'cors_origins') || []).join('\n')"
-                  @update:model-value="set('security', 'cors_origins', String($event).split('\n').map(s => s.trim()).filter(Boolean))"
-                  placeholder="https://app.example.com"
-                  :rows="3"
-                  :disabled="!get('security', 'cors_enabled')"
-              />
-            </UFormField>
             <UFormField label="CSP Policy" class="lg:col-span-2">
               <UTextarea
                   :model-value="get('security', 'csp_policy')"
@@ -515,8 +476,10 @@ onMounted(loadConfig)
               />
             </UFormField>
           </div>
-          <p class="text-xs text-muted mt-3">CSP, HSTS, CORS, IP toggles and rate limits all hot-reload — no
-            restart needed. Rate-limit windows, burst window and ban duration live in raw JSON / config.json.</p>
+          <p class="text-xs text-muted mt-3">CSP, IP toggles and rate limits all hot-reload — no
+            restart needed. Rate-limit windows, burst window and ban duration live in raw JSON / config.json.
+            HTTPS, HSTS and CORS (toggles + cert/key, max-age, allowed origins) are managed under
+            <span class="font-medium">Security ▸ Settings</span>.</p>
         </UCard>
 
         <!-- ── Streaming ──────────────────────────────────────────── -->
@@ -547,8 +510,13 @@ onMounted(loadConfig)
               <USwitch :model-value="get('streaming', 'keep_alive_enabled')"
                        @update:model-value="set('streaming', 'keep_alive_enabled', $event)"/>
             </div>
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Adaptive Bitrate (HLS)</span>
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <span class="text-sm">Auto-activate HLS in player</span>
+                <p class="text-xs text-muted mt-0.5">When on, the player switches to the HLS stream where one is
+                  available; off forces direct progressive playback. This is a player hint — it does not control
+                  server-side transcoding or bitrate.</p>
+              </div>
               <USwitch :model-value="get('streaming', 'adaptive')"
                        @update:model-value="set('streaming', 'adaptive', $event)"/>
             </div>
@@ -700,11 +668,6 @@ onMounted(loadConfig)
               <USwitch :model-value="get('hls', 'enabled')" @update:model-value="set('hls', 'enabled', $event)"/>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-sm">Auto Generate</span>
-              <USwitch :model-value="get('hls', 'auto_generate')"
-                       @update:model-value="set('hls', 'auto_generate', $event)"/>
-            </div>
-            <div class="flex items-center justify-between">
               <span class="text-sm">Lazy Transcode</span>
               <USwitch :model-value="get('hls', 'lazy_transcode')"
                        @update:model-value="set('hls', 'lazy_transcode', $event)"/>
@@ -752,10 +715,6 @@ onMounted(loadConfig)
               <UInput :model-value="get('hls', 'cdn_base_url')" @update:model-value="set('hls', 'cdn_base_url', $event)"
                       placeholder="https://cdn.example.com (optional)"/>
             </UFormField>
-            <UFormField label="Pre-Generate Interval (hours)">
-              <UInput type="number" :model-value="get('hls', 'pre_generate_interval_hours')"
-                      @update:model-value="set('hls', 'pre_generate_interval_hours', Number($event))"/>
-            </UFormField>
             <UFormField label="Playlist Length (segments)">
               <UInput type="number" :model-value="get('hls', 'playlist_length')"
                       @update:model-value="set('hls', 'playlist_length', Number($event))"/>
@@ -765,6 +724,8 @@ onMounted(loadConfig)
                       @update:model-value="set('hls', 'max_consecutive_failures', Number($event))"/>
             </UFormField>
           </div>
+          <p class="text-xs text-muted mt-3">Auto-generate on scan and the pre-generation interval are managed under
+            <span class="font-medium">System ▸ HLS Jobs</span>.</p>
           <!-- Quality profiles -->
           <div v-if="get('hls', 'quality_profiles')?.length" class="mt-4">
             <p class="text-xs text-muted mb-2">Quality Profiles</p>
@@ -824,7 +785,8 @@ onMounted(loadConfig)
               <UInput type="number" :model-value="get('analytics', 'retention_days')"
                       @update:model-value="set('analytics', 'retention_days', Number($event))"/>
             </UFormField>
-            <UFormField label="Max Reconstruct Events (startup)">
+            <UFormField label="Max Reconstruct Events"
+                        help="Only applied at server startup when rebuilding in-memory stats from the event log. Changing it has no effect until the next restart.">
               <UInput type="number" :model-value="get('analytics', 'max_reconstruct_events')"
                       @update:model-value="set('analytics', 'max_reconstruct_events', Number($event))"/>
             </UFormField>
@@ -1076,22 +1038,6 @@ onMounted(loadConfig)
           </div>
         </UCard>
 
-        <!-- ── Backup ─────────────────────────────────────────────── -->
-        <UCard>
-          <template #header>
-            <div class="flex items-center gap-2">
-              <UIcon name="i-lucide-archive" class="text-primary"/>
-              <span class="font-semibold text-sm">Backup</span>
-            </div>
-          </template>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
-            <UFormField label="Config Backup Retention Count">
-              <UInput type="number" :model-value="get('backup', 'retention_count')"
-                      @update:model-value="set('backup', 'retention_count', Number($event))"/>
-            </UFormField>
-          </div>
-        </UCard>
-
         <!-- ── UI Defaults ────────────────────────────────────────── -->
         <UCard>
           <template #header>
@@ -1122,6 +1068,9 @@ onMounted(loadConfig)
                       @update:model-value="set('ui', 'feed_max_items', Number($event))"/>
             </UFormField>
           </div>
+          <p class="text-xs text-muted mt-3">Items-per-page and mobile grid columns are the defaults for the public
+            browse grid (desktop vs mobile width). A signed-in user's own “items per page” preference overrides
+            the page-size default for that user.</p>
         </UCard>
 
         <!-- ── Admin Panel ────────────────────────────────────────── -->
@@ -1239,15 +1188,6 @@ onMounted(loadConfig)
             </div>
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
-            <UFormField label="Update Method">
-              <USelect :model-value="get('updater', 'update_method') || 'source'"
-                       :items="[{label:'Source (git pull)',value:'source'},{label:'Binary',value:'binary'}]"
-                       @update:model-value="set('updater', 'update_method', $event)"/>
-            </UFormField>
-            <UFormField label="Branch">
-              <UInput :model-value="get('updater', 'branch')" @update:model-value="set('updater', 'branch', $event)"
-                      placeholder="main"/>
-            </UFormField>
             <UFormField label="Application Directory">
               <UInput :model-value="get('updater', 'app_dir')" @update:model-value="set('updater', 'app_dir', $event)"
                       placeholder="/opt/media-server-pro"/>
@@ -1269,8 +1209,9 @@ onMounted(loadConfig)
               </UBadge>
             </div>
           </div>
-          <p class="text-xs text-muted mt-3">GitHub tokens and deploy-key paths can be set via .env (GITHUB_TOKEN
-            / DEPLOY_KEY_PATH) for security. Their presence is shown here as a status badge.</p>
+          <p class="text-xs text-muted mt-3">Update method (source/binary) and branch are managed under
+            <span class="font-medium">System ▸ Updates</span>. GitHub tokens and deploy-key paths can be set via
+            .env (GITHUB_TOKEN / DEPLOY_KEY_PATH) for security; their presence is shown here as a status badge.</p>
         </UCard>
 
         <!-- ── Directories (read-only) ────────────────────────────── -->

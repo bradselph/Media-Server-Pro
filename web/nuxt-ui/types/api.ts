@@ -161,6 +161,8 @@ export interface MediaCategoryItem {
     media_id: string
     media_name?: string
     position: number
+    /** True when this member is included live via the category's tag rather than added explicitly. Such members can't be removed individually. */
+    auto?: boolean
 }
 
 // MediaCategory is an admin-curated, ordered grouping of media items — the one
@@ -171,6 +173,8 @@ export interface MediaCategory {
     name: string
     description?: string
     cover_media_id?: string
+    /** When set, this is a tag-backed ("smart") category: every media item carrying this tag is automatically a member, alongside any explicitly added items. */
+    tag?: string
     items?: MediaCategoryItem[]
     /** Number of media items in this category. Present on the list endpoint; used to rank the home "Top categories" strip. */
     item_count?: number
@@ -663,6 +667,9 @@ export interface SearchClickthrough {
 // Field names mirror the Go UserStats struct so the codegen pipeline doesn't
 // need a translation step. All counts default to 0 for inactive users.
 export interface UserAnalytics {
+    // Set by the backend when the analytics module is disabled; the numeric
+    // fields below are then absent, so callers must check this first.
+    analytics_disabled?: boolean
     user_id: string
     total_events: number
     total_views: number

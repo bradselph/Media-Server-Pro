@@ -556,6 +556,12 @@ onMounted(() => {
         <div v-if="analyticsLoading" class="flex justify-center py-6">
           <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
         </div>
+        <div v-else-if="analyticsData?.analytics_disabled"
+             class="flex flex-col items-center gap-2 py-8 text-center">
+          <UIcon name="i-lucide-chart-no-axes-column" class="size-8 text-muted"/>
+          <p class="text-sm text-muted">Analytics is disabled, so per-user stats aren't being collected. Enable it
+            under System ▸ Settings ▸ Feature Toggles.</p>
+        </div>
         <div v-else-if="analyticsData" class="space-y-4">
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <UCard

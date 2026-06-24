@@ -493,6 +493,10 @@ type MediaCategory struct {
 	Name         string    `json:"name" db:"name" gorm:"size:255;not null"`
 	Description  string    `json:"description,omitempty" db:"description" gorm:"type:text"`
 	CoverMediaID string    `json:"cover_media_id,omitempty" db:"cover_media_id" gorm:"size:36"`
+	// Tag, when non-empty, makes this a tag-backed ("smart") category: every media
+	// item carrying this tag is automatically a member, in addition to any items
+	// added explicitly. Membership is computed live — see media.GetCategoryMemberIDs.
+	Tag          string    `json:"tag,omitempty" db:"tag" gorm:"size:255;not null;default:''"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at" gorm:"autoUpdateTime"`
 	// ItemCount is the number of media items in this category. It is not a

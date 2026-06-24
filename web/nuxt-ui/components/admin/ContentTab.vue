@@ -353,12 +353,14 @@ onUnmounted(() => {
             <!-- Scan controls -->
             <UCard>
               <template #header>
-                <div class="font-semibold">Run Scan</div>
+                <div class="font-semibold">Run Mature-Content Scan</div>
               </template>
+              <p class="text-xs text-muted mb-2">Scores existing media for mature content and flags it. This is not
+                the library file scan (that's under Media ▸ All Media ▸ Scan Library).</p>
               <div class="flex flex-wrap gap-2">
                 <UInput v-model="scanPath" placeholder="Path (optional, leave blank for full scan)"
                         class="flex-1 min-w-48"/>
-                <UButton :loading="scanning" icon="i-lucide-scan" label="Scan" @click="startScan"/>
+                <UButton :loading="scanning" icon="i-lucide-scan-eye" label="Scan for mature" @click="startScan"/>
               </div>
             </UCard>
 

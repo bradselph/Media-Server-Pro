@@ -6,6 +6,37 @@
 > existing layout only), age verification is legally required (smooth it, never remove it),
 > adult-content-only, no subtitles.
 
+## Implementation status (2026-06-23)
+
+**Implemented & verified (typecheck + `go build`/`vet`/`test` + full `nuxt generate`), one commit each:**
+#1 age-gate blank-screen flash · #2 mobile Sign Up · #3 mature-gate → signup · #4 Categories in guest
+nav + most-viewed default sort · #5 RTA/adult SEO labels · #6 legal brand name + placeholder-contact
+warning · #7 player JSON-LD url + view count · #8 crawlable category pages · #9 signup value prop ·
+#10 thumbnail-burst removal + skeleton CLS · #11 admin-only version footer · #12 cookie-consent
+fast-path · #13 forgot-password line · #14 mature-unlock hint · #18 `reason=mature` banner ·
+#19 guest sign-up CTA.
+
+**Skipped (with reason):**
+- **#17 age-gate blur overlay** — architecturally moot: page content is `v-if`-gated on the age check,
+  so nothing renders behind the overlay to blur for a new visitor, and blurring while the modal is open
+  would risk exposing mature content behind the gate. #1 delivers the real first-paint win.
+
+**Deferred — need a decision, an asset, or a larger isolated change (good follow-ups):**
+- **#15 sitemap/shell cache invalidation** — proper invalidation needs a scan-completion callback across
+  the `media → handlers` package boundary (avoiding an import cycle); larger than a drive-by. Caches
+  already self-expire (sitemap 1h, shell 10m).
+- **#16 apple-touch-icon + web manifest** — needs a real 180×180 PNG icon (and ideally an OG banner);
+  only `favicon.svg` exists. A manifest without raster icons is incomplete.
+- **#20 remove confirm-password** — product/security call: drops typo protection, and with no reset flow
+  a typo'd password locks the user out. Your decision.
+- **#21 `UpdatedAt` + view-weighted sitemap priority** — requires a DB schema migration; warrants its own
+  change with migration testing.
+- **#22 mature content to age-gate-verified guests** — legal/compliance decision (changes what
+  unauthenticated visitors can see). Needs your explicit sign-off.
+- **#23 `/api/init` consolidation** — larger refactor across several components; own focused effort.
+
+---
+
 The "deployed projects page" = the public landing/home (`web/nuxt-ui/pages/index.vue`) plus the guest
 funnel (`layouts/default.vue`, `signup.vue`, `login.vue`) and the SEO shell the Go server injects
 (`api/handlers/shell.go`, `api/handlers/seo.go`, `web/server.go`).

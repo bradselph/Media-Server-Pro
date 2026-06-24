@@ -2,9 +2,28 @@ package media
 
 import (
 	"context"
+	"slices"
 
 	"media-server-pro/pkg/models"
 )
+
+// MediaIDsWithTag returns the set of in-memory media IDs carrying the given tag
+// (exact match, mirroring Filter.matchesTags). Used to expand tag-backed
+// ("smart") category membership. Returns an empty set for an empty tag.
+func (m *Module) MediaIDsWithTag(tag string) map[string]bool {
+	set := make(map[string]bool)
+	if tag == "" {
+		return set
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for id, item := range m.media {
+		if item != nil && slices.Contains(item.Tags, tag) {
+			set[id] = true
+		}
+	}
+	return set
+}
 
 // GetCategoryMemberIDs returns the set of media IDs that belong to the given
 // curated category (the media_category_items membership table). The set is used
@@ -34,6 +53,15 @@ func (m *Module) GetCategoryMemberIDs(ctx context.Context, categoryID string) (m
 	set := make(map[string]bool, len(ids))
 	for _, id := range ids {
 		set[id] = true
+	}
+	// Tag-backed ("smart") categories: union in every media item carrying the
+	// category's tag so membership tracks tags live. A single indexed PK lookup;
+	// the tag scan is in-memory.
+	var cat models.MediaCategory
+	if err := gdb.WithContext(ctx).Select("tag").First(&cat, "id = ?", categoryID).Error; err == nil && cat.Tag != "" {
+		for id := range m.MediaIDsWithTag(cat.Tag) {
+			set[id] = true
+		}
 	}
 	return set, nil
 }
