@@ -5,6 +5,9 @@ const {register, getRegistrationToken} = useApiEndpoints()
 const settingsApi = useSettingsApi()
 const authStore = useAuthStore()
 const router = useRouter()
+const route = useRoute()
+// Set when a guest clicked a mature-locked title and was routed here (?reason=mature).
+const cameFromMatureGate = computed(() => route.query.reason === 'mature')
 
 const form = reactive({username: '', password: '', confirm: '', email: ''})
 const loading = ref(false)
@@ -172,6 +175,16 @@ async function handleSignup() {
         Create your free account to unlock mature content, save your watch history,
         build playlists, and get personalized picks.
       </p>
+
+      <UAlert
+          v-if="cameFromMatureGate"
+          class="mb-4"
+          color="primary"
+          variant="soft"
+          icon="i-lucide-lock"
+          title="Create a free account to watch"
+          description="That title is mature content — signing up (it's free) unlocks the full library."
+      />
 
       <!-- Card -->
       <div class="rounded-xl border border-[var(--hairline)] bg-[var(--surface-card)] p-7">

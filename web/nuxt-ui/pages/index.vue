@@ -918,7 +918,8 @@ const canViewMature = computed(() =>
 function matureGateHref(item: MediaItem): string {
   if (item.is_mature && !canViewMature.value) {
     // Guests: send to signup (the growth goal is new accounts, not logins).
-    return authStore.isLoggedIn ? '/profile' : '/signup'
+    // ?reason=mature lets the signup page explain why they were redirected.
+    return authStore.isLoggedIn ? '/profile' : '/signup?reason=mature'
   }
   return `/player?id=${encodeURIComponent(item.id)}`
 }

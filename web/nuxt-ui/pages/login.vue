@@ -23,6 +23,8 @@ const usernameInput = ref<{ inputRef?: HTMLInputElement | null } | null>(null)
 const touched = reactive({username: false, password: false})
 const allowRegistration = ref(true) // optimistic default until settings load
 const allowGuests = computed(() => authStore.allowGuests)
+// Set when a mature-locked title routed the user here (?reason=mature).
+const cameFromMatureGate = computed(() => route.query.reason === 'mature')
 
 function validateField(field: 'username' | 'password', soft = false) {
   if (field === 'username') {
@@ -103,6 +105,16 @@ async function handleLogin() {
         <h1 class="text-2xl font-extrabold text-highlighted">Sign In</h1>
         <p class="text-muted text-sm mt-1">Media Server Pro</p>
       </div>
+
+      <UAlert
+          v-if="cameFromMatureGate"
+          class="mb-4"
+          color="primary"
+          variant="soft"
+          icon="i-lucide-lock"
+          title="Sign in to watch mature content"
+          description="That title is mature — sign in, or create a free account, to unlock it."
+      />
 
       <!-- Card -->
       <div class="rounded-xl border border-[var(--hairline)] bg-[var(--surface-card)] p-7 space-y-5">
