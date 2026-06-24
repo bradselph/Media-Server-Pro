@@ -776,20 +776,10 @@ async function load() {
     initializing.value = res.initializing ?? false
     if (res.type_counts && params.type === 'all') typeCounts.value = res.type_counts
     userRatings.value = res.user_ratings ?? {}
-    // Pre-warm the browser image cache for visible thumbnails in this page.
-    // The batch endpoint returns the same /thumbnail?id=X URLs so the browser
-    // deduplicates and serves them instantly when the grid renders.
+    // The browser fetches visible thumbnails natively (and lazy-loads the rest),
+    // so we no longer pre-warm them in a ~50-request burst that competed with the
+    // grid render. batchIds is still used below for playback positions.
     const batchIds = items.value.slice(0, 50).map(i => i.id)
-    if (batchIds.length > 0) {
-      mediaApi.getThumbnailBatch(batchIds, 320).then(r => {
-        if (seq !== loadSeq) return
-        for (const url of Object.values(r?.thumbnails ?? {})) {
-          const img = new Image()
-          img.src = url
-        }
-      }).catch(() => {
-      })
-    }
     // Batch-fetch playback positions for logged-in users to show progress bars.
     if (authStore.isLoggedIn && batchIds.length > 0) {
       playbackApi.getBatchPositions(batchIds).then(r => {
@@ -1763,7 +1753,8 @@ onUnmounted(() => {
     />
 
     <!-- Loading -->
-    <MediaCardSkeleton v-if="loading" :count="12"/>
+    <MediaCardSkeleton v-if="loading" :count="12"
+                       grid-class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4"/>
 
     <!-- Grid view -->
     <div
