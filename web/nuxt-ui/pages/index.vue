@@ -300,8 +300,10 @@ const params = reactive({
   search: typeof route.query.search === 'string' ? route.query.search : '',
   type: typeof route.query.type === 'string' ? route.query.type : (authStore.user?.preferences?.filter_media_type || 'all'),
   category: isCategoryId(route.query.category) ? route.query.category : (isCategoryId(authStore.user?.preferences?.filter_category) ? authStore.user!.preferences!.filter_category : 'all'),
-  sort_by: typeof route.query.sort_by === 'string' ? route.query.sort_by : (authStore.user?.preferences?.sort_by || 'name'),
-  sort_order: (typeof route.query.sort_order === 'string' ? route.query.sort_order : (authStore.user?.preferences?.sort_order ?? 'asc')) as 'asc' | 'desc',
+  // Guests (no saved prefs) default to most-viewed first so the first-visit grid
+  // leads with the library's strongest content instead of an A–Z list.
+  sort_by: typeof route.query.sort_by === 'string' ? route.query.sort_by : (authStore.user?.preferences?.sort_by || (authStore.isLoggedIn ? 'name' : 'views')),
+  sort_order: (typeof route.query.sort_order === 'string' ? route.query.sort_order : (authStore.user?.preferences?.sort_order ?? (authStore.isLoggedIn ? 'asc' : 'desc'))) as 'asc' | 'desc',
   min_rating: typeof route.query.min_rating === 'string' ? (Number.parseInt(route.query.min_rating, 10) || 0) : 0,
 })
 

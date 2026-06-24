@@ -157,10 +157,12 @@ const navLinks = computed(() => {
   const links = [
     {label: 'Home', to: '/', icon: 'i-lucide-house'},
     {label: 'Browse', to: '/browse', icon: 'i-lucide-tags'},
+    // Categories is a public route (no auth middleware) — show it to guests too
+    // so the curated taxonomy is discoverable before they sign up.
+    {label: 'Categories', to: '/categories', icon: 'i-lucide-library'},
   ]
   if (authStore.isLoggedIn) {
     links.push(
-        {label: 'Categories', to: '/categories', icon: 'i-lucide-library'},
         {label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music'},
     )
     if (authStore.user?.permissions?.can_upload && serverSettings.value?.uploads?.enabled !== false) {
@@ -175,10 +177,10 @@ const mobileNavLinks = computed(() => {
   const links = [
     {label: 'Home', to: '/', icon: 'i-lucide-house'},
     {label: 'Browse', to: '/browse', icon: 'i-lucide-tags'},
+    {label: 'Categories', to: '/categories', icon: 'i-lucide-library'},
   ]
   if (authStore.isLoggedIn) {
     links.push(
-        {label: 'Categories', to: '/categories', icon: 'i-lucide-library'},
         {label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music'},
         {label: 'Favorites', to: '/favorites', icon: 'i-lucide-heart'},
         {label: 'History', to: '/history', icon: 'i-lucide-history'},
