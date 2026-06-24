@@ -1,5 +1,74 @@
 # Changelog
 
+## [1.18.3] - 2026-06-24 (patch)
+
+- feat(seo): add canonical url and view-count interactionStatistic to player JSON-LD
+- perf(agegate): skip blank-screen flash for returning verified visitors via client-side flag
+- feat(onboarding): hint new users how to unlock mature content after signup
+- feat(login): add forgot-password guidance line
+- feat(signup): add value-proposition tagline above the registration form
+- perf(home): drop 50-request thumbnail pre-warm burst; match skeleton grid to home layout
+- perf(consent): skip cookie-consent status call for returning visitors with a stored decision
+- feat(seo): add RTA/adult rating labels, OG site defaults, and adult-accurate fallback description
+- fix(legal): use brand name on privacy/terms and warn on placeholder 2257/DMCA contacts
+- feat(conversion): route guest mature-gate actions to signup instead of login
+- feat(nav): show Categories to guests and default guest sort to most-viewed
+- fix(layout): hide server version in footer from non-admins
+- feat(nav): add Sign Up link to mobile menu for guests
+- docs: add public adoption recommendations for landing page and guest funnel
+- Delete CONTRIBUTING.md
+- Update .gitignore
+- fix(auth): don't redirect guests to login on 401 from optional auth-only calls
+- fix(downloader): clear downloader's record after import so Server Files list stops showing already-imported entries
+- fix(theme): soften light mode with a gray page + theme-driven page background
+- fix(theme): make light mode fully functional + add named theme palettes
+- feat(categories): mosaic thumbnail previews from member media
+- feat(seo): inject per-route SEO metadata into the SPA shell for crawlers
+- fix(categories): polish + spec/doc accuracy from deep review
+- Update README.md
+- feat(categories): unify every feature onto curated categories
+- refactor: unify Categories and Collections into a single Categories feature
+- fix(analytics): reset live-tail toggle on disconnect/error
+- fix(analytics): guard funnel rows against null authenticated/anonymous
+- fix(player): reflect live play state in sidebar; poll after manual HLS generate
+- feat(crawler): surface browser-detection availability in stats + admin warning
+- fix(playlists): surface errors instead of silently showing empty state
+- feat(collections): add user-facing collections browse pages
+- fix(browse): move view_mode watcher below its ref declaration (TDZ crash)
+- fix(browse): persist grid/list/compact view mode toggled on the home page
+- fix(prefs): normalize preferences before persisting; align playback_speed clamp
+- fix(discovery): re-key the media index when an organization suggestion is applied
+- fix(admin): expose S3 key prefixes in the storage config map
+- fix(download): label per-quality fallback correctly; bound ffmpeg WaitDelay
+- feat(player): wire "Play next" queue action into player suggestions
+- fix(playlists): render smart-playlist modals at full width
+- feat(downloader): adopt downloader v1.5.0 API (audio-only, batch, queue)
+- feat(player): real per-quality download + restore the user's own rating
+- fix(playlists): smart-rule operators must match what the backend supports
+- fix(admin): send empty {} body for "Scan All" so it isn't rejected with 400
+- fix(ui): repair remaining Nuxt UI v2 holdovers (Progress/Select/Divider)
+- fix(player): restore quality/menu selection on Nuxt UI v3 (click -> onSelect)
+- fix(api): unify module health timestamp on checked_at across all three surfaces
+- fix(review): RenamePath copy-on-write; remove unreachable sidebar seek path
+- docs(spec): full route parity — document 47 missing operations, fix 6 wrong entries
+- style(tasks): gofmt TaskInfo field alignment after omitzero comment
+- docs(spec): close 7 OpenAPI drift gaps against live routes
+- fix(player): sidebar Previous works on the current item + seek bar keeps focus after pointer seek
+- fix(backend): backup delete 404, omit zero task timestamps, persist one-shot config migrations
+- fix(api): categorizer rename re-key, fail-closed mature gate, suggestions re-feed on manual scans
+- fix(media): scan thumbnail-queue map race + live category counts
+- fix(admin): omit zero task timestamps from classify status
+- fix(tasks): suggestions catalog refresh + duplicate-scan flag gating
+- fix(backend): backup delete/create consistency, move/rename catalog sync, placeholder close error
+- fix(sidebar): Previous button played the NEXT queue item
+- fix(categorizer): make categorization actually land — namespace + ID resolution
+- fix(admin): wire dead duplicate-resolve buttons and deletion-requests panel
+- fix(player): YouTube-style seek — pointer drag scrubbing + instant bar feedback
+- fix(search): make result cards navigate — resolveComponent must be imported
+- feat(ui): gate upload/download on global flags, chapter editing, sort persistence
+- fix: wire dead config fields and repair discovery dismiss 404
+
+
 ## [Unreleased]
 
 - refactor(categories): unify every feature onto the admin-curated MediaCategory; retire the path-detected category buckets
