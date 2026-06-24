@@ -558,7 +558,7 @@ onMounted(() => {
         </div>
         <div v-else-if="analyticsData?.analytics_disabled"
              class="flex flex-col items-center gap-2 py-8 text-center">
-          <UIcon name="i-lucide-bar-chart-off" class="size-8 text-muted"/>
+          <UIcon name="i-lucide-chart-no-axes-column" class="size-8 text-muted"/>
           <p class="text-sm text-muted">Analytics is disabled, so per-user stats aren't being collected. Enable it
             under System ▸ Settings ▸ Feature Toggles.</p>
         </div>
