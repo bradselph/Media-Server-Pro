@@ -156,16 +156,18 @@ function openAddItems(categoryId: string) {
     })
   }
   addItemsOpen.value = true
+  // Populate immediately so the picker shows recent media instead of a blank list.
+  searchMedia()
 }
 
+// Populates the media picker. With no search term it lists recent media so the
+// modal is never blank (the admin can just scroll and add); with a term it
+// searches by name.
 async function searchMedia() {
-  if (!mediaSearch.value.trim()) {
-    mediaResults.value = [];
-    return
-  }
   mediaSearching.value = true
   try {
-    const res = await adminApi.listMedia({page: 1, limit: 20, search: mediaSearch.value})
+    const q = mediaSearch.value.trim()
+    const res = await adminApi.listMedia(q ? {page: 1, limit: 20, search: q} : {page: 1, limit: 20})
     mediaResults.value = res.items ?? []
   } catch {
     mediaResults.value = []
@@ -354,7 +356,7 @@ onMounted(load)
                 size="sm"
                 variant="outline"
                 color="neutral"
-                @click="addItemsTarget = detailCategory?.id ?? null; addItemsOpen = true; mediaSearch = ''; mediaResults = []"
+                @click="detailCategory && openAddItems(detailCategory.id)"
             />
           </div>
           <div v-if="detailLoading" class="flex justify-center py-6">
@@ -419,9 +421,9 @@ onMounted(load)
               :loading="mediaSearching"
               @input="onSearchInput"
           />
-          <div v-if="mediaResults.length === 0 && mediaSearch.length > 0 && !mediaSearching"
+          <div v-if="mediaResults.length === 0 && !mediaSearching"
                class="text-center py-4 text-muted text-sm">
-            No results.
+            {{ mediaSearch.trim() ? 'No media matches your search.' : 'No media found in the library.' }}
           </div>
           <div v-else class="divide-y divide-default max-h-80 overflow-y-auto">
             <div
