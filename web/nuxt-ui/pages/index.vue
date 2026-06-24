@@ -924,6 +924,20 @@ function matureGateHref(item: MediaItem): string {
   return `/player?id=${encodeURIComponent(item.id)}`
 }
 
+// Dismissible guest sign-up CTA shown on the home page. Persist the dismissal so
+// it doesn't nag returning guests on every visit.
+const guestBannerDismissed = ref(typeof window !== 'undefined' && localStorage.getItem('msp-guest-cta-dismissed') === '1')
+
+function dismissGuestBanner() {
+  guestBannerDismissed.value = true
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('msp-guest-cta-dismissed', '1')
+    } catch { /* private mode */
+    }
+  }
+}
+
 const totalPages = computed(() => Math.ceil(total.value / params.limit))
 
 // formatDuration imported from ~/utils/format
@@ -1056,6 +1070,29 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- Guest sign-up CTA — dismissible. Promotes free registration with the live
+       library size so first-time visitors see the value of an account. -->
+  <div
+      v-if="!authStore.isLoggedIn && !guestBannerDismissed"
+      class="mb-4 flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg px-4 py-3"
+      style="border: 1px solid var(--accent-border); background: var(--accent-bg-weak);"
+  >
+    <UIcon name="i-lucide-sparkles" class="size-5 shrink-0" style="color: var(--accent-soft);"/>
+    <div class="flex-1 min-w-0">
+      <p class="text-sm font-semibold text-highlighted">
+        {{ libraryStats?.total_count ? `Browsing as guest — ${libraryStats.total_count.toLocaleString()} titles inside` : 'Browsing as guest' }}
+      </p>
+      <p class="text-xs text-muted">
+        Sign up free for full access to mature content, watch history, playlists, and personalized picks.
+      </p>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <UButton to="/signup" color="primary" size="sm" label="Sign up free"/>
+      <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" aria-label="Dismiss"
+               @click="dismissGuestBanner"/>
+    </div>
+  </div>
+
   <!-- Hero — compact banner per design handoff §6.2.
        Returning logged-in users with an in-progress item see THAT as the
        hero (Resume-as-hero, retention plan B.4); everyone else sees the
