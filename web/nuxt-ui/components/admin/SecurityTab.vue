@@ -25,6 +25,14 @@ const httpsEnabled = ref(false)
 const configSaving = ref(false)
 const configLoading = ref(false)
 
+// Dependent detail fields for the toggles above (moved here from the System
+// settings panel so each TLS/CORS feature is configured in one place).
+const certFile = ref('')
+const keyFile = ref('')
+const hstsMaxAge = ref(0)
+const corsOriginsText = ref('')
+const detailsSaving = ref(false)
+
 async function loadSecurityConfig() {
   configLoading.value = true
   try {
@@ -37,15 +45,44 @@ async function loadSecurityConfig() {
       if (sec) {
         corsEnabled.value = sec.cors_enabled === true
         hstsEnabled.value = sec.hsts_enabled === true
+        hstsMaxAge.value = typeof sec.hsts_max_age === 'number' ? sec.hsts_max_age : 0
+        corsOriginsText.value = Array.isArray(sec.cors_origins) ? sec.cors_origins.join('\n') : ''
       }
       if (srv) {
         httpsEnabled.value = srv.enable_https === true
+        certFile.value = typeof srv.cert_file === 'string' ? srv.cert_file : ''
+        keyFile.value = typeof srv.key_file === 'string' ? srv.key_file : ''
       }
     }
   } catch (e: unknown) {
     notifyError(e, 'Failed to load config', 'i-lucide-alert-circle')
   } finally {
     configLoading.value = false
+  }
+}
+
+// Persist the non-boolean detail fields in one PUT. The toggles still save
+// immediately via saveSecurityToggle; these text/number fields save on demand.
+async function saveSecurityDetails() {
+  detailsSaving.value = true
+  try {
+    const origins = corsOriginsText.value.split('\n').map(s => s.trim()).filter(Boolean)
+    const updated: Record<string, unknown> = {
+      ...fullConfig.value,
+      server: {...asRecord(fullConfig.value.server), cert_file: certFile.value, key_file: keyFile.value},
+      security: {...asRecord(fullConfig.value.security), hsts_max_age: hstsMaxAge.value, cors_origins: origins},
+    }
+    await adminApi.updateConfig(updated)
+    fullConfig.value = updated
+    notifySuccess('Security settings saved')
+  } catch (e: unknown) {
+    notifyError(e, 'Failed to save')
+    try {
+      await loadSecurityConfig()
+    } catch { /* refs already correct */
+    }
+  } finally {
+    detailsSaving.value = false
   }
 }
 
@@ -492,45 +529,71 @@ watch(subTab, (v) => {
             </div>
             <UCard v-else :ui="{ body: 'p-4' }">
               <div class="divide-y divide-default">
-                <div class="flex items-center justify-between gap-4 py-3 first:pt-0">
-                  <div>
-                    <p class="font-medium text-sm text-highlighted">Enable HTTPS</p>
-                    <p class="text-xs text-muted mt-0.5">Serve the application over TLS (requires cert_file and key_file
-                      to be configured)</p>
+                <div class="py-3 first:pt-0 space-y-3">
+                  <div class="flex items-center justify-between gap-4">
+                    <div>
+                      <p class="font-medium text-sm text-highlighted">Enable HTTPS</p>
+                      <p class="text-xs text-muted mt-0.5">Serve the application over TLS (requires cert_file and key_file
+                        to be configured)</p>
+                    </div>
+                    <USwitch
+                        :model-value="httpsEnabled"
+                        :disabled="configSaving || configLoading"
+                        aria-label="Enable HTTPS"
+                        @update:model-value="v => saveSecurityToggle('server', 'enable_https', v)"
+                    />
                   </div>
-                  <USwitch
-                      :model-value="httpsEnabled"
-                      :disabled="configSaving || configLoading"
-                      aria-label="Enable HTTPS"
-                      @update:model-value="v => saveSecurityToggle('server', 'enable_https', v)"
-                  />
-                </div>
-                <div class="flex items-center justify-between gap-4 py-3">
-                  <div>
-                    <p class="font-medium text-sm text-highlighted">Enable HSTS</p>
-                    <p class="text-xs text-muted mt-0.5">Send Strict-Transport-Security header to force HTTPS on all
-                      future requests</p>
+                  <div v-if="httpsEnabled" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <UFormField label="Certificate File">
+                      <UInput v-model="certFile" placeholder="/path/to/cert.pem"/>
+                    </UFormField>
+                    <UFormField label="Key File">
+                      <UInput v-model="keyFile" placeholder="/path/to/key.pem"/>
+                    </UFormField>
                   </div>
-                  <USwitch
-                      :model-value="hstsEnabled"
-                      :disabled="configSaving || configLoading"
-                      aria-label="Enable HSTS"
-                      @update:model-value="v => saveSecurityToggle('security', 'hsts_enabled', v)"
-                  />
                 </div>
-                <div class="flex items-center justify-between gap-4 py-3 last:pb-0">
-                  <div>
-                    <p class="font-medium text-sm text-highlighted">Enable CORS</p>
-                    <p class="text-xs text-muted mt-0.5">Allow cross-origin requests (configure allowed origins in
-                      cors_origins)</p>
+                <div class="py-3 space-y-3">
+                  <div class="flex items-center justify-between gap-4">
+                    <div>
+                      <p class="font-medium text-sm text-highlighted">Enable HSTS</p>
+                      <p class="text-xs text-muted mt-0.5">Send Strict-Transport-Security header to force HTTPS on all
+                        future requests</p>
+                    </div>
+                    <USwitch
+                        :model-value="hstsEnabled"
+                        :disabled="configSaving || configLoading"
+                        aria-label="Enable HSTS"
+                        @update:model-value="v => saveSecurityToggle('security', 'hsts_enabled', v)"
+                    />
                   </div>
-                  <USwitch
-                      :model-value="corsEnabled"
-                      :disabled="configSaving || configLoading"
-                      aria-label="Enable CORS"
-                      @update:model-value="v => saveSecurityToggle('security', 'cors_enabled', v)"
-                  />
+                  <UFormField v-if="hstsEnabled" label="HSTS Max Age (seconds)" class="max-w-xs">
+                    <UInput v-model.number="hstsMaxAge" type="number"/>
+                  </UFormField>
                 </div>
+                <div class="py-3 last:pb-0 space-y-3">
+                  <div class="flex items-center justify-between gap-4">
+                    <div>
+                      <p class="font-medium text-sm text-highlighted">Enable CORS</p>
+                      <p class="text-xs text-muted mt-0.5">Allow cross-origin requests (configure allowed origins
+                        below)</p>
+                    </div>
+                    <USwitch
+                        :model-value="corsEnabled"
+                        :disabled="configSaving || configLoading"
+                        aria-label="Enable CORS"
+                        @update:model-value="v => saveSecurityToggle('security', 'cors_enabled', v)"
+                    />
+                  </div>
+                  <UFormField v-if="corsEnabled" label="CORS Allowed Origins (one per line)">
+                    <UTextarea v-model="corsOriginsText" :rows="3" placeholder="https://app.example.com"/>
+                  </UFormField>
+                </div>
+              </div>
+              <div class="flex items-center justify-end gap-3 mt-4">
+                <p class="text-xs text-muted mr-auto">Toggles save immediately. Certificate paths, HSTS max-age and
+                  allowed origins save with this button.</p>
+                <UButton :loading="detailsSaving" :disabled="configSaving || configLoading" icon="i-lucide-save"
+                         label="Save details" size="sm" @click="saveSecurityDetails"/>
               </div>
             </UCard>
           </div>
