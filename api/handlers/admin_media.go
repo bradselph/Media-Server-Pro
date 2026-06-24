@@ -96,33 +96,33 @@ func (h *Handler) fetchAdminListItems(ctx context.Context, filter media.Filter, 
 		}
 		return f
 	}
-	if limit > 0 {
-		// DB-paginated path: CategoryID drives the membership subquery; leave
-		// CategoryIDSet nil so the post-query Matches does not double-filter.
+	// Category filters (including tag-backed "smart" categories) must resolve in
+	// memory: ListMediaPaginated's SQL subquery only sees explicit
+	// media_category_items rows and would miss live tag members. Non-category
+	// listings keep the DB-paginated fast path.
+	if limit > 0 && filter.CategoryID == "" {
 		items, total, err := h.media.ListMediaPaginated(ctx, filter, limit, offset)
 		if err == nil {
 			return items, total
 		}
 		h.log.Warn("ListMediaPaginated failed, falling back to in-memory list: %v", err)
-		allItems := h.media.ListMedia(expandCategoryFilter(filter))
-		if allItems == nil {
-			allItems = make([]*models.MediaItem, 0)
-		}
-		total = int64(len(allItems))
-		if offset >= len(allItems) {
-			return []*models.MediaItem{}, total
-		}
-		items = allItems[offset:]
-		if limit < len(items) {
-			items = items[:limit]
-		}
-		return items, total
 	}
 	allItems := h.media.ListMedia(expandCategoryFilter(filter))
 	if allItems == nil {
 		allItems = make([]*models.MediaItem, 0)
 	}
-	return allItems, int64(len(allItems))
+	total = int64(len(allItems))
+	if limit <= 0 {
+		return allItems, total
+	}
+	if offset >= len(allItems) {
+		return []*models.MediaItem{}, total
+	}
+	items = allItems[offset:]
+	if limit < len(items) {
+		items = items[:limit]
+	}
+	return items, total
 }
 
 func computeAdminListTotalPages(totalItems int64, limit int) int {

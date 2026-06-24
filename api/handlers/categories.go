@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -141,6 +143,36 @@ func (h *Handler) ListCategories(c *gin.Context) {
 		previewsByID[p.CategoryID] = append(previewsByID[p.CategoryID], p.MediaID)
 	}
 	for i := range cats {
+		// Tag-backed ("smart") categories: count + preview must reflect the live
+		// union of explicit members and tag members. GetCategoryMemberIDs returns
+		// that union; for plain categories we keep the cheap grouped-query results.
+		if cats[i].Tag != "" {
+			if members, err := h.media.GetCategoryMemberIDs(c.Request.Context(), cats[i].ID); err == nil {
+				cats[i].ItemCount = len(members)
+				prev := previewsByID[cats[i].ID]
+				if len(prev) < 4 {
+					seen := make(map[string]bool, len(prev))
+					for _, id := range prev {
+						seen[id] = true
+					}
+					extra := make([]string, 0)
+					for id := range members {
+						if !seen[id] {
+							extra = append(extra, id)
+						}
+					}
+					sort.Strings(extra)
+					for _, id := range extra {
+						if len(prev) >= 4 {
+							break
+						}
+						prev = append(prev, id)
+					}
+				}
+				cats[i].PreviewMediaIDs = prev
+				continue
+			}
+		}
 		cats[i].PreviewMediaIDs = previewsByID[cats[i].ID]
 	}
 
@@ -184,6 +216,34 @@ func (h *Handler) GetCategory(c *gin.Context) {
 		}
 	}
 
+	// Tag-backed ("smart") categories: append every media item carrying the
+	// category's tag that isn't already listed explicitly. These live members are
+	// sorted by id for a stable order and positioned after the explicit items.
+	if cat.Tag != "" {
+		explicit := make(map[string]bool, len(rows))
+		for _, r := range rows {
+			explicit[r.MediaID] = true
+		}
+		extra := make([]string, 0)
+		for id := range h.media.MediaIDsWithTag(cat.Tag) {
+			if !explicit[id] {
+				extra = append(extra, id)
+			}
+		}
+		if len(extra) > 0 {
+			sort.Strings(extra)
+			extraNames := h.media.GetMediaNamesByIDs(extra)
+			basePos := len(items)
+			for i, id := range extra {
+				items = append(items, categoryItemResponse{
+					MediaID:   id,
+					MediaName: extraNames[id],
+					Position:  basePos + i,
+				})
+			}
+		}
+	}
+
 	writeSuccess(c, categoryWithItems{MediaCategory: cat, Items: items})
 }
 
@@ -194,6 +254,7 @@ func (h *Handler) CreateCategory(c *gin.Context) {
 		Name         string `json:"name" binding:"required"`
 		Description  string `json:"description"`
 		CoverMediaID string `json:"cover_media_id"`
+		Tag          string `json:"tag"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		writeError(c, http.StatusBadRequest, "Invalid request: "+err.Error())
@@ -207,11 +268,19 @@ func (h *Handler) CreateCategory(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "description is too long")
 		return
 	}
+	// Trim so a tag with stray whitespace still matches media tags (which are
+	// stored trimmed). VARCHAR(255) column.
+	tag := strings.TrimSpace(body.Tag)
+	if len(tag) > categoryMaxNameLength {
+		writeError(c, http.StatusBadRequest, "tag is too long")
+		return
+	}
 	cat := models.MediaCategory{
 		ID:           uuid.New().String(),
 		Name:         body.Name,
 		Description:  body.Description,
 		CoverMediaID: body.CoverMediaID,
+		Tag:          tag,
 	}
 	if err := h.database.GORM().WithContext(c.Request.Context()).Create(&cat).Error; err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to create category: "+err.Error())
@@ -243,6 +312,7 @@ func (h *Handler) UpdateCategory(c *gin.Context) {
 		Name         *string `json:"name"`
 		Description  *string `json:"description"`
 		CoverMediaID *string `json:"cover_media_id"`
+		Tag          *string `json:"tag"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		writeError(c, http.StatusBadRequest, "Invalid request: "+err.Error())
@@ -268,6 +338,14 @@ func (h *Handler) UpdateCategory(c *gin.Context) {
 	}
 	if body.CoverMediaID != nil {
 		cat.CoverMediaID = *body.CoverMediaID
+	}
+	if body.Tag != nil {
+		tag := strings.TrimSpace(*body.Tag)
+		if len(tag) > categoryMaxNameLength {
+			writeError(c, http.StatusBadRequest, "tag is too long")
+			return
+		}
+		cat.Tag = tag
 	}
 	if err := db.Save(&cat).Error; err != nil {
 		writeError(c, http.StatusInternalServerError, "Failed to update category: "+err.Error())

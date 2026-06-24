@@ -699,6 +699,8 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"daily_stats", "bulk_deletes", "INT NOT NULL DEFAULT 0"},
 		{"daily_stats", "bulk_updates", "INT NOT NULL DEFAULT 0"},
 		{"daily_stats", "user_role_changes", "INT NOT NULL DEFAULT 0"},
+		// Tag-backed ("smart") categories: media carrying this tag are auto-members.
+		{"media_categories", "tag", "VARCHAR(255) NOT NULL DEFAULT ''"},
 	}
 	for _, col := range columns {
 		if err := m.ensureColumn(ctx, col.table, col.column, col.def); err != nil {
