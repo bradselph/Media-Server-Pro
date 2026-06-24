@@ -59,6 +59,32 @@ const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 const toast = useToast()
+const {settings: serverSettings, load: loadServerSettings} = useServerSettings()
+
+// Server-wide UI defaults (admin-configured under System ▸ Settings ▸ UI Defaults).
+// Used only as a fallback when the logged-in user has no personal override.
+const isMobileViewport = ref(false)
+
+// Default page size from server config: mobile vs desktop. Falls back to the
+// previous hardcoded 24 when server settings haven't loaded / aren't set.
+function serverDefaultLimit(): number {
+  const ui = serverSettings.value?.ui
+  if (!ui) return 24
+  const desktop = ui.items_per_page || 24
+  if (isMobileViewport.value) return ui.mobile_items_per_page || desktop
+  return desktop
+}
+
+// Mobile grid columns from server config, applied as an inline override of the
+// base `grid-cols-2` class. Only set on mobile and only when a positive value
+// is configured, so desktop and unset configs keep the existing Tailwind grid.
+const mobileGridStyle = computed(() => {
+  const cols = serverSettings.value?.ui?.mobile_grid_columns
+  if (isMobileViewport.value && typeof cols === 'number' && cols > 0) {
+    return {gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`}
+  }
+  return undefined
+})
 
 // Library stats (public, shown to guests too)
 const libraryStats = ref<MediaStats | null>(null)
@@ -183,11 +209,23 @@ const favoriteIds = ref<Set<string>>(new Set())
 const togglingIds = ref(new Set<string>())
 
 let indexMounted = false
+// Track the mobile breakpoint (<640px = Tailwind's `sm`) reactively so the
+// server-configured mobile page size + grid columns can apply on small screens.
+let mobileMql: MediaQueryList | null = null
+function onMobileChange(e: MediaQueryListEvent | MediaQueryList) {
+  isMobileViewport.value = e.matches
+}
 onMounted(() => {
   indexMounted = true
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    mobileMql = window.matchMedia('(max-width: 639px)')
+    isMobileViewport.value = mobileMql.matches
+    mobileMql.addEventListener('change', onMobileChange)
+  }
 })
 onUnmounted(() => {
   indexMounted = false
+  mobileMql?.removeEventListener('change', onMobileChange)
 })
 
 async function loadFavorites() {
@@ -844,13 +882,20 @@ watch([() => params.type, () => params.category, () => params.sort_by, () => par
       }, 1000)
     })
 
-onMounted(() => {
+onMounted(async () => {
+  // Load server UI defaults first so the initial grid uses the admin-configured
+  // page size (cached after the layout's first fetch, so this is usually instant).
+  await loadServerSettings()
   // Apply user preferences before the first load so we don't need a second request.
   const prefs = authStore.user?.preferences
-  if (prefs) {
-    if (prefs.items_per_page && prefs.items_per_page !== params.limit) params.limit = prefs.items_per_page
-    if (prefs.view_mode && ['grid', 'list', 'compact'].includes(prefs.view_mode)) viewMode.value = prefs.view_mode as ViewMode
+  if (prefs?.items_per_page) {
+    if (prefs.items_per_page !== params.limit) params.limit = prefs.items_per_page
+  } else {
+    // No personal override → honor the server-wide default page size.
+    const def = serverDefaultLimit()
+    if (def !== params.limit) params.limit = def
   }
+  if (prefs?.view_mode && ['grid', 'list', 'compact'].includes(prefs.view_mode)) viewMode.value = prefs.view_mode as ViewMode
   loadCategories()
   load()
   // Fetch recommendations for already-logged-in users (page refresh).
@@ -1809,6 +1854,7 @@ onUnmounted(() => {
     <div
         v-else-if="viewMode === 'grid'"
         class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4"
+        :style="mobileGridStyle"
     >
       <component
           :is="selectionMode ? 'div' : resolveComponent('NuxtLink')"

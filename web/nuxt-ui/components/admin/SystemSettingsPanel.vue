@@ -1062,6 +1062,9 @@ onMounted(loadConfig)
                       @update:model-value="set('ui', 'feed_max_items', Number($event))"/>
             </UFormField>
           </div>
+          <p class="text-xs text-muted mt-3">Items-per-page and mobile grid columns are the defaults for the public
+            browse grid (desktop vs mobile width). A signed-in user's own “items per page” preference overrides
+            the page-size default for that user.</p>
         </UCard>
 
         <!-- ── Admin Panel ────────────────────────────────────────── -->
