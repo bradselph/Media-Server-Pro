@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {setConsent} from '~/composables/useConsent'
+import {hasStoredConsent, setConsent} from '~/composables/useConsent'
 
 const cookieConsentApi = useCookieConsentApi()
 
@@ -7,6 +7,9 @@ const visible = ref(false)
 const accepting = ref(false)
 
 async function checkStatus() {
+  // Returning visitors who already decided have their choice in localStorage and
+  // useAnalytics reads it synchronously — skip the status call and the banner.
+  if (hasStoredConsent()) return
   try {
     const status = await cookieConsentApi.getStatus()
     if (status.required && !status.given) {

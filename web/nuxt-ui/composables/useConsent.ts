@@ -36,6 +36,13 @@ function getConsent(): ConsentRecord | null {
     }
 }
 
+// True once the user has made a still-valid cookie decision. Lets the banner
+// skip its status network round-trip for returning visitors (useAnalytics already
+// reads the stored decision synchronously via consentFor()).
+export function hasStoredConsent(): boolean {
+    return getConsent() !== null
+}
+
 export function setConsent(opts: { analytics?: boolean; advertising?: boolean }): ConsentRecord {
     const next: ConsentRecord = {
         strict: true,
