@@ -33,6 +33,10 @@ const addItemsTarget = ref<string | null>(null)
 const mediaSearch = ref('')
 const mediaResults = ref<MediaItem[]>([])
 const mediaSearching = ref(false)
+const mediaPage = ref(1)
+const mediaTotalPages = ref(1)
+const mediaLoadingMore = ref(false)
+const MEDIA_PICKER_PAGE_SIZE = 40
 const addingIds = ref(new Set<string>())
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 // Nonce to discard stale background fetches from openAddItems (incremented by addItem on success)
@@ -162,23 +166,43 @@ function openAddItems(categoryId: string) {
 
 // Populates the media picker. With no search term it lists recent media so the
 // modal is never blank (the admin can just scroll and add); with a term it
-// searches by name.
-async function searchMedia() {
-  mediaSearching.value = true
+// searches by name. Paginated via "Load more" so the whole library is reachable,
+// not just the first page.
+async function searchMedia(append = false) {
+  if (append) {
+    mediaLoadingMore.value = true
+  } else {
+    mediaPage.value = 1
+    mediaSearching.value = true
+  }
   try {
     const q = mediaSearch.value.trim()
-    const res = await adminApi.listMedia(q ? {page: 1, limit: 20, search: q} : {page: 1, limit: 20})
-    mediaResults.value = res.items ?? []
+    const res = await adminApi.listMedia({
+      page: mediaPage.value,
+      limit: MEDIA_PICKER_PAGE_SIZE,
+      ...(q ? {search: q} : {}),
+    })
+    const items = res.items ?? []
+    mediaResults.value = append ? [...mediaResults.value, ...items] : items
+    mediaTotalPages.value = res.total_pages ?? 1
   } catch {
-    mediaResults.value = []
+    if (!append) mediaResults.value = []
   } finally {
     mediaSearching.value = false
+    mediaLoadingMore.value = false
   }
+}
+
+function loadMoreMedia() {
+  if (mediaLoadingMore.value || mediaPage.value >= mediaTotalPages.value) return
+  mediaPage.value++
+  searchMedia(true)
 }
 
 function onSearchInput() {
   if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(searchMedia, 300)
+  // Reset to page 1 on a new query (searchMedia(false) resets pagination).
+  searchTimer = setTimeout(() => searchMedia(false), 300)
 }
 
 onUnmounted(() => {
@@ -457,6 +481,16 @@ onMounted(load)
                   @click="addItem(item.id)"
               />
             </div>
+          </div>
+          <div v-if="mediaResults.length > 0 && mediaPage < mediaTotalPages" class="text-center pt-1">
+            <UButton
+                label="Load more"
+                size="xs"
+                variant="ghost"
+                color="neutral"
+                :loading="mediaLoadingMore"
+                @click="loadMoreMedia"
+            />
           </div>
         </div>
       </template>
