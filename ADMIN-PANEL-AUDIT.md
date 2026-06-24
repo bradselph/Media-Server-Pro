@@ -1,5 +1,27 @@
 # Admin Panel — Cleanup Notes (2026-06-24)
 
+## Resolution (2026-06-24) — implemented, typecheck + `nuxt generate` green
+- **① Duplicate settings → DONE.** Each now lives in one tab: HLS auto-gen/pre-gen →
+  *HLS Jobs*; backup retention → *Backups & DB*; updater method/branch → *Updates*;
+  HTTPS/HSTS/CORS (+ cert/key, max-age, origins) → *Security ▸ Settings*. Removed from the
+  big Settings panel. (commit 35124101)
+- **② Redundant views → DONE.** One home each: module health → *System ▸ Status*; live
+  streams → *Dashboard*; audit log → *Security*; feature flags → *Settings*; scan → *Media*.
+  (commit f550e42a)
+- **③ Dead UI knobs → DONE (made functional).** items-per-page (desktop/mobile) + mobile grid
+  columns now drive the public browse grid; per-user prefs still override. (commit 7e55be31)
+- **④ Misleading labels → DONE.** Adaptive Bitrate, Max Reconstruct, session counters,
+  alert-rules note, Run-Scan rename. (commit f141f328)
+- **⑥ Small bugs → DONE.** Generate-HLS now video-only; per-user analytics shows a
+  disabled message; category cover UUID validated. (#21 was a false positive.) (commit f141f328)
+- **⑤ Discoverability → NOT STARTED** (wasn't in the decision round): Media Reports still
+  under *Media* not *Moderation*; Duplicates tab still shows a bare error when its feature is
+  off. Awaiting your call.
+
+---
+
+
+
 Catalog of admin-panel features that are **duplicated**, **dead/non-working**, or **unclear**.
 Built from a full sweep of all 9 top-level tabs + 28 admin components, wiring each control to its
 Go endpoint/config field and verifying it does real work. Nothing here is changed yet — this is the
