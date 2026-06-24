@@ -1,5 +1,6 @@
 <script setup lang="ts">
 definePageMeta({title: 'Terms of Service'})
+const brand = useBrandConfig()
 </script>
 
 <template>
@@ -12,7 +13,7 @@ definePageMeta({title: 'Terms of Service'})
       <section>
         <h2 class="text-base font-semibold text-highlighted mb-2">1. Acceptance of Terms</h2>
         <p>
-          By accessing or using Media Server Pro ("the Service") you confirm that you have read, understood,
+          By accessing or using {{ brand.name }} ("the Service") you confirm that you have read, understood,
           and agree to be bound by these Terms of Service and our
           <NuxtLink to="/privacy" class="underline hover:text-highlighted">Privacy Policy</NuxtLink>
           .

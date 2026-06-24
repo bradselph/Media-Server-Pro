@@ -90,6 +90,14 @@ onMounted(() => {
 })
 onMounted(fetchNewCount)
 onMounted(() => {
+  // Ops nudge: /2257 and /dmca fall back to placeholder contact info when the
+  // operator hasn't set the legal env vars. Serving placeholder addresses on a
+  // live adult site is a § 2257 / DMCA safe-harbor liability — warn loudly.
+  if (!brand.value.complianceEmail || !brand.value.dmcaEmail) {
+    console.warn('[compliance] Legal contact info is not configured — /2257 and /dmca are showing placeholder addresses. Set NUXT_PUBLIC_COMPLIANCE_EMAIL / NUXT_PUBLIC_DMCA_EMAIL (and the matching addresses) before production launch.')
+  }
+})
+onMounted(() => {
   const saved = localStorage.getItem('msp-accent-hue')
   if (saved) document.documentElement.style.setProperty('--accent-hue', saved)
 })
