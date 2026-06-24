@@ -91,7 +91,7 @@ func (h *Handler) shellMetaForPlayer(c *gin.Context) web.ShellMeta {
 	head.WriteString(`<link rel="canonical" href="` + html.EscapeString(canonical) + `">`)
 	// JSON-LD takes the RAW (un-HTML-escaped) title/desc — JSON encoding handles
 	// quoting and playerJSONLD escapes '<' so a crafted title can't break out.
-	head.WriteString(playerJSONLD(ldType, title, desc, item, thumb))
+	head.WriteString(playerJSONLD(ldType, title, desc, canonical, item, thumb))
 
 	var ns strings.Builder
 	ns.WriteString(`<h1>` + html.EscapeString(title) + `</h1>`)
@@ -214,7 +214,7 @@ func writeMetaName(b *strings.Builder, name, content string) {
 // description are passed raw: json.Marshal handles quoting, and every '<' is
 // replaced with its JSON unicode escape so a crafted title cannot terminate the
 // <script type="application/ld+json"> block early (mirrors utils/jsonld.ts).
-func playerJSONLD(ldType, title, desc string, item *models.MediaItem, thumb string) string {
+func playerJSONLD(ldType, title, desc, canonical string, item *models.MediaItem, thumb string) string {
 	ld := map[string]any{
 		"@context":    "https://schema.org",
 		"@type":       ldType,
@@ -223,8 +223,22 @@ func playerJSONLD(ldType, title, desc string, item *models.MediaItem, thumb stri
 		"uploadDate":  item.DateAdded.UTC().Format(time.RFC3339),
 		"duration":    toISO8601Duration(item.Duration),
 	}
+	// The watch-page URL helps search engines bind the rich result to a landing
+	// page. (We can't expose a public contentUrl/embedUrl — media is age-gated.)
+	if canonical != "" {
+		ld["url"] = canonical
+	}
 	if thumb != "" {
 		ld["thumbnailUrl"] = thumb
+	}
+	// Surface view count as a watch interaction so popular items can earn richer
+	// SERP treatment.
+	if item.Views > 0 {
+		ld["interactionStatistic"] = map[string]any{
+			"@type":                "InteractionCounter",
+			"interactionType":      "https://schema.org/WatchAction",
+			"userInteractionCount": item.Views,
+		}
 	}
 	b, err := json.Marshal(ld)
 	if err != nil {
