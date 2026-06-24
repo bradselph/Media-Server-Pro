@@ -536,6 +536,13 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
             </template>
             <template v-else>
               <NuxtLink
+                  to="/signup"
+                  class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm font-semibold text-white bg-primary hover:brightness-110 transition-[filter]"
+              >
+                <UIcon name="i-lucide-user-plus" class="size-4 shrink-0"/>
+                Sign up
+              </NuxtLink>
+              <NuxtLink
                   to="/login"
                   class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
               >
