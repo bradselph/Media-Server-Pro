@@ -564,7 +564,7 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
     <footer v-if="ageGateChecked && !ageGateOpen" class="border-t border-default py-3">
       <UContainer>
         <div class="flex flex-col items-center gap-1">
-          <p v-if="serverVersion" class="text-xs text-muted">{{ brand.name }} v{{ serverVersion }}</p>
+          <p v-if="serverVersion && authStore.isAdmin" class="text-xs text-muted">{{ brand.name }} v{{ serverVersion }}</p>
           <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted">
             <NuxtLink to="/privacy" class="hover:text-default underline">Privacy Policy</NuxtLink>
             <span aria-hidden="true">·</span>
