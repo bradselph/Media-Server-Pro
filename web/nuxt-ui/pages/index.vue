@@ -872,6 +872,17 @@ onMounted(() => {
             icon: 'i-lucide-sparkles',
           })
           localStorage.setItem('msp-welcomed', 'done')
+          // New accounts default to can_view_mature: false, so most of this
+          // (largely mature) library shows as locked. Tell them how to unlock it
+          // so they don't sign up and immediately churn on locked cards.
+          if (!canViewMature.value) {
+            toast.add({
+              title: 'Mature content is locked',
+              description: 'Enable it in your Profile settings to unlock the full library.',
+              color: 'warning',
+              icon: 'i-lucide-lock',
+            })
+          }
         }
       } catch { /* private mode */
       }
