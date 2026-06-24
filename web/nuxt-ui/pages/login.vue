@@ -175,6 +175,9 @@ async function handleLogin() {
         <UIcon name="i-lucide-lock" class="size-3.5 inline-block mr-1 -mt-0.5"/>
         Registration is currently closed.
       </p>
+      <p class="text-center text-xs text-muted mt-3">
+        Forgot your password? Contact the site administrator to reset it.
+      </p>
     </div>
   </div>
 </template>

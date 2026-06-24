@@ -1538,11 +1538,11 @@ watch(mediaId, (id, oldId) => {
       <UIcon name="i-lucide-lock" class="size-16 text-muted"/>
       <h2 class="text-xl font-semibold">Age-Restricted Content</h2>
       <p class="text-muted max-w-sm">
-        <template v-if="!authStore.isLoggedIn">Sign in to access mature content.</template>
+        <template v-if="!authStore.isLoggedIn">Sign up for a free account to access mature content.</template>
         <template v-else>Enable mature content in your profile settings to watch this.</template>
       </p>
       <div class="flex gap-3">
-        <UButton v-if="!authStore.isLoggedIn" to="/login" label="Sign In" color="primary"/>
+        <UButton v-if="!authStore.isLoggedIn" to="/signup" label="Sign Up" color="primary"/>
         <UButton v-else to="/profile" label="Profile Settings" color="primary"/>
         <UButton to="/" variant="outline" color="neutral" label="Back to Library"/>
       </div>

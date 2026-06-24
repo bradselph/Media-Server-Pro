@@ -71,7 +71,7 @@ func TestShellMediaDescription_GeneratedFallback(t *testing.T) {
 func TestPlayerJSONLD_EscapesAngleBracket(t *testing.T) {
 	const lt = "<"
 	item := &models.MediaItem{Duration: 60}
-	out := playerJSONLD("VideoObject", "evil"+lt+"/script"+lt+"script>alert(1)", "desc", item, "")
+	out := playerJSONLD("VideoObject", "evil"+lt+"/script"+lt+"script>alert(1)", "desc", "", item, "")
 
 	if strings.Contains(out, lt+"/script"+lt+"script>") {
 		t.Errorf("angle bracket not escaped, XSS possible: %s", out)

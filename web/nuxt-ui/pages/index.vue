@@ -300,8 +300,10 @@ const params = reactive({
   search: typeof route.query.search === 'string' ? route.query.search : '',
   type: typeof route.query.type === 'string' ? route.query.type : (authStore.user?.preferences?.filter_media_type || 'all'),
   category: isCategoryId(route.query.category) ? route.query.category : (isCategoryId(authStore.user?.preferences?.filter_category) ? authStore.user!.preferences!.filter_category : 'all'),
-  sort_by: typeof route.query.sort_by === 'string' ? route.query.sort_by : (authStore.user?.preferences?.sort_by || 'name'),
-  sort_order: (typeof route.query.sort_order === 'string' ? route.query.sort_order : (authStore.user?.preferences?.sort_order ?? 'asc')) as 'asc' | 'desc',
+  // Guests (no saved prefs) default to most-viewed first so the first-visit grid
+  // leads with the library's strongest content instead of an A–Z list.
+  sort_by: typeof route.query.sort_by === 'string' ? route.query.sort_by : (authStore.user?.preferences?.sort_by || (authStore.isLoggedIn ? 'name' : 'views')),
+  sort_order: (typeof route.query.sort_order === 'string' ? route.query.sort_order : (authStore.user?.preferences?.sort_order ?? (authStore.isLoggedIn ? 'asc' : 'desc'))) as 'asc' | 'desc',
   min_rating: typeof route.query.min_rating === 'string' ? (Number.parseInt(route.query.min_rating, 10) || 0) : 0,
 })
 
@@ -774,20 +776,10 @@ async function load() {
     initializing.value = res.initializing ?? false
     if (res.type_counts && params.type === 'all') typeCounts.value = res.type_counts
     userRatings.value = res.user_ratings ?? {}
-    // Pre-warm the browser image cache for visible thumbnails in this page.
-    // The batch endpoint returns the same /thumbnail?id=X URLs so the browser
-    // deduplicates and serves them instantly when the grid renders.
+    // The browser fetches visible thumbnails natively (and lazy-loads the rest),
+    // so we no longer pre-warm them in a ~50-request burst that competed with the
+    // grid render. batchIds is still used below for playback positions.
     const batchIds = items.value.slice(0, 50).map(i => i.id)
-    if (batchIds.length > 0) {
-      mediaApi.getThumbnailBatch(batchIds, 320).then(r => {
-        if (seq !== loadSeq) return
-        for (const url of Object.values(r?.thumbnails ?? {})) {
-          const img = new Image()
-          img.src = url
-        }
-      }).catch(() => {
-      })
-    }
     // Batch-fetch playback positions for logged-in users to show progress bars.
     if (authStore.isLoggedIn && batchIds.length > 0) {
       playbackApi.getBatchPositions(batchIds).then(r => {
@@ -880,6 +872,17 @@ onMounted(() => {
             icon: 'i-lucide-sparkles',
           })
           localStorage.setItem('msp-welcomed', 'done')
+          // New accounts default to can_view_mature: false, so most of this
+          // (largely mature) library shows as locked. Tell them how to unlock it
+          // so they don't sign up and immediately churn on locked cards.
+          if (!canViewMature.value) {
+            toast.add({
+              title: 'Mature content is locked',
+              description: 'Enable it in your Profile settings to unlock the full library.',
+              color: 'warning',
+              icon: 'i-lucide-lock',
+            })
+          }
         }
       } catch { /* private mode */
       }
@@ -914,7 +917,8 @@ const canViewMature = computed(() =>
 
 function matureGateHref(item: MediaItem): string {
   if (item.is_mature && !canViewMature.value) {
-    return authStore.isLoggedIn ? '/profile' : '/login'
+    // Guests: send to signup (the growth goal is new accounts, not logins).
+    return authStore.isLoggedIn ? '/profile' : '/signup'
   }
   return `/player?id=${encodeURIComponent(item.id)}`
 }
@@ -1760,7 +1764,8 @@ onUnmounted(() => {
     />
 
     <!-- Loading -->
-    <MediaCardSkeleton v-if="loading" :count="12"/>
+    <MediaCardSkeleton v-if="loading" :count="12"
+                       grid-class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-4"/>
 
     <!-- Grid view -->
     <div
@@ -1824,7 +1829,7 @@ onUnmounted(() => {
           >
             <UIcon name="i-lucide-lock" class="size-5 text-white"/>
             <p class="text-white text-xs font-semibold leading-tight">
-              {{ authStore.isLoggedIn ? 'Enable mature content\nin profile settings' : 'Sign in to view' }}
+              {{ authStore.isLoggedIn ? 'Enable mature content\nin profile settings' : 'Sign up to view' }}
             </p>
           </div>
           <!-- Hover play button overlay (desktop hover) — hidden on touch

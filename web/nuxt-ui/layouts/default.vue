@@ -30,10 +30,19 @@ const ageGateVerifying = ref(false)
 const ageGateTermsAccepted = ref(false)
 
 async function checkAgeGate() {
+  // Returning visitors who verified before render immediately instead of staring
+  // at a blank screen during the status round-trip. The server check below still
+  // runs and re-opens the gate if the prior verification has since expired.
+  if (typeof window !== 'undefined' && localStorage.getItem('msp-age-verified') === '1') {
+    ageGateChecked.value = true
+  }
   try {
     const status = await ageGateApi.getStatus()
     if (status.enabled && !status.verified) {
       ageGateOpen.value = true
+      if (typeof window !== 'undefined') localStorage.removeItem('msp-age-verified')
+    } else if (status.verified && typeof window !== 'undefined') {
+      localStorage.setItem('msp-age-verified', '1')
     }
   } catch { /* non-critical */
   } finally {
@@ -46,6 +55,9 @@ async function verifyAge() {
   ageGateVerifying.value = true
   try {
     await ageGateApi.verify()
+    // Remember the verification client-side so the next visit renders instantly
+    // (see checkAgeGate) without waiting on the status round-trip.
+    if (typeof window !== 'undefined') localStorage.setItem('msp-age-verified', '1')
     ageGateOpen.value = false
   } catch { /* if verify fails, keep modal open */
   } finally {
@@ -89,6 +101,14 @@ onMounted(() => {
   })
 })
 onMounted(fetchNewCount)
+onMounted(() => {
+  // Ops nudge: /2257 and /dmca fall back to placeholder contact info when the
+  // operator hasn't set the legal env vars. Serving placeholder addresses on a
+  // live adult site is a § 2257 / DMCA safe-harbor liability — warn loudly.
+  if (!brand.value.complianceEmail || !brand.value.dmcaEmail) {
+    console.warn('[compliance] Legal contact info is not configured — /2257 and /dmca are showing placeholder addresses. Set NUXT_PUBLIC_COMPLIANCE_EMAIL / NUXT_PUBLIC_DMCA_EMAIL (and the matching addresses) before production launch.')
+  }
+})
 onMounted(() => {
   const saved = localStorage.getItem('msp-accent-hue')
   if (saved) document.documentElement.style.setProperty('--accent-hue', saved)
@@ -157,10 +177,12 @@ const navLinks = computed(() => {
   const links = [
     {label: 'Home', to: '/', icon: 'i-lucide-house'},
     {label: 'Browse', to: '/browse', icon: 'i-lucide-tags'},
+    // Categories is a public route (no auth middleware) — show it to guests too
+    // so the curated taxonomy is discoverable before they sign up.
+    {label: 'Categories', to: '/categories', icon: 'i-lucide-library'},
   ]
   if (authStore.isLoggedIn) {
     links.push(
-        {label: 'Categories', to: '/categories', icon: 'i-lucide-library'},
         {label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music'},
     )
     if (authStore.user?.permissions?.can_upload && serverSettings.value?.uploads?.enabled !== false) {
@@ -175,10 +197,10 @@ const mobileNavLinks = computed(() => {
   const links = [
     {label: 'Home', to: '/', icon: 'i-lucide-house'},
     {label: 'Browse', to: '/browse', icon: 'i-lucide-tags'},
+    {label: 'Categories', to: '/categories', icon: 'i-lucide-library'},
   ]
   if (authStore.isLoggedIn) {
     links.push(
-        {label: 'Categories', to: '/categories', icon: 'i-lucide-library'},
         {label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music'},
         {label: 'Favorites', to: '/favorites', icon: 'i-lucide-heart'},
         {label: 'History', to: '/history', icon: 'i-lucide-history'},
@@ -536,6 +558,13 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
             </template>
             <template v-else>
               <NuxtLink
+                  to="/signup"
+                  class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm font-semibold text-white bg-primary hover:brightness-110 transition-[filter]"
+              >
+                <UIcon name="i-lucide-user-plus" class="size-4 shrink-0"/>
+                Sign up
+              </NuxtLink>
+              <NuxtLink
                   to="/login"
                   class="flex items-center gap-2 px-3 py-2.5 rounded-md text-sm text-muted hover:text-default hover:bg-muted transition-colors"
               >
@@ -557,7 +586,7 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
     <footer v-if="ageGateChecked && !ageGateOpen" class="border-t border-default py-3">
       <UContainer>
         <div class="flex flex-col items-center gap-1">
-          <p v-if="serverVersion" class="text-xs text-muted">{{ brand.name }} v{{ serverVersion }}</p>
+          <p v-if="serverVersion && authStore.isAdmin" class="text-xs text-muted">{{ brand.name }} v{{ serverVersion }}</p>
           <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted">
             <NuxtLink to="/privacy" class="hover:text-default underline">Privacy Policy</NuxtLink>
             <span aria-hidden="true">·</span>

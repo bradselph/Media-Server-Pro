@@ -81,8 +81,18 @@ export default defineNuxtConfig({
                 },
                 {
                     name: 'description',
-                    content: 'Media Server Pro — personal media library for streaming, organizing, and managing your media collection.',
+                    content: 'Stream and browse a large library of adult video and media content. 18+ only — free to start, with new content added constantly.',
                 },
+                // Adult-content labelling so SafeSearch (Bing/Google) classifies the
+                // site correctly instead of suppressing it by default. RTA is the
+                // industry-standard self-rating label; this is an adult-only site
+                // (see project requirements).
+                {name: 'rating', content: 'adult'},
+                {name: 'RATING', content: 'RTA-5042-1996-1400-1577-RTA'},
+                // Baked site-level OpenGraph defaults. Route-specific og:title/
+                // description/url/image are injected server-side by the Go SEO shell.
+                {property: 'og:site_name', content: 'Media Server Pro'},
+                {property: 'og:locale', content: 'en_US'},
             ],
         },
     },

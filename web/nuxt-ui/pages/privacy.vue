@@ -1,5 +1,6 @@
 <script setup lang="ts">
 definePageMeta({title: 'Privacy Policy'})
+const brand = useBrandConfig()
 </script>
 
 <template>
@@ -12,7 +13,7 @@ definePageMeta({title: 'Privacy Policy'})
       <section>
         <h2 class="text-base font-semibold text-highlighted mb-2">1. Overview</h2>
         <p>
-          This Privacy Policy explains how Media Server Pro ("we", "us", "our") collects, uses, and protects
+          This Privacy Policy explains how {{ brand.name }} ("we", "us", "our") collects, uses, and protects
           information when you access this service. By using the service you agree to the practices described here.
           This service hosts adult content and is strictly restricted to users who are 18 years of age or older.
         </p>
