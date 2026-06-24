@@ -21,6 +21,18 @@ const failedThumbnails = reactive(new Set<string>())
 
 const orderedItems = computed(() => category.value?.items ?? [])
 
+// Per-category SEO for live browsers and JS-capable crawlers. Non-JS crawlers get
+// the same title/description server-side from the Go SEO shell (shellMetaForCategory).
+const seoTitle = computed(() => category.value?.name ? `${category.value.name} — Media Server Pro` : 'Category — Media Server Pro')
+const seoDesc = computed(() => category.value?.description
+    || (category.value?.name ? `Browse ${category.value.name} videos and media on Media Server Pro.` : 'Explore the Media Server Pro library by category.'))
+useSeoMeta({
+  title: seoTitle,
+  description: seoDesc,
+  ogTitle: seoTitle,
+  ogDescription: seoDesc,
+})
+
 async function load() {
   loading.value = true
   notFound.value = false

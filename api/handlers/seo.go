@@ -13,6 +13,7 @@ import (
 
 	"media-server-pro/internal/media"
 	"media-server-pro/pkg/middleware"
+	"media-server-pro/pkg/models"
 )
 
 // urlset / urlEntry / sitemapImage model the sitemaps.org schema, with the
@@ -78,6 +79,25 @@ func (h *Handler) GetSitemap(c *gin.Context) {
 		{Loc: baseURL + "/terms", ChangeFreq: "monthly", Priority: "0.2"},
 		{Loc: baseURL + "/2257", ChangeFreq: "monthly", Priority: "0.2"},
 		{Loc: baseURL + "/dmca", ChangeFreq: "monthly", Priority: "0.2"},
+	}
+
+	// Category detail pages — the most topically relevant landing pages for
+	// organic search ("watch <tag> videos"). One entry per curated category.
+	if gdb := h.database.GORM(); gdb != nil {
+		var cats []struct{ ID string }
+		if err := gdb.WithContext(c.Request.Context()).
+			Model(&models.MediaCategory{}).Select("id").Scan(&cats).Error; err == nil {
+			for _, cat := range cats {
+				if len(urls) >= sitemapMaxURLs {
+					break
+				}
+				urls = append(urls, sitemapURLEntry{
+					Loc:        baseURL + "/categories/" + cat.ID,
+					ChangeFreq: "weekly",
+					Priority:   "0.7",
+				})
+			}
+		}
 	}
 
 	items := h.media.ListMedia(media.Filter{SortBy: "date_added", SortDesc: true})
