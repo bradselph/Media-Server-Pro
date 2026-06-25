@@ -86,25 +86,30 @@ const mobileGridStyle = computed(() => {
   return undefined
 })
 
-// Library stats (public, shown to guests too)
+// Library stats (public, shown to guests too). Feed the guest CTA banner and the
+// stats strip — both below the fold — so the fetch is deferred to idle in
+// onMounted rather than fired at setup time where it competed with the grid load.
 const libraryStats = ref<MediaStats | null>(null)
 const libraryStatsFailed = ref(false)
-mediaApi.getStats()
-    .then(s => {
-      libraryStats.value = s
-    })
-    .catch(err => {
-      // Stats are public + best-effort; we deliberately don't surface a toast
-      // (a logged-out home page shouldn't blow up with errors if the API is
-      // briefly unavailable). But silently swallowing was masking real outages
-      // -- log it so it shows up in browser devtools and let the template
-      // hide the stats strip via libraryStatsFailed instead of rendering an
-      // empty "0 / 0" placeholder.
-      libraryStatsFailed.value = true
-      if (typeof console !== 'undefined') {
-        console.warn('[index] library stats fetch failed:', err)
-      }
-    })
+
+function loadLibraryStats() {
+  mediaApi.getStats()
+      .then(s => {
+        if (indexMounted) libraryStats.value = s
+      })
+      .catch(err => {
+        // Stats are public + best-effort; we deliberately don't surface a toast
+        // (a logged-out home page shouldn't blow up with errors if the API is
+        // briefly unavailable). But silently swallowing was masking real outages
+        // -- log it so it shows up in browser devtools and let the template
+        // hide the stats strip via libraryStatsFailed instead of rendering an
+        // empty "0 / 0" placeholder.
+        if (indexMounted) libraryStatsFailed.value = true
+        if (typeof console !== 'undefined') {
+          console.warn('[index] library stats fetch failed:', err)
+        }
+      })
+}
 
 // Multi-select / bulk-add-to-playlist
 const selectionMode = ref(false)
@@ -302,6 +307,34 @@ const general = ref<Suggestion[]>([])
 // at page-load time (e.g. page refresh). An immediate watcher fires synchronously
 // during setup; if `params` isn't yet declared, `params.limit` throws TDZ.
 const items = ref<MediaItem[]>([])
+
+// Blurhash LQIP backdrops are decoded lazily off the render path. Calling
+// blurHashToDataUrl() inline in the grid/list :style ran a synchronous canvas
+// decode (decode → putImageData → toDataURL) for every card during Vue's render
+// commit — up to ~24 sequential decodes on a cold page load, a measurable slice
+// of render-phase main-thread time (TBT). Instead, decode when the browser is
+// idle and store the data URLs in a reactive map the template reads; a gradient
+// fallback layer already covers the card until the blurhash resolves, so the
+// deferral is visually invisible. The underlying blurHashToDataUrl LRU cache
+// still makes warm revisits instant.
+const blurhashCache = reactive<Record<string, string>>({})
+
+function scheduleBlurhashDecode(list: MediaItem[]) {
+  for (const it of list) {
+    if (!it.blur_hash || blurhashCache[it.id]) continue
+    const id = it.id
+    const hash = it.blur_hash
+    const decode = () => {
+      const url = blurHashToDataUrl(hash)
+      if (url) blurhashCache[id] = url
+    }
+    if (typeof requestIdleCallback !== 'undefined') requestIdleCallback(decode, {timeout: 2000})
+    else setTimeout(decode, 0)
+  }
+}
+
+watch(items, (list) => scheduleBlurhashDecode(list), {immediate: false})
+
 // Curated categories (admin-managed MediaCategory) — powers the "Top categories"
 // strip and the library Category filter. There is one category concept now.
 const categories = ref<MediaCategory[]>([])
@@ -759,7 +792,9 @@ watch(
         router.replace({query})
       }, 300)
     },
-    {deep: true},
+    // No {deep:true}: every source is a primitive params getter or a ref that is
+    // always reassigned a fresh Set (filterTags) rather than mutated in place, so
+    // shallow tracking already catches all changes without deep-proxying the Set.
 )
 
 // React to deep-link changes from the /browse page: when the user clicks
@@ -882,11 +917,11 @@ watch([() => params.type, () => params.category, () => params.sort_by, () => par
       }, 1000)
     })
 
-onMounted(async () => {
-  // Load server UI defaults first so the initial grid uses the admin-configured
-  // page size (cached after the layout's first fetch, so this is usually instant).
-  await loadServerSettings()
-  // Apply user preferences before the first load so we don't need a second request.
+onMounted(() => {
+  // Apply the best page-size we can synchronously: the user's personal override,
+  // else the current server default. The layout usually populated server settings
+  // already (shared useState cache); if its fetch hasn't resolved yet,
+  // serverDefaultLimit() returns the 24 fallback and the .then() below corrects it.
   const prefs = authStore.user?.preferences
   if (prefs?.items_per_page) {
     if (prefs.items_per_page !== params.limit) params.limit = prefs.items_per_page
@@ -896,8 +931,27 @@ onMounted(async () => {
     if (def !== params.limit) params.limit = def
   }
   if (prefs?.view_mode && ['grid', 'list', 'compact'].includes(prefs.view_mode)) viewMode.value = prefs.view_mode as ViewMode
+  // Fire the grid load immediately — do NOT fence first paint behind the
+  // server-settings round-trip (this used to `await loadServerSettings()`).
+  // Settings load in parallel; if they later change the default page size for a
+  // guest/no-override user, re-load once with the corrected limit.
   loadCategories()
   load()
+  loadServerSettings().then(() => {
+    if (!indexMounted) return
+    if (!authStore.user?.preferences?.items_per_page) {
+      const def = serverDefaultLimit()
+      if (def !== params.limit) {
+        params.limit = def
+        params.page = 1
+        load()
+      }
+    }
+  }).catch(() => { /* non-critical */ })
+  // Library stats sit below the fold — fetch when idle so they don't compete
+  // with the grid load for bandwidth/main-thread at the critical moment.
+  if (typeof requestIdleCallback !== 'undefined') requestIdleCallback(loadLibraryStats, {timeout: 3000})
+  else setTimeout(loadLibraryStats, 200)
   // Fetch recommendations for already-logged-in users (page refresh).
   // When the user logs in mid-session, the watch above handles this instead.
   if (authStore.isLoggedIn) {
@@ -1868,7 +1922,7 @@ onUnmounted(() => {
       >
         <div
             class="relative aspect-video rounded-lg overflow-hidden mb-2 media-card-lift scanline-thumb"
-            :style="item.blur_hash && item.type !== 'audio' ? { backgroundImage: `url(${blurHashToDataUrl(item.blur_hash)})`, backgroundSize: 'cover' } : {}"
+            :style="item.type !== 'audio' && blurhashCache[item.id] ? { backgroundImage: `url(${blurhashCache[item.id]})`, backgroundSize: 'cover' } : {}"
         >
           <!-- Gradient fallback layer (always present for video/image, sits beneath thumbnail) -->
           <div
@@ -2155,7 +2209,7 @@ onUnmounted(() => {
           <NuxtLink :to="matureGateHref(row.original)" class="flex items-center gap-3 hover:text-primary">
             <div
                 class="relative w-16 h-9 rounded overflow-hidden bg-muted shrink-0"
-                :style="row.original.blur_hash ? { backgroundImage: `url(${blurHashToDataUrl(row.original.blur_hash)})`, backgroundSize: 'cover' } : {}"
+                :style="blurhashCache[row.original.id] ? { backgroundImage: `url(${blurhashCache[row.original.id]})`, backgroundSize: 'cover' } : {}"
             >
               <img
                   v-if="row.original.type !== 'audio' && !failedThumbnails.has(row.original.id)"
