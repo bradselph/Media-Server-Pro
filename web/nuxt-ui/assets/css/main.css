@@ -3,12 +3,16 @@
 
 /* Self-hosted Barlow — matches the design-handoff type spec. Barlow is loaded
    from node_modules so it's bundled with the SPA (no external CDN → no CSP
-   exception needed). Weights 400/500/600/700/800 cover body, labels, and H1s. */
-@import "@fontsource/barlow/400.css";
-@import "@fontsource/barlow/500.css";
-@import "@fontsource/barlow/600.css";
-@import "@fontsource/barlow/700.css";
-@import "@fontsource/barlow/800.css";
+   exception needed). Weights 400/500/600/700/800 cover body, labels, and H1s.
+   Latin subset only: the site is English-only, so the vietnamese and latin-ext
+   subsets (U+0102-0103, U+1EA0-1EF9, U+0100-02BA) are dead weight — the latin-*
+   variants ship one @font-face per weight instead of three, trimming ~5KB raw
+   from the render-blocking entry.css and 20 unused woff2 files from the build. */
+@import "@fontsource/barlow/latin-400.css";
+@import "@fontsource/barlow/latin-500.css";
+@import "@fontsource/barlow/latin-600.css";
+@import "@fontsource/barlow/latin-700.css";
+@import "@fontsource/barlow/latin-800.css";
 
 /* Tailwind v4 safelist: ensure these classes are always emitted for the
    mature-content blur gate (dynamically applied via ternary, scanner may miss them) */
@@ -48,7 +52,11 @@ body {
 
 /* Log viewer styles */
 .log-viewer {
-    font-family: 'Fira Mono', 'Consolas', monospace;
+    /* System monospace — referencing 'Fira Mono' here made @nuxt/fonts
+       auto-discover and inject 25 @font-face rules (+24 woff2 files, ~380KB)
+       into the render-blocking entry.css for a single admin-only panel. The
+       system mono stack is visually equivalent for a log viewer. */
+    font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, 'Consolas', monospace;
     font-size: 0.75rem;
     line-height: 1.5;
     background: var(--ui-bg-muted);
