@@ -93,11 +93,22 @@ function leaveAgeGate() {
   }
 }
 
+// Schedule non-critical work off the synchronous hydration task: idle callback
+// where supported (Chrome/Firefox), a short timeout fallback elsewhere (Safari).
+const runWhenIdle = (cb: () => void) =>
+    typeof requestIdleCallback !== 'undefined'
+        ? requestIdleCallback(cb, {timeout: 3000})
+        : setTimeout(cb, 200)
+
 onMounted(checkAgeGate)
 onMounted(() => {
-  versionApi.get().then(r => {
-    serverVersion.value = r.version
-  }).catch(() => {
+  // Footer version is admin-only and never affects first paint — fetch when the
+  // main thread is idle so it doesn't compete with hydration/render.
+  runWhenIdle(() => {
+    versionApi.get().then(r => {
+      serverVersion.value = r.version
+    }).catch(() => {
+    })
   })
 })
 onMounted(fetchNewCount)
@@ -105,9 +116,12 @@ onMounted(() => {
   // Ops nudge: /2257 and /dmca fall back to placeholder contact info when the
   // operator hasn't set the legal env vars. Serving placeholder addresses on a
   // live adult site is a § 2257 / DMCA safe-harbor liability — warn loudly.
-  if (!brand.value.complianceEmail || !brand.value.dmcaEmail) {
-    console.warn('[compliance] Legal contact info is not configured — /2257 and /dmca are showing placeholder addresses. Set NUXT_PUBLIC_COMPLIANCE_EMAIL / NUXT_PUBLIC_DMCA_EMAIL (and the matching addresses) before production launch.')
-  }
+  // Purely a console diagnostic, so defer it off the hydration task.
+  runWhenIdle(() => {
+    if (!brand.value.complianceEmail || !brand.value.dmcaEmail) {
+      console.warn('[compliance] Legal contact info is not configured — /2257 and /dmca are showing placeholder addresses. Set NUXT_PUBLIC_COMPLIANCE_EMAIL / NUXT_PUBLIC_DMCA_EMAIL (and the matching addresses) before production launch.')
+    }
+  })
 })
 onMounted(() => {
   const saved = localStorage.getItem('msp-accent-hue')
@@ -352,18 +366,27 @@ onUnmounted(() => {
   if (typeof window !== 'undefined') window.removeEventListener('resize', syncMobileViewport)
 })
 
-watchEffect(() => {
-  if (typeof document === 'undefined') return
-  if (!sidebarVisible.value) {
-    document.body.dataset.sidebar = 'off'
-    return
-  }
-  if (isMobileViewport.value) {
-    document.body.dataset.sidebar = 'dock'
-    return
-  }
-  document.body.dataset.sidebar = sidebarState.open.value ? 'open' : 'rail'
-})
+// Mirror the sidebar layout state onto <body data-sidebar> so main.css can pad
+// <main> for the dock/rail. Uses watch (not watchEffect) with flush:'post' so the
+// DOM write lands after Vue's render commit instead of firing an extra synchronous
+// style recalculation during component setup. {immediate:true} keeps the initial
+// attribute set on first render.
+watch(
+    [sidebarVisible, isMobileViewport, sidebarState.open],
+    () => {
+      if (typeof document === 'undefined') return
+      if (!sidebarVisible.value) {
+        document.body.dataset.sidebar = 'off'
+        return
+      }
+      if (isMobileViewport.value) {
+        document.body.dataset.sidebar = 'dock'
+        return
+      }
+      document.body.dataset.sidebar = sidebarState.open.value ? 'open' : 'rail'
+    },
+    {immediate: true, flush: 'post'},
+)
 
 // Floating "?" help button positioning. On mobile the sidebar shows as a
 // 60px bottom dock, so lift the button above it. On desktop the sidebar is
@@ -603,7 +626,7 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
     <!-- Now Playing sidebar — right-docked on desktop, bottom dock on mobile.
          Replaces the previous bottom-overlay MiniPlayer. Hidden on /player
          and auth routes via SIDEBAR_HIDDEN_ROUTES. -->
-    <NowPlayingSidebar v-if="ageGateChecked && !ageGateOpen"/>
+    <LazyNowPlayingSidebar v-if="ageGateChecked && !ageGateOpen"/>
 
     <!-- Floating help button — discoverability for the keyboard shortcuts
          modal. On mobile the sidebar shows as a 60px bottom dock, so lift
