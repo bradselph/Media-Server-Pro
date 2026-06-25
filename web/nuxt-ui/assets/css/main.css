@@ -54,9 +54,12 @@ body {
 .log-viewer {
     /* System monospace — referencing 'Fira Mono' here made @nuxt/fonts
        auto-discover and inject 25 @font-face rules (+24 woff2 files, ~380KB)
-       into the render-blocking entry.css for a single admin-only panel. The
-       system mono stack is visually equivalent for a log viewer. */
-    font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, 'Consolas', monospace;
+       into the render-blocking entry.css for a single admin-only panel. Use ONLY
+       generic/keyword families (ui-monospace, monospace) that @nuxt/fonts ignores
+       — naming a real font here (Cascadia Code, Source Code Pro, …) would just
+       make it download and bundle THAT instead. ui-monospace resolves to the
+       platform mono (SF Mono / Cascadia / Consolas) on every OS. */
+    font-family: ui-monospace, monospace;
     font-size: 0.75rem;
     line-height: 1.5;
     background: var(--ui-bg-muted);
