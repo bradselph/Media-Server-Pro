@@ -267,6 +267,12 @@ const videoStalled = ref(false)
 let stallTimer: ReturnType<typeof setTimeout> | null = null
 
 function onVideoWaiting() {
+  // Emit one analytics `buffering` event per stall episode (the false→true
+  // edge), not on every `waiting`/`stalled` repeat — onVideoPlaying clears the
+  // flag when playback resumes, so the next genuine stall reports again. This
+  // is the only client-side source of buffering telemetry; the admin event
+  // breakdown surfaces it so stall frequency is actually measurable.
+  if (!videoStalled.value) trackBuffering()
   videoStalled.value = true
   if (stallTimer) clearTimeout(stallTimer)
   stallTimer = setTimeout(() => {
@@ -1420,6 +1426,22 @@ function trackQualityChange(index: number) {
   if (!mediaId.value) return
   const qLabel = index === -1 ? 'auto' : (qualities.value[index]?.name ?? String(index))
   analyticsApi.submitEvent({type: 'quality_change', media_id: mediaId.value, data: {quality: qLabel}}).catch(() => {
+  })
+}
+
+// Buffering telemetry — fired on a real playback stall (see onVideoWaiting).
+// Carries the position and the active quality so admins can see not just how
+// often playback stalls but at what point and on which rendition.
+function trackBuffering() {
+  if (!mediaId.value) return
+  const qLabel = currentQuality.value === -1
+      ? 'auto'
+      : (qualities.value[currentQuality.value]?.name ?? 'auto')
+  analyticsApi.submitEvent({
+    type: 'buffering',
+    media_id: mediaId.value,
+    data: {position: Math.round(videoRef.value?.currentTime ?? 0), quality: qLabel},
+  }).catch(() => {
   })
 }
 
