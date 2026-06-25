@@ -1,0 +1,51 @@
+<!--
+  SPA loading splash. Nuxt 3 auto-detects this file (app/spa-loading-template.html)
+  and inlines it into the generated index.html inside <div id="__nuxt-loader">, a
+  sibling of <div id="__nuxt"> (spaLoadingTemplateLocation defaults to "body").
+  It is removed automatically on app:suspense:resolve once Vue mounts.
+
+  Why it exists: this is a pure SPA (ssr:false), so before this file existed the
+  body was an empty <div id="__nuxt"></div> and the page showed a blank white
+  screen until the entry bundle downloaded, parsed, executed and Vue mounted —
+  the ~2.6s "render delay" Lighthouse measured. This static splash paints as soon
+  as the render-blocking entry.css loads (~0.9s), cutting FCP roughly in half.
+
+  Notes:
+  - Brand-neutral on purpose: the brand name is a deploy-time runtime value
+    (window.APP_CONFIG / NUXT_PUBLIC_*), which a static build can't read — so a
+    hardcoded wordmark could show the wrong brand. A spinner avoids that.
+  - Uses an inline SVG (not a CSS-border div) so the first paint is genuinely
+    "contentful" and FCP fires early.
+  - Background uses var(--surface-page) so it matches the user's dark/light
+    color-mode (the inline color-mode script sets the class before paint, and
+    entry.css — render-blocking — defines the token). The hex fallback covers the
+    case where the stylesheet is ever made non-blocking.
+  - The global prefers-reduced-motion rule in main.css freezes the spin for users
+    who ask for reduced motion; the ring stays visible as a static indicator.
+-->
+<style>
+  .msp-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-page, #0d0d12);
+  }
+  .msp-splash svg { display: block; }
+  .msp-splash .msp-ring {
+    transform-origin: center;
+    animation: msp-spin 0.8s linear infinite;
+  }
+  @keyframes msp-spin { to { transform: rotate(360deg); } }
+</style>
+<div class="msp-splash" role="status" aria-live="polite" aria-label="Loading">
+  <svg width="46" height="46" viewBox="0 0 46 46" fill="none" aria-hidden="true">
+    <circle cx="23" cy="23" r="20" stroke-width="4"
+            stroke="color-mix(in srgb, var(--accent, #5b8def) 22%, transparent)"/>
+    <circle class="msp-ring" cx="23" cy="23" r="20" fill="none" stroke-width="4"
+            stroke-linecap="round" stroke-dasharray="34 200"
+            stroke="var(--accent, #5b8def)"/>
+  </svg>
+</div>
