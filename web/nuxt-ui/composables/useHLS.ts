@@ -170,6 +170,10 @@ export function useHLS(
         currentQuality.value = index
 
         if (index === -1) {
+            // Explicit "Auto" means fully adaptive with no ceiling — clear any
+            // cap that a default_quality preference may have applied so ABR can
+            // use the whole ladder.
+            hlsInstance.autoLevelCapping = -1
             saveQualityPref(0)
         } else {
             const level = hlsInstance.levels[index]
@@ -264,6 +268,11 @@ export function useHLS(
             // Restore saved quality preference. Per-device localStorage takes
             // precedence (an explicit in-player pick should stick on this
             // device); otherwise fall back to the user's account default_quality.
+            //
+            // A localStorage entry is only ever written by selectQuality() — i.e.
+            // the user deliberately pinned a resolution in this player on this
+            // device — so it stays a hard lock (currentLevel), which disables ABR
+            // by design.
             const savedHeight = getSavedQualityPref()
             if (savedHeight > 0) {
                 const match = q.find(level => level.height === savedHeight)
@@ -273,12 +282,18 @@ export function useHLS(
                     return
                 }
             }
+            // The account-level default_quality is a *preference*, not a hard
+            // pin: treat it as an adaptive ceiling. Staying in auto mode
+            // (currentLevel -1) with autoLevelCapping set lets the player drop to
+            // a lower rendition when the connection can't sustain the preferred
+            // height — preventing the stall-forever-instead-of-adapt behaviour —
+            // and climb back up to the cap when bandwidth recovers.
             const prefHeight = parseQualityPref(opts?.defaultQuality?.())
             if (prefHeight > 0) {
                 const match = pickQualityAtOrBelow(q, prefHeight)
                 if (match) {
-                    hls.currentLevel = match.index
-                    currentQuality.value = match.index
+                    hls.autoLevelCapping = match.index
+                    currentQuality.value = -1
                     return
                 }
             }
