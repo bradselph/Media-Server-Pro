@@ -97,7 +97,7 @@ func defaultThumbnailsConfig() ThumbnailsConfig {
 		PreviewCount:            10,
 		GenerateOnAccess:        true,
 		QueueSize:               1000,
-		WorkerCount:             4,
+		WorkerCount:             0, // 0 = auto: scale the worker pool with CPU count (see thumbnails.effectiveThumbnailWorkers)
 		InFlightEvictionTimeout: 5 * time.Minute,
 		InFlightScanInterval:    1 * time.Minute,
 	}
@@ -196,7 +196,7 @@ func defaultHLSConfig() HLSConfig {
 		RetentionMinutes:         60,
 		AutoGenerate:             false,
 		PreGenerateIntervalHours: 1,
-		ConcurrentLimit:          2,
+		ConcurrentLimit:          0, // 0 = auto: scale with CPU / GPU sessions (see hls.EffectiveConcurrentLimit)
 		HardwareAccel:            "auto",
 		MaxConsecutiveFailures:   3,
 		ProbeTimeout:             30 * time.Second,

@@ -98,6 +98,10 @@ func main() {
 	cfg.OnChange(func(c *config.Config) {
 		runtimeenv.TuneMemoryLimit(c.Server.MemoryLimitPercent, log)
 	})
+	// Make CPU headroom visible: the Go scheduler already spreads goroutines
+	// across every usable core (cgroup-aware since Go 1.25), so this just
+	// confirms the process isn't being throttled below the host's hardware.
+	runtimeenv.LogCPUProfile(log)
 
 	// ── Storage backends ───────────────────────────────────────────────────
 	stores := initStorage(cfg, log)
@@ -1075,11 +1079,9 @@ func registerHLSStreamingTasks(registerWithOverride func(tasks.TaskRegistration)
 				return nil
 			}
 
-			// Queue at most ConcurrentLimit jobs per cycle so we never flood the system
-			batchLimit := cfg.Get().HLS.ConcurrentLimit
-			if batchLimit <= 0 {
-				batchLimit = 2
-			}
+			// Queue at most ConcurrentLimit jobs per cycle so we never flood the
+			// system. Uses the module's effective (CPU-aware when set to auto) limit.
+			batchLimit := hlsModule.EffectiveConcurrentLimit()
 
 			items := mediaModule.ListMedia(media.Filter{})
 

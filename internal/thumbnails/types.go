@@ -82,6 +82,7 @@ type Module struct {
 	jobMu              sync.Mutex
 	jobCond            *sync.Cond
 	jobCap             int // max queue size
+	workerCount        int // resolved worker-pool size (auto-derived from CPU when configured as 0)
 	ctx                context.Context
 	cancel             context.CancelFunc
 	wg                 sync.WaitGroup

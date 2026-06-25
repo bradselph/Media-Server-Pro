@@ -150,8 +150,9 @@ func (m *Manager) validateHLS() []error {
 	if hls.PlaylistLength < 1 {
 		errs = append(errs, fmt.Errorf("hls playlist_length must be at least 1, got: %d", hls.PlaylistLength))
 	}
-	if hls.ConcurrentLimit < 1 {
-		errs = append(errs, fmt.Errorf("hls concurrent_limit must be at least 1, got: %d", hls.ConcurrentLimit))
+	// 0 = auto (scale with CPU/GPU at runtime); only a negative value is invalid.
+	if hls.ConcurrentLimit < 0 {
+		errs = append(errs, fmt.Errorf("hls concurrent_limit cannot be negative (0 = auto), got: %d", hls.ConcurrentLimit))
 	}
 	if hls.ProbeTimeout <= 0 {
 		errs = append(errs, fmt.Errorf("hls probe_timeout must be positive, got: %v", hls.ProbeTimeout))
