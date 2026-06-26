@@ -90,7 +90,9 @@ func (h *Handler) shellMetaForPlayer(c *gin.Context) web.ShellMeta {
 	title := shellMediaTitle(item)
 	desc := shellMediaDescription(item, title)
 	canonical := fmt.Sprintf("%s/player?id=%s", base, url.QueryEscape(item.ID))
-	thumb := absoluteURL(base, item.ThumbnailURL)
+	// og=1 so the (always unauthenticated) social-card crawler is served the real
+	// thumbnail instead of the censored "red box" placeholder. See GetThumbnail.
+	thumb := absoluteURL(base, ogThumbnailURL(item.ThumbnailURL))
 
 	ogType, ldType := "video.other", "VideoObject"
 	if item.Type == models.MediaTypeAudio {
@@ -132,6 +134,21 @@ func (h *Handler) shellMetaForPlayer(c *gin.Context) web.ShellMeta {
 		Head:        head.String(),
 		NoScript:    ns.String(),
 	}
+}
+
+// ogThumbnailURL marks a thumbnail URL as a social-card / OpenGraph fetch (?og=1)
+// so the GetThumbnail handler serves the real thumbnail to the unauthenticated
+// crawler instead of the censored "red box" placeholder the mature gate returns.
+// Returns "" unchanged so the caller's empty-thumb guard still suppresses og:image
+// when an item has no thumbnail.
+func ogThumbnailURL(thumbnailURL string) string {
+	if thumbnailURL == "" {
+		return ""
+	}
+	if strings.Contains(thumbnailURL, "?") {
+		return thumbnailURL + "&og=1"
+	}
+	return thumbnailURL + "?og=1"
 }
 
 // shellMetaForDiscovery renders SEO for the home/browse/categories landing

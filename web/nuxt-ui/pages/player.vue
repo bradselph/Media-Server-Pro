@@ -108,7 +108,14 @@ const playerDescription = computed(() => {
 // directly is rejected by the type signature). Each getter resolves when
 // the head dependency runs.
 const ogTitle = computed(() => media.value ? getDisplayTitle(media.value) : '')
-const ogThumb = computed(() => media.value?.thumbnail_url ? absUrl(media.value.thumbnail_url) : '')
+// og=1 so social-card crawlers are served the real thumbnail instead of the
+// censored "red box" placeholder the mature gate returns to unauthenticated
+// requests. Mirrors the Go SEO shell (ogThumbnailURL in api/handlers/shell.go).
+const ogThumb = computed(() => {
+  const t = media.value?.thumbnail_url
+  if (!t) return ''
+  return absUrl(t + (t.includes('?') ? '&og=1' : '?og=1'))
+})
 const ogType = computed(() => media.value?.type === 'audio' ? 'music.song' : 'video.other')
 useSeoMeta({
   description: () => playerDescription.value,
