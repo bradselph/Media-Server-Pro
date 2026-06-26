@@ -11,6 +11,7 @@ import (
 	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
 	mysql "media-server-pro/internal/repositories/mysql"
+	"media-server-pro/internal/runtimeenv"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 	"media-server-pro/pkg/storage"
@@ -53,6 +54,19 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	}
 	m.jobCond = sync.NewCond(&m.jobMu)
 	return m
+}
+
+// effectiveThumbnailWorkers resolves the worker-pool size. A configured value
+// > 0 is authoritative (an explicit admin choice). 0 = auto: scale with the
+// host's usable CPUs, clamped to [4, 16]. Thumbnail jobs are short, single-frame
+// ffmpeg runs that are largely I/O- and process-spawn-bound, so one worker per
+// CPU keeps a multi-core host busy without overcommitting it; the clamp keeps a
+// tiny host at the historical default and a huge host from spawning hundreds.
+func effectiveThumbnailWorkers(configured int) int {
+	if configured > 0 {
+		return configured
+	}
+	return min(max(runtimeenv.UsableCPUs(), 4), 16)
 }
 
 // Start initializes the thumbnail module
@@ -104,9 +118,10 @@ func (m *Module) Start(ctx context.Context) error {
 	m.ctx = workerCtx
 	m.cancel = cancel
 
-	// Use configured worker count with minimum of 2
+	// Resolve the worker-pool size (auto-scales with CPU when configured as 0).
 	cfg := m.config.Get()
-	workerCount := max(cfg.Thumbnails.WorkerCount, 2)
+	workerCount := effectiveThumbnailWorkers(cfg.Thumbnails.WorkerCount)
+	m.workerCount = workerCount
 
 	// Get queue size for logging
 	queueSize := max(cfg.Thumbnails.QueueSize, 100)

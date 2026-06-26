@@ -64,6 +64,7 @@ func (h *Handler) requireUploadSessionAndConfig(c *gin.Context) (session *models
 			return nil, nil, nil, false
 		}
 		if !user.Permissions.CanUpload {
+			h.trackServerEvent(c, "permission_denied", map[string]any{"action": "upload"})
 			writeError(c, http.StatusForbidden, "Upload not allowed for your account")
 			return nil, nil, nil, false
 		}

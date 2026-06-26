@@ -122,6 +122,7 @@ func applyShellMeta(shell []byte, m ShellMeta) []byte {
 func RegisterStaticRoutes(r *gin.Engine, enrich ShellEnricher) {
 	registerEmbeddedStatic(r)
 	registerNuxtAssets(r)
+	registerFavicon(r)
 
 	spaHandler := ginServeSPA(enrich)
 	for _, path := range spaRoutes {
@@ -169,6 +170,31 @@ func registerNuxtAssets(r *gin.Engine) {
 			c.Header("Cache-Control", "public, max-age=31536000, immutable")
 			c.Request.URL.Path = "/react/_fonts/" + strings.TrimPrefix(c.Param("filepath"), "/")
 			fileServer.ServeHTTP(c.Writer, c.Request)
+		})
+	}
+}
+
+// registerFavicon serves the root-level favicon. The Nuxt build emits
+// favicon.svg into the publicDir root (static/react/favicon.svg) and the SPA
+// shell references it via <link rel="icon" href="/favicon.svg">, but no route
+// mapped that path: it fell through to NoRoute and was served the SPA
+// index.html (200 text/html), so the icon never rendered and the browser logged
+// a failed-resource error (the console 404 Lighthouse flagged). Serve the
+// embedded SVG directly and redirect the legacy /favicon.ico probe to it so
+// neither path 404s or returns HTML.
+func registerFavicon(r *gin.Engine) {
+	svg, err := content.ReadFile("static/react/favicon.svg")
+	if err != nil {
+		log.Warn("favicon.svg not embedded, skipping favicon routes: %v", err)
+		return
+	}
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		r.Handle(method, "/favicon.svg", func(c *gin.Context) {
+			c.Header("Cache-Control", "public, max-age=86400")
+			c.Data(http.StatusOK, "image/svg+xml", svg)
+		})
+		r.Handle(method, "/favicon.ico", func(c *gin.Context) {
+			c.Redirect(http.StatusMovedPermanently, "/favicon.svg")
 		})
 	}
 }

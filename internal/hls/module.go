@@ -20,6 +20,7 @@ import (
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/repositories"
 	mysqlrepo "media-server-pro/internal/repositories/mysql"
+	"media-server-pro/internal/runtimeenv"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 	"media-server-pro/pkg/storage"
@@ -110,15 +111,36 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 	}
 }
 
+// EffectiveConcurrentLimit resolves how many transcodes may run at once. A
+// configured value > 0 is authoritative (an explicit admin choice). 0 = auto:
+// derive the limit from the host.
+//
+//   - With a hardware encoder the ceiling is GPU encode sessions (typically a
+//     small handful), not CPU, so auto stays low — more would just queue inside
+//     the driver.
+//   - With software libx264 each transcode is itself multi-threaded and spreads
+//     across cores, so auto allows roughly one transcode per 4 usable CPUs
+//     (floor 2, ceiling 8): enough to keep a many-core host busy without the
+//     context-switch thrash of running one full-core encode per core.
+//
+// Read on each call so admin changes (and the resolved encoder) take effect
+// without a restart.
+func (m *Module) EffectiveConcurrentLimit() int {
+	if limit := m.config.Get().HLS.ConcurrentLimit; limit > 0 {
+		return limit
+	}
+	if m.hwEncoder != "" {
+		return 2
+	}
+	return min(max(runtimeenv.UsableCPUs()/4, 2), 8)
+}
+
 // tryAcquireTranscode attempts to acquire a transcode slot. Returns true if
 // acquired (caller must call releaseTranscode when done). Returns false if
-// the concurrency limit is reached. The limit is read from config on each
-// call so admin changes take effect without restart.
+// the concurrency limit is reached. The limit is resolved on each call so
+// admin changes take effect without restart.
 func (m *Module) tryAcquireTranscode() bool {
-	limit := m.config.Get().HLS.ConcurrentLimit
-	if limit <= 0 {
-		limit = 2
-	}
+	limit := m.EffectiveConcurrentLimit()
 	m.transMu.Lock()
 	defer m.transMu.Unlock()
 	if m.transActive >= limit {
@@ -256,11 +278,7 @@ func (m *Module) runPostLoadStartupTasks() {
 // avoid overloading the system on startup; remaining jobs will be picked up
 // by the hls-pregenerate background task in subsequent cycles.
 func (m *Module) resumeInterruptedJobs() int {
-	cfg := m.config.Get()
-	limit := cfg.HLS.ConcurrentLimit
-	if limit <= 0 {
-		limit = 2
-	}
+	limit := m.EffectiveConcurrentLimit()
 
 	// Collect candidates under the lock, then stat paths outside the lock to
 	// avoid blocking all job accessors during slow filesystem calls on startup.
@@ -469,7 +487,7 @@ func (m *Module) GetCapabilities() Capabilities {
 		Message:       m.healthMsg,
 		Qualities:     qualities,
 		AutoGenerate:  cfg.HLS.AutoGenerate,
-		MaxConcurrent: cfg.HLS.ConcurrentLimit,
+		MaxConcurrent: m.EffectiveConcurrentLimit(),
 		VideoEncoder:  m.videoEncoderName(),
 	}
 }

@@ -108,7 +108,14 @@ const playerDescription = computed(() => {
 // directly is rejected by the type signature). Each getter resolves when
 // the head dependency runs.
 const ogTitle = computed(() => media.value ? getDisplayTitle(media.value) : '')
-const ogThumb = computed(() => media.value?.thumbnail_url ? absUrl(media.value.thumbnail_url) : '')
+// og=1 so social-card crawlers are served the real thumbnail instead of the
+// censored "red box" placeholder the mature gate returns to unauthenticated
+// requests. Mirrors the Go SEO shell (ogThumbnailURL in api/handlers/shell.go).
+const ogThumb = computed(() => {
+  const t = media.value?.thumbnail_url
+  if (!t) return ''
+  return absUrl(t + (t.includes('?') ? '&og=1' : '?og=1'))
+})
 const ogType = computed(() => media.value?.type === 'audio' ? 'music.song' : 'video.other')
 useSeoMeta({
   description: () => playerDescription.value,
@@ -267,6 +274,12 @@ const videoStalled = ref(false)
 let stallTimer: ReturnType<typeof setTimeout> | null = null
 
 function onVideoWaiting() {
+  // Emit one analytics `buffering` event per stall episode (the false→true
+  // edge), not on every `waiting`/`stalled` repeat — onVideoPlaying clears the
+  // flag when playback resumes, so the next genuine stall reports again. This
+  // is the only client-side source of buffering telemetry; the admin event
+  // breakdown surfaces it so stall frequency is actually measurable.
+  if (!videoStalled.value) trackBuffering()
   videoStalled.value = true
   if (stallTimer) clearTimeout(stallTimer)
   stallTimer = setTimeout(() => {
@@ -283,19 +296,33 @@ function onVideoPlaying() {
   videoStalled.value = false
 }
 
-// Buffer health bar — fraction of media buffered ahead
-const bufferedFraction = computed(() => {
+// Buffer health bar — fraction of media buffered ahead.
+//
+// This MUST be a ref refreshed from media-element events, not a computed:
+// video.buffered / .duration / .currentTime are plain DOM reads, not Vue
+// reactive sources, so a computed would evaluate once (empty buffer → 0) and
+// never re-run as data downloads — leaving the bar invisible. We recompute it
+// on `progress` (fires as bytes arrive, even while paused) and `timeupdate`
+// (covers the seek case where the buffered range that contains currentTime
+// changes).
+const bufferedFraction = ref(0)
+
+function updateBufferedFraction() {
   const video = videoRef.value
-  if (!video || !video.buffered.length || !video.duration) return 0
+  if (!video || !video.buffered.length || !video.duration) {
+    bufferedFraction.value = 0
+    return
+  }
   // Find the buffered range that contains currentTime
   const ct = video.currentTime
   for (let i = 0; i < video.buffered.length; i++) {
     if (video.buffered.start(i) <= ct && ct <= video.buffered.end(i)) {
-      return video.buffered.end(i) / video.duration
+      bufferedFraction.value = video.buffered.end(i) / video.duration
+      return
     }
   }
-  return 0
-})
+  bufferedFraction.value = 0
+}
 const showBufferBar = computed(() => userPrefs.value?.show_buffer_bar ?? true)
 
 // Download quality selector
@@ -811,6 +838,7 @@ function isActiveChapter(ch: MediaChapter, i: number): boolean {
 
 function onVideoLoaded() {
   duration.value = videoRef.value?.duration ?? 0
+  updateBufferedFraction()
   if (videoRef.value) {
     videoRef.value.playbackRate = playbackSpeed.value
     videoRef.value.volume = volume.value
@@ -906,6 +934,7 @@ function onTimeUpdate() {
   currentTime.value = videoRef.value?.currentTime ?? 0
   duration.value = videoRef.value?.duration ?? 0
   playbackStore.updatePosition(currentTime.value, duration.value)
+  updateBufferedFraction()
 }
 
 function onPlayPause() {
@@ -1407,6 +1436,22 @@ function trackQualityChange(index: number) {
   })
 }
 
+// Buffering telemetry — fired on a real playback stall (see onVideoWaiting).
+// Carries the position and the active quality so admins can see not just how
+// often playback stalls but at what point and on which rendition.
+function trackBuffering() {
+  if (!mediaId.value) return
+  const qLabel = currentQuality.value === -1
+      ? 'auto'
+      : (qualities.value[currentQuality.value]?.name ?? 'auto')
+  analyticsApi.submitEvent({
+    type: 'buffering',
+    media_id: mediaId.value,
+    data: {position: Math.round(videoRef.value?.currentTime ?? 0), quality: qLabel},
+  }).catch(() => {
+  })
+}
+
 function onVideoError(e?: Event) {
   if (!mediaId.value) return
   // Log the underlying MediaError for debugging; otherwise playback failures are invisible.
@@ -1567,6 +1612,7 @@ watch(mediaId, (id, oldId) => {
               preload="auto"
               @loadedmetadata="onVideoLoaded"
               @timeupdate="onTimeUpdate"
+              @progress="updateBufferedFraction"
               @play="onPlayPause(); trackPlay()"
               @pause="onPlayPause(); trackPause()"
               @waiting="onVideoWaiting"
@@ -1765,6 +1811,7 @@ watch(mediaId, (id, oldId) => {
                 class="w-full"
                 @loadedmetadata="onVideoLoaded"
                 @timeupdate="onTimeUpdate"
+                @progress="updateBufferedFraction"
                 @play="onPlayPause(); trackPlay()"
                 @pause="onPlayPause(); trackPause()"
                 @ended="onMediaEnded()"

@@ -42,9 +42,8 @@ func (m *Module) queuePreviewThumbnailsLoop(opts *queuePreviewThumbnailsLoopOpts
 			continue
 		}
 		if !ok {
-			c := m.config.Get()
 			m.log.Warn("Job queue full (%d jobs), skipped %d remaining preview thumbnails for: %s - Consider increasing Thumbnails.QueueSize (current: %d) or WorkerCount (current: %d)",
-				c.Thumbnails.QueueSize, opts.PreviewCount-i, opts.MediaPath, c.Thumbnails.QueueSize, c.Thumbnails.WorkerCount)
+				m.jobCap, opts.PreviewCount-i, opts.MediaPath, m.jobCap, m.workerCount)
 			break
 		}
 	}

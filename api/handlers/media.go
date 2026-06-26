@@ -894,6 +894,7 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 			return
 		}
 		if !user.Permissions.CanDownload {
+			h.trackServerEvent(c, analytics.EventPermissionDenied, map[string]any{"action": "download"})
 			writeError(c, http.StatusForbidden, "Download not allowed for your user type")
 			return
 		}

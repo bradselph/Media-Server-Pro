@@ -643,8 +643,9 @@ onMounted(loadConfig)
               <UInput type="number" :model-value="get('thumbnails', 'video_interval')"
                       @update:model-value="set('thumbnails', 'video_interval', Number($event))"/>
             </UFormField>
-            <UFormField label="Worker Count">
-              <UInput type="number" :model-value="get('thumbnails', 'worker_count')"
+            <UFormField label="Worker Count"
+                        help="Parallel thumbnail generators. 0 = auto (scales the pool with the server's CPU cores, 4–16). Set a number to pin it.">
+              <UInput type="number" min="0" :model-value="get('thumbnails', 'worker_count')"
                       @update:model-value="set('thumbnails', 'worker_count', Number($event))"/>
             </UFormField>
             <UFormField label="Queue Size">
@@ -673,8 +674,8 @@ onMounted(loadConfig)
                        @update:model-value="set('hls', 'lazy_transcode', $event)"/>
             </div>
             <UFormField label="Concurrent Limit"
-                        help="How many transcodes run at once. Raising this only helps throughput if the CPU/GPU has spare capacity — a single video's speed is set by the encoder below.">
-              <UInput type="number" :model-value="get('hls', 'concurrent_limit')"
+                        help="How many transcodes run at once. 0 = auto (software: ~1 per 4 CPU cores, 2–8; hardware encoder: 2, since GPU sessions are the bottleneck). Raising it only helps if the CPU/GPU has spare capacity — a single video's speed is set by the encoder below.">
+              <UInput type="number" min="0" :model-value="get('hls', 'concurrent_limit')"
                       @update:model-value="set('hls', 'concurrent_limit', Number($event))"/>
             </UFormField>
             <UFormField label="Hardware Acceleration"

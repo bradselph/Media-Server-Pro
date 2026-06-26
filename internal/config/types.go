@@ -205,7 +205,11 @@ type ThumbnailsConfig struct {
 	PreviewCount     int  `json:"preview_count"`
 	GenerateOnAccess bool `json:"generate_on_access"`
 	QueueSize        int  `json:"queue_size"`
-	WorkerCount      int  `json:"worker_count"`
+	WorkerCount      int  `json:"worker_count"` // 0 = auto: scale the worker pool with CPU count
+
+	// WorkerCountMigrated guards the one-shot worker_count 4 -> 0 (auto) migration
+	// that runs the first time a legacy config is loaded. See migrateThumbnailWorkerCountAuto.
+	WorkerCountMigrated bool `json:"worker_count_migrated"`
 
 	// In-flight job eviction — prevents permanent stalls when a worker exits mid-job.
 	InFlightEvictionTimeout time.Duration `json:"inflight_eviction_timeout"` // how long before a stuck job is evicted; default 5m
@@ -312,7 +316,7 @@ type HLSConfig struct {
 	AutoGenerate             bool          `json:"auto_generate"`
 	PreGenerateIntervalHours int           `json:"pre_generate_interval_hours"`
 	QualityProfiles          []HLSQuality  `json:"quality_profiles"`
-	ConcurrentLimit          int           `json:"concurrent_limit"`
+	ConcurrentLimit          int           `json:"concurrent_limit"` // 0 = auto: scale with CPU (software) / GPU sessions (hardware)
 	CDNBaseURL               string        `json:"cdn_base_url"`
 	LazyTranscode            bool          `json:"lazy_transcode"`
 
@@ -345,6 +349,10 @@ type HLSConfig struct {
 	// install out, because the memory rule says HLS cache must never be
 	// auto-deleted without explicit admin action.
 	CleanupMigrated bool `json:"cleanup_migrated"`
+
+	// ConcurrentLimitMigrated guards the one-shot concurrent_limit 2 -> 0 (auto)
+	// migration that runs the first time a legacy config is loaded. See migrateHLSConcurrentLimitAuto.
+	ConcurrentLimitMigrated bool `json:"concurrent_limit_migrated"`
 }
 
 // HLSQuality defines an HLS quality profile

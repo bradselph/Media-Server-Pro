@@ -127,6 +127,12 @@ func (m *Manager) Load() error {
 	if m.migrateStreamingBufferSize() {
 		needsSave = true
 	}
+	if m.migrateHLSConcurrentLimitAuto() {
+		needsSave = true
+	}
+	if m.migrateThumbnailWorkerCountAuto() {
+		needsSave = true
+	}
 	m.normalizeHLSScalars()
 	if err := m.validate(); err != nil {
 		return err
@@ -154,9 +160,9 @@ func (m *Manager) validate() error {
 		}
 	}
 
-	// Warn about negative HLS concurrent limit.
+	// Warn about negative HLS concurrent limit (0 = auto is valid).
 	if m.config.HLS.Enabled && m.config.HLS.ConcurrentLimit < 0 {
-		m.log.Warn("HLS concurrent_limit is negative (%d); will use default of 2", m.config.HLS.ConcurrentLimit)
+		m.log.Warn("HLS concurrent_limit is negative (%d); will be treated as auto", m.config.HLS.ConcurrentLimit)
 	}
 
 	// Run the same sub-validators as Validate() (lock already held — do NOT
@@ -280,6 +286,47 @@ func (m *Manager) migrateStreamingBufferSize() bool {
 	return true
 }
 
+// migrateHLSConcurrentLimitAuto is a one-shot upgrade migration. Earlier builds
+// shipped hls.concurrent_limit with a fixed default of 2, so existing installs
+// have 2 persisted even though no admin deliberately chose it. Now that 0 means
+// "auto" (scale transcode concurrency to the host CPU/GPU), flip that legacy
+// default to 0 exactly once so upgraded servers use their hardware. Any other
+// value — including an admin who later sets 2 again — is preserved, and the
+// flag is set after the first pass so the migration never re-runs.
+// The bool return reports whether this load performed the migration (and the
+// flag therefore needs to be persisted).
+func (m *Manager) migrateHLSConcurrentLimitAuto() bool {
+	if m.config.HLS.ConcurrentLimitMigrated {
+		return false
+	}
+	if m.config.HLS.ConcurrentLimit == 2 {
+		m.log.Info("Migrating legacy HLS concurrent_limit default 2 -> 0 (auto: scale with CPU/GPU)")
+		m.config.HLS.ConcurrentLimit = 0
+	}
+	m.config.HLS.ConcurrentLimitMigrated = true
+	return true
+}
+
+// migrateThumbnailWorkerCountAuto is a one-shot upgrade migration. Earlier
+// builds shipped thumbnails.worker_count with a fixed default of 4, so existing
+// installs have 4 persisted even though no admin deliberately chose it. Now that
+// 0 means "auto" (scale the worker pool to the host CPU), flip that legacy
+// default to 0 exactly once. Any other value is preserved, and the flag is set
+// after the first pass so the migration never re-runs.
+// The bool return reports whether this load performed the migration (and the
+// flag therefore needs to be persisted).
+func (m *Manager) migrateThumbnailWorkerCountAuto() bool {
+	if m.config.Thumbnails.WorkerCountMigrated {
+		return false
+	}
+	if m.config.Thumbnails.WorkerCount == 4 {
+		m.log.Info("Migrating legacy thumbnails worker_count default 4 -> 0 (auto: scale with CPU)")
+		m.config.Thumbnails.WorkerCount = 0
+	}
+	m.config.Thumbnails.WorkerCountMigrated = true
+	return true
+}
+
 // normalizeHLSScalars repairs HLS numeric fields that were persisted as zero
 // or negative values by older builds (or hand-edited configs). The validator
 // rejects these values outright; without this step, an existing install that
@@ -315,8 +362,10 @@ func (m *Manager) normalizeHLSScalars() {
 			toValue: defaults.PlaylistLength,
 		},
 		{
+			// 0 is a legitimate value (auto: scale with CPU/GPU at runtime); only
+			// a negative value is broken and gets restored to the default (auto).
 			field:   "concurrent_limit",
-			broken:  hls.ConcurrentLimit < 1,
+			broken:  hls.ConcurrentLimit < 0,
 			repair:  func() { hls.ConcurrentLimit = defaults.ConcurrentLimit },
 			toValue: defaults.ConcurrentLimit,
 		},
