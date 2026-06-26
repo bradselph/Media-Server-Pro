@@ -53,8 +53,8 @@ type MediaItem struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
-// MediaTypeCategory represents an auto-derived media "type" bucket (e.g. movies,
-// tv_shows, music) aggregated from the media-type field on each item.
+// MediaTypeCategory represents an auto-derived media "type" bucket aggregated from
+// the media-type field on each item.
 //
 // Deprecated: the auto path-detected category system has been retired in favour
 // of the admin-curated MediaCategory feature below. This type is no longer
