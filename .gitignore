@@ -18,8 +18,6 @@ dev-tools/
 /web/nuxt-ui/.output/
 /web/nuxt-ui/dist/
 
-/web/static/css/bootstrap-icons.css
-
 /thumbnails/
 /uploads/
 /logs/
@@ -70,6 +68,8 @@ github-runner/.runner.env
 /data/
 /analytics/
 /.remember/
+# Claude session-memory notes (canonical store lives outside the repo); never commit
+/memory/
 
 # Runtime dirs accidentally created under source when app runs from wrong cwd
 /internal/config/data/
