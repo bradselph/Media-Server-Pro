@@ -633,7 +633,7 @@ if $FIX_ENV; then
       echo 'HUGGINGFACE_API_KEY=' >> \"\$ENV\"
       echo '  HUGGINGFACE_API_KEY= (empty — set + FEATURE_HUGGINGFACE=true to enable)'
     fi
-    patch_or_add HUGGINGFACE_MODEL 'Salesforce/blip-image-captioning-large'
+    patch_or_add HUGGINGFACE_MODEL 'Falconsai/nsfw_image_detection'
     patch_or_add HUGGINGFACE_MAX_FRAMES 3
     patch_or_add HUGGINGFACE_RATE_LIMIT 30
   "

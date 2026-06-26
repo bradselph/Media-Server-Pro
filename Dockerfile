@@ -152,9 +152,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     APP_HOME=/app \
     PATH=/app:${PATH} \
     # Defaults — override at runtime via -e / --env-file / compose env.
-    # Match the runtime knob defaults in deploy-knobs.sh so the container
-    # behaves the same way a native deploy.sh deploy does, modulo paths
-    # (which are pinned to /data here so a single named volume works).
+    # Container-appropriate values: SERVER_HOST=0.0.0.0 so the app is reachable
+    # from outside the container (a native deploy.sh VPS install instead uses
+    # 127.0.0.1 behind a reverse proxy). Paths are pinned to /data so a single
+    # named volume works.
     SERVER_HOST=0.0.0.0 \
     SERVER_PORT=3000 \
     DATABASE_ENABLED=true \
