@@ -7143,6 +7143,45 @@ paths:
         '200':
           description: Slave registered
 
+  /api/receiver/pair:
+    post:
+      tags: [ receiver ]
+      summary: Pair this server's follower to a master
+      description: >-
+        Configures THIS server's follower to push its catalog to the master at
+        master_url, then reloads the follower loop. Called server-to-server by a
+        peer's admin "Pair from peer" helper. Gated by the receiver API key.
+      parameters:
+        - name: X-API-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ master_url, api_key ]
+              properties:
+                master_url:
+                  type: string
+                  format: uri
+                  description: Base URL of the master to follow (http/https; validated against SSRF).
+                api_key:
+                  type: string
+                  description: Receiver API key issued by the master.
+      responses:
+        '200':
+          description: Pairing saved and follower reloaded
+        '400':
+          description: Invalid master_url or api_key (missing, malformed, SSRF-rejected, or self-pairing)
+        '500':
+          description: Failed to save pairing or reload the follower
+        '503':
+          description: Follower module not available
+
   /api/receiver/catalog:
     post:
       tags: [ receiver ]
