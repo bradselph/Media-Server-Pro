@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.19.0] - 2026-06-24 (minor)
+
+- fix(admin): use a valid lucide icon for the analytics-disabled state
+- docs(admin): record admin-panel cleanup resolution (themes 1-4,6 done; 5 open)
+- fix(admin): clarify misleading labels and fix small UI bugs
+- refactor(admin): dedupe redundant views to a single home
+- feat(admin): make UI Defaults knobs actually control the browse grid
+- refactor(admin): give duplicated settings one home
+- feat(categories): tag-backed category UI — set a tag to auto-include tagged media; mark auto members as via-tag
+- feat(categories): tag-backed live categories — media carrying a category's tag auto-joins (backend + migration)
+- fix(admin): paginate category Add-Media picker with Load more so the whole library is reachable (was capped at 20)
+- fix(admin): preload media in category Add-Media picker so it lists media instead of a blank box until searched
+- docs: mark adoption recommendation status (16 implemented, 1 skipped, 6 deferred)
+- feat(conversion): add dismissible guest sign-up CTA with live library size on home
+- feat(conversion): pass reason=mature to auth pages and show a contextual sign-up banner
+- feat(seo): make category detail pages crawlable (shell meta, sitemap entries, per-page useSeoMeta)
+
+
 ## [1.18.3] - 2026-06-24 (patch)
 
 - feat(seo): add canonical url and view-count interactionStatistic to player JSON-LD
