@@ -328,7 +328,7 @@ func defaultFeaturesConfig() FeaturesConfig {
 func defaultDownloaderConfig() DownloaderConfig {
 	return DownloaderConfig{
 		Enabled:        false,
-		URL:            "http://localhost:3000",
+		URL:            "http://localhost:4000",
 		DownloadsDir:   "",
 		ImportDir:      "",
 		HealthInterval: 30 * time.Second,
