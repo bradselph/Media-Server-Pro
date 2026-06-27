@@ -140,6 +140,7 @@ function startAutoRefresh() {
 }
 
 onMounted(() => {
+  loadAutoImportPref()
   connectWS()
   loadHealth()
   loadSettings()
@@ -296,6 +297,13 @@ const importableLoading = ref(false)
 const importingFile = ref<string | null>(null)
 const deleteSource = ref(true)
 const triggerScan = ref(true)
+// Auto-import: when on, every file that becomes importable is sent straight to
+// the library (default destination, source removed + rescan) so a download
+// submitted with this checked imports itself once it finishes downloading and
+// converting. Persisted per-browser. `autoImportAttempted` remembers names we've
+// already handled so a file that fails to import isn't retried on every poll.
+const autoImport = ref(false)
+const autoImportAttempted = new Set<string>()
 
 // ── Import destination prompt ───────────────────────────────────────────────
 const destinations = ref<ImportDestination[]>([])
@@ -344,10 +352,62 @@ async function loadImportable() {
     const result = await adminApi.listImportable()
     importable.value = result ?? []
     if (importableLoading.value) importableLoading.value = false
+    if (autoImport.value) void runAutoImport()
   } catch {
     if (importableLoading.value) importableLoading.value = false
   }
 }
+
+// Sweep the importable list into the library while auto-import is on. Imports to
+// the default destination (empty destination => backend's defaultImportDir),
+// removing the source and triggering a rescan, then refreshes so cleared entries
+// disappear. Each name is marked attempted before the call so a failing file is
+// not retried every 5s poll, and the in-flight guard keeps it from racing a
+// manual import or another sweep.
+async function runAutoImport() {
+  if (!autoImport.value || importingFile.value !== null) return
+  const pending = importable.value.filter(f => !autoImportAttempted.has(f.name))
+  if (!pending.length) return
+  for (const f of pending) {
+    if (!autoImport.value) break
+    autoImportAttempted.add(f.name)
+    importingFile.value = f.name
+    try {
+      const result = await adminApi.importFile(f.name, true, true)
+      notifySuccess(`Auto-imported ${f.name} → ${result?.destination ?? 'library'}`)
+    } catch (e: unknown) {
+      notifyError(e, `Auto-import failed for ${f.name}`)
+    } finally {
+      importingFile.value = null
+    }
+  }
+  // Re-fetch directly (not via loadImportable) so the refresh doesn't recurse
+  // back into another sweep mid-pass.
+  try {
+    importable.value = (await adminApi.listImportable()) ?? []
+  } catch { /* keep current list */ }
+  await load()
+}
+
+// Restore the persisted auto-import preference on mount (hoisted so onMounted can
+// call it before its own definition). Setting the ref fires the watcher below.
+function loadAutoImportPref() {
+  try {
+    autoImport.value = localStorage.getItem('downloader.autoImport') === '1'
+  } catch { /* localStorage unavailable (private mode) — leave default off */ }
+}
+
+// Persist the toggle, and when it's switched on, forget prior attempts and sweep
+// whatever is already importable so pending files import immediately.
+watch(autoImport, (on) => {
+  try {
+    localStorage.setItem('downloader.autoImport', on ? '1' : '0')
+  } catch { /* ignore */ }
+  if (on) {
+    autoImportAttempted.clear()
+    void runAutoImport()
+  }
+})
 
 // Open the per-file prompt so the operator picks where the download is stored.
 // Always starts from a clean subfolder field and a freshly-chosen default so a
@@ -646,6 +706,15 @@ async function loadQueue() {
               class="flex-1 min-w-48"
               aria-label="Video format selector"
           />
+        </div>
+
+        <!-- Auto-import: send finished downloads straight to the library -->
+        <div class="flex items-center gap-2 rounded bg-muted px-3 py-2">
+          <USwitch v-model="autoImport" label="Auto-import when complete" size="sm"
+                   aria-label="Auto-import completed downloads into the library"/>
+          <UTooltip text="Finished downloads are imported to the default library folder and removed from the downloader automatically.">
+            <UIcon name="i-lucide-info" class="size-4 text-muted"/>
+          </UTooltip>
         </div>
 
         <!-- Stream options from detect -->
