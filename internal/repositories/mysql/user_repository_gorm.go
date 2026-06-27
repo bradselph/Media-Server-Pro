@@ -170,19 +170,27 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 		// reference columns absent from the INSERT.
 		user.Preferences.UserID = user.ID
 		return tx.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "user_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{
-				"theme", "view_mode", "default_quality", "auto_play",
-				"playback_speed", "volume", "show_mature", "mature_preference_set",
-				"equalizer_preset", "resume_playback",
-				"items_per_page", "sort_by", "sort_order", "filter_category",
-				"filter_media_type",
-				"show_continue_watching", "show_recommended", "show_trending",
-				"skip_interval", "shuffle_enabled", "show_buffer_bar", "download_prompt",
-				"autoplay_similar", "accent_hue",
-			}),
+			Columns:   []clause.Column{{Name: "user_id"}},
+			DoUpdates: clause.AssignmentColumns(userPreferencesUpsertColumns),
 		}).Create(&user.Preferences).Error
 	})
+}
+
+// userPreferencesUpsertColumns lists every user_preferences column updated on an
+// ON DUPLICATE KEY UPDATE, excluding the user_id conflict key. MySQL leaves any
+// column not named here at its existing value, so a column missing from this list
+// is silently never persisted on update (this is exactly how accent_hue regressed).
+// TestUserPreferencesUpsertColumns_CoversAllDBColumns guards it against drift as
+// new UserPreferences fields are added.
+var userPreferencesUpsertColumns = []string{
+	"theme", "view_mode", "default_quality", "auto_play",
+	"playback_speed", "volume", "show_mature", "mature_preference_set",
+	"equalizer_preset", "resume_playback",
+	"items_per_page", "sort_by", "sort_order", "filter_category",
+	"filter_media_type",
+	"show_continue_watching", "show_recommended", "show_trending",
+	"skip_interval", "shuffle_enabled", "show_buffer_bar", "download_prompt",
+	"autoplay_similar", "accent_hue",
 }
 
 // UpdatePasswordHash writes only password_hash and salt for the named user,

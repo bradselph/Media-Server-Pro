@@ -1,6 +1,7 @@
 package media
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -316,4 +317,43 @@ func TestReindexMovedFile_NoopGuards(t *testing.T) {
 	// Empty / identical paths are no-ops.
 	m.ReindexMovedFile("", "/x")
 	m.ReindexMovedFile("/x", "/x")
+}
+
+// ---------------------------------------------------------------------------
+// UpdateBlurHash (thumbnails -> in-memory catalog sync)
+// ---------------------------------------------------------------------------
+
+func TestUpdateBlurHash_SyncsInMemoryCatalog(t *testing.T) {
+	// With no metadataRepo wired the DB write is skipped, but the in-memory
+	// MediaItem and Metadata must still receive the hash so list/detail endpoints
+	// serve the LQIP placeholder without waiting for the next scan.
+	m := &Module{
+		media:    map[string]*models.MediaItem{"/videos/a.mp4": {ID: "id-a", Path: "/videos/a.mp4"}},
+		metadata: map[string]*Metadata{"/videos/a.mp4": {}},
+		log:      logger.New("media-test"),
+	}
+	const hash = "LKO2?U%2Tw=w]~RBVZRi};RPxuwH"
+	if err := m.UpdateBlurHash(context.Background(), "/videos/a.mp4", hash); err != nil {
+		t.Fatalf("UpdateBlurHash returned error: %v", err)
+	}
+	if got := m.media["/videos/a.mp4"].BlurHash; got != hash {
+		t.Errorf("MediaItem.BlurHash not synced: got %q, want %q", got, hash)
+	}
+	if got := m.metadata["/videos/a.mp4"].BlurHash; got != hash {
+		t.Errorf("Metadata.BlurHash not synced: got %q, want %q", got, hash)
+	}
+}
+
+func TestUpdateBlurHash_NoopOnEmptyArgs(t *testing.T) {
+	m := &Module{
+		media:    make(map[string]*models.MediaItem),
+		metadata: make(map[string]*Metadata),
+		log:      logger.New("media-test"),
+	}
+	if err := m.UpdateBlurHash(context.Background(), "", "hash"); err != nil {
+		t.Fatalf("empty path should be a no-op, got %v", err)
+	}
+	if err := m.UpdateBlurHash(context.Background(), "/videos/a.mp4", ""); err != nil {
+		t.Fatalf("empty hash should be a no-op, got %v", err)
+	}
 }

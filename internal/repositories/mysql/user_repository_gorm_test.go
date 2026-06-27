@@ -1,10 +1,33 @@
 package mysql
 
 import (
+	"reflect"
 	"testing"
 
 	"media-server-pro/internal/repositories"
+	"media-server-pro/pkg/models"
 )
+
+// userPreferencesUpsertColumns must cover every persisted UserPreferences column
+// except the user_id conflict key. A column left out is silently not updated on
+// ON DUPLICATE KEY UPDATE — this is the bug that dropped accent_hue. Reflect over
+// the struct's db tags so adding a field without updating the list fails here.
+func TestUserPreferencesUpsertColumns_CoversAllDBColumns(t *testing.T) {
+	have := map[string]bool{"user_id": true} // conflict key, intentionally excluded
+	for _, c := range userPreferencesUpsertColumns {
+		have[c] = true
+	}
+	for f := range reflect.TypeFor[models.UserPreferences]().Fields() {
+		col := f.Tag.Get("db")
+		if col == "" || col == "-" {
+			continue
+		}
+		if !have[col] {
+			t.Errorf("UserPreferences column %q missing from userPreferencesUpsertColumns; "+
+				"ON DUPLICATE KEY UPDATE will silently never persist it", col)
+		}
+	}
+}
 
 func TestNewUserRepository_ReturnsInterface(t *testing.T) {
 	// The explicit interface type makes "constructor returns the interface" a
