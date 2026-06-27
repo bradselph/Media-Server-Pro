@@ -1524,6 +1524,35 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	return nil
 }
 
+// UpdateBlurHash persists a freshly computed BlurHash and mirrors it into the
+// in-memory catalog so list/detail endpoints return the LQIP placeholder
+// immediately rather than only after the next full scan. Implements
+// thumbnails.BlurHashUpdater so the thumbnails module updates both the DB and the
+// cache through one call. The DB is written first so the cache never diverges
+// ahead of the persistent store.
+func (m *Module) UpdateBlurHash(ctx context.Context, path, hash string) error {
+	if path == "" || hash == "" {
+		return nil
+	}
+	if m.metadataRepo != nil {
+		if err := m.metadataRepo.UpdateBlurHash(ctx, path, hash); err != nil {
+			m.log.Error("Failed to store BlurHash via repository: %v", err)
+			return err
+		}
+	}
+
+	m.mu.Lock()
+	if meta, exists := m.metadata[path]; exists && meta != nil {
+		meta.BlurHash = hash
+	}
+	if item, exists := m.media[path]; exists && item != nil {
+		item.BlurHash = hash
+	}
+	m.mu.Unlock()
+
+	return nil
+}
+
 // UpdatePlaybackPosition updates playback position, total duration, and progress
 // fraction for a user. duration and progress may be 0 when the values are unknown.
 func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string, position, duration, progress float64) error {
