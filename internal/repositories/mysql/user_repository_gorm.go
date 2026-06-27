@@ -179,7 +179,7 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 				"filter_media_type",
 				"show_continue_watching", "show_recommended", "show_trending",
 				"skip_interval", "shuffle_enabled", "show_buffer_bar", "download_prompt",
-				"autoplay_similar",
+				"autoplay_similar", "accent_hue",
 			}),
 		}).Create(&user.Preferences).Error
 	})
