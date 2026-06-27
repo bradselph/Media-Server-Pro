@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -285,23 +286,21 @@ func (m *Module) Import(filename, destination, subfolder string, deleteSource, t
 		return "", false, ErrDestinationReadOnly
 	}
 
-	destPath, sourceDeleted, err = ImportFile(cfg.Downloader.DownloadsDir, destDir, filename, deleteSource)
+	// Always import as a copy; source removal is handled below. Moving the file
+	// out of the downloads dir here (the old deleteSource path) before telling the
+	// downloader makes the downloader's DELETE 404 — it returns an error and keeps
+	// its in-memory record, so the download lingers in the "Server Files" list
+	// until restart. Copying first lets the downloader delete its own file and drop
+	// the record while the file still exists.
+	destPath, _, err = ImportFile(cfg.Downloader.DownloadsDir, destDir, filename, false)
 	if err != nil {
 		return "", false, err
 	}
 
 	m.log.Info("Imported %s → %s", filename, destPath)
 
-	// When the source was moved out of the downloader's downloads dir, ask the
-	// downloader to drop its own record so the file stops appearing in its
-	// "Server Files" list. MSP renames the file directly on disk, so the
-	// downloader's in-memory tracking is otherwise stale until restart. The
-	// file is already gone, so a 404 from the downloader is a no-op success;
-	// any other failure is logged but doesn't fail the import.
-	if sourceDeleted && m.client != nil {
-		if delErr := m.client.DeleteDownload(filename); delErr != nil {
-			m.log.Debug("Could not clear downloader record for %s after import: %v", filename, delErr)
-		}
+	if deleteSource {
+		sourceDeleted = m.clearImportedSource(cfg.Downloader.DownloadsDir, filename)
 	}
 
 	if triggerScan && m.mediaModule != nil {
@@ -318,6 +317,32 @@ func (m *Module) Import(filename, destination, subfolder string, deleteSource, t
 	}
 
 	return destPath, sourceDeleted, nil
+}
+
+// clearImportedSource removes a just-copied download from the downloads dir after
+// an import. It asks the downloader to delete the file first so the downloader
+// also drops its in-memory tracking record (the "Server Files"/Downloads list);
+// deleting the file from disk first would make that DELETE 404 and leave a stale
+// record. Falls back to removing the file directly when the downloader can't
+// (offline, not tracking this file, or any error). Returns whether the source is
+// gone afterwards.
+func (m *Module) clearImportedSource(downloadsDir, filename string) bool {
+	if m.client != nil {
+		if err := m.client.DeleteDownload(filename); err == nil {
+			return true
+		} else {
+			m.log.Debug("Downloader could not delete %s (%v); removing source directly", filename, err)
+		}
+	}
+	srcPath := filepath.Join(downloadsDir, filepath.Base(filename))
+	if err := os.Remove(srcPath); err != nil {
+		if os.IsNotExist(err) {
+			return true // already gone — treat as deleted
+		}
+		m.log.Warn("Could not remove source %s after import: %v", srcPath, err)
+		return false
+	}
+	return true
 }
 
 func (m *Module) setHealth(healthy bool, msg string) {
