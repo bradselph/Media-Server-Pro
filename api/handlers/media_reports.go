@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -91,8 +92,10 @@ func (h *Handler) SubmitMediaReport(c *gin.Context) {
 	}
 
 	notes := strings.TrimSpace(req.Notes)
-	if len(notes) > maxReportNotesLen {
-		notes = notes[:maxReportNotesLen]
+	// Truncate by rune count, not byte length: slicing at a byte offset can split
+	// a multi-byte UTF-8 codepoint and store invalid UTF-8 in the notes column.
+	if utf8.RuneCountInString(notes) > maxReportNotesLen {
+		notes = string([]rune(notes)[:maxReportNotesLen])
 	}
 
 	reporterID := ""
