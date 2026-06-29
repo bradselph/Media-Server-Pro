@@ -110,11 +110,13 @@ func buildMetadataRow(path string, metadata *repositories.MediaMetadata) mediaMe
 }
 
 // mediaMetadataConflictClause is the ON DUPLICATE KEY UPDATE policy applied by
-// both Upsert and BulkUpsert: operational fields are always overwritten, but
-// stable_id and content_fingerprint are preserved once set, and duration is
-// only widened (never zeroed). MySQL's VALUES(col) references the incoming row;
-// in a multi-row INSERT it resolves per-row, so the same clause is correct for
-// the batched path.
+// both Upsert and BulkUpsert: operational fields are always overwritten,
+// stable_id is preserved once set (it's an identity marker), content_fingerprint
+// tracks the latest non-empty value (it's a content hash that must follow the
+// current bytes — but an upsert carrying no fingerprint must not zero a good
+// stored one), and duration is only widened (never zeroed). MySQL's VALUES(col)
+// references the incoming row; in a multi-row INSERT it resolves per-row, so the
+// same clause is correct for the batched path.
 func mediaMetadataConflictClause() clause.OnConflict {
 	return clause.OnConflict{
 		Columns: []clause.Column{{Name: "path"}},
@@ -128,8 +130,11 @@ func mediaMetadataConflictClause() clause.OnConflict {
 			"duration":       gorm.Expr("IF(VALUES(duration) > 0, VALUES(duration), media_metadata.duration)"),
 			// Only write stable_id when it's not already set
 			"stable_id": gorm.Expr("IF(media_metadata.stable_id IS NULL OR media_metadata.stable_id = '', VALUES(stable_id), media_metadata.stable_id)"),
-			// Only write fingerprint when it's not already set
-			"content_fingerprint": gorm.Expr("IF(media_metadata.content_fingerprint IS NULL OR media_metadata.content_fingerprint = '', VALUES(content_fingerprint), media_metadata.content_fingerprint)"),
+			// Track the latest fingerprint: overwrite with the incoming value when it
+			// is non-empty (so a re-fingerprinted/modified file updates the DB and
+			// move-detection keeps working), but preserve the stored value when the
+			// incoming row carries no fingerprint (don't zero a good hash).
+			"content_fingerprint": gorm.Expr("IF(VALUES(content_fingerprint) IS NULL OR VALUES(content_fingerprint) = '', media_metadata.content_fingerprint, VALUES(content_fingerprint))"),
 		}),
 	}
 }
