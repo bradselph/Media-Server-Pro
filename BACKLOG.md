@@ -9,8 +9,19 @@ in parentheses are the original recommendation IDs.
 
 - **Media Reports panel placement** — mounted under *Media ▸ All Media*; users expect it under
   *Moderation*. Move it. *(awaiting product call)*
-- **Duplicates tab when the feature is OFF** — shows only a bare error toast (HTTP 503); add a
-  "feature disabled" empty-state/banner instead.
+
+## Backend reliability (deferred)
+
+- **Deletion-request stuck-pending on partial failure** — in `AdminProcessDeletionRequest`
+  (`api/handlers/deletion_requests.go`), if `auth.DeleteUser` succeeds but the subsequent
+  `UpdateStatus` fails, the account is gone yet the request stays `pending`. The current code
+  logs and returns a clear 500. A previously-proposed fix (write a new `inconsistent` status on
+  the failure path) is **not** worth it as-is: the failure mode is the DB being unavailable, so a
+  second status write would fail identically — and it adds a model enum value plus migration and
+  admin-UI rendering surface to the most consequential operation. A real fix needs `DeleteUser` +
+  status-update in one transaction (or an idempotent re-process that tolerates an already-deleted
+  user). Covered defensively by tests as of 2026-06-29. Decide the transactional approach before
+  changing behaviour.
 
 ## Adoption / growth (deferred)
 
