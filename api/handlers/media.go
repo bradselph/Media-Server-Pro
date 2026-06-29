@@ -911,8 +911,12 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 		// Not found locally — try receiver media for download too
 		if h.receiver != nil {
 			if item := h.receiver.GetMediaItem(id); item != nil {
-				if h.isReceiverItemMature(item.ContentFingerprint) && !h.canViewMatureContent(c) {
-					writeError(c, http.StatusForbidden, msgMatureContent)
+				// Mirror StreamMedia: gate on the slave's own IsMature flag OR the
+				// master's fingerprint detection, via checkMatureAccess for
+				// consistent 401/403 status and analytics. Checking only the
+				// fingerprint let a slave-flagged item with no fingerprint through.
+				isMature := item.IsMature || h.isReceiverItemMature(item.ContentFingerprint)
+				if !h.checkMatureAccess(c, isMature) {
 					return
 				}
 				err := h.receiver.ProxyStream(c.Writer, c.Request, id)

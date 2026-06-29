@@ -211,11 +211,26 @@ func (h *Handler) resolveHLSJobForServe(c *gin.Context, jobID string) (*models.H
 		writeError(c, http.StatusNotFound, "HLS job not found")
 		return nil, false
 	}
-	// Resolve IsMature from the in-memory index. If the item isn't in the index yet
-	// (e.g. scan still running), it can't have been flagged mature, so allow.
+	// Honour Streaming.RequireAuth here too — the HLS segment routes carry no auth
+	// middleware, so without this an anonymous holder of a job UUID could stream
+	// the full ladder while StreamMedia/DownloadMedia reject them (media.go).
+	if getSession(c) == nil && h.media.GetConfig().Streaming.RequireAuth {
+		writeError(c, http.StatusUnauthorized, "Authentication required to stream media")
+		return nil, false
+	}
+	// Resolve IsMature from the in-memory index.
 	var isMature bool
 	if item, lookupErr := h.media.GetMedia(job.MediaPath); lookupErr == nil && item != nil {
 		isMature = item.IsMature
+	} else if job.Status == models.HLSStatusCompleted {
+		// A completed job whose source is no longer indexed: the media was
+		// deleted/moved externally after generation, but the cached .ts segments
+		// still serve. The source existed (and may have been mature) at gen time,
+		// so gate it closed rather than fail open — verified users still pass
+		// checkMatureAccess; anonymous/unverified callers are blocked. (For a
+		// pending/running job with no index entry yet — startup scan race — leave
+		// isMature false so an in-progress, not-yet-flagged item isn't gated.)
+		isMature = true
 	}
 	if !h.checkMatureAccess(c, isMature) {
 		return nil, false
