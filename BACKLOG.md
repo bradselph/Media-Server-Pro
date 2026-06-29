@@ -49,6 +49,51 @@ in parentheses are the original recommendation IDs.
   mount (age-gate, cookie-consent, version, settings, suggestions, media). Merge 3–4 into one
   response; defer `/api/version` to `requestIdleCallback`. Larger refactor across several components.
 
+## Round-2 hunt follow-ups (deferred 2026-06-29)
+
+Confirmed by the round-2 adversarial gap hunt; deferred because each is a larger
+refactor / behaviour change / hot-path optimisation that wants its own focused,
+measured change rather than batching. The 15 higher-confidence, contained fixes
+from that hunt already shipped.
+
+- **GetSuggestions O(catalog × view-history) under a held RLock** — on every
+  authenticated home load, scoreRecentlyViewed linearly scans up to 500 ViewHistory
+  entries per catalog item, all under one `m.mu.RLock()`. Pre-build a
+  `recentCategorySet map[string]bool` once and thread it through
+  scoreMedia → scoreMediaForProfile → scoreRecentlyViewed (update the 4 test call
+  sites in `suggestions_extended_test.go`). Makes the pass O(n). Perf, not a bug —
+  benchmark before/after. File: `internal/suggestions/suggestions.go`.
+- **GetCategoryMemberIDs uncached** — fires 2 DB round-trips + an O(catalog) tag
+  scan on every category-filtered browse page. Add a 30s-TTL member-set cache on the
+  media Module + an `InvalidateCategoryMemberCache(id)` called from
+  AddCategoryItems/RemoveCategoryItem/DeleteCategory/UpdateCategory. Files:
+  `internal/media/categories.go`, `internal/media/discovery.go`, `api/handlers/categories.go`.
+- **DeleteJob doesn't fence in-progress lazy transcodes before os.RemoveAll** —
+  `lazyTranscodeQuality` runs in the HTTP handler goroutine, tracked in activeJobs but
+  with no jobDone entry, so DeleteJob's `<-doneCh` doesn't wait for it and RemoveAll can
+  delete the dir mid-write. Add a per-job `lazyWg sync.Map` (Add/Done in
+  lazyTranscodeQuality; Wait in DeleteJob before RemoveAll; delete in cleanup paths).
+  Files: `internal/hls/{module,transcode,jobs,cleanup}.go`.
+- **UpdateMetadata commits in-memory before confirming the DB write** — a 500 is
+  returned to the client but the in-memory tags/is_mature/custom fields are already
+  mutated (and revert on restart). Restructure DB-first like UpdatePlaybackPosition:
+  snapshot under RLock, apply to a copy, Upsert, and only commit to the live maps +
+  syncMediaItem on success. Core function — needs careful test coverage.
+  File: `internal/media/management.go`.
+- **metadata-cleanup task is effectively a no-op** — the 24h task only calls Scan(),
+  which replaces `m.media`/`m.mediaByID` but never prunes `m.metadata`/`fingerprintIndex`,
+  so externally-deleted files' metadata (and DB rows via the post-scan save) accumulate
+  unboundedly. Prune stale paths inside Scan() under the write lock + a background DB
+  delete. Trade-off: drops cross-scan-cycle move detection. Files:
+  `internal/media/discovery.go` (Scan), `cmd/server/main.go`.
+- **saveJob swallows DB errors** — a cancelled HLS job whose status fails to persist
+  returns success; on restart it reloads as Running and re-transcodes. Make saveJob
+  return its error and have CancelJob log a warning (other call sites `_ =`). Low sev.
+  File: `internal/hls/jobs.go`.
+- **analytics memo thundering-herd** — concurrent cold-cache misses each run the full
+  50k–100k-event aggregation. Wrap compute() in a `singleflight.Group` (adds
+  `golang.org/x/sync`). Low sev. File: `internal/analytics/cache.go`.
+
 ## Launch prerequisites (not optional before public launch)
 
 - **Real brand / compliance values** — the 2257 and DMCA pages fall back to `@example.com`
