@@ -471,6 +471,21 @@ async function deleteSavedSearch(id: string) {
   }
 }
 
+// Build the browse-route query that replays a saved search. The home page
+// (index.vue) reads `search`, `tags`, `tag_mode` and `type` from route.query;
+// /search only understands a plain text `q`, so opening a tag- or type-scoped
+// saved search there would silently drop those filters.
+function savedSearchTo(s: SavedSearch) {
+  const query: Record<string, string> = {}
+  if (s.query) query.search = s.query
+  if (s.tags.length > 0) {
+    query.tags = s.tags.join(',')
+    query.tag_mode = s.tag_mode
+  }
+  if (s.media_type) query.type = s.media_type
+  return {path: '/', query}
+}
+
 // API Tokens
 const tokens = ref<APIToken[]>([])
 const tokensLoading = ref(false)
@@ -948,7 +963,7 @@ watch(() => authStore.user, (user) => {
               </p>
             </div>
             <NuxtLink
-                :to="{ path: '/search', query: { q: s.query } }"
+                :to="savedSearchTo(s)"
                 class="text-xs text-[var(--accent-soft)] underline hover:text-default"
             >Open
             </NuxtLink>
