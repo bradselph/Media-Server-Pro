@@ -468,7 +468,7 @@ const errSlaveNotFound = "slave not found: %s"
 
 // PushCatalog updates the slave's media catalog.
 // If req.Full is true, the existing catalog for this slave is replaced entirely.
-func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
+func (m *Module) PushCatalog(ctx context.Context, req *CatalogPushRequest) (int, error) {
 	if req.SlaveID == "" {
 		return 0, fmt.Errorf("slave_id is required")
 	}
@@ -484,8 +484,6 @@ func (m *Module) PushCatalog(req *CatalogPushRequest) (int, error) {
 	if !exists {
 		return 0, fmt.Errorf(errSlaveNotFound, req.SlaveID)
 	}
-
-	ctx := context.Background()
 
 	// Build DB records — validate slave-supplied paths to prevent path-traversal
 	// or SSRF when the master uses the path in downstream HTTP/proxy requests.

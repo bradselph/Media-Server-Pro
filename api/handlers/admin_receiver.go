@@ -101,7 +101,7 @@ func (h *Handler) ReceiverPushCatalog(c *gin.Context) {
 		return
 	}
 
-	count, err := h.receiver.PushCatalog(&req)
+	count, err := h.receiver.PushCatalog(c.Request.Context(), &req)
 	if err != nil {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
