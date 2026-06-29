@@ -328,17 +328,9 @@ func (h *Handler) userRatingsByPath(c *gin.Context) map[string]float64 {
 	if session == nil || h.suggestions == nil {
 		return nil
 	}
-	profile := h.suggestions.GetUserProfile(session.UserID)
-	if profile == nil {
-		return nil
-	}
-	ratings := make(map[string]float64, len(profile.ViewHistory))
-	for _, vh := range profile.ViewHistory {
-		if vh.Rating > 0 && vh.MediaPath != "" {
-			ratings[vh.MediaPath] = vh.Rating
-		}
-	}
-	return ratings
+	// Use the targeted ratings lookup rather than GetUserProfile, which deep-copies
+	// the whole profile on every authenticated listing request just for ratings.
+	return h.suggestions.GetUserRatingsByPath(session.UserID)
 }
 
 // trackMediaSearch records a search traffic event (non-empty queries only) with

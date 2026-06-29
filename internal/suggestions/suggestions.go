@@ -1035,6 +1035,29 @@ func (m *Module) GetUserProfile(userID string) *UserProfile {
 	return m.snapshotProfile(profile)
 }
 
+// GetUserRatingsByPath returns media path → star rating for the user's rated
+// view-history entries, built directly under the read lock. This avoids the
+// full snapshotProfile deep-copy (two maps + a 500-entry ViewHistory slice copy)
+// that GetUserProfile incurs on every authenticated ListMedia request just to
+// extract a handful of ratings. Returns nil when the user has no profile so the
+// caller can distinguish "anonymous / no profile" from "registered but unrated".
+func (m *Module) GetUserRatingsByPath(userID string) map[string]float64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	profile, ok := m.profiles[userID]
+	if !ok {
+		return nil
+	}
+	out := make(map[string]float64)
+	for _, vh := range profile.ViewHistory {
+		if vh.Rating > 0 && vh.MediaPath != "" {
+			out[vh.MediaPath] = vh.Rating
+		}
+	}
+	return out
+}
+
 // PurgeMediaPath removes all view history entries for the given media path from every
 // in-memory profile and deletes the corresponding rows from the database. Called when
 // a media item is deleted so that orphaned view-history rows do not skew suggestions.
