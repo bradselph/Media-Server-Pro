@@ -18,6 +18,25 @@ async function loadThumbStats() {
   }
 }
 
+const cleaningThumbs = ref(false)
+
+// Manually run the thumbnail cleanup (orphans / excess previews / corrupt
+// 0-byte files). The backend route existed but had no UI trigger.
+async function cleanupThumbs() {
+  cleaningThumbs.value = true
+  try {
+    const res = await adminApi.cleanupThumbnails()
+    notifySuccess(
+        `Cleanup done — ${res.orphans_removed} orphan(s), ${res.corrupt_removed} corrupt, ${res.excess_removed} excess removed`,
+    )
+    await loadThumbStats()
+  } catch (e: unknown) {
+    notifyError(e, 'Thumbnail cleanup failed')
+  } finally {
+    cleaningThumbs.value = false
+  }
+}
+
 const items = ref<MediaItem[]>([])
 const loading = ref(true)
 const scanning = ref(false)
@@ -456,7 +475,20 @@ onUnmounted(() => {
 <template>
   <div class="space-y-4">
     <!-- Thumbnail stats -->
-    <div v-if="thumbStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div v-if="thumbStats" class="space-y-2">
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">Thumbnails</h3>
+        <UButton
+            icon="i-lucide-eraser"
+            label="Clean Thumbnails"
+            size="xs"
+            variant="outline"
+            color="neutral"
+            :loading="cleaningThumbs"
+            @click="cleanupThumbs"
+        />
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <UCard :ui="{ body: 'p-3' }">
         <p class="text-xl font-bold text-highlighted">{{ thumbStats.total_thumbnails.toLocaleString() }}</p>
         <p class="text-xs text-muted">Thumbnails</p>
@@ -475,6 +507,7 @@ onUnmounted(() => {
           {{ thumbStats.generation_errors.toLocaleString() }}</p>
         <p class="text-xs text-muted">Generation Errors</p>
       </UCard>
+      </div>
     </div>
 
     <!-- Toolbar -->

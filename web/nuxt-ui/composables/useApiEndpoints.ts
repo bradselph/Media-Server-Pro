@@ -558,6 +558,12 @@ export function useAdminApi() {
         generateThumbnail: (id: string, isAudio?: boolean) =>
             api.post<void>(`${base}/thumbnails/generate`, {id, is_audio: isAudio ?? false}),
         getThumbnailStats: () => api.get<ThumbnailStats>(`${base}/thumbnails/stats`),
+        cleanupThumbnails: () => api.post<{
+            orphans_removed: number
+            excess_removed: number
+            corrupt_removed: number
+            bytes_freed: number
+        }>(`${base}/thumbnails/cleanup`),
         uploadCustomThumbnail: (id: string, file: File) => {
             const form = new FormData()
             form.append('thumbnail', file)
