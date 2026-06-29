@@ -2,6 +2,8 @@ package media
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -355,5 +357,85 @@ func TestUpdateBlurHash_NoopOnEmptyArgs(t *testing.T) {
 	}
 	if err := m.UpdateBlurHash(context.Background(), "/videos/a.mp4", ""); err != nil {
 		t.Fatalf("empty hash should be a no-op, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UpdateTags — case-insensitive merge/dedup + in-memory sync
+//
+// UpdateTags is the per-item mutation that ApplyAutoTagRules runs across the
+// whole catalogue, so a regression here silently mis-tags every matched item.
+// With no metadataRepo wired, saveMetadataItem is a no-op, so these run purely
+// against the in-memory maps.
+// ---------------------------------------------------------------------------
+
+func TestUpdateTags_MergesDeduplicatesAndSyncs(t *testing.T) {
+	const path = "/videos/a.mp4"
+	m := &Module{
+		media:    map[string]*models.MediaItem{path: {ID: "id-a", Path: path, Tags: []string{"Adult"}}},
+		metadata: map[string]*Metadata{path: {Tags: []string{"Adult"}}},
+		log:      logger.New("media-test"),
+	}
+
+	// A genuinely new tag is appended.
+	if err := m.UpdateTags(path, []string{"Solo"}); err != nil {
+		t.Fatalf("UpdateTags returned error: %v", err)
+	}
+	if !slices.Contains(m.metadata[path].Tags, "Solo") {
+		t.Error("new tag 'Solo' should be present after merge")
+	}
+
+	// An exact duplicate must not grow the list.
+	before := len(m.metadata[path].Tags)
+	if err := m.UpdateTags(path, []string{"Solo"}); err != nil {
+		t.Fatalf("UpdateTags returned error: %v", err)
+	}
+	if got := len(m.metadata[path].Tags); got != before {
+		t.Errorf("exact duplicate should not be re-added: got %d tags, want %d", got, before)
+	}
+
+	// A case-insensitive duplicate must not be added, and the original casing
+	// of the first arrival ("Adult") must be preserved, not overwritten.
+	if err := m.UpdateTags(path, []string{"adult"}); err != nil {
+		t.Fatalf("UpdateTags returned error: %v", err)
+	}
+	variants := 0
+	for _, tag := range m.metadata[path].Tags {
+		if strings.EqualFold(tag, "adult") {
+			variants++
+			if tag != "Adult" {
+				t.Errorf("existing casing 'Adult' was overwritten by %q", tag)
+			}
+		}
+	}
+	if variants != 1 {
+		t.Errorf("want exactly one case-variant of 'adult', got %d", variants)
+	}
+
+	// Empty-string tags are silently dropped.
+	before = len(m.metadata[path].Tags)
+	if err := m.UpdateTags(path, []string{""}); err != nil {
+		t.Fatalf("UpdateTags returned error: %v", err)
+	}
+	if got := len(m.metadata[path].Tags); got != before {
+		t.Errorf("empty-string tag should be dropped: got %d tags, want %d", got, before)
+	}
+
+	// The in-memory MediaItem.Tags must stay in sync with Metadata.Tags so the
+	// list/detail endpoints reflect the change before the next scan.
+	if !slices.Equal(m.media[path].Tags, m.metadata[path].Tags) {
+		t.Errorf("MediaItem.Tags %v out of sync with Metadata.Tags %v",
+			m.media[path].Tags, m.metadata[path].Tags)
+	}
+}
+
+func TestUpdateTags_UnknownPathErrors(t *testing.T) {
+	m := &Module{
+		media:    make(map[string]*models.MediaItem),
+		metadata: make(map[string]*Metadata),
+		log:      logger.New("media-test"),
+	}
+	if err := m.UpdateTags("/nonexistent.mp4", []string{"tag"}); err == nil {
+		t.Error("expected error for unknown path, got nil")
 	}
 }
