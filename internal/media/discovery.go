@@ -834,6 +834,18 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 					m.metadata[path] = oldMeta
 					delete(m.metadata, oldPath)
 					m.fingerprintIndex[fp] = path
+					// Re-key the live media entry too, so the three indexes stay
+					// consistent for the rest of the scan (until the m.media swap):
+					// otherwise fingerprintIndex points at the new path while
+					// m.media still holds oldPath, making IsFingerprintMature
+					// (fingerprintIndex -> m.media[path]) return false for a mature
+					// item and GetContentFingerprint(oldPath) return "". mediaByID
+					// shares the *MediaItem pointer, so mutating Path is enough.
+					if liveItem, ok := m.media[oldPath]; ok {
+						liveItem.Path = path
+						delete(m.media, oldPath)
+						m.media[path] = liveItem
+					}
 					meta = oldMeta
 					hasMeta = true
 				} else {
