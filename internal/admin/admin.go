@@ -195,8 +195,8 @@ func (m *Module) GetAuditLog(ctx context.Context, limit, offset int, userID stri
 }
 
 // ExportAuditLog exports audit log to CSV. The caller (handler) should remove the file after sending the response.
-func (m *Module) ExportAuditLog(ctx context.Context) (string, error) {
-	filename := filepath.Join(m.dataDir, fmt.Sprintf("audit_log_%s_%d.csv", time.Now().Format("20060102_150405"), time.Now().UnixNano()%1_000_000))
+func (m *Module) ExportAuditLog(ctx context.Context) (filename string, retErr error) {
+	filename = filepath.Join(m.dataDir, fmt.Sprintf("audit_log_%s_%d.csv", time.Now().Format("20060102_150405"), time.Now().UnixNano()%1_000_000))
 	file, err := os.Create(filename)
 	if err != nil {
 		return "", err
@@ -206,6 +206,13 @@ func (m *Module) ExportAuditLog(ctx context.Context) (string, error) {
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
 			m.log.Warn("Failed to close audit log file: %v", closeErr)
+			// On networked storage (e.g. IONOS HiDrive) the final write is committed
+			// during Close(), so a close failure can mean the CSV is incomplete.
+			// Surface it and drop the partial file rather than serving a corrupt one.
+			if retErr == nil {
+				retErr = fmt.Errorf("failed to close audit log export: %w", closeErr)
+			}
+			succeeded = false
 		}
 		if !succeeded {
 			if removeErr := os.Remove(filename); removeErr != nil && !os.IsNotExist(removeErr) {
