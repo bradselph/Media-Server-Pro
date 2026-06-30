@@ -1999,7 +1999,7 @@ watch(mediaId, (id, oldId) => {
                   variant="outline"
                   color="neutral"
                   size="sm"
-                  @click="downloadPrompt && hlsAvailable ? (downloadModalOpen = true) : navigateTo(mediaApi.getDownloadUrl(media.id), { open: { target: '_blank' } })"
+                  @click="() => { media && (downloadPrompt && hlsAvailable ? (downloadModalOpen = true) : navigateTo(mediaApi.getDownloadUrl(media.id), { open: { target: '_blank' } })) }"
               />
               <UButton
                   v-if="authStore.isLoggedIn"
@@ -2017,7 +2017,7 @@ watch(mediaId, (id, oldId) => {
                   :variant="showQueuePanel ? 'solid' : 'outline'"
                   :color="showQueuePanel ? 'primary' : 'neutral'"
                   size="sm"
-                  @click="showQueuePanel = !showQueuePanel"
+                  @click="() => { showQueuePanel = !showQueuePanel }"
               />
               <UButton
                   icon="i-lucide-sliders-horizontal"
@@ -2060,7 +2060,7 @@ watch(mediaId, (id, oldId) => {
                   variant="outline"
                   color="neutral"
                   size="sm"
-                  @click="reportModalOpen = true"
+                  @click="() => { reportModalOpen = true }"
               />
               <UButton
                   v-if="authStore.isAdmin"
@@ -2234,7 +2234,7 @@ watch(mediaId, (id, oldId) => {
               <template #footer>
                 <UButton to="/playlists" icon="i-lucide-plus" label="New Playlist" variant="outline" color="neutral"
                          size="sm"/>
-                <UButton variant="ghost" color="neutral" label="Cancel" @click="playlistOpen = false"/>
+                <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { playlistOpen = false }"/>
               </template>
             </UModal>
           </UCard>
@@ -2389,7 +2389,7 @@ watch(mediaId, (id, oldId) => {
             class="justify-start"
             :to="mediaApi.getDownloadUrl(media?.id ?? '')"
             target="_blank"
-            @click="downloadModalOpen = false"
+            @click="() => { downloadModalOpen = false }"
         />
         <template v-if="qualities.length > 0">
           <p class="text-xs text-muted mt-1">HLS renditions</p>
@@ -2403,7 +2403,7 @@ watch(mediaId, (id, oldId) => {
               class="justify-start"
               :to="`/download?id=${encodeURIComponent(media?.id ?? '')}&quality=${encodeURIComponent(q.name)}`"
               target="_blank"
-              @click="downloadModalOpen = false"
+              @click="() => { downloadModalOpen = false }"
           />
         </template>
       </div>
@@ -2447,7 +2447,7 @@ watch(mediaId, (id, oldId) => {
     </template>
     <template #footer>
       <div class="flex items-center justify-end gap-2 w-full">
-        <UButton label="Cancel" variant="ghost" color="neutral" @click="reportModalOpen = false"/>
+        <UButton label="Cancel" variant="ghost" color="neutral" @click="() => { reportModalOpen = false }"/>
         <UButton
             icon="i-lucide-flag"
             label="Submit report"

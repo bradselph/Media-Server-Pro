@@ -1690,7 +1690,7 @@ onUnmounted(() => {
             variant="ghost"
             color="neutral"
             size="sm"
-            @click="params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc'"
+            @click="() => { params.sort_order = params.sort_order === 'asc' ? 'desc' : 'asc' }"
         />
         <!-- Action cluster — visually separated so the filter selects above
              read as filters, not as a wall of mixed controls. -->
@@ -1753,7 +1753,7 @@ onUnmounted(() => {
             color="primary"
             size="sm"
             aria-label="Clear type filter"
-            @click="params.type = 'all'"
+            @click="() => { params.type = 'all' }"
         />
         <!-- Active minimum-rating filter chip -->
         <UButton
@@ -1765,7 +1765,7 @@ onUnmounted(() => {
             color="primary"
             size="sm"
             aria-label="Clear rating filter"
-            @click="params.min_rating = 0"
+            @click="() => { params.min_rating = 0 }"
         />
         <!-- Hide watched toggle (logged-in users only) -->
         <UButton
@@ -1776,7 +1776,7 @@ onUnmounted(() => {
             :color="hideWatched ? 'primary' : 'neutral'"
             size="sm"
             :aria-label="hideWatched ? 'Show all items' : 'Hide completed items'"
-            @click="hideWatched = !hideWatched"
+            @click="() => { hideWatched = !hideWatched }"
         />
         <!-- Min rating filter (logged-in users only) -->
         <USelect
@@ -1808,7 +1808,7 @@ onUnmounted(() => {
                 :variant="viewMode === 'grid' ? 'solid' : 'ghost'"
                 :color="viewMode === 'grid' ? 'primary' : 'neutral'"
                 size="sm"
-                @click="viewMode = 'grid'"
+                @click="() => { viewMode = 'grid' }"
             />
             <UButton
                 icon="i-lucide-list"
@@ -1816,7 +1816,7 @@ onUnmounted(() => {
                 :variant="viewMode === 'list' ? 'solid' : 'ghost'"
                 :color="viewMode === 'list' ? 'primary' : 'neutral'"
                 size="sm"
-                @click="viewMode = 'list'"
+                @click="() => { viewMode = 'list' }"
             />
             <UButton
                 icon="i-lucide-rows-3"
@@ -1824,7 +1824,7 @@ onUnmounted(() => {
                 :variant="viewMode === 'compact' ? 'solid' : 'ghost'"
                 :color="viewMode === 'compact' ? 'primary' : 'neutral'"
                 size="sm"
-                @click="viewMode = 'compact'"
+                @click="() => { viewMode = 'compact' }"
             />
           </UButtonGroup>
           <UButton
@@ -1864,9 +1864,9 @@ onUnmounted(() => {
           />
         </template>
         <UButton variant="ghost" color="neutral" size="sm" label="Select All"
-                 @click="selectedIds = new Set(items.map(i => i.id))"/>
+                 @click="() => { selectedIds = new Set(items.map(i => i.id)) }"/>
         <UButton v-if="selectedIds.size > 0" variant="ghost" color="neutral" size="sm" label="Clear"
-                 @click="selectedIds = new Set()"/>
+                 @click="() => { selectedIds = new Set() }"/>
       </UContainer>
     </div>
 

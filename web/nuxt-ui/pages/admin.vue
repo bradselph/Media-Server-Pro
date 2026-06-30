@@ -90,7 +90,7 @@ watch(activeTab, tab => {
               :variant="activeTab === tab.value ? 'solid' : 'ghost'"
               :color="activeTab === tab.value ? 'primary' : 'neutral'"
               class="shrink-0"
-              @click="activeTab = tab.value"
+              @click="() => { activeTab = tab.value }"
           />
         </div>
 

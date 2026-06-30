@@ -174,7 +174,7 @@ async function handleLogin() {
             color="neutral"
             icon="i-lucide-eye"
             label="Browse as Guest"
-            @click="router.replace('/')"
+            @click="() => { router.replace('/') }"
         />
       </div>
 

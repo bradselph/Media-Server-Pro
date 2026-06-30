@@ -898,7 +898,7 @@ watch(() => authStore.user, (user) => {
                   size="sm"
                   :variant="prefs.view_mode === m.value ? 'solid' : 'outline'"
                   :color="prefs.view_mode === m.value ? 'primary' : 'neutral'"
-                  @click="prefs.view_mode = m.value as 'grid' | 'list' | 'compact'"
+                  @click="() => { prefs.view_mode = m.value as 'grid' | 'list' | 'compact' }"
               />
             </UButtonGroup>
           </UFormField>
@@ -1003,7 +1003,7 @@ watch(() => authStore.user, (user) => {
                   variant="ghost"
                   color="error"
                   size="xs"
-                  @click="clearHistoryConfirmOpen = true"
+                  @click="() => { clearHistoryConfirmOpen = true }"
               />
             </div>
           </div>
@@ -1023,7 +1023,7 @@ watch(() => authStore.user, (user) => {
                 :variant="historyFilter === opt ? 'solid' : 'outline'"
                 :color="historyFilter === opt ? 'primary' : 'neutral'"
                 :label="opt === 'all' ? 'All' : opt === 'in-progress' ? 'In Progress' : 'Completed'"
-                @click="historyFilter = opt"
+                @click="() => { historyFilter = opt }"
             />
           </div>
         </div>
@@ -1081,7 +1081,7 @@ watch(() => authStore.user, (user) => {
       <UModal v-model:open="clearHistoryConfirmOpen" title="Clear Watch History"
               description="This will permanently delete all your watch history. This action cannot be undone.">
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="clearHistoryConfirmOpen = false"/>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { clearHistoryConfirmOpen = false }"/>
           <UButton color="error" label="Clear All" @click="doClearHistory"/>
         </template>
       </UModal>
@@ -1230,7 +1230,7 @@ watch(() => authStore.user, (user) => {
           <p class="text-sm text-muted mb-3">To request deletion of your account and associated data, submit a request
             below. An administrator will review and process it.</p>
           <UButton icon="i-lucide-file-text" label="Request Data Deletion" variant="outline" color="warning"
-                   @click="deletionRequestOpen = true"/>
+                   @click="() => { deletionRequestOpen = true }"/>
         </template>
 
         <UModal v-model:open="deletionRequestOpen" title="Request Data Deletion"
@@ -1242,7 +1242,7 @@ watch(() => authStore.user, (user) => {
             </UFormField>
           </template>
           <template #footer>
-            <UButton variant="ghost" color="neutral" label="Cancel" @click="deletionRequestOpen = false"/>
+            <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { deletionRequestOpen = false }"/>
             <UButton :loading="deletionSubmitting" color="warning" label="Submit Request"
                      @click="handleDeletionRequest"/>
           </template>

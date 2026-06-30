@@ -160,7 +160,7 @@ watch(() => authStore.user, (user) => {
             size="sm"
             color="error"
             variant="outline"
-            @click="confirmClear = true"
+            @click="() => { confirmClear = true }"
         />
       </div>
     </div>
@@ -281,7 +281,7 @@ watch(() => authStore.user, (user) => {
       </template>
       <template #footer>
         <UButton color="error" label="Clear All" :loading="clearing" @click="clearAll"/>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmClear = false"/>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { confirmClear = false }"/>
       </template>
     </UModal>
   </UContainer>
