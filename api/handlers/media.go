@@ -585,7 +585,10 @@ func (h *Handler) refreshSuggestionsCatalog() {
 // ScanMedia initiates a media scan
 func (h *Handler) ScanMedia(c *gin.Context) {
 	if h.media.IsScanning() {
-		writeSuccess(c, map[string]string{"message": "Scan already in progress"})
+		// 409 (not 200): no new scan was started. The admin UI distinguishes this
+		// from a real start so it can show an accurate "already running" message
+		// instead of a false "scan started".
+		writeError(c, http.StatusConflict, "Scan already in progress")
 		return
 	}
 	go func() {

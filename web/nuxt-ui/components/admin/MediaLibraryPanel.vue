@@ -353,20 +353,27 @@ async function handleScan() {
   try {
     await adminApi.scanMedia()
     notifySuccess('Media scan started')
-    // The scan runs in the background; poll the list so the indicator reflects
-    // real progress and auto-clears (newly-scanned items appear) when it ends.
-    // Bounded + silent so a transient error can't spin forever or spam toasts.
-    stopScanPoll()
-    scanPolls = 0
-    scanPollTimer = setInterval(async () => {
-      scanPolls++
-      await loadInternal(true)
-      if (!scanning.value || scanPolls >= MAX_SCAN_POLLS) stopScanPoll()
-    }, 3000)
   } catch (e: unknown) {
-    scanning.value = false
-    notifyError(e, 'Scan failed')
+    // 409 = a scan is already running; that is not a failure. Show an accurate
+    // message and still poll so the indicator tracks the in-progress scan.
+    if ((e as { status?: number })?.status === 409) {
+      notifySuccess('A scan is already in progress')
+    } else {
+      scanning.value = false
+      notifyError(e, 'Scan failed')
+      return
+    }
   }
+  // The scan runs in the background; poll the list so the indicator reflects
+  // real progress and auto-clears (newly-scanned items appear) when it ends.
+  // Bounded + silent so a transient error can't spin forever or spam toasts.
+  stopScanPoll()
+  scanPolls = 0
+  scanPollTimer = setInterval(async () => {
+    scanPolls++
+    await loadInternal(true)
+    if (!scanning.value || scanPolls >= MAX_SCAN_POLLS) stopScanPoll()
+  }, 3000)
 }
 
 // Per-row loading guards to prevent duplicate operations
