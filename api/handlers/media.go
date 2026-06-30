@@ -612,7 +612,6 @@ func (h *Handler) GetTagCounts(c *gin.Context) {
 	writeSuccess(c, tags)
 }
 
-
 // StreamMedia streams a media file
 func (h *Handler) StreamMedia(c *gin.Context) {
 	id := strings.TrimSpace(c.Query("id"))
@@ -663,20 +662,21 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 					}
 					streamKey := session.UserID
 					maxStreams := h.getUserStreamLimit(user.Type)
-					if maxStreams > 0 && !h.streaming.CanStartStream(streamKey, maxStreams) {
+					// Atomically enforce the per-user cap and register the proxy stream
+					// so the counter is decremented when the stream ends.
+					release, ok := h.streaming.TrackProxyStream(streamKey, maxStreams)
+					if !ok {
 						writeError(c, http.StatusTooManyRequests, msgMaxStreams)
 						return
 					}
-					// Track the proxy stream so the counter is decremented when the stream ends.
-					release := h.streaming.TrackProxyStream(streamKey)
 					defer release()
 				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
 					ipKey := "ip:" + c.ClientIP()
-					if !h.streaming.CanStartStream(ipKey, limit) {
+					release, ok := h.streaming.TrackProxyStream(ipKey, limit)
+					if !ok {
 						writeError(c, http.StatusTooManyRequests, msgMaxStreamsConn)
 						return
 					}
-					release := h.streaming.TrackProxyStream(ipKey)
 					defer release()
 				}
 				// Track view analytics for slave-sourced media so reporting is
@@ -766,6 +766,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 	}
 
 	var userID, sessionID string
+	var streamLimit int
 	if session != nil {
 		userID = session.UserID
 		sessionID = session.ID
@@ -783,6 +784,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 			writeError(c, http.StatusTooManyRequests, msgMaxStreams)
 			return
 		}
+		streamLimit = maxStreams
 	} else {
 		// Unauthenticated local-media stream: enforce per-IP limit before serving.
 		// The proxy and extractor branches each perform their own CanStartStream
@@ -794,6 +796,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 				writeError(c, http.StatusTooManyRequests, msgMaxStreamsConn)
 				return
 			}
+			streamLimit = limit
 		}
 	}
 
@@ -802,6 +805,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		MediaID:     id,
 		Quality:     c.Query("quality"),
 		UserID:      userID,
+		MaxStreams:  streamLimit,
 		SessionID:   sessionID,
 		IPAddress:   c.ClientIP(),
 		UserAgent:   c.Request.UserAgent(),
@@ -834,9 +838,12 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		if c.Writer.Written() || isClientDisconnect(err) {
 			return
 		}
-		if errors.Is(err, streaming.ErrFileNotFound) {
+		switch {
+		case errors.Is(err, streaming.ErrStreamLimitExceeded):
+			writeError(c, http.StatusTooManyRequests, msgMaxStreams)
+		case errors.Is(err, streaming.ErrFileNotFound):
 			writeError(c, http.StatusNotFound, errFileNotFound)
-		} else {
+		default:
 			h.log.Error("Stream error: %v", err)
 			writeError(c, http.StatusInternalServerError, "Stream error")
 		}
