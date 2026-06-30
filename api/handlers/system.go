@@ -399,11 +399,6 @@ func (h *Handler) ClearMediaCache(c *gin.Context) {
 
 // AdminGetDatabaseStatus returns the current database connection status
 func (h *Handler) AdminGetDatabaseStatus(c *gin.Context) {
-	if h.database == nil {
-		writeError(c, http.StatusServiceUnavailable, "Database module not available")
-		return
-	}
-
 	health := h.database.Health()
 	connected := health.Status == models.StatusHealthy
 
@@ -428,11 +423,6 @@ func (h *Handler) AdminGetDatabaseStatus(c *gin.Context) {
 
 // AdminExecuteQuery executes a SQL query and returns the results
 func (h *Handler) AdminExecuteQuery(c *gin.Context) {
-	if h.database == nil {
-		writeError(c, http.StatusServiceUnavailable, "Database module not available")
-		return
-	}
-
 	if !h.database.IsConnected() {
 		writeError(c, http.StatusServiceUnavailable, "Database not connected")
 		return
@@ -441,7 +431,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 	var req struct {
 		Query string `json:"query"`
 	}
-	if !BindJSON(c, &req, "Invalid request") {
+	if !BindJSON(c, &req, errInvalidRequest) {
 		return
 	}
 
@@ -541,7 +531,14 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 			})
 		}
 		h.log.Error("Query execution failed: %v", err)
-		writeError(c, http.StatusBadRequest, msgQueryFailed)
+		// A server-side timeout/cancellation (our own QueryTimeout firing, or a
+		// dropped DB connection) is a 5xx; a malformed admin query stays 4xx.
+		// Returning 400 for the former would hide DB degradation from 5xx monitoring.
+		status := http.StatusBadRequest
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			status = http.StatusInternalServerError
+		}
+		writeError(c, status, msgQueryFailed)
 		return
 	}
 	defer func() {
