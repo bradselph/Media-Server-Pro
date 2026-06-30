@@ -620,7 +620,7 @@ async function loadQueue() {
             <UIcon name="i-lucide-settings" class="size-4"/>
             Downloader Settings
           </span>
-          <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" @click="showSettings = false"/>
+          <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" @click="() => { showSettings = false }"/>
         </div>
       </template>
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
@@ -662,7 +662,7 @@ async function loadQueue() {
     </UCard>
     <div v-else-if="settings" class="flex justify-end">
       <UButton icon="i-lucide-settings" label="Show Settings" size="sm" variant="ghost" color="neutral"
-               @click="showSettings = true"/>
+               @click="() => { showSettings = true }"/>
     </div>
 
     <!-- New Download — detect first, then choose stream -->

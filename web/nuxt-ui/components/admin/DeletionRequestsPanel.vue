@@ -158,7 +158,7 @@ watch(statusFilter, load)
         </UFormField>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="processOpen = false"/>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { processOpen = false }"/>
         <UButton
             :loading="processing"
             :color="processAction === 'approve' ? 'error' : 'neutral'"

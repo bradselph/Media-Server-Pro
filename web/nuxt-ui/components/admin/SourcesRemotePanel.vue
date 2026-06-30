@@ -257,7 +257,7 @@ onMounted(loadRemote)
           variant="outline"
           color="neutral"
           :loading="remoteMediaLoading && remoteMediaSource === null"
-          @click="showRemoteMedia && remoteMediaSource === null ? showRemoteMedia = false : loadAllRemoteMedia()"
+          @click="() => { showRemoteMedia && remoteMediaSource === null ? showRemoteMedia = false : loadAllRemoteMedia() }"
       />
     </div>
     <UCard v-if="showRemoteMedia">
@@ -273,7 +273,7 @@ onMounted(loadRemote)
                      :loading="remoteMediaLoading"
                      @click="remoteMediaSource ? loadSourceMedia(remoteMediaSource) : loadAllRemoteMedia()"/>
             <UButton icon="i-lucide-x" aria-label="Close" size="xs" variant="ghost" color="neutral"
-                     @click="showRemoteMedia = false"/>
+                     @click="() => { showRemoteMedia = false }"/>
           </div>
         </div>
       </template>

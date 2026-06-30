@@ -325,7 +325,7 @@ onMounted(load)
                 variant="ghost"
                 color="error"
                 :loading="deletingId === cat.id"
-                @click.stop="confirmDeleteId = cat.id"
+                @click.stop="() => { confirmDeleteId = cat.id }"
             />
           </div>
         </div>
@@ -368,7 +368,7 @@ onMounted(load)
       </template>
       <template #footer>
         <UButton :label="editTarget ? 'Save' : 'Create'" color="primary" :loading="saving" @click="save"/>
-        <UButton label="Cancel" variant="ghost" color="neutral" @click="formOpen = false"/>
+        <UButton label="Cancel" variant="ghost" color="neutral" @click="() => { formOpen = false }"/>
       </template>
     </UModal>
 
@@ -386,7 +386,7 @@ onMounted(load)
       <template #footer>
         <UButton color="error" label="Delete" :loading="deletingId === confirmDeleteId"
                  @click="deleteCategory(confirmDeleteId!); confirmDeleteId = null"/>
-        <UButton label="Cancel" variant="ghost" color="neutral" @click="confirmDeleteId = null"/>
+        <UButton label="Cancel" variant="ghost" color="neutral" @click="() => { confirmDeleteId = null }"/>
       </template>
     </UModal>
 
@@ -405,7 +405,7 @@ onMounted(load)
                 size="sm"
                 variant="outline"
                 color="neutral"
-                @click="detailCategory && openAddItems(detailCategory.id)"
+                @click="() => { detailCategory && openAddItems(detailCategory.id) }"
             />
           </div>
           <p v-if="detailCategory?.tag" class="text-xs text-muted">
@@ -465,7 +465,7 @@ onMounted(load)
         </div>
       </template>
       <template #footer>
-        <UButton label="Close" variant="ghost" color="neutral" @click="detailOpen = false"/>
+        <UButton label="Close" variant="ghost" color="neutral" @click="() => { detailOpen = false }"/>
       </template>
     </UModal>
 
@@ -535,7 +535,7 @@ onMounted(load)
         </div>
       </template>
       <template #footer>
-        <UButton label="Done" color="primary" @click="addItemsOpen = false"/>
+        <UButton label="Done" color="primary" @click="() => { addItemsOpen = false }"/>
       </template>
     </UModal>
   </div>

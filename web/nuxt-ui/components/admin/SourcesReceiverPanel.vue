@@ -581,7 +581,7 @@ onMounted(async () => {
           variant="outline"
           color="neutral"
           :loading="slaveMediaLoading"
-          @click="showSlaveMedia ? showSlaveMedia = false : loadSlaveMedia()"
+          @click="() => { showSlaveMedia ? showSlaveMedia = false : loadSlaveMedia() }"
       />
     </div>
     <UCard v-if="showSlaveMedia">
@@ -668,7 +668,7 @@ onMounted(async () => {
         </div>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Close" @click="selectedSlaveMedia = null"/>
+        <UButton variant="ghost" color="neutral" label="Close" @click="() => { selectedSlaveMedia = null }"/>
       </template>
     </UModal>
   </div>

@@ -168,7 +168,7 @@ onMounted(loadConfig)
             variant="ghost"
             color="neutral"
             size="sm"
-            @click="showRawJson = !showRawJson"
+            @click="() => { showRawJson = !showRawJson }"
         />
       </div>
 

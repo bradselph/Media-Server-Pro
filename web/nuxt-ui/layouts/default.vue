@@ -497,7 +497,7 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
               variant="ghost"
               color="neutral"
               size="sm"
-              @click="colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark'"
+              @click="() => { colorMode.preference = colorMode.value === 'dark' ? 'light' : 'dark' }"
           />
 
           <!-- Avatar dropdown (logged-in) — per handoff §6.1: circle w/ initial
@@ -541,7 +541,7 @@ const helpButtonLifted = computed(() => sidebarVisible.value && isMobileViewport
               color="neutral"
               size="sm"
               class="md:hidden"
-              @click="mobileMenuOpen = !mobileMenuOpen"
+              @click="() => { mobileMenuOpen = !mobileMenuOpen }"
           />
         </div>
       </UContainer>

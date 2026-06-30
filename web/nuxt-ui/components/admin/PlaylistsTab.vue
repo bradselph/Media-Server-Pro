@@ -334,7 +334,7 @@ onMounted(load)
                     size="xs"
                     variant="ghost"
                     color="error"
-                    @click="deleteTarget = p"
+                    @click="() => { deleteTarget = p }"
                 />
               </div>
             </td>
@@ -367,7 +367,7 @@ onMounted(load)
           playlist{{ selected.size !== 1 ? 's' : '' }}? This action cannot be undone.</p>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmBulkDelete = false"/>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { confirmBulkDelete = false }"/>
         <UButton :loading="bulkDeleting" color="error" label="Delete" @click="executeBulkDelete()"/>
       </template>
     </UModal>
@@ -394,7 +394,7 @@ onMounted(load)
         </div>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="editTarget = null"/>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { editTarget = null }"/>
         <UButton :loading="editSaving" label="Save" @click="handleEdit"/>
       </template>
     </UModal>
@@ -410,7 +410,7 @@ onMounted(load)
         Are you sure you want to delete <strong>{{ deleteTarget?.name }}</strong>? This cannot be undone.
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="deleteTarget = null"/>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { deleteTarget = null }"/>
         <UButton :loading="deleting" color="error" label="Delete" @click="handleDelete"/>
       </template>
     </UModal>

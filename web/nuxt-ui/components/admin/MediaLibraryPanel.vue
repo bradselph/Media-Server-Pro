@@ -609,7 +609,7 @@ onUnmounted(() => {
           size="xs"
           variant="ghost"
           color="neutral"
-          @click="selectedIds = new Set()"
+          @click="() => { selectedIds = new Set() }"
       />
     </div>
 
@@ -748,7 +748,7 @@ onUnmounted(() => {
         <p>Are you sure you want to delete this media item? This action cannot be undone.</p>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmDeleteId = null"/>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { confirmDeleteId = null }"/>
         <UButton color="error" label="Delete" :loading="!!confirmDeleteId && rowBusy.has(`del-${confirmDeleteId}`)"
                  @click="executeDelete"/>
       </template>
@@ -837,7 +837,7 @@ onUnmounted(() => {
       </template>
       <template #footer>
         <UButton label="Save" :loading="editSaving" color="primary" @click="saveEdit"/>
-        <UButton label="Cancel" variant="ghost" color="neutral" @click="editOpen = false"/>
+        <UButton label="Cancel" variant="ghost" color="neutral" @click="() => { editOpen = false }"/>
       </template>
     </UModal>
 
@@ -848,7 +848,7 @@ onUnmounted(() => {
           <div class="flex items-center justify-between">
             <h3 class="font-semibold text-highlighted">Chapters:
               {{ chaptersTarget?.name ? getDisplayTitle(chaptersTarget) : 'Loading' }}</h3>
-            <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="chaptersOpen = false"/>
+            <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="() => { chaptersOpen = false }"/>
           </div>
         </template>
 
