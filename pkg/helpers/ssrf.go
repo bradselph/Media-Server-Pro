@@ -76,7 +76,11 @@ func ValidateURLForSSRF(rawURL string) error {
 		return fmt.Errorf("invalid URL: missing host")
 	}
 
-	ips, err := net.DefaultResolver.LookupIP(context.Background(), "ip", host)
+	// Bound the DNS lookup so a slow or non-responding resolver can't hang the
+	// calling handler goroutine for the full OS resolver timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
 	if err != nil {
 		return fmt.Errorf("failed to resolve host %s: %w", host, err)
 	}
