@@ -44,7 +44,7 @@ func (h *Handler) trackDownloadCompleted(c *gin.Context, session *models.Session
 
 // ListMedia returns all media items
 func (h *Handler) ListMedia(c *gin.Context) {
-	c.Header("Cache-Control", "private, max-age=300")
+	c.Header(headerCacheControl, "private, max-age=300")
 
 	sortBy := c.Query("sort")
 	if sortBy == "date" {
@@ -955,8 +955,8 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 	// to the original file when HLS isn't ready or ffmpeg is unavailable.
 	if q := strings.TrimSpace(c.Query("quality")); q != "" && h.hls != nil {
 		if plPath, verr := h.hls.VariantDownloadPath(id, q); verr == nil {
-			c.Header("Content-Type", "video/mp4")
-			c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", variantDownloadName(localItem.Name, q)))
+			c.Header(headerContentType, "video/mp4")
+			c.Header(headerContentDisposition, fmt.Sprintf("attachment; filename=%q", variantDownloadName(localItem.Name, q)))
 			serr := h.hls.StreamVariantMP4(c.Request.Context(), id, plPath, c.Writer)
 			if serr == nil || isClientDisconnect(serr) || c.Writer.Written() {
 				h.trackDownloadCompleted(c, session, id)
@@ -965,8 +965,8 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 			// ffmpeg failed before any bytes were written — clear the variant MP4
 			// headers so the fallback original file isn't mislabeled (wrong
 			// Content-Type / "_quality.mp4" filename), then serve the original.
-			c.Writer.Header().Del("Content-Type")
-			c.Writer.Header().Del("Content-Disposition")
+			c.Writer.Header().Del(headerContentType)
+			c.Writer.Header().Del(headerContentDisposition)
 			h.log.Warn("Variant download failed for %s (%s), serving original: %v", id, q, serr)
 		} else {
 			h.log.Debug("No HLS variant %q for %s, serving original file: %v", q, id, verr)
