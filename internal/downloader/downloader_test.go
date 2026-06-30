@@ -727,6 +727,74 @@ func TestImport_DownloaderDeleteFailureIsNonFatal(t *testing.T) {
 	}
 }
 
+// Regression: the downloader must be asked to delete the file while it is STILL
+// present on disk. The original import moved the file out of the downloads dir
+// first, so the downloader's DELETE 404'd (file already gone) and it never
+// dropped its in-memory record — the download lingered forever in the admin
+// "Server Files" list. Copy-first keeps the file present until the downloader
+// removes it and clears its record. This mock mimics the real downloader: it
+// only deletes (204) when the file is present, else 404.
+func TestImport_DownloaderDeletesWhileFilePresent(t *testing.T) {
+	base := t.TempDir()
+	downloads := filepath.Join(base, "downloads")
+	uploads := filepath.Join(base, "uploads")
+	if err := os.MkdirAll(downloads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(uploads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(downloads, "movie.mp4"), []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var sawFilePresent atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/download/") {
+			name, _ := url.PathUnescape(strings.TrimPrefix(r.URL.Path, "/api/download/"))
+			p := filepath.Join(downloads, name)
+			if _, err := os.Stat(p); err == nil {
+				sawFilePresent.Store(true)
+				_ = os.Remove(p) // real downloader removes its file + record
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound) // unknown to the downloader → stale record kept
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	mgr := config.NewManager(filepath.Join(base, "config.json"))
+	if err := mgr.Update(func(c *config.Config) {
+		c.Downloader.DownloadsDir = downloads
+		c.Directories.Uploads = uploads
+	}); err != nil {
+		t.Fatalf("config update: %v", err)
+	}
+
+	m := &Module{
+		config: mgr,
+		log:    logger.New("downloader-test"),
+		client: NewClient(srv.URL, 5*time.Second, ""),
+	}
+
+	_, sourceDeleted, err := m.Import("movie.mp4", "", "", true, false)
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if !sawFilePresent.Load() {
+		t.Fatal("downloader DELETE arrived after the file was already gone; its record would not be cleared")
+	}
+	if !sourceDeleted {
+		t.Fatalf("sourceDeleted = false, want true")
+	}
+	if _, err := os.Stat(filepath.Join(downloads, "movie.mp4")); !os.IsNotExist(err) {
+		t.Errorf("source still present in downloads dir after import, want removed")
+	}
+}
+
 func TestFND0498_NormalizedURL_PreventsDoubleSlash(t *testing.T) {
 	// This test verifies that the path normalization prevents double-slash URL construction.
 	// With trailing slash stripped from baseURL, path like "/api/health" will not result in

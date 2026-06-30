@@ -342,6 +342,18 @@ func (m *Module) resumeInterruptedJobs() int {
 		go func() {
 			defer close(doneCh)
 			defer m.activeJobs.Done()
+			// Release the per-job context on every exit path (success, failure,
+			// panic) — mirrors enqueueNewHLSJobLocked. A resumed job that fails
+			// never reaches finalizeJobCompleted, so without this its cancel func
+			// leaks in m.jobCancels until module Stop.
+			defer func() {
+				m.jobsMu.Lock()
+				if cancel, ok := m.jobCancels[capturedJob.ID]; ok {
+					cancel()
+					delete(m.jobCancels, capturedJob.ID)
+				}
+				m.jobsMu.Unlock()
+			}()
 			defer func() {
 				if r := recover(); r != nil {
 					m.log.Error("Panic in resumed HLS transcode for job %s: %v\n%s", capturedJob.ID, r, debug.Stack())

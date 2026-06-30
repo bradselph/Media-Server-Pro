@@ -341,7 +341,7 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
           color="neutral"
           size="sm"
           label="Select All"
-          @click="selectedIds = new Set(items.map(i => i.id))"
+          @click="() => { selectedIds = new Set(items.map(i => i.id)) }"
       />
       <UButton
           v-if="selectedIds.size > 0"
@@ -349,7 +349,7 @@ watch(() => authStore.isLoggedIn, (loggedIn) => {
           color="neutral"
           size="sm"
           label="Clear"
-          @click="selectedIds = new Set()"
+          @click="() => { selectedIds = new Set() }"
       />
     </div>
 

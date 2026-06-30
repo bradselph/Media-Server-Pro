@@ -185,6 +185,9 @@ async function applySourceUpdate() {
 
 onMounted(async () => {
   await loadUpdateConfig()
+  // The Updates sub-tab can be unmounted (v-else-if) while this awaits; don't kick
+  // off update checks (whose failures fire global error toasts) after teardown.
+  if (destroyed) return
   if (updateMethod.value === 'source') checkSourceUpdates()
   else checkForUpdates()
 })
@@ -264,13 +267,13 @@ onMounted(async () => {
         <UButton icon="i-lucide-refresh-cw" label="Check for Updates" :loading="checking" variant="outline"
                  color="neutral" @click="checkForUpdates"/>
         <UButton v-if="info?.update_available" icon="i-lucide-download" label="Apply Update" :loading="applying"
-                 color="primary" @click="confirmOpen = true"/>
+                 color="primary" @click="() => { confirmOpen = true }"/>
       </div>
 
       <UModal v-model:open="confirmOpen" title="Apply Update"
               description="This will restart the server. Active streams will be interrupted.">
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmOpen = false"/>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { confirmOpen = false }"/>
           <UButton color="warning" label="Apply Update" @click="applyUpdate"/>
         </template>
       </UModal>
@@ -306,13 +309,13 @@ onMounted(async () => {
         <UButton icon="i-lucide-refresh-cw" label="Check for Updates" :loading="sourceChecking" variant="outline"
                  color="neutral" @click="checkSourceUpdates"/>
         <UButton v-if="sourceInfo?.updates_available" icon="i-lucide-git-pull-request" label="Apply Source Update"
-                 :loading="sourceApplying" color="primary" @click="sourceConfirmOpen = true"/>
+                 :loading="sourceApplying" color="primary" @click="() => { sourceConfirmOpen = true }"/>
       </div>
 
       <UModal v-model:open="sourceConfirmOpen" title="Apply Source Update"
               description="This will pull from git and rebuild. The server will restart. Active streams will be interrupted.">
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="sourceConfirmOpen = false"/>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { sourceConfirmOpen = false }"/>
           <UButton color="warning" label="Pull & Rebuild" @click="applySourceUpdate"/>
         </template>
       </UModal>

@@ -439,9 +439,12 @@ func (m *Module) GetUserStats(ctx context.Context, userID string, limit int) Use
 					watched = 0
 				}
 				stats.TotalWatchTime += watched
-			}
-			if progress, ok := ev.Data["progress"].(float64); ok && progress >= 90 {
-				stats.TotalCompletions++
+				// Count completions inside the dur>0 guard (as computeFunnel does):
+				// a duration-less playback event must not inflate TotalCompletions
+				// above TotalPlaybacks (completion rate > 1.0).
+				if progress, ok := ev.Data["progress"].(float64); ok && progress >= 90 {
+					stats.TotalCompletions++
+				}
 			}
 		case EventDownload:
 			stats.TotalDownloads++

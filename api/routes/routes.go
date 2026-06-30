@@ -399,8 +399,13 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	}
 	r.Use(middleware.GinCORSDynamic(
 		effectiveCORSOrigins,
-		[]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		[]string{"Content-Type", "Authorization", "X-Requested-With"},
+		// PATCH is needed for admin media-report status updates; without it the
+		// cross-origin preflight for PATCH /api/admin/media/reports/:id is rejected.
+		[]string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		// X-MSP-Private is sent by the SPA in private-session mode so the backend
+		// skips history/analytics; it must be allow-listed or cross-origin
+		// requests carrying it fail preflight.
+		[]string{"Content-Type", "Authorization", "X-Requested-With", "X-MSP-Private"},
 	))
 
 	// Apply compression middleware for all responses (except media streams).

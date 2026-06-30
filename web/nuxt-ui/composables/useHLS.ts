@@ -401,6 +401,7 @@ export function useHLS(
 
         if (!videoRef.value?.isConnected) {
             hlsActivated.value = false
+            hlsLoading.value = false
             return
         }
 
@@ -409,6 +410,11 @@ export function useHLS(
         attachHLS(capturedUrl).catch((err: unknown) => {
             if (thisGen === activationGen) {
                 hlsActivated.value = false
+                // Clear the loading flag here too: attachHLS sets it true before its
+                // own success/error paths clear it, but a throw before those (e.g. Hls
+                // constructor) skips them, leaving the overlay/spinner stuck on for the
+                // whole page visit until unmount.
+                hlsLoading.value = false
                 hlsError.value = 'HLS activation failed'
                 console.error('[hls] activation error:', err)
             }

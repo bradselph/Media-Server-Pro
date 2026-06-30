@@ -1,6 +1,7 @@
 // Package duplicates detects and manages duplicate media items across both local
 // media files and receiver slave catalogs.  It operates independently of the
-// receiver module and can be enabled or disabled via FEATURE_DUPLICATE_DETECTION.
+// receiver module and is toggled via the admin UI (Features.EnableDuplicateDetection
+// in config); the FEATURE_DUPLICATE_DETECTION env var only seeds a fresh install.
 package duplicates
 
 import (

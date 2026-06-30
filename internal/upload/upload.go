@@ -196,7 +196,9 @@ func (m *Module) Health() models.HealthStatus {
 
 // ProcessFileHeader validates and saves a single uploaded file identified by its
 // multipart file header. scope identifies the user and optional category for the upload.
-func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) (*Result, error) {
+// ctx should be the request context so a remote-store write is cancelled when the
+// client disconnects rather than streaming to S3/B2 until it completes on its own.
+func (m *Module) ProcessFileHeader(ctx context.Context, fh *multipart.FileHeader, scope UploadScope) (*Result, error) {
 	prepared, err := m.validateAndPrepareUpload(fh, scope)
 	if err != nil {
 		return nil, err
@@ -254,7 +256,7 @@ func (m *Module) ProcessFileHeader(fh *multipart.FileHeader, scope UploadScope) 
 	if m.store != nil && !m.store.IsLocal() {
 		// Remote backend (S3/B2): stream directly via the storage backend.
 		// No temp-file/rename needed — object writes in S3 are atomic.
-		destPath, remoteRelKey, written, err = m.uploadToRemoteStore(context.Background(), reader, prepared, progress)
+		destPath, remoteRelKey, written, err = m.uploadToRemoteStore(ctx, reader, prepared, progress)
 	} else {
 		// Local filesystem: use the existing temp-file-then-rename pattern.
 		var destFile *os.File

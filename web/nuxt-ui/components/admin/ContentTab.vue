@@ -580,7 +580,7 @@ onUnmounted(() => {
               <template #footer>
                 <UButton :label="autoTagEditTarget ? 'Save' : 'Create'" color="primary" :loading="autoTagSaving"
                          @click="saveAutoTagRule"/>
-                <UButton label="Cancel" variant="ghost" color="neutral" @click="autoTagFormOpen = false"/>
+                <UButton label="Cancel" variant="ghost" color="neutral" @click="() => { autoTagFormOpen = false }"/>
               </template>
             </UModal>
           </div>

@@ -277,7 +277,23 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 
 // AddStorageUsed atomically increments storage_used for a user (avoids read-then-write race).
 func (m *Module) AddStorageUsed(ctx context.Context, userID string, delta int64) error {
-	return m.userRepo.IncrementStorageUsed(ctx, userID, delta)
+	if err := m.userRepo.IncrementStorageUsed(ctx, userID, delta); err != nil {
+		return err
+	}
+	// Keep the in-memory cache in step with the DB. GetUser/GetUserByID short-circuit
+	// on the cache, so without this the upload quota check (which re-reads via GetUser)
+	// would keep seeing the pre-upload total for the process lifetime and let
+	// sequential/concurrent uploads bypass the quota. usersByID and users share the
+	// same *User pointer (see cacheUser), so one update covers both maps.
+	m.usersMu.Lock()
+	if u := m.usersByID[userID]; u != nil {
+		u.StorageUsed += delta
+		if u.StorageUsed < 0 {
+			u.StorageUsed = 0
+		}
+	}
+	m.usersMu.Unlock()
+	return nil
 }
 
 // evictSessionUpdateParams holds arguments for evictSessionsAfterUpdate (reduces function arity).

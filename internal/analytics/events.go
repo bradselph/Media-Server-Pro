@@ -446,8 +446,13 @@ func (m *Module) DeleteEventsByMedia(ctx context.Context, mediaID string) {
 	}
 	if err := m.eventRepo.Create(ctx, &tombstone); err != nil {
 		m.log.Warn("Failed to write tombstone for deleted media %s: %v", mediaID, err)
+	} else {
+		// Only fold the deletion into the in-memory daily stats when the tombstone
+		// it reconstructs from was actually persisted. Otherwise a restart reloads
+		// daily_stats from the DB without the tombstone and the deletions counter
+		// (and view totals) diverge from what's stored.
+		m.updateStats(tombstone, 0, false, false)
 	}
-	m.updateStats(tombstone, 0, false, false)
 
 	if err := m.eventRepo.DeleteByMediaID(ctx, mediaID); err != nil {
 		m.log.Warn("Failed to purge analytics events for deleted media %s: %v", mediaID, err)

@@ -108,14 +108,25 @@ func (m *Module) cleanInactiveJob(entry os.DirEntry, cutoff time.Time) bool {
 	}
 	delete(m.jobs, jobID)
 	delete(m.jobDone, jobID) // clean up closed done channel for completed jobs
+	// Rename the output dir to a .del sibling while still holding jobsMu so a
+	// concurrent GenerateHLS → tryReuseExistingHLSOnDiskLocked (which validates
+	// master.m3u8 at the original path) cannot re-discover and re-register this
+	// directory in the window between Unlock and RemoveAll below — that would
+	// leave a "completed" job pointing at files we are about to delete. Rename is
+	// atomic on the same filesystem; on failure we fall back to removing the
+	// original path (the prior behaviour).
+	path := filepath.Join(m.cacheDir, jobID)
+	delPath := path + ".del"
+	if renErr := os.Rename(path, delPath); renErr != nil {
+		delPath = path
+	}
 	m.jobsMu.Unlock()
 
 	// Files and DB cleanup happen after the map entry is removed. If RemoveAll
 	// fails we log and return false, but the in-memory entry is already gone —
 	// on restart loadJobs will reload from DB and validateExistingHLS will handle
 	// the missing files.
-	path := filepath.Join(m.cacheDir, jobID)
-	if err := os.RemoveAll(path); err != nil {
+	if err := os.RemoveAll(delPath); err != nil {
 		m.log.Warn("Failed to remove inactive HLS job %s: %v", jobID, err)
 		return false
 	}

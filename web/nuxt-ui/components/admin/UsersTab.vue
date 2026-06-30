@@ -331,7 +331,7 @@ onMounted(() => {
                    color="error" @click="bulkAction('delete')"/>
         </template>
       </div>
-      <UButton icon="i-lucide-user-plus" label="Create User" @click="createOpen = true"/>
+      <UButton icon="i-lucide-user-plus" label="Create User" @click="() => { createOpen = true }"/>
     </div>
 
     <!-- Table -->
@@ -401,7 +401,7 @@ onMounted(() => {
             <UButton icon="i-lucide-pencil" aria-label="Edit user" size="xs" variant="ghost" color="neutral"
                      @click="openEdit(row.original)"/>
             <UButton icon="i-lucide-trash-2" aria-label="Delete user" size="xs" variant="ghost" color="error"
-                     @click="deleteUser = row.original"/>
+                     @click="() => { deleteUser = row.original }"/>
           </div>
         </template>
       </UTable>
@@ -435,7 +435,7 @@ onMounted(() => {
         </form>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="createOpen = false"/>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { createOpen = false }"/>
         <UButton :loading="createLoading" label="Create User" @click="handleCreate"/>
       </template>
     </UModal>
@@ -504,7 +504,7 @@ onMounted(() => {
         </div>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="editUser = null"/>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { editUser = null }"/>
         <UButton :loading="editLoading" label="Save Changes" @click="handleSave"/>
       </template>
     </UModal>
@@ -538,7 +538,7 @@ onMounted(() => {
         </ul>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Close" @click="sessionsUser = null"/>
+        <UButton variant="ghost" color="neutral" label="Close" @click="() => { sessionsUser = null }"/>
       </template>
     </UModal>
 
@@ -609,7 +609,7 @@ onMounted(() => {
         </div>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Close" @click="analyticsUser = null"/>
+        <UButton variant="ghost" color="neutral" label="Close" @click="() => { analyticsUser = null }"/>
       </template>
     </UModal>
 
@@ -642,7 +642,7 @@ onMounted(() => {
         </p>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="deleteUser = null"/>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { deleteUser = null }"/>
         <UButton :loading="deleting" color="error" label="Delete" @click="handleDelete"/>
       </template>
     </UModal>

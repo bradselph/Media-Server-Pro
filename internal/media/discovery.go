@@ -734,6 +734,13 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 	if hasMeta {
 		// Copy fields from meta under the lock to avoid reading shared
 		// pointer fields after unlock (concurrent mutations possible).
+		if meta.StableID == "" {
+			// Old DB row predating stable-ID support: mint one and write it back to
+			// the live metadata so saveMetadata persists it. Without this the
+			// fallback below generates a fresh UUID every scan and the remote file
+			// never gets a stable identity (stable_id stays empty in the DB).
+			meta.StableID = uuid.New().String()
+		}
 		item.ID = meta.StableID
 		item.Views = meta.Views
 		item.IsMature = meta.IsMature
@@ -827,6 +834,18 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 					m.metadata[path] = oldMeta
 					delete(m.metadata, oldPath)
 					m.fingerprintIndex[fp] = path
+					// Re-key the live media entry too, so the three indexes stay
+					// consistent for the rest of the scan (until the m.media swap):
+					// otherwise fingerprintIndex points at the new path while
+					// m.media still holds oldPath, making IsFingerprintMature
+					// (fingerprintIndex -> m.media[path]) return false for a mature
+					// item and GetContentFingerprint(oldPath) return "". mediaByID
+					// shares the *MediaItem pointer, so mutating Path is enough.
+					if liveItem, ok := m.media[oldPath]; ok {
+						liveItem.Path = path
+						delete(m.media, oldPath)
+						m.media[path] = liveItem
+					}
 					meta = oldMeta
 					hasMeta = true
 				} else {
@@ -902,12 +921,18 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 		if needsFingerprint {
 			if fp, err := computeContentFingerprint(path); err == nil && fp != "" {
 				m.mu.Lock()
-				// If the fingerprint changed, clean up the old index entry.
-				if meta.ContentFingerprint != "" && meta.ContentFingerprint != fp {
-					delete(m.fingerprintIndex, meta.ContentFingerprint)
+				// Re-fetch under the write lock: a concurrent DeleteMedia may have
+				// removed m.metadata[path] since the RUnlock above, orphaning the
+				// local `meta` pointer. Indexing a deleted path would leave a stale
+				// fingerprintIndex entry pointing at no media (same race the stable-ID
+				// block below already guards against).
+				if liveMeta, ok := m.metadata[path]; ok {
+					if liveMeta.ContentFingerprint != "" && liveMeta.ContentFingerprint != fp {
+						delete(m.fingerprintIndex, liveMeta.ContentFingerprint)
+					}
+					liveMeta.ContentFingerprint = fp
+					m.fingerprintIndex[fp] = path
 				}
-				meta.ContentFingerprint = fp
-				m.fingerprintIndex[fp] = path
 				m.mu.Unlock()
 			} else if err != nil {
 				// Surface re-fingerprint failures: silently leaving the fingerprint
@@ -1504,6 +1529,13 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	}
 
 	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Re-check under the write lock: a concurrent DeleteMedia may have removed the
+	// item since the RLock guard above, and recreating m.metadata[path] here would
+	// leave an orphan entry with no backing m.media item and no StableID.
+	if _, live := m.media[path]; !live {
+		return fmt.Errorf("media not found: %s", path)
+	}
 	meta, exists := m.metadata[path]
 	if !exists {
 		meta = &Metadata{
@@ -1518,6 +1550,34 @@ func (m *Module) IncrementViews(ctx context.Context, path string) error {
 	if item, exists := m.media[path]; exists {
 		item.Views = meta.Views
 		item.LastPlayed = meta.LastPlayed
+	}
+
+	return nil
+}
+
+// UpdateBlurHash persists a freshly computed BlurHash and mirrors it into the
+// in-memory catalog so list/detail endpoints return the LQIP placeholder
+// immediately rather than only after the next full scan. Implements
+// thumbnails.BlurHashUpdater so the thumbnails module updates both the DB and the
+// cache through one call. The DB is written first so the cache never diverges
+// ahead of the persistent store.
+func (m *Module) UpdateBlurHash(ctx context.Context, path, hash string) error {
+	if path == "" || hash == "" {
+		return nil
+	}
+	if m.metadataRepo != nil {
+		if err := m.metadataRepo.UpdateBlurHash(ctx, path, hash); err != nil {
+			m.log.Error("Failed to store BlurHash via repository: %v", err)
+			return err
+		}
+	}
+
+	m.mu.Lock()
+	if meta, exists := m.metadata[path]; exists && meta != nil {
+		meta.BlurHash = hash
+	}
+	if item, exists := m.media[path]; exists && item != nil {
+		item.BlurHash = hash
 	}
 	m.mu.Unlock()
 
@@ -1548,6 +1608,13 @@ func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Re-check under the write lock: a concurrent DeleteMedia may have removed the
+	// item since the RLock guard above, and recreating m.metadata[path] here would
+	// leave an orphan entry with no backing m.media item.
+	if _, live := m.media[path]; !live {
+		return fmt.Errorf("media not found: %s", path)
+	}
 
 	meta, exists := m.metadata[path]
 	if !exists {
@@ -1645,9 +1712,15 @@ func (m *Module) BatchGetPlaybackPositions(ctx context.Context, ids []string, us
 // Called when the user deletes a single watch-history entry so the player
 // does not show a stale resume prompt on the next open.
 func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string) {
-	// Reset to 0 in the repository (avoids adding a new Delete method to the interface)
+	// Reset to 0 in the repository (avoids adding a new Delete method to the
+	// interface). Mirror UpdatePlaybackPosition: if the DB write fails, do NOT
+	// clear the in-memory copy — otherwise the cache shows 0 while the DB keeps
+	// the old position, and the deleted resume prompt reappears after restart.
 	if m.metadataRepo != nil {
-		_ = m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, 0, 0, 0)
+		if err := m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, 0, 0, 0); err != nil {
+			m.log.Warn("Failed to clear playback position for %s user %s: %v", path, userID, err)
+			return
+		}
 	}
 
 	// Remove from in-memory cache so the fallback path also returns 0

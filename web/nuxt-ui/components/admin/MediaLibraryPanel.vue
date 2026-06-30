@@ -18,6 +18,25 @@ async function loadThumbStats() {
   }
 }
 
+const cleaningThumbs = ref(false)
+
+// Manually run the thumbnail cleanup (orphans / excess previews / corrupt
+// 0-byte files). The backend route existed but had no UI trigger.
+async function cleanupThumbs() {
+  cleaningThumbs.value = true
+  try {
+    const res = await adminApi.cleanupThumbnails()
+    notifySuccess(
+        `Cleanup done — ${res.orphans_removed} orphan(s), ${res.corrupt_removed} corrupt, ${res.excess_removed} excess removed`,
+    )
+    await loadThumbStats()
+  } catch (e: unknown) {
+    notifyError(e, 'Thumbnail cleanup failed')
+  } finally {
+    cleaningThumbs.value = false
+  }
+}
+
 const items = ref<MediaItem[]>([])
 const loading = ref(true)
 const scanning = ref(false)
@@ -334,20 +353,27 @@ async function handleScan() {
   try {
     await adminApi.scanMedia()
     notifySuccess('Media scan started')
-    // The scan runs in the background; poll the list so the indicator reflects
-    // real progress and auto-clears (newly-scanned items appear) when it ends.
-    // Bounded + silent so a transient error can't spin forever or spam toasts.
-    stopScanPoll()
-    scanPolls = 0
-    scanPollTimer = setInterval(async () => {
-      scanPolls++
-      await loadInternal(true)
-      if (!scanning.value || scanPolls >= MAX_SCAN_POLLS) stopScanPoll()
-    }, 3000)
   } catch (e: unknown) {
-    scanning.value = false
-    notifyError(e, 'Scan failed')
+    // 409 = a scan is already running; that is not a failure. Show an accurate
+    // message and still poll so the indicator tracks the in-progress scan.
+    if ((e as { status?: number })?.status === 409) {
+      notifySuccess('A scan is already in progress')
+    } else {
+      scanning.value = false
+      notifyError(e, 'Scan failed')
+      return
+    }
   }
+  // The scan runs in the background; poll the list so the indicator reflects
+  // real progress and auto-clears (newly-scanned items appear) when it ends.
+  // Bounded + silent so a transient error can't spin forever or spam toasts.
+  stopScanPoll()
+  scanPolls = 0
+  scanPollTimer = setInterval(async () => {
+    scanPolls++
+    await loadInternal(true)
+    if (!scanning.value || scanPolls >= MAX_SCAN_POLLS) stopScanPoll()
+  }, 3000)
 }
 
 // Per-row loading guards to prevent duplicate operations
@@ -456,7 +482,20 @@ onUnmounted(() => {
 <template>
   <div class="space-y-4">
     <!-- Thumbnail stats -->
-    <div v-if="thumbStats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div v-if="thumbStats" class="space-y-2">
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-muted">Thumbnails</h3>
+        <UButton
+            icon="i-lucide-eraser"
+            label="Clean Thumbnails"
+            size="xs"
+            variant="outline"
+            color="neutral"
+            :loading="cleaningThumbs"
+            @click="cleanupThumbs"
+        />
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <UCard :ui="{ body: 'p-3' }">
         <p class="text-xl font-bold text-highlighted">{{ thumbStats.total_thumbnails.toLocaleString() }}</p>
         <p class="text-xs text-muted">Thumbnails</p>
@@ -475,6 +514,7 @@ onUnmounted(() => {
           {{ thumbStats.generation_errors.toLocaleString() }}</p>
         <p class="text-xs text-muted">Generation Errors</p>
       </UCard>
+      </div>
     </div>
 
     <!-- Toolbar -->
@@ -569,7 +609,7 @@ onUnmounted(() => {
           size="xs"
           variant="ghost"
           color="neutral"
-          @click="selectedIds = new Set()"
+          @click="() => { selectedIds = new Set() }"
       />
     </div>
 
@@ -708,7 +748,7 @@ onUnmounted(() => {
         <p>Are you sure you want to delete this media item? This action cannot be undone.</p>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Cancel" @click="confirmDeleteId = null"/>
+        <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { confirmDeleteId = null }"/>
         <UButton color="error" label="Delete" :loading="!!confirmDeleteId && rowBusy.has(`del-${confirmDeleteId}`)"
                  @click="executeDelete"/>
       </template>
@@ -797,7 +837,7 @@ onUnmounted(() => {
       </template>
       <template #footer>
         <UButton label="Save" :loading="editSaving" color="primary" @click="saveEdit"/>
-        <UButton label="Cancel" variant="ghost" color="neutral" @click="editOpen = false"/>
+        <UButton label="Cancel" variant="ghost" color="neutral" @click="() => { editOpen = false }"/>
       </template>
     </UModal>
 
@@ -808,7 +848,7 @@ onUnmounted(() => {
           <div class="flex items-center justify-between">
             <h3 class="font-semibold text-highlighted">Chapters:
               {{ chaptersTarget?.name ? getDisplayTitle(chaptersTarget) : 'Loading' }}</h3>
-            <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="chaptersOpen = false"/>
+            <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" @click="() => { chaptersOpen = false }"/>
           </div>
         </template>
 

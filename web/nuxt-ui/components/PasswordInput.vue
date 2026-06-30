@@ -59,7 +59,7 @@ const inputType = computed(() => (visible.value ? 'text' : 'password'))
         color="neutral"
         tabindex="-1"
         class="absolute right-1.5 top-1/2 -translate-y-1/2"
-        @click="visible = !visible"
+        @click="() => { visible = !visible }"
     />
   </div>
 </template>

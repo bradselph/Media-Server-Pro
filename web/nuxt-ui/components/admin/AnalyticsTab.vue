@@ -907,7 +907,7 @@ const hasTrafficActivity = computed(() =>
               :variant="period === p.value ? 'solid' : 'outline'"
               :color="period === p.value ? 'primary' : 'neutral'"
               size="xs"
-              @click="period = p.value"
+              @click="() => { period = p.value }"
           />
         </UButtonGroup>
         <UButton
@@ -1010,7 +1010,7 @@ const hasTrafficActivity = computed(() =>
           color="neutral"
           icon="i-lucide-x"
           label="Clear"
-          @click="eventTypeFilter = ''"
+          @click="() => { eventTypeFilter = '' }"
       />
       <span class="text-xs text-muted">Chart range:</span>
       <UButtonGroup>
@@ -1021,7 +1021,7 @@ const hasTrafficActivity = computed(() =>
             size="xs"
             :variant="timelineDays === d ? 'solid' : 'outline'"
             :color="timelineDays === d ? 'primary' : 'neutral'"
-            @click="timelineDays = d"
+            @click="() => { timelineDays = d }"
         />
       </UButtonGroup>
     </div>
@@ -1775,7 +1775,7 @@ const hasTrafficActivity = computed(() =>
                     size="xs"
                     :variant="topUserMetric === m.value ? 'solid' : 'outline'"
                     :color="topUserMetric === m.value ? 'primary' : 'neutral'"
-                    @click="topUserMetric = m.value as typeof topUserMetric"
+                    @click="() => { topUserMetric = m.value as typeof topUserMetric }"
                 />
               </UButtonGroup>
             </div>
@@ -1988,8 +1988,8 @@ const hasTrafficActivity = computed(() =>
       </div>
       <div v-else class="divide-y divide-default max-h-72 overflow-y-auto">
         <div
-            v-for="(ev, i) in liveTail"
-            :key="`${ev.id}-${i}`"
+            v-for="ev in liveTail"
+            :key="ev.id"
             class="py-1.5 flex items-start gap-3 text-sm cursor-pointer hover:bg-muted/10 rounded px-1"
             @click="openEventDetail(ev)"
         >
@@ -2185,7 +2185,7 @@ const hasTrafficActivity = computed(() =>
                 <UIcon name="i-lucide-bar-chart-3" class="size-4"/>
                 Media Analytics
               </div>
-              <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-x" @click="mediaDetailOpen = false"/>
+              <UButton size="xs" variant="ghost" color="neutral" icon="i-lucide-x" @click="() => { mediaDetailOpen = false }"/>
             </div>
           </template>
           <div class="space-y-4">
@@ -2314,7 +2314,7 @@ const hasTrafficActivity = computed(() =>
                 variant="ghost"
                 color="neutral"
                 icon="i-lucide-x"
-                @click="drillDateFilter = ''"
+                @click="() => { drillDateFilter = '' }"
             />
           </div>
         </div>
@@ -2559,7 +2559,7 @@ const hasTrafficActivity = computed(() =>
             </div>
           </div>
           <template #footer>
-            <UButton variant="ghost" color="neutral" label="Close" @click="eventDetail = null"/>
+            <UButton variant="ghost" color="neutral" label="Close" @click="() => { eventDetail = null }"/>
           </template>
         </UCard>
       </template>
@@ -2620,7 +2620,7 @@ const hasTrafficActivity = computed(() =>
           </div>
           <template #footer>
             <div class="flex justify-end gap-2">
-              <UButton variant="ghost" color="neutral" label="Cancel" @click="alertsEditOpen = false"/>
+              <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { alertsEditOpen = false }"/>
               <UButton color="primary" :label="alertEdit.id ? 'Save' : 'Create'" @click="addOrUpdateAlertRule"/>
             </div>
           </template>

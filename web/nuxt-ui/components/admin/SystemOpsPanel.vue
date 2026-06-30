@@ -291,7 +291,7 @@ onUnmounted(() => {
             :variant="autoRefreshLogs ? 'solid' : 'outline'"
             :color="autoRefreshLogs ? 'primary' : 'neutral'"
             size="sm"
-            @click="autoRefreshLogs = !autoRefreshLogs"
+            @click="() => { autoRefreshLogs = !autoRefreshLogs }"
         />
       </div>
       <div v-if="logsLoading" class="flex justify-center py-4">

@@ -69,8 +69,9 @@ var (
 )
 
 // Module handles auto-discovery and naming suggestions. Suggestions are persisted
-// to a JSON file (loaded on Start, saved after each mutation) so they survive
-// server restarts. A background scan task can be registered in cmd/server/main.go.
+// to MySQL via AutoDiscoverySuggestionRepository (loaded on Start, saved after each
+// mutation) so they survive server restarts. A background scan task can be
+// registered in cmd/server/main.go.
 type Module struct {
 	config      *config.Manager
 	log         *logger.Logger

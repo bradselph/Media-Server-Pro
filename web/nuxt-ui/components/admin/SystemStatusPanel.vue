@@ -137,7 +137,7 @@ onMounted(loadStatus)
         </div>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Close" @click="moduleDetail = null"/>
+        <UButton variant="ghost" color="neutral" label="Close" @click="() => { moduleDetail = null }"/>
       </template>
     </UModal>
   </div>

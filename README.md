@@ -31,7 +31,9 @@ appear as one to users, with the master proxying byte streams from the slave on 
 
 - Admin-curated **Categories** — named, ordered groupings of media. This is the single category concept: categories are
   browsable at `/categories`, selectable as a library-grid filter, surfaced as a "Top categories" strip, and used to
-  personalize recommendations. (The old auto path-detected category buckets have been retired.)
+  personalize recommendations. A category can optionally be **tag-backed**: assign it a tag and every media item carrying
+  that tag joins automatically as a live member, merged with any explicitly-added items. (The old auto path-detected
+  category buckets have been retired.)
 - Tag-cloud browse (`/browse`) with AND/OR multi-select, plus search with type / category / minimum-rating filters.
 - Personalized recommendation rows — Continue Watching, Trending, Recommended For You — scored from each user's view
   history and curated-category affinity.
@@ -64,6 +66,9 @@ appear as one to users, with the master proxying byte streams from the slave on 
 **Operability**
 
 - Single static binary, no CGO required.
+- CPU-aware worker auto-scaling — HLS transcode concurrency and the thumbnail worker pool default to auto (`0`), sizing
+  themselves from usable CPUs at runtime (cgroup-quota aware): HLS scales to ~CPUs/4 (clamped 2–8), thumbnails to
+  ~1-per-CPU (clamped 4–16). Set `HLS_CONCURRENT_LIMIT` / `THUMBNAILS_WORKER_COUNT` to a positive value to pin either.
 - Embedded Nuxt SPA — the server serves UI and API from one process.
 - `/health` endpoint for systemd / nginx upstream / uptime monitors.
 - `/metrics` (admin-protected) for Prometheus scraping.
@@ -192,14 +197,14 @@ the most common cause of "admin login fails" reports. `setup.sh` quotes automati
 
 | Var                                                                                                          | Default       | Purpose                                                                  |
 |--------------------------------------------------------------------------------------------------------------|---------------|--------------------------------------------------------------------------|
-| `AUTH_ALLOW_REGISTRATION`                                                                                    | `false`       | Public self-registration                                                 |
-| `AUTH_ALLOW_GUESTS`                                                                                          | `false`       | Anonymous browsing without login                                         |
+| `AUTH_ALLOW_REGISTRATION`                                                                                    | `true`        | Public self-registration                                                 |
+| `AUTH_ALLOW_GUESTS`                                                                                          | `true`        | Anonymous browsing without login                                         |
 | `RECEIVER_ENABLED` / `RECEIVER_API_KEYS`                                                                     | off           | Accept federated peers (slave catalog ingest)                            |
 | `FOLLOWER_MASTER_URL` / `FOLLOWER_API_KEY`                                                                   | off           | This server pushes its catalog to a peer                                 |
 | `FEATURE_HUGGINGFACE` / `HUGGINGFACE_API_KEY`                                                                | off           | Visual mature-content classifier                                         |
 | `STORAGE_BACKEND` (`local`/`s3`) + `S3_ENDPOINT` / `S3_BUCKET` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | `local`       | Object-storage backend                                                   |
 | `HSTS_ENABLED`, `CSP_ENABLED`                                                                                | mixed         | HTTP security headers                                                    |
-| `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`                                     | off, 1000/60s | Per-IP rate limit                                                        |
+| `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`                                     | on, 300/60s   | Per-IP rate limit                                                        |
 | `NUXT_PUBLIC_GA_ID`                                                                                          | empty         | Google Analytics 4 measurement id (baked into the bundle by `deploy.sh`) |
 
 The full matrix lives in `internal/config/env_overrides_*.go` (one file per concern: auth, hls, security, database,
@@ -244,7 +249,7 @@ internal/
   auth/ admin/         # session and admin authentication
   config/              # layered config: defaults → config.json → env overrides
   database/            # GORM init, migrations
-  media/ streaming/    # library, range requests, content fingerprinting
+  media/ streaming/    # library + local-disk scan, range requests, content fingerprinting
   hls/                 # adaptive ladder, segment cache
   thumbnails/          # ffmpeg pipeline, cleanup, orphan removal
   analytics/           # event tracking, daily stats
@@ -254,7 +259,7 @@ internal/
   remote/              # remote media proxy / cache
   extractor/           # external URL HLS proxy
   crawler/             # external library discovery
-  scanner/             # local-disk media discovery
+  scanner/             # mature-content classifier (ffmpeg image/video scoring)
   suggestions/         # personalized recommendations + curated-category scoring
   repositories/        # GORM-backed persistence (media metadata, categories, profiles)
   ...

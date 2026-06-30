@@ -605,7 +605,7 @@ onMounted(() => {
                 :label="`Delete (${selectedIds.size})`"
                 color="error"
                 size="sm"
-                @click="bulkDeleteOpen = true"
+                @click="() => { bulkDeleteOpen = true }"
             />
             <UButton
                 icon="i-lucide-x"
@@ -623,13 +623,13 @@ onMounted(() => {
               variant="ghost"
               color="neutral"
               size="sm"
-              @click="selectMode = true"
+              @click="() => { selectMode = true }"
           />
           <UButton
               v-if="!selectMode && authStore.user.permissions?.can_create_playlists !== false"
               icon="i-lucide-plus"
               label="New Playlist"
-              @click="createOpen = true"
+              @click="() => { createOpen = true }"
           />
         </div>
       </div>
@@ -642,7 +642,7 @@ onMounted(() => {
             variant="ghost"
             color="neutral"
             size="sm"
-            @click="activePlaylist = null"
+            @click="() => { activePlaylist = null }"
         />
         <UCard>
           <template #header>
@@ -792,7 +792,7 @@ onMounted(() => {
                 <UButton icon="i-lucide-copy" aria-label="Duplicate playlist" size="xs" variant="ghost" color="neutral"
                          :loading="copyingPersonalId === pl.id" @click.stop="copyPlaylist(pl)"/>
                 <UButton icon="i-lucide-trash-2" aria-label="Delete playlist" size="xs" variant="ghost" color="error"
-                         @click.stop="deleteTarget = pl"/>
+                         @click.stop="() => { deleteTarget = pl }"/>
               </div>
             </div>
           </UCard>
@@ -810,7 +810,7 @@ onMounted(() => {
               v-if="authStore.user.permissions?.can_create_playlists !== false && !selectMode"
               icon="i-lucide-plus"
               label="New Smart Playlist"
-              @click="spCreateOpen = true"
+              @click="() => { spCreateOpen = true }"
           />
         </div>
 
@@ -857,7 +857,7 @@ onMounted(() => {
                       size="xs"
                       variant="ghost"
                       color="error"
-                      @click="spDeleteTarget = sp"
+                      @click="() => { spDeleteTarget = sp }"
                   />
                 </div>
               </div>
@@ -883,7 +883,7 @@ onMounted(() => {
           </div>
         </template>
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="createOpen = false"/>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { createOpen = false }"/>
           <UButton :loading="creating" label="Create" :disabled="!newName.trim()" @click="createPlaylist"/>
         </template>
       </UModal>
@@ -905,7 +905,7 @@ onMounted(() => {
           </div>
         </template>
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="editOpen = false"/>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { editOpen = false }"/>
           <UButton :loading="editSaving" label="Save" :disabled="!editName.trim()" @click="saveEdit"/>
         </template>
       </UModal>
@@ -914,7 +914,7 @@ onMounted(() => {
       <UModal v-model:open="deleteOpen" title="Delete Playlist"
               description="This will permanently delete the playlist and all its items.">
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="deleteTarget = null"/>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { deleteTarget = null }"/>
           <UButton :loading="deleting" color="error" label="Delete" @click="confirmDelete"/>
         </template>
       </UModal>
@@ -926,7 +926,7 @@ onMounted(() => {
           :description="`Permanently delete ${selectedIds.size} playlist(s) and all their items?`"
       >
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="bulkDeleteOpen = false"/>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { bulkDeleteOpen = false }"/>
           <UButton :loading="bulkDeleting" color="error" :label="`Delete ${selectedIds.size}`"
                    @click="confirmBulkDelete"/>
         </template>
@@ -989,7 +989,7 @@ onMounted(() => {
                         size="xs"
                         variant="ghost"
                         color="error"
-                        @click="spNewRules.conditions = spNewRules.conditions.filter((_, i) => i !== idx)"
+                        @click="() => { spNewRules.conditions = spNewRules.conditions.filter((_, i) => i !== idx) }"
                     />
                   </div>
                   <UButton
@@ -998,7 +998,7 @@ onMounted(() => {
                       variant="outline"
                       color="neutral"
                       size="sm"
-                      @click="spNewRules.conditions.push(withCondKey({ field: 'type', op: 'eq', value: '' }))"
+                      @click="() => { spNewRules.conditions.push(withCondKey({ field: 'type', op: 'eq', value: '' })) }"
                   />
                 </div>
                 <div class="flex items-center gap-2 pt-2">
@@ -1031,7 +1031,7 @@ onMounted(() => {
           </div>
         </template>
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="spCreateOpen = false"/>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { spCreateOpen = false }"/>
           <UButton :loading="spCreating" label="Create" :disabled="!spNewName.trim()" @click="createSmartPlaylist"/>
         </template>
       </UModal>
@@ -1093,7 +1093,7 @@ onMounted(() => {
                         size="xs"
                         variant="ghost"
                         color="error"
-                        @click="spEditRules.conditions = spEditRules.conditions.filter((_, i) => i !== idx)"
+                        @click="() => { spEditRules.conditions = spEditRules.conditions.filter((_, i) => i !== idx) }"
                     />
                   </div>
                   <UButton
@@ -1102,7 +1102,7 @@ onMounted(() => {
                       variant="outline"
                       color="neutral"
                       size="sm"
-                      @click="spEditRules.conditions.push(withCondKey({ field: 'type', op: 'eq', value: '' }))"
+                      @click="() => { spEditRules.conditions.push(withCondKey({ field: 'type', op: 'eq', value: '' })) }"
                   />
                 </div>
                 <div class="flex items-center gap-2 pt-2">
@@ -1135,7 +1135,7 @@ onMounted(() => {
           </div>
         </template>
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="spEditOpen = false"/>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { spEditOpen = false }"/>
           <UButton :loading="spEditSaving" label="Save" :disabled="!spEditName.trim()" @click="saveEditSmart"/>
         </template>
       </UModal>
@@ -1144,7 +1144,7 @@ onMounted(() => {
       <UModal v-model:open="spDeleteOpen" title="Delete Smart Playlist"
               description="This smart playlist will be permanently deleted.">
         <template #footer>
-          <UButton variant="ghost" color="neutral" label="Cancel" @click="spDeleteTarget = null"/>
+          <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { spDeleteTarget = null }"/>
           <UButton :loading="spDeleting" color="error" label="Delete" @click="confirmDeleteSmart"/>
         </template>
       </UModal>

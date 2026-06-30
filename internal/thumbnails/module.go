@@ -28,6 +28,14 @@ func (m *Module) SetMediaInputResolver(r MediaInputResolver) {
 	m.mediaInputResolver = r
 }
 
+// SetBlurHashUpdater injects the BlurHash sink. The media module implements this
+// so a generated BlurHash lands in both the DB and the in-memory catalog at once;
+// without it, Start() falls back to a DB-only updater and the cache stays stale
+// until the next scan. Must be called before Start().
+func (m *Module) SetBlurHashUpdater(u BlurHashUpdater) {
+	m.blurHashUpdater = u
+}
+
 // Name returns the module name
 func (m *Module) Name() string {
 	return "thumbnails"
@@ -83,8 +91,11 @@ func (m *Module) Start(ctx context.Context) error {
 	// Scan existing thumbnails to initialize stats from disk
 	m.scanExistingThumbnails()
 
-	// Wire BlurHash storage now that the database module has started and GORM is valid.
-	if m.dbModule != nil && m.dbModule.IsConnected() {
+	// Wire BlurHash storage now that the database module has started and GORM is
+	// valid. Only the DB-only fallback is installed here; if a richer updater was
+	// injected via SetBlurHashUpdater (the media module, which also syncs the
+	// in-memory catalog) keep it.
+	if m.blurHashUpdater == nil && m.dbModule != nil && m.dbModule.IsConnected() {
 		if db := m.dbModule.GORM(); db != nil {
 			m.blurHashUpdater = mysql.NewMediaMetadataRepository(db)
 		}

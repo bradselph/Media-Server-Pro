@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -154,7 +155,7 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 
 	category := c.Request.FormValue("category")
 
-	uploaded, uploadErrors, totalAdded, uploadedPaths, postProcess := h.processUploadFiles(fileHeaders, session, category)
+	uploaded, uploadErrors, totalAdded, uploadedPaths, postProcess := h.processUploadFiles(c.Request.Context(), fileHeaders, session, category)
 
 	// Post-upload quota check using actual bytes written.
 	// Skipped for anonymous uploads (user == nil) and the admin account.
@@ -261,7 +262,7 @@ type postEntry struct {
 // processUploadFiles runs the upload pipeline on each file header and collects
 // the outcomes: successful uploads, per-file errors, total bytes written, every
 // physically written path (for quota rollback), and post-processing entries.
-func (h *Handler) processUploadFiles(fileHeaders []*multipart.FileHeader, session *models.Session, category string) (uploaded []uploadedEntry, uploadErrors []errorEntry, totalAdded int64, uploadedPaths []string, postProcess []postEntry) {
+func (h *Handler) processUploadFiles(ctx context.Context, fileHeaders []*multipart.FileHeader, session *models.Session, category string) (uploaded []uploadedEntry, uploadErrors []errorEntry, totalAdded int64, uploadedPaths []string, postProcess []postEntry) {
 	uploaded = make([]uploadedEntry, 0, len(fileHeaders))
 	uploadErrors = make([]errorEntry, 0)
 	// uploadedPaths tracks every path that was physically written (local or remote)
@@ -271,7 +272,7 @@ func (h *Handler) processUploadFiles(fileHeaders []*multipart.FileHeader, sessio
 		if session != nil {
 			userID = session.UserID
 		}
-		result, err := h.upload.ProcessFileHeader(fh, upload.UploadScope{UserID: userID, Category: category})
+		result, err := h.upload.ProcessFileHeader(ctx, fh, upload.UploadScope{UserID: userID, Category: category})
 		if err != nil {
 			h.log.Error("Upload failed for %s: %v", fh.Filename, err)
 			uploadErrors = append(uploadErrors, errorEntry{Filename: fh.Filename, Error: userUploadError(err)})

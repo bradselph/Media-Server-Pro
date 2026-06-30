@@ -307,7 +307,12 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 						m.log.Error("WS catalog push panicked for %s: %v", catalogSlaveID, r)
 					}
 				}()
-				count, err := m.PushCatalog(&CatalogPushRequest{
+				// Bound the catalog write so an in-flight push doesn't outlive the
+				// connection unboundedly when the DB is slow — this goroutine is not
+				// otherwise tied to the connection lifetime.
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				count, err := m.PushCatalog(ctx, &CatalogPushRequest{
 					SlaveID: catalogSlaveID,
 					Items:   catalogItems,
 					Full:    catalogFull,

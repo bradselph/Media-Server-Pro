@@ -78,7 +78,7 @@ const GLOBAL_SHORTCUTS = [
     <template #footer>
       <p class="text-xs text-muted">Press <kbd class="font-mono bg-muted rounded px-1 py-0.5 text-xs">?</kbd> anywhere
         to toggle this modal.</p>
-      <UButton label="Close" variant="ghost" color="neutral" class="ml-auto" @click="open = false"/>
+      <UButton label="Close" variant="ghost" color="neutral" class="ml-auto" @click="() => { open = false }"/>
     </template>
   </UModal>
 </template>

@@ -12,13 +12,22 @@ const loading = ref(false)
 const scanning = ref(false)
 const statusFilter = ref<'pending' | 'all'>('pending')
 const resolvingId = ref<string | null>(null)
+const featureDisabled = ref(false)
 
 async function load() {
   loading.value = true
+  featureDisabled.value = false
   try {
     duplicates.value = (await adminApi.listDuplicates(statusFilter.value)) ?? []
   } catch (e: unknown) {
-    notifyError(e, 'Failed to load duplicates', 'i-lucide-alert-circle')
+    // A 503 (module not initialised) or 404 (feature flag off) means duplicate
+    // detection is disabled — surface that explicitly instead of falling through
+    // to the green "no duplicates" state, which looks identical to "all clear".
+    if (e instanceof ApiError && (e.status === 503 || e.status === 404)) {
+      featureDisabled.value = true
+    } else {
+      notifyError(e, 'Failed to load duplicates', 'i-lucide-alert-circle')
+    }
   } finally {
     loading.value = false
   }
@@ -114,8 +123,18 @@ const STATUS_COLORS: Record<string, BadgeColor> = {
       </div>
     </div>
 
+    <!-- Feature disabled -->
+    <UAlert
+        v-if="featureDisabled"
+        icon="i-lucide-toggle-left"
+        color="warning"
+        variant="soft"
+        title="Duplicate Detection Disabled"
+        description="Turn on Duplicate Detection in Admin → Settings to scan for and review content-fingerprint duplicates."
+    />
+
     <!-- Loading -->
-    <div v-if="loading" class="flex justify-center py-12">
+    <div v-else-if="loading" class="flex justify-center py-12">
       <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-primary"/>
     </div>
 

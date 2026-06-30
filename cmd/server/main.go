@@ -56,7 +56,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.19.1"
+	Version   = "1.19.12"
 	BuildDate = "dev"
 )
 
@@ -329,7 +329,8 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 		setupHFClient(hfCfg, m.scanner, log)
 	}
 
-	// Thumbnails (critical — BlurHash repo is wired inside Start() after DB connects)
+	// Thumbnails (critical — BlurHash sink injected below; Start() falls back to a
+	// DB-only updater if none is set)
 	m.thumbnails = thumbnails.NewModule(cfg, m.database)
 	if m.thumbnails == nil {
 		fatalExit(log, "Failed to create thumbnails module")
@@ -337,6 +338,9 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	m.thumbnails.SetMediaIDProvider(m.media)
 	m.thumbnails.SetStore(stores.thumbnails)
 	m.thumbnails.SetMediaInputResolver(m.media)
+	// Route generated BlurHashes through the media module so they land in the
+	// in-memory catalog immediately, not just the DB (which only reloads on scan).
+	m.thumbnails.SetBlurHashUpdater(m.media)
 	m.media.SetThumbnailQueuer(m.thumbnails)
 	mustRegister(srv, m.thumbnails)
 

@@ -197,12 +197,23 @@ type SegmentParams struct {
 	Segment string
 }
 
-// ServeSegment serves an HLS segment. Path traversal is prevented by validating
-// that the resolved segment path lies under job.OutputDir via filepath.Rel.
+// ServeSegment serves an HLS segment. Path traversal is prevented by rejecting
+// ".." / slash components in the path parameters and then confirming the resolved
+// segment path stays under the quality directory via strings.HasPrefix.
 func (m *Module) ServeSegment(w http.ResponseWriter, r *http.Request, p SegmentParams) error {
 	job, err := m.GetJobStatus(p.JobID)
 	if err != nil {
 		return err
+	}
+
+	// Reject traversal components before joining: a single ".." in :quality
+	// collapses job.OutputDir to the cache root and would defeat the prefix
+	// check below (mirrors the guard in ensureVariantPlaylistExists).
+	if strings.Contains(p.Quality, "..") || strings.ContainsAny(p.Quality, "/\\") {
+		return fmt.Errorf("invalid quality value: %q", p.Quality)
+	}
+	if strings.Contains(p.Segment, "..") || strings.ContainsAny(p.Segment, "/\\") {
+		return fmt.Errorf("invalid segment name: %q", p.Segment)
 	}
 
 	segmentPath := filepath.Join(job.OutputDir, p.Quality, p.Segment)

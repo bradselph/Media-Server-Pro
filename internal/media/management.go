@@ -218,20 +218,23 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 
 	m.log.Info("Renamed media: %s -> %s", oldPath, newPath)
 
+	// Upsert the new path row FIRST so a failure here leaves the old row intact —
+	// otherwise a delete-then-failed-insert loses every user-assigned tag,
+	// is_mature flag and custom field (newPath would be re-scanned as a fresh
+	// item on restart). Only once the new row is safely persisted do we delete
+	// the old one; a delete failure then leaves a benign ghost row that the
+	// in-memory m.media guard filters out of listings until the next scan prunes it.
+	if err := m.saveMetadataItem(newPath); err != nil {
+		m.log.Error("Failed to save metadata after rename of %s to %s: %v", oldPath, newPath, err)
+	}
+
 	// Delete the old DB row so the ghost does not re-appear after a restart.
-	// Best-effort: a failure leaves a stale row but does not affect in-memory state.
 	if m.metadataRepo != nil {
 		dbCtx, dbCancel := context.WithTimeout(context.Background(), 8*time.Second)
 		if err := m.metadataRepo.Delete(dbCtx, oldPath); err != nil {
 			m.log.Warn("Failed to delete old metadata row after rename of %s: %v", oldPath, err)
 		}
 		dbCancel()
-	}
-
-	// Upsert the new path row. Non-fatal: the file is at newPath and the
-	// in-memory index is correct. The DB will be reconciled on next scan.
-	if err := m.saveMetadataItem(newPath); err != nil {
-		m.log.Error("Failed to save metadata after rename of %s to %s: %v", oldPath, newPath, err)
 	}
 
 	return newPath, nil
@@ -267,6 +270,12 @@ func (m *Module) ReindexMovedFile(oldPath, newPath string) {
 
 	m.log.Info("Reindexed moved media: %s -> %s", oldPath, newPath)
 
+	// Upsert the new path row FIRST (see RenameMedia): a failed insert after the
+	// old row was already deleted would lose all metadata for the moved file.
+	if err := m.saveMetadataItem(newPath); err != nil {
+		m.log.Error("Failed to save metadata after move of %s to %s: %v", oldPath, newPath, err)
+	}
+
 	// Delete the old DB row so the ghost does not re-appear after a restart.
 	if m.metadataRepo != nil {
 		dbCtx, dbCancel := context.WithTimeout(context.Background(), 8*time.Second)
@@ -274,11 +283,6 @@ func (m *Module) ReindexMovedFile(oldPath, newPath string) {
 			m.log.Warn("Failed to delete old metadata row after move of %s: %v", oldPath, err)
 		}
 		dbCancel()
-	}
-
-	// Upsert the new path row. Non-fatal: the DB reconciles on the next scan.
-	if err := m.saveMetadataItem(newPath); err != nil {
-		m.log.Error("Failed to save metadata after move of %s to %s: %v", oldPath, newPath, err)
 	}
 }
 
@@ -371,20 +375,19 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 
 	m.log.Info("Moved media: %s -> %s", oldPath, newPath)
 
+	// Upsert the new path row FIRST (see RenameMedia): a failed insert after the
+	// old row was already deleted would lose all metadata for the moved file.
+	if err := m.saveMetadataItem(newPath); err != nil {
+		m.log.Error("Failed to save metadata after move of %s to %s: %v", oldPath, newPath, err)
+	}
+
 	// Delete the old DB row so the ghost does not re-appear after a restart.
-	// Best-effort: a failure leaves a stale row but does not affect in-memory state.
 	if m.metadataRepo != nil {
 		dbCtx, dbCancel := context.WithTimeout(context.Background(), 8*time.Second)
 		if err := m.metadataRepo.Delete(dbCtx, oldPath); err != nil {
 			m.log.Warn("Failed to delete old metadata row after move of %s: %v", oldPath, err)
 		}
 		dbCancel()
-	}
-
-	// Upsert the new path row. Non-fatal: the file is at newPath and the
-	// in-memory index is correct. The DB will be reconciled on next scan.
-	if err := m.saveMetadataItem(newPath); err != nil {
-		m.log.Error("Failed to save metadata after move of %s to %s: %v", oldPath, newPath, err)
 	}
 
 	return newPath, nil

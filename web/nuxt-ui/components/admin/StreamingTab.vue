@@ -376,9 +376,9 @@ onUnmounted(() => {
         <p class="text-xs text-muted">{{ jobs.length }} jobs · Page {{ jobsPage }}/{{ jobsTotalPages }}</p>
         <div class="flex gap-1">
           <UButton icon="i-lucide-chevron-left" size="xs" variant="ghost" color="neutral" :disabled="jobsPage <= 1"
-                   @click="jobsPage--"/>
+                   @click="() => { jobsPage-- }"/>
           <UButton icon="i-lucide-chevron-right" size="xs" variant="ghost" color="neutral"
-                   :disabled="jobsPage >= jobsTotalPages" @click="jobsPage++"/>
+                   :disabled="jobsPage >= jobsTotalPages" @click="() => { jobsPage++ }"/>
         </div>
       </div>
     </UCard>
@@ -396,7 +396,7 @@ onUnmounted(() => {
               validationResult.variant_count
             }} variant(s), {{ validationResult.segment_count }} segment(s)</span>
           <UButton icon="i-lucide-x" size="xs" variant="ghost" color="neutral" class="ml-auto"
-                   @click="validationResult = null"/>
+                   @click="() => { validationResult = null }"/>
         </div>
       </template>
       <p class="font-mono text-xs text-muted">{{ validationResult.job_id }}</p>

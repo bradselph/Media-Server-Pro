@@ -44,7 +44,7 @@ func (h *Handler) trackDownloadCompleted(c *gin.Context, session *models.Session
 
 // ListMedia returns all media items
 func (h *Handler) ListMedia(c *gin.Context) {
-	c.Header("Cache-Control", "private, max-age=300")
+	c.Header(headerCacheControl, "private, max-age=300")
 
 	sortBy := c.Query("sort")
 	if sortBy == "date" {
@@ -328,17 +328,9 @@ func (h *Handler) userRatingsByPath(c *gin.Context) map[string]float64 {
 	if session == nil || h.suggestions == nil {
 		return nil
 	}
-	profile := h.suggestions.GetUserProfile(session.UserID)
-	if profile == nil {
-		return nil
-	}
-	ratings := make(map[string]float64, len(profile.ViewHistory))
-	for _, vh := range profile.ViewHistory {
-		if vh.Rating > 0 && vh.MediaPath != "" {
-			ratings[vh.MediaPath] = vh.Rating
-		}
-	}
-	return ratings
+	// Use the targeted ratings lookup rather than GetUserProfile, which deep-copies
+	// the whole profile on every authenticated listing request just for ratings.
+	return h.suggestions.GetUserRatingsByPath(session.UserID)
 }
 
 // trackMediaSearch records a search traffic event (non-empty queries only) with
@@ -593,7 +585,10 @@ func (h *Handler) refreshSuggestionsCatalog() {
 // ScanMedia initiates a media scan
 func (h *Handler) ScanMedia(c *gin.Context) {
 	if h.media.IsScanning() {
-		writeSuccess(c, map[string]string{"message": "Scan already in progress"})
+		// 409 (not 200): no new scan was started. The admin UI distinguishes this
+		// from a real start so it can show an accurate "already running" message
+		// instead of a false "scan started".
+		writeError(c, http.StatusConflict, "Scan already in progress")
 		return
 	}
 	go func() {
@@ -619,7 +614,6 @@ func (h *Handler) GetTagCounts(c *gin.Context) {
 	tags := h.media.GetTagCounts(h.canViewMatureContent(c))
 	writeSuccess(c, tags)
 }
-
 
 // StreamMedia streams a media file
 func (h *Handler) StreamMedia(c *gin.Context) {
@@ -671,20 +665,21 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 					}
 					streamKey := session.UserID
 					maxStreams := h.getUserStreamLimit(user.Type)
-					if maxStreams > 0 && !h.streaming.CanStartStream(streamKey, maxStreams) {
+					// Atomically enforce the per-user cap and register the proxy stream
+					// so the counter is decremented when the stream ends.
+					release, ok := h.streaming.TrackProxyStream(streamKey, maxStreams)
+					if !ok {
 						writeError(c, http.StatusTooManyRequests, msgMaxStreams)
 						return
 					}
-					// Track the proxy stream so the counter is decremented when the stream ends.
-					release := h.streaming.TrackProxyStream(streamKey)
 					defer release()
 				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
 					ipKey := "ip:" + c.ClientIP()
-					if !h.streaming.CanStartStream(ipKey, limit) {
+					release, ok := h.streaming.TrackProxyStream(ipKey, limit)
+					if !ok {
 						writeError(c, http.StatusTooManyRequests, msgMaxStreamsConn)
 						return
 					}
-					release := h.streaming.TrackProxyStream(ipKey)
 					defer release()
 				}
 				// Track view analytics for slave-sourced media so reporting is
@@ -774,6 +769,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 	}
 
 	var userID, sessionID string
+	var streamLimit int
 	if session != nil {
 		userID = session.UserID
 		sessionID = session.ID
@@ -791,6 +787,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 			writeError(c, http.StatusTooManyRequests, msgMaxStreams)
 			return
 		}
+		streamLimit = maxStreams
 	} else {
 		// Unauthenticated local-media stream: enforce per-IP limit before serving.
 		// The proxy and extractor branches each perform their own CanStartStream
@@ -802,6 +799,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 				writeError(c, http.StatusTooManyRequests, msgMaxStreamsConn)
 				return
 			}
+			streamLimit = limit
 		}
 	}
 
@@ -810,6 +808,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		MediaID:     id,
 		Quality:     c.Query("quality"),
 		UserID:      userID,
+		MaxStreams:  streamLimit,
 		SessionID:   sessionID,
 		IPAddress:   c.ClientIP(),
 		UserAgent:   c.Request.UserAgent(),
@@ -842,9 +841,12 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		if c.Writer.Written() || isClientDisconnect(err) {
 			return
 		}
-		if errors.Is(err, streaming.ErrFileNotFound) {
+		switch {
+		case errors.Is(err, streaming.ErrStreamLimitExceeded):
+			writeError(c, http.StatusTooManyRequests, msgMaxStreams)
+		case errors.Is(err, streaming.ErrFileNotFound):
 			writeError(c, http.StatusNotFound, errFileNotFound)
-		} else {
+		default:
 			h.log.Error("Stream error: %v", err)
 			writeError(c, http.StatusInternalServerError, "Stream error")
 		}
@@ -911,8 +913,12 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 		// Not found locally — try receiver media for download too
 		if h.receiver != nil {
 			if item := h.receiver.GetMediaItem(id); item != nil {
-				if h.isReceiverItemMature(item.ContentFingerprint) && !h.canViewMatureContent(c) {
-					writeError(c, http.StatusForbidden, msgMatureContent)
+				// Mirror StreamMedia: gate on the slave's own IsMature flag OR the
+				// master's fingerprint detection, via checkMatureAccess for
+				// consistent 401/403 status and analytics. Checking only the
+				// fingerprint let a slave-flagged item with no fingerprint through.
+				isMature := item.IsMature || h.isReceiverItemMature(item.ContentFingerprint)
+				if !h.checkMatureAccess(c, isMature) {
 					return
 				}
 				err := h.receiver.ProxyStream(c.Writer, c.Request, id)
@@ -952,8 +958,8 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 	// to the original file when HLS isn't ready or ffmpeg is unavailable.
 	if q := strings.TrimSpace(c.Query("quality")); q != "" && h.hls != nil {
 		if plPath, verr := h.hls.VariantDownloadPath(id, q); verr == nil {
-			c.Header("Content-Type", "video/mp4")
-			c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", variantDownloadName(localItem.Name, q)))
+			c.Header(headerContentType, "video/mp4")
+			c.Header(headerContentDisposition, fmt.Sprintf("attachment; filename=%q", variantDownloadName(localItem.Name, q)))
 			serr := h.hls.StreamVariantMP4(c.Request.Context(), id, plPath, c.Writer)
 			if serr == nil || isClientDisconnect(serr) || c.Writer.Written() {
 				h.trackDownloadCompleted(c, session, id)
@@ -962,8 +968,8 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 			// ffmpeg failed before any bytes were written — clear the variant MP4
 			// headers so the fallback original file isn't mislabeled (wrong
 			// Content-Type / "_quality.mp4" filename), then serve the original.
-			c.Writer.Header().Del("Content-Type")
-			c.Writer.Header().Del("Content-Disposition")
+			c.Writer.Header().Del(headerContentType)
+			c.Writer.Header().Del(headerContentDisposition)
 			h.log.Warn("Variant download failed for %s (%s), serving original: %v", id, q, serr)
 		} else {
 			h.log.Debug("No HLS variant %q for %s, serving original file: %v", q, id, verr)

@@ -26,9 +26,10 @@ import (
 )
 
 var (
-	ErrFileNotFound = errors.New("file not found")
-	ErrInvalidRange = errors.New("invalid range")
-	ErrFileTooLarge = errors.New("file too large")
+	ErrFileNotFound        = errors.New("file not found")
+	ErrInvalidRange        = errors.New("invalid range")
+	ErrFileTooLarge        = errors.New("file too large")
+	ErrStreamLimitExceeded = errors.New("stream limit exceeded")
 )
 
 const (
@@ -204,6 +205,7 @@ type StreamRequest struct {
 	MediaID     string // stable UUID for API responses (player links, admin streams); prefer over Path when exposing to clients
 	Quality     string
 	UserID      string
+	MaxStreams  int // per-UserID concurrent-stream cap, enforced atomically in startSession; 0 = unlimited
 	SessionID   string
 	IPAddress   string
 	UserAgent   string
@@ -265,8 +267,13 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 		return nil
 	}
 
-	// Track session
+	// Track session. startSession enforces req.MaxStreams atomically under the same
+	// lock that inserts the session and returns nil when the cap is already reached,
+	// closing the check-then-act race a separate CanStartStream pre-check leaves open.
 	session := m.startSession(req, start)
+	if session == nil {
+		return ErrStreamLimitExceeded
+	}
 	defer m.endSession(session.ID)
 
 	// Set response headers
@@ -660,6 +667,20 @@ func (m *Module) startSession(req StreamRequest, position int64) *models.StreamS
 	}
 
 	m.sessionMu.Lock()
+	// Enforce the per-user cap inside the same critical section as the insert so
+	// concurrent requests can't both pass a separate pre-check and over-fill.
+	if req.MaxStreams > 0 {
+		count := 0
+		for _, s := range m.activeSessions {
+			if s.UserID == req.UserID {
+				count++
+			}
+		}
+		if count >= req.MaxStreams {
+			m.sessionMu.Unlock()
+			return nil
+		}
+	}
 	m.activeSessions[session.ID] = session
 	activeCount := len(m.activeSessions)
 	// Acquire statsMu while still holding sessionMu so that activeCount is still
@@ -779,9 +800,14 @@ func (m *Module) CanStartStream(userID string, maxStreams int) bool {
 	return m.GetActiveStreamCount(userID) < maxStreams
 }
 
-// TrackProxyStream registers a proxy stream (e.g. receiver-sourced) so it counts toward
-// the per-user/per-IP limit. Caller must invoke the returned release func when the stream ends.
-func (m *Module) TrackProxyStream(userID string) (release func()) {
+// TrackProxyStream atomically enforces the per-user/per-IP concurrent-stream cap and,
+// when under it, registers a proxy stream (e.g. receiver-sourced) so it counts toward
+// the limit. It returns ok=false (with a nil release) without registering when the cap
+// is already reached; maxStreams<=0 disables the cap. Folding the count check and the
+// insert into one critical section closes the check-then-act race a separate
+// CanStartStream + TrackProxyStream pair leaves open. The caller must invoke the
+// returned release func when the stream ends.
+func (m *Module) TrackProxyStream(userID string, maxStreams int) (release func(), ok bool) {
 	session := &models.StreamSession{
 		ID:         generateSessionID("proxy"),
 		UserID:     userID,
@@ -789,11 +815,21 @@ func (m *Module) TrackProxyStream(userID string) (release func()) {
 		LastUpdate: time.Now(),
 	}
 	m.sessionMu.Lock()
+	if maxStreams > 0 {
+		count := 0
+		for _, s := range m.activeSessions {
+			if s.UserID == userID {
+				count++
+			}
+		}
+		if count >= maxStreams {
+			m.sessionMu.Unlock()
+			return nil, false
+		}
+	}
 	m.activeSessions[session.ID] = session
 	m.sessionMu.Unlock()
-	return func() {
-		m.endSession(session.ID)
-	}
+	return func() { m.endSession(session.ID) }, true
 }
 
 // Download handles a file download request with range support and chunked streaming

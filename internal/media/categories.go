@@ -17,9 +17,12 @@ func (m *Module) MediaIDsWithTag(tag string) map[string]bool {
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	for id, item := range m.media {
+	// m.media is keyed by path, but the returned set is matched against MediaItem.ID
+	// (a UUID) by Filter.CategoryIDSet and the category-items handler — key by item.ID,
+	// not the path, or the tag-backed members never match.
+	for _, item := range m.media {
 		if item != nil && slices.Contains(item.Tags, tag) {
-			set[id] = true
+			set[item.ID] = true
 		}
 	}
 	return set

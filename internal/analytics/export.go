@@ -13,7 +13,7 @@ import (
 )
 
 // ExportCSV exports analytics data to CSV.
-func (m *Module) ExportCSV(ctx context.Context, startDate, endDate time.Time) (string, error) {
+func (m *Module) ExportCSV(ctx context.Context, startDate, endDate time.Time) (filename string, retErr error) {
 	events, err := m.eventRepo.List(ctx, repositories.AnalyticsFilter{
 		StartDate: startDate.Format(time.RFC3339),
 		EndDate:   endDate.Format(time.RFC3339),
@@ -22,7 +22,7 @@ func (m *Module) ExportCSV(ctx context.Context, startDate, endDate time.Time) (s
 		return "", fmt.Errorf("failed to fetch events: %w", err)
 	}
 
-	filename := filepath.Join(m.config.Get().Directories.Analytics, fmt.Sprintf("export_%s.csv", time.Now().Format("20060102_150405")))
+	filename = filepath.Join(m.config.Get().Directories.Analytics, fmt.Sprintf("export_%s.csv", time.Now().Format("20060102_150405")))
 	file, err := os.Create(filename)
 	if err != nil {
 		return "", fmt.Errorf("failed to create export file: %w", err)
@@ -30,8 +30,15 @@ func (m *Module) ExportCSV(ctx context.Context, startDate, endDate time.Time) (s
 
 	succeeded := false
 	defer func() {
-		if err := file.Close(); err != nil {
-			m.log.Warn("Failed to close CSV export file: %v", err)
+		if closeErr := file.Close(); closeErr != nil {
+			m.log.Warn("Failed to close CSV export file: %v", closeErr)
+			// On networked storage the final write is committed during Close(), so a
+			// close failure can mean the CSV is incomplete. Surface it and drop the
+			// partial file rather than returning (filename, nil) for a corrupt export.
+			if retErr == nil {
+				retErr = fmt.Errorf("failed to close analytics export: %w", closeErr)
+			}
+			succeeded = false
 		}
 		if !succeeded {
 			if removeErr := os.Remove(filename); removeErr != nil && !os.IsNotExist(removeErr) {

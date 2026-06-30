@@ -3,6 +3,8 @@ package media
 import (
 	"context"
 	"testing"
+
+	"media-server-pro/pkg/models"
 )
 
 // These cover the documented fail-safe contract of the curated-category
@@ -49,5 +51,36 @@ func TestGetCategoryIDsForItems_NoDB(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("expected empty map when no DB is wired, got %v", got)
+	}
+}
+
+// MediaIDsWithTag must key the returned set by MediaItem.ID, not by the m.media
+// map key (which is a path). The set is matched against item.ID in Filter.Matches
+// and used as a media_id by the category-items handler; a path key would mean
+// tag-backed ("smart") categories never match any live member.
+func TestMediaIDsWithTag_KeysByID(t *testing.T) {
+	m := &Module{
+		media: map[string]*models.MediaItem{
+			"/videos/a.mp4": {ID: "id-a", Path: "/videos/a.mp4", Tags: []string{"hd", "fav"}},
+			"/videos/b.mp4": {ID: "id-b", Path: "/videos/b.mp4", Tags: []string{"fav"}},
+			"/videos/c.mp4": {ID: "id-c", Path: "/videos/c.mp4", Tags: []string{"sd"}},
+		},
+	}
+	set := m.MediaIDsWithTag("fav")
+	if len(set) != 2 {
+		t.Fatalf("expected 2 members for tag 'fav', got %d: %v", len(set), set)
+	}
+	if !set["id-a"] || !set["id-b"] {
+		t.Errorf("set must be keyed by media ID; got %v", set)
+	}
+	if set["/videos/a.mp4"] {
+		t.Errorf("set must not be keyed by path; got %v", set)
+	}
+}
+
+func TestMediaIDsWithTag_EmptyTag(t *testing.T) {
+	m := &Module{media: map[string]*models.MediaItem{"/p": {ID: "x", Tags: []string{"t"}}}}
+	if set := m.MediaIDsWithTag(""); len(set) != 0 {
+		t.Errorf("empty tag must return empty set, got %v", set)
 	}
 }

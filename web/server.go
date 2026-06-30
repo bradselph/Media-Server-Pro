@@ -1,4 +1,6 @@
-// Package web serves the embedded frontend static assets.
+// Package web serves the embedded Nuxt frontend SPA and splices per-route SEO
+// metadata (title, OG tags, JSON-LD, noscript) into the shell for crawlers that
+// do not execute JavaScript.
 package web
 
 import (

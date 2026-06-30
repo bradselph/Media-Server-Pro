@@ -551,8 +551,8 @@ func (h *Handler) AdminStreamEvents(c *gin.Context) {
 		writeError(c, http.StatusServiceUnavailable, "Analytics is not available")
 		return
 	}
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache, no-transform")
+	c.Header(headerContentType, "text/event-stream")
+	c.Header(headerCacheControl, "no-cache, no-transform")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no") // disable nginx response buffering
 
