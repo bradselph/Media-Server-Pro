@@ -471,7 +471,12 @@ func applyPreferencesPatch(prefs *models.UserPreferences, m map[string]any) {
 	setStringPref(m, "view_mode", &prefs.ViewMode)
 	setStringPref(m, "default_quality", &prefs.DefaultQuality)
 	setBoolPref(m, "auto_play", &prefs.AutoPlay)
-	setBoolPref(m, "autoplay", &prefs.AutoPlay)
+	// "autoplay" is a legacy alias; only apply it when the canonical "auto_play"
+	// key is absent so a body carrying both keys doesn't let the alias clobber
+	// the explicit value (mirrors the mature_content/is_mature guard in admin_media.go).
+	if _, ok := m["auto_play"]; !ok {
+		setBoolPref(m, "autoplay", &prefs.AutoPlay)
+	}
 	setClampedFloatPref(m, "playback_speed", &prefs.PlaybackSpeed, 0.25, 3.0)
 	setClampedFloatPref(m, "volume", &prefs.Volume, 0, 1.0)
 	if v, ok := m["show_mature"].(bool); ok {
