@@ -299,8 +299,10 @@ async function connectPeer() {
 onMounted(async () => {
   await Promise.all([loadReceiver(), loadFollower()])
   // Poll follower status every 10s so the admin sees connect/disconnect
-  // transitions without manually refreshing.
-  followerStatusTimer = setInterval(refreshFollowerStatus, 10000)
+  // transitions without manually refreshing. Guard against the unmount-during-load
+  // race: if the panel was already torn down while awaiting, onUnmounted ran with a
+  // null timer, so starting one here would orphan it.
+  if (!destroyed) followerStatusTimer = setInterval(refreshFollowerStatus, 10000)
 })
 </script>
 

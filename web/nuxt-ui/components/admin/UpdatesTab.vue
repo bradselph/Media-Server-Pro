@@ -185,6 +185,9 @@ async function applySourceUpdate() {
 
 onMounted(async () => {
   await loadUpdateConfig()
+  // The Updates sub-tab can be unmounted (v-else-if) while this awaits; don't kick
+  // off update checks (whose failures fire global error toasts) after teardown.
+  if (destroyed) return
   if (updateMethod.value === 'source') checkSourceUpdates()
   else checkForUpdates()
 })

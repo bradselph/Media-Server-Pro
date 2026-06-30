@@ -1988,8 +1988,8 @@ const hasTrafficActivity = computed(() =>
       </div>
       <div v-else class="divide-y divide-default max-h-72 overflow-y-auto">
         <div
-            v-for="(ev, i) in liveTail"
-            :key="`${ev.id}-${i}`"
+            v-for="ev in liveTail"
+            :key="ev.id"
             class="py-1.5 flex items-start gap-3 text-sm cursor-pointer hover:bg-muted/10 rounded px-1"
             @click="openEventDetail(ev)"
         >

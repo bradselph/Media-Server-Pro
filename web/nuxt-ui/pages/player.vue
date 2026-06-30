@@ -375,8 +375,12 @@ async function refreshWatchlist() {
     isInWatchlist.value = false
     return
   }
+  // Capture the id we're checking; if the user navigates to another item before
+  // this resolves, a slower earlier response must not overwrite the newer result.
+  const id = mediaId.value
   try {
-    const r = await favoritesApi.check(mediaId.value)
+    const r = await favoritesApi.check(id)
+    if (mediaId.value !== id) return
     isInWatchlist.value = !!r?.is_favorite
   } catch { /* not fatal */
   }
