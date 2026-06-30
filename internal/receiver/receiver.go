@@ -639,11 +639,29 @@ func (m *Module) Heartbeat(slaveID string) error {
 
 // UnregisterSlave removes a slave and its entire media catalog.
 func (m *Module) UnregisterSlave(slaveID string) error {
-	m.mu.Lock()
-	if _, exists := m.slaves[slaveID]; !exists {
-		m.mu.Unlock()
+	m.mu.RLock()
+	_, exists := m.slaves[slaveID]
+	m.mu.RUnlock()
+	if !exists {
 		return fmt.Errorf(errSlaveNotFound, slaveID)
 	}
+
+	ctx := context.Background()
+	// Delete the DB rows BEFORE mutating in-memory state. Clearing memory first
+	// meant a failed DB delete left the caches empty while the rows persisted, so
+	// the slave reappeared as a phantom on the next restart. Media rows are deleted
+	// before the slave row: if the second delete fails the residue is a benign empty
+	// slave (reloads as an empty node, retryable) rather than orphan media rows
+	// pointing at a slave that no longer exists.
+	if err := m.mediaRepo.DeleteBySlave(ctx, slaveID); err != nil {
+		return fmt.Errorf("failed to remove slave media: %w", err)
+	}
+	if err := m.slaveRepo.Delete(ctx, slaveID); err != nil {
+		return fmt.Errorf("failed to remove slave: %w", err)
+	}
+
+	// The DB is authoritative now; drop the slave and its media from the caches.
+	m.mu.Lock()
 	delete(m.slaves, slaveID)
 	for id, item := range m.media {
 		if item.SlaveID == slaveID {
@@ -652,15 +670,11 @@ func (m *Module) UnregisterSlave(slaveID string) error {
 	}
 	m.mu.Unlock()
 
-	ctx := context.Background()
-	if err := m.mediaRepo.DeleteBySlave(ctx, slaveID); err != nil {
-		return fmt.Errorf("failed to remove slave media: %w", err)
-	}
 	// Remove all duplicate records for this slave (any status) — the slave is gone permanently.
 	if m.dupModule != nil {
 		m.dupModule.ClearForSlave(slaveID)
 	}
-	return m.slaveRepo.Delete(ctx, slaveID)
+	return nil
 }
 
 // GetSlaves returns all registered slave nodes.
