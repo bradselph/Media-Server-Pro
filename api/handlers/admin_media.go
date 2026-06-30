@@ -263,6 +263,10 @@ func parseAdminUpdateBody(rawBody map[string]json.RawMessage) (req adminUpdateRe
 	reservedMetadataKeys := map[string]bool{
 		"tags": true, "is_mature": true, "mature_content": true,
 		"mature_score": true, "category": true, "views": true,
+		// System-derived fields with first-class Metadata struct columns: blocked
+		// here so a metadata-map key can't bleed into CustomMeta and leave the real
+		// field (Duration from ffprobe, BlurHash from the dedicated generator) stale.
+		"duration": true, "blur_hash": true,
 	}
 	for k, v := range reqMetadata {
 		if !reservedMetadataKeys[k] {
