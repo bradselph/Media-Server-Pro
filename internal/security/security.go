@@ -364,8 +364,10 @@ func (m *Module) IsBanned(ip string) bool {
 // survives server restarts.
 func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 	m.rateLimiter.BanIP(ip, duration, reason)
-	// Persist to DB
-	ctx := context.Background()
+	// Persist to DB with a bounded deadline so a slow/unresponsive MySQL can't
+	// block the admin handler goroutine indefinitely (the in-memory ban is already applied).
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	rec := &repositories.IPEntryRecord{
 		Value:     ip,
 		Comment:   reason,
@@ -381,7 +383,8 @@ func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 // UnbanIP removes a ban on an IP, from memory and from the database.
 func (m *Module) UnbanIP(ip string) {
 	m.rateLimiter.UnbanIP(ip)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	if err := m.repo.RemoveEntry(ctx, "ban", ip); err != nil {
 		m.log.Warn("Failed to remove persisted ban for %s: %v", ip, err)
 	}
