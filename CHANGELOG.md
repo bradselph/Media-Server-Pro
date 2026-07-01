@@ -1,5 +1,77 @@
 # Changelog
 
+## [1.20.0] - 2026-07-01 (minor)
+
+- cleanup(ui): wrap inline @click handlers to fix void-return typecheck errors (components/layouts)
+- cleanup(ui): wrap inline @click handlers to fix void-return typecheck errors (pages)
+- fix(media): return 409 when a scan is already running
+- fix(ui): frontend reactivity, async-race, and render-key bugs
+- cleanup(handlers): use header constants instead of raw literals
+- fix(upload): propagate request context into remote-store uploads
+- fix(admin): correct AdminExecuteQuery error status; drop dead db nil-guards
+- fix(ssrf): bound DNS resolution in ValidateURLForSSRF with a deadline
+- fix(security): bound BanIP/UnbanIP DB persistence with a deadline
+- fix(hls): reject path-traversal components in ServeSegment params
+- fix(analytics): count completions only for playbacks with duration>0
+- fix(analytics): fail CSV export when the file fails to close
+- test(auth): AddStorageUsed mirrors delta into the in-memory cache
+- test(receiver): UnregisterSlave deletes DB before pruning caches
+- test: regressions for stream-cap atomicity, autoplay alias, reserved metadata keys
+- fix(streaming): enforce per-user stream cap atomically (close TOCTOU)
+- fix(receiver): delete slave DB rows before clearing in-memory state
+- fix(media): re-key live media map on scan move-detection
+- fix(admin): fail audit-log export when the CSV file fails to close
+- fix(auth): refresh in-memory storage cache after AddStorageUsed
+- fix(auth): stop legacy autoplay alias clobbering auto_play
+- fix(admin): block duration/blur_hash from custom-metadata spillover
+- docs(backlog): record 7 deferred round-2 hunt follow-ups
+- fix(receiver): bound catalog-push work with a context deadline
+- fix(hls): rename output dir under lock before removing in cleanInactiveJob
+- perf(media): avoid full profile deep-copy for per-request ratings lookup
+- fix(analytics): only update daily stats when the deletion tombstone persists
+- fix(media): upsert new row before deleting old on rename/move
+- fix(player): clear hlsLoading on HLS activation failure
+- fix(hls): release cancel func when a resumed job fails
+- fix(repo): let content_fingerprint track the latest non-empty value
+- fix(media): close DeleteMedia TOCTOU races and stale-ID gaps in discovery
+- fix(security): close HLS auth bypass and receiver download mature-gate gaps
+- docs(backlog): drop shipped duplicates empty-state, log deletion-request hardening
+- test(deletion-requests): cover admin process-request paths
+- test(chapters): cover time validation + cross-field inversion guard
+- test(media): cover UpdateTags case-insensitive merge/dedup + sync
+- feat(admin): wire the thumbnail cleanup endpoint to a UI button
+- fix(admin): show a disabled banner when duplicate detection is off
+- fix(saved-search): replay tags, tag_mode and media_type on Open
+- fix(reports): truncate report notes by rune, not byte offset
+- fix(cors): allow PATCH method and X-MSP-Private header in dynamic CORS
+- feat(downloader): auto-import completed downloads to the library
+- fix(downloader): clear downloader record on import by copying before delete
+- test(regression): lock in the three audit fixes
+- fix(thumbnails): sync generated BlurHash into in-memory catalog
+- fix(prefs): persist accent_hue on user upsert
+- fix(categories): key tag-backed member set by media ID not path
+- fix(deploy): correct HF model + misleading knob descriptions
+- docs(openapi): document POST /api/receiver/pair (was the only undocumented receiver slave route)
+- docs(comments): correct four stale Go doc comments
+- fix(config): downloader URL default 4000; stop .env example downgrading rate-limit + CORS
+- docs: consolidate open items into BACKLOG.md; remove completed audit artifacts
+- chore: remove orphaned files (dead bootstrap-icons fonts, stray memory note)
+- docs(readme): fix stale config defaults + document tag-backed categories and CPU auto-scaling
+- Merge branch 'main' into development
+- test(share): lock in ogThumbnailURL ?og=1/&og=1 contract
+- fix(share): show real thumbnail in social previews instead of red censored box
+- perf(spa): trim loading splash comment (it ships inline in every page)
+- perf(css): use generic mono keywords in .log-viewer (avoid refetching a webfont)
+- perf(home): unblock grid load + defer stats and blurhash off the critical path
+- perf(layout): lazy-load NowPlayingSidebar + defer non-critical onMounted work
+- perf(css): drop Fira Mono + non-latin Barlow subsets from entry.css
+- fix(web): serve root /favicon.svg instead of falling through to SPA HTML
+- perf(spa): add loading splash to eliminate blank-screen FCP
+- perf(runtime): auto-scale HLS + thumbnail concurrency to host CPU
+- fix(analytics): emit permission_denied + wire buffering client event
+- fix(player): make buffer bar live + let default-quality pref still adapt
+
+
 ## [1.19.0] - 2026-06-24 (minor)
 
 - fix(admin): use a valid lucide icon for the analytics-disabled state
