@@ -112,9 +112,23 @@ func encoderListed(ffmpegPath, encoder string) bool {
 	return strings.Contains(string(out), encoder)
 }
 
-// functionalTest runs a 0.1s encode of a synthetic source through the candidate
+// functionalTest runs a short encode of a synthetic source through the candidate
 // encoder, writing to the null muxer. Success means the encoder actually works
-// on this host (GPU present, driver loaded, device accessible).
+// on this host (GPU present, driver loaded, device accessible) AND survives the
+// exact filter chain + rate control the production path uses.
+//
+// The probe MUST mirror buildVideoEncodeArgs, not a stripped-down command —
+// otherwise a probe pass does not guarantee production works, which caused two
+// real failures:
+//   - VAAPI: production always appends scale_vaapi=W:H, but a probe without it
+//     passed on drivers where scale_vaapi is unsupported/broken; every real
+//     transcode then failed on the first segment and the job never completed.
+//   - NVENC: a 128x72 probe frame is below the encoder's minimum dimension, so a
+//     perfectly good GPU was rejected and HLS silently fell back to software.
+//
+// A realistic 1280x720 source scaled to 640x360 stays above every hardware
+// encoder's minimum frame size and exercises the same scaler (CPU scale, or
+// GPU scale_vaapi) and bitrate/keyframe args as production.
 func functionalTest(ffmpegPath, encoder, device string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -123,11 +137,21 @@ func functionalTest(ffmpegPath, encoder, device string) bool {
 	if device != "" {
 		args = append(args, "-vaapi_device", device)
 	}
-	args = append(args, "-f", "lavfi", "-i", "color=c=black:s=128x72:d=0.1")
+	args = append(args, "-f", "lavfi", "-i", "color=c=black:s=1280x720:r=30:d=0.3")
 	if encoder == "h264_vaapi" {
-		args = append(args, "-vf", "format=nv12,hwupload")
+		// Match the production VAAPI filter chain (transcode.go buildVideoEncodeArgs)
+		// so a driver that lacks scale_vaapi is rejected here instead of failing
+		// every transcode.
+		args = append(args, "-vf", "format=nv12,hwupload,scale_vaapi=640:360")
+	} else {
+		args = append(args, "-vf", "scale=640:360")
 	}
-	args = append(args, "-c:v", encoder, "-f", "null", "-")
+	args = append(args,
+		"-c:v", encoder,
+		"-b:v", "800k", "-maxrate", "800k", "-bufsize", "1600k",
+		"-force_key_frames", "expr:gte(t,n_forced*2)",
+		"-f", "null", "-",
+	)
 
 	cmd := exec.CommandContext(ctx, ffmpegPath, args...) //nolint:gosec // ffmpegPath is the validated binary path; args are constant
 	return cmd.Run() == nil
