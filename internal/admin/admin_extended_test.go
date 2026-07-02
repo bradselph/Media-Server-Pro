@@ -17,7 +17,7 @@ func TestBuildConfigHLSMap(t *testing.T) {
 	cfg.HLS.QualityProfiles = []config.HLSQuality{
 		{Name: "720p", Width: 1280, Height: 720, Bitrate: 2500, AudioBitrate: 128, Enabled: true},
 	}
-	m := buildConfigHLSMap(cfg, nil)
+	m := buildConfigHLSMap(cfg)
 	if m == nil {
 		t.Fatal("nil map")
 	}
@@ -38,7 +38,7 @@ func TestBuildConfigThumbnailsMap(t *testing.T) {
 	cfg.Thumbnails.Width = 320
 	cfg.Thumbnails.Height = 180
 	cfg.Thumbnails.Quality = 80
-	m := buildConfigThumbnailsMap(cfg, nil)
+	m := buildConfigThumbnailsMap(cfg)
 	if m == nil {
 		t.Fatal("nil map")
 	}
@@ -57,7 +57,7 @@ func TestBuildConfigAnalyticsMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Analytics.Enabled = true
 	cfg.Analytics.TrackPlayback = true
-	m := buildConfigAnalyticsMap(cfg, nil)
+	m := buildConfigAnalyticsMap(cfg)
 	if m["enabled"] != true {
 		t.Errorf("enabled = %v, want true", m["enabled"])
 	}
@@ -71,7 +71,7 @@ func TestBuildConfigMatureScannerMap(t *testing.T) {
 	cfg.MatureScanner.Enabled = true
 	cfg.MatureScanner.AutoFlag = true
 	cfg.MatureScanner.HighConfidenceThreshold = 0.9
-	m := buildConfigMatureScannerMap(cfg, nil)
+	m := buildConfigMatureScannerMap(cfg)
 	if m["enabled"] != true {
 		t.Errorf(errFmtEnabled, m["enabled"])
 	}
@@ -83,7 +83,7 @@ func TestBuildConfigMatureScannerMap(t *testing.T) {
 func TestBuildConfigHuggingFaceMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.HuggingFace.APIKey = "secret-key"
-	m := buildConfigHuggingFaceMap(cfg, nil)
+	m := buildConfigHuggingFaceMap(cfg)
 	if m["api_key_set"] != true {
 		t.Error("api_key_set should be true when key is set")
 	}
@@ -95,7 +95,7 @@ func TestBuildConfigHuggingFaceMap(t *testing.T) {
 
 func TestBuildConfigHuggingFaceMap_NoKey(t *testing.T) {
 	cfg := &config.Config{}
-	m := buildConfigHuggingFaceMap(cfg, nil)
+	m := buildConfigHuggingFaceMap(cfg)
 	if m["api_key_set"] != false {
 		t.Error("api_key_set should be false when key is empty")
 	}
@@ -106,7 +106,7 @@ func TestBuildConfigStreamingMap(t *testing.T) {
 	cfg.Streaming.RequireAuth = true
 	cfg.Streaming.MobileOptimization = true
 	cfg.Streaming.UnauthStreamLimit = 5
-	m := buildConfigStreamingMap(cfg, nil)
+	m := buildConfigStreamingMap(cfg)
 	if m["require_auth"] != true {
 		t.Errorf("require_auth = %v", m["require_auth"])
 	}
@@ -120,7 +120,7 @@ func TestBuildConfigDownloadMap(t *testing.T) {
 	cfg.Download.Enabled = true
 	cfg.Download.RequireAuth = true
 	cfg.Download.ChunkSizeKB = 512
-	m := buildConfigDownloadMap(cfg, nil)
+	m := buildConfigDownloadMap(cfg)
 	if m["enabled"] != true {
 		t.Errorf(errFmtEnabled, m["enabled"])
 	}
@@ -132,7 +132,7 @@ func TestBuildConfigDownloadMap(t *testing.T) {
 func TestBuildConfigLoggingMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Logging.Level = "debug"
-	m := buildConfigLoggingMap(cfg, nil)
+	m := buildConfigLoggingMap(cfg)
 	if m["level"] != "debug" {
 		t.Errorf("level = %v", m["level"])
 	}
@@ -143,7 +143,7 @@ func TestBuildConfigAgeGateMap(t *testing.T) {
 	cfg.AgeGate.Enabled = true
 	cfg.AgeGate.CookieName = "age_verified"
 	cfg.AgeGate.CookieMaxAge = 86400
-	m := buildConfigAgeGateMap(cfg, nil)
+	m := buildConfigAgeGateMap(cfg)
 	if m["enabled"] != true {
 		t.Errorf(errFmtEnabled, m["enabled"])
 	}
@@ -156,7 +156,7 @@ func TestBuildConfigUploadsMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Uploads.MaxFileSize = 1073741824
 	cfg.Uploads.AllowedExtensions = []string{".mp4", ".mkv"}
-	m := buildConfigUploadsMap(cfg, nil)
+	m := buildConfigUploadsMap(cfg)
 	if m["max_file_size"] != int64(1073741824) {
 		t.Errorf("max_file_size = %v", m["max_file_size"])
 	}
@@ -166,7 +166,7 @@ func TestBuildConfigUIMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.UI.ItemsPerPage = 24
 	cfg.UI.MobileItemsPerPage = 12
-	m := buildConfigUIMap(cfg, nil)
+	m := buildConfigUIMap(cfg)
 	if m["items_per_page"] != 24 {
 		t.Errorf("items_per_page = %v", m["items_per_page"])
 	}
@@ -176,7 +176,7 @@ func TestBuildConfigDownloaderMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Downloader.Enabled = true
 	cfg.Downloader.URL = "http://localhost:8080"
-	m := buildConfigDownloaderMap(cfg, nil)
+	m := buildConfigDownloaderMap(cfg)
 	if m["enabled"] != true {
 		t.Errorf(errFmtEnabled, m["enabled"])
 	}
@@ -191,7 +191,7 @@ func TestBuildConfigStorageMap(t *testing.T) {
 	cfg.Storage.S3.Endpoint = "s3.example.com"
 	cfg.Storage.S3.AccessKeyID = "AKID"
 	cfg.Storage.S3.SecretAccessKey = "SECRET"
-	m := buildConfigStorageMap(cfg, nil)
+	m := buildConfigStorageMap(cfg)
 	if m["backend"] != "s3" {
 		t.Errorf("backend = %v", m["backend"])
 	}
@@ -210,7 +210,7 @@ func TestBuildConfigStorageMap(t *testing.T) {
 func TestBuildConfigStorageMap_NoKeys(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Storage.Backend = "local"
-	m := buildConfigStorageMap(cfg, nil)
+	m := buildConfigStorageMap(cfg)
 	s3map := m["s3"].(map[string]any)
 	if s3map["access_key_set"] != false {
 		t.Error("access_key_set should be false")
@@ -220,7 +220,7 @@ func TestBuildConfigStorageMap_NoKeys(t *testing.T) {
 func TestBuildConfigBackupMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Backup.RetentionCount = 5
-	m := buildConfigBackupMap(cfg, nil)
+	m := buildConfigBackupMap(cfg)
 	if m["retention_count"] != 5 {
 		t.Errorf("retention_count = %v", m["retention_count"])
 	}
@@ -230,7 +230,7 @@ func TestBuildConfigUpdaterMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Updater.UpdateMethod = "git"
 	cfg.Updater.Branch = "main"
-	m := buildConfigUpdaterMap(cfg, nil)
+	m := buildConfigUpdaterMap(cfg)
 	if m["update_method"] != "git" {
 		t.Errorf("update_method = %v", m["update_method"])
 	}
@@ -243,7 +243,7 @@ func TestBuildConfigRemoteMediaMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.RemoteMedia.Enabled = true
 	cfg.RemoteMedia.CacheEnabled = true
-	m := buildConfigRemoteMediaMap(cfg, nil)
+	m := buildConfigRemoteMediaMap(cfg)
 	if m["enabled"] != true {
 		t.Errorf(errFmtEnabled, m["enabled"])
 	}
@@ -254,7 +254,7 @@ func TestBuildConfigCrawlerMap(t *testing.T) {
 	cfg.Crawler.Enabled = true
 	cfg.Crawler.BrowserEnabled = true
 	cfg.Crawler.MaxPages = 50
-	m := buildConfigCrawlerMap(cfg, nil)
+	m := buildConfigCrawlerMap(cfg)
 	if m["enabled"] != true {
 		t.Errorf(errFmtEnabled, m["enabled"])
 	}
@@ -267,7 +267,7 @@ func TestBuildConfigExtractorMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Extractor.Enabled = true
 	cfg.Extractor.MaxItems = 100
-	m := buildConfigExtractorMap(cfg, nil)
+	m := buildConfigExtractorMap(cfg)
 	if m["enabled"] != true {
 		t.Errorf(errFmtEnabled, m["enabled"])
 	}

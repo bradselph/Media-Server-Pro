@@ -371,9 +371,9 @@ type SystemInfo struct {
 }
 
 // configMapSection builds one top-level section of the admin config map.
-type configMapSection func(cfg *config.Config, qualityNames []string) map[string]any
+type configMapSection func(cfg *config.Config) map[string]any
 
-func buildConfigServerMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigServerMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"port":                 cfg.Server.Port,
 		"host":                 cfg.Server.Host,
@@ -390,7 +390,7 @@ func buildConfigServerMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigFeaturesMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enable_thumbnails":          cfg.Features.EnableThumbnails,
 		"enable_hls":                 cfg.Features.EnableHLS,
@@ -412,7 +412,7 @@ func buildConfigFeaturesMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigSecurityMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigSecurityMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"rate_limit_enabled":  cfg.Security.RateLimitEnabled,
 		"rate_limit_requests": cfg.Security.RateLimitRequests,
@@ -438,7 +438,7 @@ func buildConfigSecurityMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigHLSMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigHLSMap(cfg *config.Config) map[string]any {
 	profiles := make([]map[string]any, 0, len(cfg.HLS.QualityProfiles))
 	for _, qp := range cfg.HLS.QualityProfiles {
 		profiles = append(profiles, map[string]any{
@@ -470,7 +470,7 @@ func buildConfigHLSMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigAdminMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigAdminMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"max_query_rows":           cfg.Admin.MaxQueryRows,
 		"audit_log_retention_days": cfg.Admin.AuditLogRetentionDays,
@@ -478,7 +478,7 @@ func buildConfigAdminMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigThumbnailsMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigThumbnailsMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":                   cfg.Thumbnails.Enabled,
 		"auto_generate":             cfg.Thumbnails.AutoGenerate,
@@ -495,7 +495,7 @@ func buildConfigThumbnailsMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigAnalyticsMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigAnalyticsMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":                cfg.Analytics.Enabled,
 		"track_playback":         cfg.Analytics.TrackPlayback,
@@ -508,7 +508,7 @@ func buildConfigAnalyticsMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigMatureScannerMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigMatureScannerMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":                     cfg.MatureScanner.Enabled,
 		"auto_flag":                   cfg.MatureScanner.AutoFlag,
@@ -520,7 +520,7 @@ func buildConfigMatureScannerMap(cfg *config.Config, _ []string) map[string]any 
 	}
 }
 
-func buildConfigHuggingFaceMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigHuggingFaceMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":        cfg.HuggingFace.Enabled,
 		"api_key_set":    cfg.HuggingFace.APIKey != "",
@@ -533,7 +533,7 @@ func buildConfigHuggingFaceMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigDatabaseMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigDatabaseMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":           cfg.Database.Enabled,
 		"host":              cfg.Database.Host,
@@ -549,7 +549,7 @@ func buildConfigDatabaseMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigStreamingMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigStreamingMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"require_auth":        cfg.Streaming.RequireAuth,
 		"mobile_optimization": cfg.Streaming.MobileOptimization,
@@ -564,7 +564,7 @@ func buildConfigStreamingMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigDownloadMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigDownloadMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":       cfg.Download.Enabled,
 		"require_auth":  cfg.Download.RequireAuth,
@@ -572,7 +572,7 @@ func buildConfigDownloadMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigLoggingMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigLoggingMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"level":         cfg.Logging.Level,
 		"format":        cfg.Logging.Format,
@@ -584,7 +584,7 @@ func buildConfigLoggingMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigAgeGateMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigAgeGateMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":        cfg.AgeGate.Enabled,
 		"bypass_ips":     cfg.AgeGate.BypassIPs,
@@ -596,7 +596,7 @@ func buildConfigAgeGateMap(cfg *config.Config, _ []string) map[string]any {
 
 // CookieConsent (GDPR/CCPA banner) is admin-visible so operators can toggle
 // the banner and adjust the consent cookie lifetime without restarting.
-func buildConfigCookieConsentMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigCookieConsentMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":        cfg.CookieConsent.Enabled,
 		"cookie_name":    cfg.CookieConsent.CookieName,
@@ -604,7 +604,7 @@ func buildConfigCookieConsentMap(cfg *config.Config, _ []string) map[string]any 
 	}
 }
 
-func buildConfigUploadsMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigUploadsMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":            cfg.Uploads.Enabled,
 		"max_file_size":      cfg.Uploads.MaxFileSize,
@@ -614,7 +614,7 @@ func buildConfigUploadsMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigUIMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigUIMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"items_per_page":        cfg.UI.ItemsPerPage,
 		"mobile_items_per_page": cfg.UI.MobileItemsPerPage,
@@ -624,7 +624,7 @@ func buildConfigUIMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigDownloaderMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigDownloaderMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":         cfg.Downloader.Enabled,
 		"url":             cfg.Downloader.URL,
@@ -642,7 +642,7 @@ func buildConfigDownloaderMap(cfg *config.Config, _ []string) map[string]any {
 // admin's read-only Directories panel can show where media actually lives. These
 // are infra settings (changed via env/config file, not the UI), so they are
 // surfaced for visibility only — there is no write path for them.
-func buildConfigDirectoriesMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigDirectoriesMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"videos":     cfg.Directories.Videos,
 		"music":      cfg.Directories.Music,
@@ -657,7 +657,7 @@ func buildConfigDirectoriesMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigStorageMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigStorageMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"backend": cfg.Storage.Backend,
 		"s3": map[string]any{
@@ -672,13 +672,13 @@ func buildConfigStorageMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigBackupMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigBackupMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"retention_count": cfg.Backup.RetentionCount,
 	}
 }
 
-func buildConfigUpdaterMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigUpdaterMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"update_method":   cfg.Updater.UpdateMethod,
 		"branch":          cfg.Updater.Branch,
@@ -691,7 +691,7 @@ func buildConfigUpdaterMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigRemoteMediaMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigRemoteMediaMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":                  cfg.RemoteMedia.Enabled,
 		"cache_enabled":            cfg.RemoteMedia.CacheEnabled,
@@ -703,7 +703,7 @@ func buildConfigRemoteMediaMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigCrawlerMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigCrawlerMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":         cfg.Crawler.Enabled,
 		"browser_enabled": cfg.Crawler.BrowserEnabled,
@@ -712,7 +712,7 @@ func buildConfigCrawlerMap(cfg *config.Config, _ []string) map[string]any {
 	}
 }
 
-func buildConfigExtractorMap(cfg *config.Config, _ []string) map[string]any {
+func buildConfigExtractorMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":       cfg.Extractor.Enabled,
 		"max_items":     cfg.Extractor.MaxItems,
@@ -762,7 +762,7 @@ func (m *Module) GetConfigMap() map[string]any {
 	}
 	out := make(map[string]any, len(sections))
 	for _, s := range sections {
-		out[s.key] = s.fn(cfg, nil)
+		out[s.key] = s.fn(cfg)
 	}
 	return out
 }
