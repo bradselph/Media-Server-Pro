@@ -252,7 +252,6 @@ function toggleAutoNext() {
   // Persist the choice for logged-in users so it survives a reload. Errors
   // are non-critical — the toggle still works for this session.
   if (authStore.isLoggedIn) {
-    const {updatePreferences} = useApiEndpoints()
     updatePreferences({autoplay_similar: autoNextEnabled.value}).catch(() => {
     })
     if (authStore.user) {
@@ -619,11 +618,7 @@ const categoriesApi = useCategoriesApi()
 const mediaCategories = ref<MediaCategory[]>([])
 
 // Mature content gate
-const canViewMature = computed(() =>
-    authStore.isLoggedIn &&
-    (authStore.user?.preferences?.show_mature ?? false) &&
-    (authStore.user?.permissions?.can_view_mature ?? false),
-)
+const canViewMature = useCanViewMature()
 const matureGated = computed(() => !!(media.value?.is_mature && !canViewMature.value))
 
 // Star rating (1-5). Optimistic update — fire and forget.
@@ -1090,13 +1085,6 @@ function navigateToPrevItem() {
   navigateTo(`/player?id=${encodeURIComponent(prev.media_id)}&playlist_id=${encodeURIComponent(plId)}&playlist_idx=${prevIdx}`)
 }
 
-function skipPrevItem() {
-  navigateToPrevItem()
-}
-
-function skipNextItem() {
-  navigateToNextItem()
-}
 
 // playlistSeq guards against rapid playlist switches: only the most recent
 // watch fire's response may overwrite playlistItems. Without this, a slow
@@ -1384,8 +1372,6 @@ function cycleSpeed() {
 
 // formatDuration imported from ~/utils/format
 
-// formatBandwidth replaced by formatBitrate from ~/utils/format
-const formatBandwidth = formatBitrate
 
 const currentQualityLabel = computed(() => {
   if (currentQuality.value === -1) return 'Auto'
@@ -1770,8 +1756,8 @@ watch(mediaId, (id, oldId) => {
               @toggle-mute="toggleMute"
               @toggle-theater="toggleTheater"
               @seek-to-chapter="seekToChapter"
-              @skip-prev="skipPrevItem"
-              @skip-next="skipNextItem"
+              @skip-prev="navigateToPrevItem"
+              @skip-next="navigateToNextItem"
           />
         </div>
         <div v-else class="max-md:px-4">
@@ -1983,7 +1969,7 @@ watch(mediaId, (id, oldId) => {
               <span v-if="media.size">{{ formatBytes(media.size) }}</span>
               <span v-if="media.codec">{{ media.codec.toUpperCase() }}</span>
               <span v-if="media.container">{{ media.container.toUpperCase() }}</span>
-              <span v-if="media.bitrate">{{ formatBandwidth(media.bitrate) }}</span>
+              <span v-if="media.bitrate">{{ formatBitrate(media.bitrate) }}</span>
               <span v-if="hlsActivated && qualities.length > 0" class="text-primary">{{ currentQualityLabel }}</span>
               <!-- Relative date per handoff §6.4.2 ("Added 3 days ago"). Tooltip
                    shows the absolute date for anyone who wants precision. -->

@@ -229,18 +229,6 @@ export interface MediaListResponse {
     type_counts?: Record<string, number>
 }
 
-// MediaTypeCategory is the retired path-detected media-type bucket (movies,
-// tv_shows, music, …). No endpoint returns it anymore — categories are the
-// curated MediaCategory feature. Kept only so older generated code still
-// type-checks.
-// @deprecated use MediaCategory
-export interface MediaTypeCategory {
-    name: string
-    display_name: string
-    count: number
-    tags?: string[]
-}
-
 export interface AdminMediaListResponse {
     items: MediaItem[]
     total_items: number

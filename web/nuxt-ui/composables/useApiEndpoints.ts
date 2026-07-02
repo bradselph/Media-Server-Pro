@@ -8,7 +8,6 @@ import type {
     AlertResult,
     AlertRule,
     AnalyticsEvent,
-    AnalyticsHealth,
     AnalyticsSummary,
     AnomalyReport,
     APIToken,
@@ -178,13 +177,6 @@ function changePassword(currentPassword: string, newPassword: string) {
     })
 }
 
-function adminChangePassword(currentPassword: string, newPassword: string) {
-    return api.post<void>('/api/admin/change-password', {
-        current_password: currentPassword,
-        new_password: newPassword
-    })
-}
-
 function requestDataDeletion(reason?: string) {
     return api.post<{
         status: string;
@@ -216,7 +208,6 @@ export function useApiEndpoints() {
         getRegistrationToken,
         getSession,
         changePassword,
-        adminChangePassword,
         requestDataDeletion,
         deleteAccount,
         getPreferences,
@@ -1023,10 +1014,6 @@ export function useAnalyticsApi() {
         // Analytics module's internal diagnostics counters.
         getDiagnostics: () =>
             api.get<ModuleDiagnostics>('/api/admin/analytics/diagnostics'),
-        // Compact health snapshot — suitable for cron/uptime monitors.
-        // Reports module healthy state, flush lag, and live subscriber count.
-        getAnalyticsHealth: () =>
-            api.get<AnalyticsHealth>('/api/admin/analytics/health'),
         // Linear-trend projection of a single metric.
         getForecast: (metric: string, days?: number) =>
             api.get<MetricForecast>(`/api/admin/analytics/forecast${buildQS({metric, days: days || undefined})}`),
@@ -1053,41 +1040,19 @@ export function useAnalyticsApi() {
         // browser handles the file save dialog rather than the JS layer.
         exportPanelUrl: (panel: string, format: 'csv' | 'json' = 'csv', extra: Record<string, string | number | undefined> = {}) =>
             `/api/admin/analytics/export-panel${buildQS({panel, format, ...extra})}`,
-        // Live snapshot of active streaming sessions (already enriched with filename).
-        getActiveStreams: () =>
-            api.get<Array<{
-                id: string;
-                media_id: string;
-                filename: string;
-                user_id: string;
-                ip_address: string;
-                quality: string;
-                position: number;
-                started_at: number;
-                last_update: number;
-                bytes_sent: number
-            }>>(`/api/admin/streams`),
         exportCsv: (period?: string) => {
             const today = new Date()
             const fmt = (d: Date) => d.toISOString().slice(0, 10)
             const qs = new URLSearchParams()
-            if (period === 'today') {
-                qs.set('start_date', fmt(today))
-                qs.set('end_date', fmt(today))
-            } else if (period === '7d') {
-                const s = new Date(today);
-                s.setDate(s.getDate() - 7)
-                qs.set('start_date', fmt(s));
-                qs.set('end_date', fmt(today))
-            } else if (period === '30d') {
-                const s = new Date(today);
-                s.setDate(s.getDate() - 30)
-                qs.set('start_date', fmt(s));
+            const days = period === 'today' ? 0 : period === '7d' ? 7 : period === '30d' ? 30 : -1
+            if (days >= 0) {
+                const s = new Date(today)
+                s.setDate(s.getDate() - days)
+                qs.set('start_date', fmt(s))
                 qs.set('end_date', fmt(today))
             }
             const q = qs.toString()
-            const suffix = q ? `?${q}` : ''
-            return `/api/admin/analytics/export${suffix}`
+            return q ? `/api/admin/analytics/export?${q}` : '/api/admin/analytics/export'
         },
     }
 }

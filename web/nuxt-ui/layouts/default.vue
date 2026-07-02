@@ -344,7 +344,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleSlashShortcut))
 // keep the help button above it the same way the MiniPlayer used to.
 const sidebarState = useSidebarState()
 
-const SIDEBAR_HIDDEN_ROUTES = new Set(['/player', '/login', '/signup', '/register', '/admin-login'])
+// SIDEBAR_HIDDEN_ROUTES is the shared set exported by useSidebarState (auto-imported).
 const sidebarVisible = computed(() => !SIDEBAR_HIDDEN_ROUTES.has(route.path))
 
 // Reflect sidebar state to <body data-sidebar="..."> so the CSS rules in

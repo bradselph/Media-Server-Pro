@@ -1008,11 +1008,7 @@ watch(viewMode, (mode) => {
 })
 
 // Mature content gate — true only when logged in, show_mature enabled, and can_view_mature permission granted
-const canViewMature = computed(() =>
-    authStore.isLoggedIn &&
-    (authStore.user?.preferences?.show_mature ?? false) &&
-    (authStore.user?.permissions?.can_view_mature ?? false),
-)
+const canViewMature = useCanViewMature()
 
 function matureGateHref(item: MediaItem): string {
   if (item.is_mature && !canViewMature.value) {

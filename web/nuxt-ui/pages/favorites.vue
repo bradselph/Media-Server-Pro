@@ -10,7 +10,6 @@ definePageMeta({layout: 'default', title: 'Favorites', middleware: 'auth'})
 const favoritesApi = useFavoritesApi()
 const mediaApi = useMediaApi()
 const playbackApi = usePlaybackApi()
-const authStore = useAuthStore()
 const toast = useToast()
 
 const favorites = ref<FavoriteItem[]>([])
@@ -19,10 +18,8 @@ const playbackProgress = ref<Record<string, number>>({})
 const loading = ref(true)
 const removing = ref<Set<string>>(new Set())
 const failedThumbnails = reactive(new Set<string>())
-let hasFetched = false
 
 async function load() {
-  hasFetched = true
   loading.value = true
   try {
     favorites.value = (await favoritesApi.list()) ?? []
@@ -74,18 +71,7 @@ async function removeFavorite(mediaId: string) {
   }
 }
 
-function getThumbnailUrl(item: MediaItem): string | null {
-  if (!item?.id) return null
-  // /thumbnail?id=X is the correct media-thumbnail route (served by Go, not /api/)
-  return mediaApi.getThumbnailUrl(item.id)
-}
-
-onMounted(() => {
-  if (!authStore.isLoading && authStore.user) load()
-})
-watch(() => authStore.user, (user) => {
-  if (user && !hasFetched) load()
-})
+useAuthGate(load)
 </script>
 
 <template>
@@ -119,7 +105,7 @@ watch(() => authStore.user, (user) => {
             <HoverPreviewImg
                 v-if="mediaMap[fav.media_id] && !failedThumbnails.has(fav.media_id)"
                 :media-id="fav.media_id"
-                :src="getThumbnailUrl(mediaMap[fav.media_id])!"
+                :src="mediaApi.getThumbnailUrl(fav.media_id)"
                 :alt="getDisplayTitle(mediaMap[fav.media_id])"
                 img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 @error="failedThumbnails.add(fav.media_id)"

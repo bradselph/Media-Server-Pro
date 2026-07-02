@@ -1,7 +1,6 @@
 <script setup lang="ts">
 // HLS Jobs (monitor) and Updates (self-update) fold into System: the HLS and
 // updater config they pair with already live in the Settings panel.
-const route = useRoute()
 const subTabs = [
   {label: 'Status', value: 'status', icon: 'i-lucide-activity'},
   {label: 'Settings', value: 'settings', icon: 'i-lucide-settings'},
@@ -11,8 +10,7 @@ const subTabs = [
   {label: 'Updates', value: 'updates', icon: 'i-lucide-download'},
 ]
 // Legacy deep-links: ?tab=settings | streaming | updates open the matching sub-tab.
-const SUB_FROM_TAB: Record<string, string> = {settings: 'settings', streaming: 'streaming', updates: 'updates'}
-const subTab = ref(SUB_FROM_TAB[route.query.tab as string] ?? 'status')
+const subTab = useSubTabRoute({settings: 'settings', streaming: 'streaming', updates: 'updates'}, 'status')
 </script>
 
 <template>

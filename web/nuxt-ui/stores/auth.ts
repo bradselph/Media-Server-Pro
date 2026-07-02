@@ -1,47 +1,6 @@
 import {defineStore} from 'pinia'
-import type {User, UserPermissions, UserPreferences} from '~/types/api'
-import {normalizeUser} from '~/utils/apiCompat'
-
-function defaultPermissions(): UserPermissions {
-    return {
-        can_stream: true,
-        can_download: false,
-        can_upload: false,
-        can_delete: false,
-        can_manage: false,
-        can_view_mature: false,
-        can_create_playlists: true,
-    }
-}
-
-function defaultPreferences(): UserPreferences {
-    return {
-        theme: 'dark',
-        view_mode: 'grid',
-        default_quality: 'auto',
-        auto_play: false,
-        playback_speed: 1,
-        volume: 1,
-        show_mature: false,
-        mature_preference_set: false,
-        equalizer_preset: '',
-        resume_playback: true,
-        items_per_page: 20,
-        sort_by: 'date_added',
-        sort_order: 'desc',
-        filter_category: '',
-        filter_media_type: '',
-        show_continue_watching: true,
-        show_recommended: true,
-        show_trending: true,
-        skip_interval: 10,
-        shuffle_enabled: false,
-        show_buffer_bar: true,
-        download_prompt: true,
-        autoplay_similar: true,
-        accent_hue: 220,
-    }
-}
+import type {User} from '~/types/api'
+import {normalizePermissions, normalizePreferences, normalizeUser} from '~/utils/apiCompat'
 
 // Private-session flag is module-scoped so it survives Pinia store
 // rehydration in dev hot-reload AND so useApi (which is imported before
@@ -148,8 +107,8 @@ export const useAuthStore = defineStore('auth', () => {
                 created_at: '',
                 storage_used: 0,
                 active_streams: 0,
-                permissions: defaultPermissions(),
-                preferences: defaultPreferences(),
+                permissions: normalizePermissions(undefined),
+                preferences: normalizePreferences(undefined),
             }
             loggedInFlag.value = true
             // Overwrite with real server data (permissions, preferences, id).

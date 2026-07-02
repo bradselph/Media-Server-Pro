@@ -52,33 +52,16 @@ async function runDiscoveryScan() {
 
 const processingPaths = ref<Set<string>>(new Set())
 
-async function applyDiscovery(path: string) {
+async function handleDiscovery(path: string, action: 'apply' | 'dismiss') {
   if (processingPaths.value.has(path)) return
   const next = new Set(processingPaths.value);
   next.add(path);
   processingPaths.value = next
   try {
-    await adminApi.applyDiscoverySuggestion(path)
+    if (action === 'apply') await adminApi.applyDiscoverySuggestion(path)
+    else await adminApi.dismissDiscoverySuggestion(path)
     discoverySuggestions.value = discoverySuggestions.value.filter(s => s.original_path !== path)
-    notifySuccess('Suggestion applied')
-  } catch (e: unknown) {
-    notifyError(e, 'Failed')
-  } finally {
-    const cleared = new Set(processingPaths.value);
-    cleared.delete(path);
-    processingPaths.value = cleared
-  }
-}
-
-async function dismissDiscovery(path: string) {
-  if (processingPaths.value.has(path)) return
-  const next = new Set(processingPaths.value);
-  next.add(path);
-  processingPaths.value = next
-  try {
-    await adminApi.dismissDiscoverySuggestion(path)
-    discoverySuggestions.value = discoverySuggestions.value.filter(s => s.original_path !== path)
-    notifySuccess('Suggestion dismissed')
+    notifySuccess(action === 'apply' ? 'Suggestion applied' : 'Suggestion dismissed')
   } catch (e: unknown) {
     notifyError(e, 'Failed')
   } finally {
@@ -247,10 +230,10 @@ watch(subTab, (tab) => {
                   <div class="flex gap-1">
                     <UButton icon="i-lucide-check" aria-label="Apply suggestion" size="xs" variant="ghost"
                              color="success" :loading="processingPaths.has(s.original_path)"
-                             @click="applyDiscovery(s.original_path)"/>
+                             @click="handleDiscovery(s.original_path, 'apply')"/>
                     <UButton icon="i-lucide-x" aria-label="Dismiss suggestion" size="xs" variant="ghost" color="error"
                              :loading="processingPaths.has(s.original_path)"
-                             @click="dismissDiscovery(s.original_path)"/>
+                             @click="handleDiscovery(s.original_path, 'dismiss')"/>
                   </div>
                 </div>
               </div>

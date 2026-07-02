@@ -379,38 +379,37 @@ async function handleScan() {
 // Per-row loading guards to prevent duplicate operations
 const rowBusy = ref<Set<string>>(new Set())
 
-async function generateThumbnail(id: string) {
-  if (rowBusy.value.has(`thumb-${id}`)) return
+// withRowBusy guards a per-row async action behind the rowBusy set: it early-
+// returns if the key is already busy, adds it before the action and removes it
+// after (the copy-Set assignments preserve Vue reactivity).
+async function withRowBusy(key: string, action: () => Promise<void>, onError: (e: unknown) => void) {
+  if (rowBusy.value.has(key)) return
   const next = new Set(rowBusy.value);
-  next.add(`thumb-${id}`);
+  next.add(key);
   rowBusy.value = next
   try {
-    await adminApi.generateThumbnail(id)
-    notifySuccess('Thumbnail queued')
+    await action()
   } catch (e: unknown) {
-    notifyError(e, 'Thumbnail failed')
+    onError(e)
   } finally {
     const cleared = new Set(rowBusy.value);
-    cleared.delete(`thumb-${id}`);
+    cleared.delete(key);
     rowBusy.value = cleared
   }
 }
 
+async function generateThumbnail(id: string) {
+  await withRowBusy(`thumb-${id}`, async () => {
+    await adminApi.generateThumbnail(id)
+    notifySuccess('Thumbnail queued')
+  }, e => notifyError(e, 'Thumbnail failed'))
+}
+
 async function generateHLS(id: string) {
-  if (rowBusy.value.has(`hls-${id}`)) return
-  const next = new Set(rowBusy.value);
-  next.add(`hls-${id}`);
-  rowBusy.value = next
-  try {
+  await withRowBusy(`hls-${id}`, async () => {
     await hlsApi.generate(id)
     notifyInfo('HLS generation started')
-  } catch (e: unknown) {
-    notifyError(e, 'HLS generation failed')
-  } finally {
-    const cleared = new Set(rowBusy.value);
-    cleared.delete(`hls-${id}`);
-    rowBusy.value = cleared
-  }
+  }, e => notifyError(e, 'HLS generation failed'))
 }
 
 function confirmDelete(id: string) {
@@ -425,20 +424,10 @@ async function executeDelete() {
 }
 
 async function deleteMediaItem(id: string) {
-  if (rowBusy.value.has(`del-${id}`)) return
-  const next = new Set(rowBusy.value);
-  next.add(`del-${id}`);
-  rowBusy.value = next
-  try {
+  await withRowBusy(`del-${id}`, async () => {
     await adminApi.deleteMedia(id)
     await load()
-  } catch (e: unknown) {
-    notifyError(e, 'Delete failed')
-  } finally {
-    const cleared = new Set(rowBusy.value);
-    cleared.delete(`del-${id}`);
-    rowBusy.value = cleared
-  }
+  }, e => notifyError(e, 'Delete failed'))
 }
 
 watch([() => params.type, () => params.is_mature], () => {

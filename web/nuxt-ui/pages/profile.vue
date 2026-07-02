@@ -11,7 +11,7 @@ import type {
 } from '~/types/api'
 import {THEMES, type ThemeValue} from '~/stores/theme'
 import {getDisplayTitle} from '~/utils/mediaTitle'
-import {formatDuration, formatRelativeDate} from '~/utils/format'
+import {formatDuration, formatRelativeDate, formatWatchTime} from '~/utils/format'
 import type {MySession, SavedSearch} from '~/composables/useApiEndpoints'
 import {
   useAPITokensApi,
@@ -105,12 +105,12 @@ const themeStore = useThemeStore()
 const router = useRouter()
 const {
   changePassword,
-  adminChangePassword,
   getPreferences,
   updatePreferences,
   requestDataDeletion,
   deleteAccount
 } = useApiEndpoints()
+const {changeOwnPassword} = useAdminApi()
 const {list: listHistory, remove: removeHistory, clear: clearHistory} = useWatchHistoryApi()
 const {getUsage, getPermissions} = useStorageApi()
 
@@ -156,14 +156,6 @@ async function loadStorageUsage() {
   }
 }
 
-function formatWatchTime(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`
-  const hours = Math.floor(seconds / 3600)
-  const mins = Math.floor((seconds % 3600) / 60)
-  if (hours === 0) return `${mins}m`
-  if (mins === 0) return `${hours}h`
-  return `${hours}h ${mins}m`
-}
 
 const topCategories = computed(() => {
   const scores = myProfile.value?.category_scores
@@ -350,7 +342,7 @@ async function handleChangePassword() {
   pwLoading.value = true
   try {
     if (authStore.isAdmin) {
-      await adminChangePassword(pw.current, pw.new)
+      await changeOwnPassword(pw.current, pw.new)
     } else {
       await changePassword(pw.current, pw.new)
     }
@@ -623,10 +615,7 @@ function describeUserAgent(ua: string): string {
   return `${browser} on ${os}`
 }
 
-let hasFetched = false
-
 function loadAll() {
-  hasFetched = true
   loadPrefs();
   loadHistory();
   loadStorageUsage();
@@ -636,12 +625,7 @@ function loadAll() {
   loadSessions()
 }
 
-onMounted(() => {
-  if (!authStore.isLoading && authStore.user) loadAll()
-})
-watch(() => authStore.user, (user) => {
-  if (user && !hasFetched) loadAll()
-})
+useAuthGate(loadAll)
 </script>
 
 <template>

@@ -3,14 +3,12 @@
 // Content tab (scanner, validator, auto-tag rules); "Discovery & AI" is the
 // former Discovery tab (auto-discovery, rec-engine, HF classify).
 // Each panel keeps its own inner sub-tabs, so this renders as a two-level nav.
-const route = useRoute()
 const subTabs = [
   {label: 'Mature & Tagging', value: 'content', icon: 'i-lucide-scan'},
   {label: 'Discovery & AI', value: 'discovery', icon: 'i-lucide-compass'},
 ]
 // Legacy deep-links: ?tab=content | ?tab=discovery open the matching sub-tab.
-const SUB_FROM_TAB: Record<string, string> = {content: 'content', discovery: 'discovery'}
-const subTab = ref(SUB_FROM_TAB[route.query.tab as string] ?? 'content')
+const subTab = useSubTabRoute({content: 'content', discovery: 'discovery'}, 'content')
 </script>
 
 <template>
