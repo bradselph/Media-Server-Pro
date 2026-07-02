@@ -236,18 +236,12 @@ func (m *Module) removeFileQuietly(opts removeFileOpts) {
 
 // getFilesToBackup returns list of files to backup based on type
 func (m *Module) getFilesToBackup(backupType string) []string {
-	var files []string
-
 	// Application data (playlists, analytics, scan results, etc.) lives in MySQL and is not
-	// included in file-based backups. "config", "data", and "full" currently back up config.json
-	// only; use a database backup (e.g. mysqldump) for full application data protection.
-	switch backupType {
-	case "config", "data", "full":
-		files = []string{
-			"config.json",
-		}
-	default:
-		return nil
+	// included in file-based backups. "config", "data", and "full" all currently back up
+	// config.json only (CreateBackup rejects any other type); use a database backup
+	// (e.g. mysqldump) for full application data protection.
+	files := []string{
+		"config.json",
 	}
 
 	// Convert to full paths

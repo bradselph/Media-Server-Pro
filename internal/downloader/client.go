@@ -167,7 +167,7 @@ func (c *Client) Detect(rawURL string) (*DetectResponse, error) {
 	}
 	body := map[string]string{"url": rawURL}
 	var resp DetectResponse
-	if err := c.post("/api/detect", body, &resp); err != nil {
+	if err := c.postWithSession("/api/detect", body, &resp, ""); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -190,7 +190,7 @@ func (c *Client) CancelDownload(downloadID string) error {
 	if c == nil {
 		return fmt.Errorf("downloader client not initialized")
 	}
-	return c.post("/api/cancel/"+url.PathEscape(downloadID), nil, nil)
+	return c.postWithSession("/api/cancel/"+url.PathEscape(downloadID), nil, nil, "")
 }
 
 // ListDownloads returns completed downloads on the server.
@@ -348,10 +348,6 @@ func (c *Client) get(path string, result any) error {
 		return json.NewDecoder(resp.Body).Decode(result)
 	}
 	return nil
-}
-
-func (c *Client) post(path string, body, result any) error {
-	return c.postWithSession(path, body, result, "")
 }
 
 func (c *Client) postWithSession(path string, body, result any, mspSessionID string) error {

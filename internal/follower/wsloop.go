@@ -16,6 +16,7 @@ import (
 
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/media"
+	"media-server-pro/pkg/helpers"
 )
 
 // wsMessage is the envelope all follower↔master messages share.
@@ -373,7 +374,7 @@ func (m *Module) buildCatalog() []*catalogItem {
 			MediaType:          string(item.Type),
 			Size:               item.Size,
 			Duration:           item.Duration,
-			ContentType:        contentTypeForName(item.Name),
+			ContentType:        helpers.MediaContentType(item.Name),
 			ContentFingerprint: fp,
 			Width:              item.Width,
 			Height:             item.Height,

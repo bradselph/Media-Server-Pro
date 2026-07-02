@@ -260,14 +260,15 @@ func (m *Module) syncAllSources() {
 		if m.ctx.Err() != nil {
 			return
 		}
-		if err := m.syncSource(source.Source.Name); err != nil {
+		if err := m.SyncSource(source.Source.Name); err != nil {
 			m.log.Error("Failed to sync source %s: %v", source.Source.Name, err)
 		}
 	}
 }
 
-// syncSource syncs media from a specific source
-func (m *Module) syncSource(sourceName string) error {
+// SyncSource syncs media from a specific source. Exported for HTTP handlers;
+// also invoked internally when a source's cache is cold.
+func (m *Module) SyncSource(sourceName string) error {
 	m.mu.Lock()
 	state, exists := m.sources[sourceName]
 	if !exists {
@@ -424,7 +425,7 @@ func (m *Module) GetSourceMedia(sourceName string) ([]*MediaItem, error) {
 
 	// Trigger live sync if cache is empty (server just started or first add)
 	if empty {
-		if err := m.syncSource(sourceName); err != nil {
+		if err := m.SyncSource(sourceName); err != nil {
 			m.log.Warn("Live sync for %s failed: %v", sourceName, err)
 		}
 	}
@@ -724,13 +725,6 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 
 	m.log.Info("Cached %d bytes: %s", size, localPath)
 	return cached, nil
-}
-
-// SyncSource triggers an immediate sync for a named source.
-// This is the exported wrapper around the unexported syncSource method,
-// intended for use by HTTP handlers.
-func (m *Module) SyncSource(name string) error {
-	return m.syncSource(name)
 }
 
 // AddSource adds a new remote source to the in-memory map.

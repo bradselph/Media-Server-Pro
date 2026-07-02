@@ -420,12 +420,6 @@ func (m *Module) saveJob(job *models.HLSJob) error {
 	return nil
 }
 
-// SaveJobs persists all in-memory HLS jobs to the database. Exposed for the
-// hls-pregenerate background task and admin tooling.
-func (m *Module) SaveJobs() error {
-	return m.saveJobs()
-}
-
 func skipDirEntry(entry os.DirEntry) bool {
 	if !entry.IsDir() {
 		return true
