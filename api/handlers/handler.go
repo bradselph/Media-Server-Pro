@@ -609,6 +609,29 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// setSessionCookie sets the session_id cookie with the standard security
+// attributes shared by the login and registration paths.
+func setSessionCookie(w http.ResponseWriter, r *http.Request, session *models.Session) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_id",
+		Value:    session.ID,
+		Path:     "/",
+		Expires:  session.ExpiresAt,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   isSecureRequest(r),
+	})
+}
+
+// mediaNameByID resolves a media UUID to its human-readable name, falling back
+// to the id itself when the item is unknown. h.media is always non-nil.
+func (h *Handler) mediaNameByID(id string) string {
+	if mi, err := h.media.GetMediaByID(id); err == nil && mi != nil {
+		return mi.Name
+	}
+	return id
+}
+
 // generateRandomString creates a random string of the given length
 func generateRandomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"

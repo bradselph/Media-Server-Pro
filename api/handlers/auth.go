@@ -67,15 +67,7 @@ func (h *Handler) Login(c *gin.Context) {
 			return
 		}
 
-		http.SetCookie(c.Writer, &http.Cookie{
-			Name:     "session_id",
-			Value:    session.ID,
-			Path:     "/",
-			Expires:  session.ExpiresAt,
-			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode,
-			Secure:   isSecureRequest(c.Request),
-		})
+		setSessionCookie(c.Writer, c.Request, session)
 		if h.analytics != nil {
 			h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
 				Type: analytics.EventLogin, UserID: session.UserID, SessionID: session.ID,
@@ -114,15 +106,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "session_id",
-		Value:    session.ID,
-		Path:     "/",
-		Expires:  session.ExpiresAt,
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		Secure:   isSecureRequest(c.Request),
-	})
+	setSessionCookie(c.Writer, c.Request, session)
 
 	// Track successful login for traffic analytics
 	if h.analytics != nil {
@@ -304,15 +288,7 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "session_id",
-		Value:    session.ID,
-		Path:     "/",
-		Expires:  session.ExpiresAt,
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		Secure:   isSecureRequest(c.Request),
-	})
+	setSessionCookie(c.Writer, c.Request, session)
 
 	// Track registration for traffic analytics
 	if h.analytics != nil {

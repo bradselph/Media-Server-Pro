@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,7 +30,7 @@ func (h *Handler) GetFavorites(c *gin.Context) {
 		items[i] = favoriteItem{
 			ID:      r.ID,
 			MediaID: r.MediaID,
-			AddedAt: r.AddedAt.Format(timeFormatRFC3339Ext),
+			AddedAt: r.AddedAt.Format(time.RFC3339),
 		}
 	}
 	writeSuccess(c, items)

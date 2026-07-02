@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -136,25 +135,6 @@ func computeAdminListTotalPages(totalItems int64, limit int) int {
 	return n
 }
 
-func (h *Handler) enrichAdminListThumbnails(items []*models.MediaItem) {
-	if h.thumbnails == nil {
-		return
-	}
-	for _, item := range items {
-		if item.ThumbnailURL != "" {
-			continue
-		}
-		if !h.thumbnails.HasThumbnail(thumbnails.MediaID(item.ID)) {
-			isAudio := item.Type == "audio"
-			_, err := h.thumbnails.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.Path, MediaID: item.ID, IsAudio: isAudio, HighPriority: true})
-			if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
-				h.log.Warn("Failed to queue thumbnail for %s: %v", item.Path, err)
-			}
-		}
-		item.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
-	}
-}
-
 // AdminListMedia returns media items for admin management with sorting, filtering, and pagination.
 // When limit > 0, uses DB-level pagination (ListMediaPaginated) so the catalog table is
 // referenced and large libraries stay responsive.
@@ -164,7 +144,7 @@ func (h *Handler) AdminListMedia(c *gin.Context) {
 
 	items, totalItems := h.fetchAdminListItems(c.Request.Context(), params.filter, params.limit, offset)
 	totalPages := computeAdminListTotalPages(totalItems, params.limit)
-	h.enrichAdminListThumbnails(items)
+	h.ensurePageThumbnails(items)
 
 	writeSuccess(c, map[string]any{
 		"items":       items,

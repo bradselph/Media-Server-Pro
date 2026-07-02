@@ -1152,9 +1152,7 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 				Duration:  req.Duration,
 				WatchedAt: time.Now(),
 			}
-			if req.Duration > 0 {
-				item.Progress = req.Position / req.Duration
-			}
+			item.Progress = progress
 			item.Completed = item.Progress >= 0.9
 			if err := h.auth.AddToWatchHistory(c.Request.Context(), username, item); err != nil {
 				h.log.Warn("Watch history update failed for media %s: %v", req.ID, err)

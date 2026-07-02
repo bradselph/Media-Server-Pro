@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -31,11 +32,8 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 	topMedia := h.analytics.GetTopMedia(10)
 	topViewed := make([]map[string]any, 0, len(topMedia))
 	for _, item := range topMedia {
-		filename := item.MediaID
 		// Analytics keys are stable UUIDs — resolve to human-readable names.
-		if mediaItem, err := h.media.GetMediaByID(item.MediaID); err == nil && mediaItem != nil {
-			filename = mediaItem.Name
-		}
+		filename := h.mediaNameByID(item.MediaID)
 		topViewed = append(topViewed, map[string]any{
 			"media_id": item.MediaID,
 			"filename": filename,
@@ -158,11 +156,8 @@ func (h *Handler) GetTopMedia(c *gin.Context) {
 	top := h.analytics.GetTopMedia(limit)
 	enriched := make([]map[string]any, 0, len(top))
 	for _, item := range top {
-		filename := item.MediaID
 		// Analytics keys are stable UUIDs — resolve to human-readable names.
-		if mediaItem, err := h.media.GetMediaByID(item.MediaID); err == nil && mediaItem != nil {
-			filename = mediaItem.Name
-		}
+		filename := h.mediaNameByID(item.MediaID)
 		entry := map[string]any{
 			"media_id": item.MediaID,
 			"filename": filename,
@@ -188,10 +183,7 @@ func (h *Handler) GetContentPerformance(c *gin.Context) {
 	items := h.analytics.GetContentPerformance(limit)
 	enriched := make([]map[string]any, 0, len(items))
 	for _, item := range items {
-		filename := item.MediaID
-		if mediaItem, err := h.media.GetMediaByID(item.MediaID); err == nil && mediaItem != nil {
-			filename = mediaItem.Name
-		}
+		filename := h.mediaNameByID(item.MediaID)
 		enriched = append(enriched, map[string]any{
 			"media_id":           item.MediaID,
 			"filename":           filename,
@@ -1238,7 +1230,7 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 	defer func() { _ = f.Close(); _ = os.Remove(filename) }()
 
 	fi, statErr := f.Stat()
-	c.Header(headerContentDisposition, safeContentDisposition(pathBase(filename)))
+	c.Header(headerContentDisposition, safeContentDisposition(filepath.Base(filename)))
 	c.Header(headerContentType, "text/csv")
 	if statErr != nil || fi == nil {
 		// Fallback: stream with size cap when stat unavailable (no range support but content is served)
@@ -1251,12 +1243,3 @@ func (h *Handler) AdminExportAnalytics(c *gin.Context) {
 	http.ServeContent(c.Writer, c.Request, fi.Name(), fi.ModTime(), f)
 }
 
-// pathBase is a local helper to get the base name of a path (avoids import of path/filepath in this file).
-func pathBase(p string) string {
-	for i := len(p) - 1; i >= 0; i-- {
-		if p[i] == '/' || p[i] == '\\' {
-			return p[i+1:]
-		}
-	}
-	return p
-}
