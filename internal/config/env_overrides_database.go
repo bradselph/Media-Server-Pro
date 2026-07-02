@@ -7,8 +7,12 @@ func (m *Manager) applyDatabaseEnvOverrides() {
 	m.applyDatabasePoolOverrides()
 	m.applyDatabaseTimeoutOverrides()
 	m.applyDatabaseRetryOverrides()
-	m.applyDatabaseTLSOverride()
-	m.applyDatabaseSlowQueryOverride()
+	if val := envGetStr("DATABASE_TLS_MODE"); val != "" {
+		m.config.Database.TLSMode = val
+	}
+	if val, ok := envGetDuration(time.Millisecond, "DATABASE_SLOW_QUERY_THRESHOLD_MS"); ok {
+		m.config.Database.SlowQueryThreshold = val
+	}
 }
 
 func (m *Manager) applyDatabaseConnectionOverrides() {
@@ -66,14 +70,3 @@ func (m *Manager) applyDatabaseRetryOverrides() {
 	}
 }
 
-func (m *Manager) applyDatabaseTLSOverride() {
-	if val := envGetStr("DATABASE_TLS_MODE"); val != "" {
-		m.config.Database.TLSMode = val
-	}
-}
-
-func (m *Manager) applyDatabaseSlowQueryOverride() {
-	if val, ok := envGetDuration(time.Millisecond, "DATABASE_SLOW_QUERY_THRESHOLD_MS"); ok {
-		m.config.Database.SlowQueryThreshold = val
-	}
-}
