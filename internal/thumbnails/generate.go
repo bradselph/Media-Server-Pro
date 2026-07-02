@@ -144,11 +144,8 @@ func (m *Module) generateVideoThumbnail(job *ThumbnailJob) error {
 	timestamp := m.resolveVideoTimestamp(job)
 	m.log.Debug("Using timestamp: %.2f seconds", timestamp)
 
-	// format=yuv420p ensures 8-bit output before JPEG encoding;
-	// without it, 10-bit HDR/HEVC/AV1 sources fail with "codec not supported" errors.
 	cfg := m.config.Get()
-	scaleFilter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-		job.Width, job.Height, job.Width, job.Height)
+	scaleFilter := thumbnailScaleFilter(job.Width, job.Height)
 	stream := ffmpeg.Input(job.FFmpegInput, ffmpeg.KwArgs{"ss": fmt.Sprintf("%.2f", timestamp)}).
 		Output(job.OutputPath, ffmpeg.KwArgs{
 			"vframes": "1",
@@ -225,11 +222,17 @@ type webPFromVideoOpts struct {
 	timestamp  float64
 }
 
+// thumbnailScaleFilter builds the ffmpeg scale/pad/format filter shared by the
+// JPEG and WebP thumbnail encoders. format=yuv420p forces 8-bit output before
+// encoding so 10-bit HDR/HEVC/AV1 sources don't fail with "codec not supported".
+func thumbnailScaleFilter(w, h int) string {
+	return fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,format=yuv420p", w, h, w, h)
+}
+
 // generateWebPFromVideo extracts a frame and encodes as WebP
 func (m *Module) generateWebPFromVideo(opts *webPFromVideoOpts) error {
 	cfg := m.config.Get()
-	scaleFilter := fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-		opts.width, opts.height, opts.width, opts.height)
+	scaleFilter := thumbnailScaleFilter(opts.width, opts.height)
 
 	stream := ffmpeg.Input(opts.mediaPath, ffmpeg.KwArgs{"ss": fmt.Sprintf("%.2f", opts.timestamp)}).
 		Output(opts.outputPath, ffmpeg.KwArgs{
@@ -309,13 +312,8 @@ func (m *Module) verifyAndPostProcessAudioThumbnail(job *ThumbnailJob) error {
 	if err := m.generateWebPFromAudio(&webPFromAudioOpts{MediaPath: job.FFmpegInput, OutputPath: webpPath, Width: job.Width, Height: job.Height}); err != nil {
 		m.log.Warn("WebP waveform generation failed (JPEG served): %v", err)
 	}
-	m.updateBlurHashForAudioThumbnail(job)
-	return nil
-}
-
-// updateBlurHashForAudioThumbnail computes and stores BlurHash for the main audio waveform thumbnail.
-func (m *Module) updateBlurHashForAudioThumbnail(job *ThumbnailJob) {
 	m.tryUpdateBlurHashForThumbnail(job)
+	return nil
 }
 
 // generateWebPFromAudio creates waveform as WebP

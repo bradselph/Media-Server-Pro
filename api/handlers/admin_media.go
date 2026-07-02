@@ -362,7 +362,7 @@ func (h *Handler) cleanupDeletedMedia(ctx context.Context, mediaID, mediaPath st
 	// Thumbnails (main + previews)
 	if h.thumbnails != nil {
 		thumbID := thumbnails.MediaID(mediaID)
-		thumbPath := h.thumbnails.GetThumbnailPath(thumbID)
+		thumbPath := h.thumbnails.GetThumbnailFilePath(thumbID)
 		if thumbPath != "" {
 			_ = os.Remove(thumbPath)
 			// Also remove WebP variant and preview frames
