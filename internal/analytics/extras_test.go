@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -68,6 +69,38 @@ func TestMemo_HitsCacheOnSecondCall(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Errorf("expected compute to run exactly once (cache hit on call 2), got %d", calls)
+	}
+}
+
+// TestMemo_ConcurrentMissesCoalesced verifies the singleflight coalescing:
+// many goroutines hitting a cold key at once must trigger compute() exactly once
+// and all receive the same result. Before the singleflight fix, compute ran once
+// per concurrent miss (the thundering-herd bug).
+func TestMemo_ConcurrentMissesCoalesced(t *testing.T) {
+	c := newAggCache()
+	var calls atomic.Int32
+	const n = 20
+	results := make([]int, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i] = memo(c, "k", time.Second, func() int {
+				calls.Add(1)
+				time.Sleep(20 * time.Millisecond) // widen the overlap window
+				return 99
+			})
+		}(i)
+	}
+	wg.Wait()
+	for i, v := range results {
+		if v != 99 {
+			t.Errorf("goroutine %d: want 99, got %d", i, v)
+		}
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("compute() ran %d times for %d concurrent misses; want exactly 1", got, n)
 	}
 }
 

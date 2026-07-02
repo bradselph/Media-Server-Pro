@@ -3,6 +3,8 @@ package analytics
 import (
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // aggCache is a tiny in-memory TTL cache for the dashboard's hot
@@ -22,6 +24,9 @@ import (
 type aggCache struct {
 	mu      sync.Mutex
 	entries map[string]aggCacheEntry
+	// sf coalesces concurrent cold-cache misses for the same key so the
+	// expensive 50k-100k-event aggregation runs once, not once per caller.
+	sf singleflight.Group
 }
 
 type aggCacheEntry struct {
@@ -82,13 +87,35 @@ func (c *aggCache) invalidate(prefix string) {
 
 // memo is the canonical helper: try cache, on miss compute and store.
 // Generics let the caller skip the type-assertion at call sites.
+//
+// A singleflight.Group coalesces concurrent cold-cache misses so the expensive
+// compute() runs once per distinct key; the other callers block and share the
+// result. sf.Do is invoked OUTSIDE c.mu (get/set take c.mu only briefly and
+// internally), so there is no lock inversion between the cache mutex and the
+// singleflight lock.
 func memo[T any](c *aggCache, key string, ttl time.Duration, compute func() T) T {
+	// Fast path: no singleflight overhead on a warm cache.
 	if v, ok := c.get(key); ok {
 		if typed, ok := v.(T); ok {
 			return typed
 		}
 	}
-	out := compute()
-	c.set(key, out, ttl)
-	return out
+	// Slow path: coalesce concurrent misses into a single compute() call.
+	v, _, _ := c.sf.Do(key, func() (any, error) {
+		// Double-check: an earlier winner may have populated the cache between
+		// our fast-path miss and entering Do.
+		if v, ok := c.get(key); ok {
+			if typed, ok := v.(T); ok {
+				return typed, nil
+			}
+		}
+		out := compute()
+		c.set(key, out, ttl)
+		return out, nil
+	})
+	if typed, ok := v.(T); ok {
+		return typed
+	}
+	var zero T
+	return zero
 }
