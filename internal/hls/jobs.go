@@ -123,7 +123,7 @@ func (m *Module) tryReuseExistingHLSOnDiskLocked(p *createOrReuseHLSJobParams) (
 	m.jobs[p.JobID] = job
 	// Use saveJob (single-row, no mutex) instead of saveJobs (acquires jobsMu.RLock).
 	// saveJobs would deadlock here because the caller already holds jobsMu as a write lock.
-	m.saveJob(job)
+	_ = m.saveJob(job)
 	return job, true
 }
 
@@ -209,7 +209,7 @@ func (m *Module) updateJobStatus(params *updateJobStatusParams) {
 	// job is retried indefinitely instead of stopping at maxFailures. saveJob does
 	// not take jobsMu, so calling it while holding the lock is safe.
 	if params.Status == models.HLSStatusFailed {
-		m.saveJob(job)
+		_ = m.saveJob(job)
 	}
 }
 
@@ -279,7 +279,12 @@ func (m *Module) CancelJob(jobID string) error {
 			cancel()
 			delete(m.jobCancels, jobID)
 		}
-		m.saveJob(job)
+		// If the Canceled status fails to persist, loadJobs() reloads the job as
+		// Running on restart and resetRunningToPending re-queues it — silently
+		// re-transcoding a job the user canceled. Surface the failure to the operator.
+		if err := m.saveJob(job); err != nil {
+			m.log.Warn("CancelJob: failed to persist Canceled status for job %s; it may re-transcode on restart: %v", jobID, err)
+		}
 	}
 
 	return nil
@@ -389,11 +394,16 @@ func (m *Module) saveJobs() error {
 	return lastErr
 }
 
-// saveJob persists a single job to the database.
-func (m *Module) saveJob(job *models.HLSJob) {
+// saveJob persists a single job to the database. It logs and returns any error
+// so callers that must react to a failed persist (e.g. CancelJob, whose Canceled
+// status would otherwise be lost on restart and re-transcode) can do so; the
+// best-effort call sites discard the result with `_ =`.
+func (m *Module) saveJob(job *models.HLSJob) error {
 	if err := m.repo.Save(context.Background(), job); err != nil {
 		m.log.Error("Failed to persist HLS job %s: %v", job.ID, err)
+		return err
 	}
+	return nil
 }
 
 // SaveJobs persists all in-memory HLS jobs to the database. Exposed for the

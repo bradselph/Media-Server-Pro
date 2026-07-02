@@ -1,6 +1,8 @@
 package hls
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +10,47 @@ import (
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/models"
 )
+
+// stubHLSRepo is a minimal HLSJobRepository used to exercise save-error paths.
+type stubHLSRepo struct {
+	saveErr error
+}
+
+func (s *stubHLSRepo) Save(_ context.Context, _ *models.HLSJob) error          { return s.saveErr }
+func (s *stubHLSRepo) Get(_ context.Context, _ string) (*models.HLSJob, error) { return nil, nil }
+func (s *stubHLSRepo) Delete(_ context.Context, _ string) error                { return nil }
+func (s *stubHLSRepo) List(_ context.Context) ([]*models.HLSJob, error)        { return nil, nil }
+
+// TestSaveJob_ReturnsError confirms saveJob now surfaces the repo error (and nil on success).
+func TestSaveJob_ReturnsError(t *testing.T) {
+	fail := &Module{repo: &stubHLSRepo{saveErr: errors.New("db down")}, log: logger.New("test")}
+	if err := fail.saveJob(&models.HLSJob{ID: "j1"}); err == nil {
+		t.Error("saveJob should return the underlying repo error")
+	}
+	ok := &Module{repo: &stubHLSRepo{}, log: logger.New("test")}
+	if err := ok.saveJob(&models.HLSJob{ID: "j1"}); err != nil {
+		t.Errorf("saveJob should return nil on success, got %v", err)
+	}
+}
+
+// TestCancelJob_SaveError_DoesNotPropagate confirms a failed status persist is
+// logged (as a warning) but does not fail CancelJob, and that the in-memory
+// status is still flipped to Canceled.
+func TestCancelJob_SaveError_DoesNotPropagate(t *testing.T) {
+	m := &Module{
+		repo:       &stubHLSRepo{saveErr: errors.New("db down")},
+		jobs:       map[string]*models.HLSJob{"j1": {ID: "j1", Status: models.HLSStatusRunning}},
+		jobCancels: map[string]context.CancelFunc{},
+		jobDone:    map[string]chan struct{}{},
+		log:        logger.New("test"),
+	}
+	if err := m.CancelJob("j1"); err != nil {
+		t.Fatalf("CancelJob must not propagate the save error, got %v", err)
+	}
+	if got := m.jobs["j1"].Status; got != models.HLSStatusCanceled {
+		t.Errorf("in-memory status = %v, want Canceled", got)
+	}
+}
 
 // ---------------------------------------------------------------------------
 // isSegmentLine

@@ -327,7 +327,7 @@ func (m *Module) resumeInterruptedJobs() int {
 			// is only written at graceful shutdown, so a crash beforehand reloads
 			// the job as Running and re-resumes it into the same failure on every
 			// restart. saveJob is mutex-free, so it is safe under the held jobsMu.
-			m.saveJob(job)
+			_ = m.saveJob(job)
 			continue
 		}
 		m.log.Info("Resuming interrupted HLS job %s for %s", job.ID, job.MediaPath)
