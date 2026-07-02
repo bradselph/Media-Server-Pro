@@ -331,11 +331,15 @@ func (m *Module) DeleteJob(jobID string) error {
 	// Drain any lazy transcodes running in HTTP handler goroutines for this job.
 	// These hold m.activeJobs but have no jobDone entry, so the <-doneCh wait above
 	// does not cover them; without this an on-demand transcode could still be
-	// writing segments when os.RemoveAll runs below.
+	// writing segments when os.RemoveAll runs below. Cancel first (killing ffmpeg)
+	// so the wait returns promptly instead of blocking on a full on-demand encode
+	// that runs under the HTTP request context this call cannot otherwise stop.
+	m.cancelLazyTranscodes(jobID)
 	if rawWg, ok := m.lazyWg.Load(jobID); ok {
 		rawWg.(*sync.WaitGroup).Wait()
 		m.lazyWg.Delete(jobID)
 	}
+	m.lazyCancels.Delete(jobID)
 
 	// Filesystem cleanup (best-effort; warn only).
 	if err := os.RemoveAll(outputDir); err != nil {

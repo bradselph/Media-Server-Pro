@@ -106,6 +106,55 @@ func TestDeleteJob_DrainsLazyTranscode(t *testing.T) {
 	}
 }
 
+// TestDeleteJob_CancelsLazyTranscode confirms DeleteJob cancels an in-flight
+// lazy transcode (rather than blocking on it): the simulated transcode only
+// finishes when its registered context is cancelled, so if cancellation didn't
+// fire, DeleteJob would hang and the test would time out.
+func TestDeleteJob_CancelsLazyTranscode(t *testing.T) {
+	outputDir := filepath.Join(t.TempDir(), "job1")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := &Module{
+		repo:       &stubHLSRepo{},
+		jobs:       map[string]*models.HLSJob{"job1": {ID: "job1", OutputDir: outputDir, Status: models.HLSStatusCompleted}},
+		jobCancels: map[string]context.CancelFunc{},
+		jobDone:    map[string]chan struct{}{},
+		log:        logger.New("test"),
+	}
+
+	// Simulate an in-flight lazy transcode: holds lazyWg and blocks on its
+	// registered cancellable context (as real ffmpeg does via exec.CommandContext).
+	rawWg, _ := m.lazyWg.LoadOrStore("job1", new(sync.WaitGroup))
+	wg := rawWg.(*sync.WaitGroup)
+	wg.Add(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	rawSet, _ := m.lazyCancels.LoadOrStore("job1", &sync.Map{})
+	rawSet.(*sync.Map).Store(new(int), context.CancelFunc(cancel))
+
+	started := make(chan struct{})
+	go func() {
+		close(started)
+		<-ctx.Done() // only returns once DeleteJob cancels us
+		wg.Done()
+	}()
+	<-started
+
+	done := make(chan error, 1)
+	go func() { done <- m.DeleteJob("job1") }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("DeleteJob: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("DeleteJob hung — cancellation of the lazy transcode did not unblock the drain")
+	}
+	if _, err := os.Stat(outputDir); !os.IsNotExist(err) {
+		t.Errorf("output dir should have been removed by DeleteJob, stat err=%v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // isSegmentLine
 // ---------------------------------------------------------------------------
