@@ -101,12 +101,17 @@ func buildDSN(db config.DatabaseConfig) string {
 	dsnCfg.Params = map[string]string{"charset": "utf8mb4", "multiStatements": "false"}
 	dsnCfg.ParseTime = true
 	dsnCfg.Timeout = db.Timeout
-	if db.TLSMode != "" && db.TLSMode != "false" {
-		dsnCfg.TLSConfig = db.TLSMode
-	} else {
-		dsnCfg.TLSConfig = "false"
-	}
+	dsnCfg.TLSConfig = tlsMode(db.TLSMode)
 	return dsnCfg.FormatDSN()
+}
+
+// tlsMode maps a configured TLS mode to the go-sql-driver TLSConfig value,
+// treating empty and "false" as disabled.
+func tlsMode(mode string) string {
+	if mode != "" && mode != "false" {
+		return mode
+	}
+	return "false"
 }
 
 // ensureDatabase connects to MySQL without specifying a database and runs
@@ -123,11 +128,7 @@ func ensureDatabase(ctx context.Context, dbCfg config.DatabaseConfig, log *logge
 	noCfg.Addr = fmt.Sprintf("%s:%d", dbCfg.Host, dbCfg.Port)
 	noCfg.ParseTime = true
 	noCfg.Timeout = dbCfg.Timeout
-	if dbCfg.TLSMode != "" && dbCfg.TLSMode != "false" {
-		noCfg.TLSConfig = dbCfg.TLSMode
-	} else {
-		noCfg.TLSConfig = "false"
-	}
+	noCfg.TLSConfig = tlsMode(dbCfg.TLSMode)
 
 	connector, err := driverMysql.NewConnector(noCfg)
 	if err != nil {
