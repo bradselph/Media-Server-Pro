@@ -20,12 +20,6 @@ var imageExtensions = map[string]bool{
 	".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".bmp": true, ".gif": true,
 }
 
-var videoExtensions = map[string]bool{
-	".mp4": true, ".mkv": true, ".avi": true, ".mov": true, ".wmv": true, ".flv": true,
-	".webm": true, ".m4v": true, ".mpeg": true, ".mpg": true,
-	".3gp": true, ".ts": true, ".m2ts": true, ".vob": true, ".ogv": true,
-}
-
 const maxBaseNameLen = 200
 
 // tryImageFrames returns (paths, true, nil) for valid image paths, (nil, true, err) on image stat error,
@@ -41,7 +35,7 @@ func tryImageFrames(videoPath, ext string) (paths []string, isImage bool, err er
 }
 
 func checkVideoExtension(ext string) error {
-	if !videoExtensions[ext] {
+	if !helpers.IsMediaExtension(ext) || helpers.IsAudioExtension(ext) {
 		return fmt.Errorf("unsupported file type for classification: %s (use video or image)", ext)
 	}
 	return nil

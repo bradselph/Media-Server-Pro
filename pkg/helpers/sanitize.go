@@ -29,30 +29,11 @@ func SanitizeMap(m map[string]string) map[string]string {
 	return sanitized
 }
 
-// validMetadataKeyRunes is the set of runes allowed in a metadata key
-// (alphanumeric, underscore, hyphen, period). Built in init to keep isValidMetadataKeyChar simple.
-var validMetadataKeyRunes map[rune]struct{}
-
-func init() {
-	validMetadataKeyRunes = make(map[rune]struct{}, 26+26+10+3)
-	for r := 'a'; r <= 'z'; r++ {
-		validMetadataKeyRunes[r] = struct{}{}
-	}
-	for r := 'A'; r <= 'Z'; r++ {
-		validMetadataKeyRunes[r] = struct{}{}
-	}
-	for r := '0'; r <= '9'; r++ {
-		validMetadataKeyRunes[r] = struct{}{}
-	}
-	for _, r := range []rune{'_', '-', '.'} {
-		validMetadataKeyRunes[r] = struct{}{}
-	}
-}
-
-// isValidMetadataKeyChar returns true if the rune is allowed in a metadata key.
+// isValidMetadataKeyChar returns true if the rune is allowed in a metadata key
+// (alphanumeric, underscore, hyphen, period).
 func isValidMetadataKeyChar(ch rune) bool {
-	_, ok := validMetadataKeyRunes[ch]
-	return ok
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+		(ch >= '0' && ch <= '9') || ch == '_' || ch == '-' || ch == '.'
 }
 
 // allMetadataKeyCharsValid returns true if every rune in s is allowed in a metadata key.

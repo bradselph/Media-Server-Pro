@@ -72,16 +72,11 @@ var mediaExtTypes = map[string]mediaType{
 	".aiff": mediaAudio, ".mka": mediaAudio,
 }
 
-// mediaExts and audioExts are derived from mediaExtTypes at init so they
-// cannot drift out of sync.
-var (
-	mediaExts = make(map[string]bool, len(mediaExtTypes))
-	audioExts = make(map[string]bool)
-)
+// audioExts is derived from mediaExtTypes at init so it cannot drift out of sync.
+var audioExts = make(map[string]bool)
 
 func init() {
 	for ext, mt := range mediaExtTypes {
-		mediaExts[ext] = true
 		if mt == mediaAudio {
 			audioExts[ext] = true
 		}
@@ -91,7 +86,8 @@ func init() {
 // IsMediaExtension checks if a file extension (with leading dot, e.g. ".mp4")
 // belongs to a known media format. This is the canonical check used across modules.
 func IsMediaExtension(ext string) bool {
-	return mediaExts[strings.ToLower(ext)]
+	_, ok := mediaExtTypes[strings.ToLower(ext)]
+	return ok
 }
 
 // IsAudioExtension checks if a file extension (with leading dot, e.g. ".mp3")

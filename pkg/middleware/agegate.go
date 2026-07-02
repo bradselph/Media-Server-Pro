@@ -228,10 +228,12 @@ func (ag *AgeGate) GinStatusHandler() gin.HandlerFunc {
 	}
 }
 
-// isSameOrigin returns true when the request's Origin or Referer header matches
-// the request Host. Absent headers are treated as same-origin (e.g. curl, native
-// apps) to avoid breaking non-browser callers. A mismatched Origin is a CSRF signal.
-func (ag *AgeGate) isSameOrigin(r *http.Request) bool {
+// isSameOriginRequest returns true when the request's Origin or Referer header
+// matches the request Host. Absent headers are treated as same-origin (e.g.
+// curl, native apps) to avoid breaking non-browser callers; a mismatched Origin
+// is a CSRF signal. Shared by the age-gate and cookie-consent POST guards so the
+// two paired consent endpoints keep a consistent CSRF posture.
+func isSameOriginRequest(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		origin = r.Header.Get("Referer")
@@ -245,6 +247,8 @@ func (ag *AgeGate) isSameOrigin(r *http.Request) bool {
 	}
 	return u.Host == r.Host
 }
+
+func (ag *AgeGate) isSameOrigin(r *http.Request) bool { return isSameOriginRequest(r) }
 
 // GinVerifyHandler returns a gin handler for POST /api/age-verify
 func (ag *AgeGate) GinVerifyHandler() gin.HandlerFunc {

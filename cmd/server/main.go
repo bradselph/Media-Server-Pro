@@ -146,9 +146,7 @@ func parseFlags() (string, string, bool) {
 }
 
 func showVersion() {
-	versionStr := fmt.Sprintf("Media Server Pro v%s", Version)
-	versionStr += fmt.Sprintf(" (built %s)", BuildDate)
-	fmt.Println(versionStr)
+	fmt.Printf("Media Server Pro v%s (built %s)\n", Version, BuildDate)
 }
 
 func mapLogLevel(levelStr string) logger.Level {
