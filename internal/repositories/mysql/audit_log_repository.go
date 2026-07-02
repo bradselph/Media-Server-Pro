@@ -28,11 +28,8 @@ func (r *AuditLogRepository) Create(ctx context.Context, entry *models.AuditLogE
 	return r.db.WithContext(ctx).Create(entry).Error
 }
 
-// List retrieves audit log entries with optional filtering
-func (r *AuditLogRepository) List(ctx context.Context, filter repositories.AuditLogFilter) ([]*models.AuditLogEntry, error) {
-	var entries []*models.AuditLogEntry
-	query := r.db.WithContext(ctx).Model(&models.AuditLogEntry{})
-
+// applyAuditLogFilter applies the shared AuditLogFilter WHERE conditions to a query.
+func (r *AuditLogRepository) applyAuditLogFilter(query *gorm.DB, filter repositories.AuditLogFilter) *gorm.DB {
 	if filter.UserID != "" {
 		query = query.Where("user_id = ?", filter.UserID)
 	}
@@ -51,6 +48,13 @@ func (r *AuditLogRepository) List(ctx context.Context, filter repositories.Audit
 	if filter.EndDate != "" {
 		query = query.Where("timestamp <= ?", filter.EndDate)
 	}
+	return query
+}
+
+// List retrieves audit log entries with optional filtering
+func (r *AuditLogRepository) List(ctx context.Context, filter repositories.AuditLogFilter) ([]*models.AuditLogEntry, error) {
+	var entries []*models.AuditLogEntry
+	query := r.applyAuditLogFilter(r.db.WithContext(ctx).Model(&models.AuditLogEntry{}), filter)
 
 	limit := filter.Limit
 	if limit <= 0 || limit > 100000 {
@@ -73,49 +77,13 @@ func (r *AuditLogRepository) List(ctx context.Context, filter repositories.Audit
 // Count returns the total number of audit log entries matching the filter (ignoring limit/offset).
 func (r *AuditLogRepository) Count(ctx context.Context, filter repositories.AuditLogFilter) (int64, error) {
 	var count int64
-	query := r.db.WithContext(ctx).Model(&models.AuditLogEntry{})
-
-	if filter.UserID != "" {
-		query = query.Where("user_id = ?", filter.UserID)
-	}
-	if filter.Action != "" {
-		query = query.Where("action = ?", filter.Action)
-	}
-	if filter.Resource != "" {
-		query = query.Where("resource = ?", filter.Resource)
-	}
-	if filter.Success != nil {
-		query = query.Where("success = ?", *filter.Success)
-	}
-	if filter.StartDate != "" {
-		query = query.Where("timestamp >= ?", filter.StartDate)
-	}
-	if filter.EndDate != "" {
-		query = query.Where("timestamp <= ?", filter.EndDate)
-	}
+	query := r.applyAuditLogFilter(r.db.WithContext(ctx).Model(&models.AuditLogEntry{}), filter)
 
 	if err := query.Count(&count).Error; err != nil {
 		return 0, err
 	}
 
 	return count, nil
-}
-
-// getByUserMaxLimit is the hard cap applied when limit <= 0 to prevent unbounded queries.
-const getByUserMaxLimit = 1000
-
-// GetByUser retrieves audit log entries for a specific user
-func (r *AuditLogRepository) GetByUser(ctx context.Context, userID string, limit int) ([]*models.AuditLogEntry, error) {
-	var entries []*models.AuditLogEntry
-	if limit <= 0 || limit > getByUserMaxLimit {
-		limit = getByUserMaxLimit
-	}
-	err := r.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order("timestamp DESC").
-		Limit(limit).
-		Find(&entries).Error
-	return entries, err
 }
 
 // DeleteOlderThan deletes log entries older than the specified timestamp

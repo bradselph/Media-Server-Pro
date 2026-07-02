@@ -196,16 +196,20 @@ func (r *CrawlerDiscoveryRepository) Delete(ctx context.Context, id string) erro
 	return nil
 }
 
+func (r *CrawlerDiscoveryRepository) discoveryRowsToRecords(rows []crawlerDiscoveryRow) []*repositories.CrawlerDiscoveryRecord {
+	records := make([]*repositories.CrawlerDiscoveryRecord, len(rows))
+	for i := range rows {
+		records[i] = r.rowToRecord(&rows[i])
+	}
+	return records
+}
+
 func (r *CrawlerDiscoveryRepository) List(ctx context.Context) ([]*repositories.CrawlerDiscoveryRecord, error) {
 	var rows []crawlerDiscoveryRow
 	if err := r.db.WithContext(ctx).Order(sqlOrderDiscoveredAtDesc).Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to list crawler discoveries: %w", err)
 	}
-	records := make([]*repositories.CrawlerDiscoveryRecord, len(rows))
-	for i := range rows {
-		records[i] = r.rowToRecord(&rows[i])
-	}
-	return records, nil
+	return r.discoveryRowsToRecords(rows), nil
 }
 
 func (r *CrawlerDiscoveryRepository) ListByTarget(ctx context.Context, targetID string) ([]*repositories.CrawlerDiscoveryRecord, error) {
@@ -214,11 +218,7 @@ func (r *CrawlerDiscoveryRepository) ListByTarget(ctx context.Context, targetID 
 		Order(sqlOrderDiscoveredAtDesc).Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to list crawler discoveries by target: %w", err)
 	}
-	records := make([]*repositories.CrawlerDiscoveryRecord, len(rows))
-	for i := range rows {
-		records[i] = r.rowToRecord(&rows[i])
-	}
-	return records, nil
+	return r.discoveryRowsToRecords(rows), nil
 }
 
 func (r *CrawlerDiscoveryRepository) ListPending(ctx context.Context) ([]*repositories.CrawlerDiscoveryRecord, error) {
@@ -227,11 +227,7 @@ func (r *CrawlerDiscoveryRepository) ListPending(ctx context.Context) ([]*reposi
 		Order(sqlOrderDiscoveredAtDesc).Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("failed to list pending crawler discoveries: %w", err)
 	}
-	records := make([]*repositories.CrawlerDiscoveryRecord, len(rows))
-	for i := range rows {
-		records[i] = r.rowToRecord(&rows[i])
-	}
-	return records, nil
+	return r.discoveryRowsToRecords(rows), nil
 }
 
 // validCrawlerDiscoveryStatuses are the statuses the crawler module writes for a

@@ -3,7 +3,6 @@ package mysql
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -59,21 +58,6 @@ func (r *ValidationResultRepository) Upsert(ctx context.Context, result *reposit
 		return fmt.Errorf("failed to upsert validation result: %w", err)
 	}
 	return nil
-}
-
-func (r *ValidationResultRepository) Get(ctx context.Context, path string) (*repositories.ValidationResultRecord, error) {
-	var row validationResultRow
-	if err := r.db.WithContext(ctx).Where("path = ?", path).First(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil //nolint:nilnil // callers check rec == nil explicitly
-		}
-		return nil, fmt.Errorf("failed to get validation result: %w", err)
-	}
-	rec, err := r.rowToRecord(&row)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode validation result %q issues JSON: %w", path, err)
-	}
-	return rec, nil
 }
 
 func (r *ValidationResultRepository) Delete(ctx context.Context, path string) error {

@@ -218,7 +218,6 @@ type AuditLogRepository interface {
 	Create(ctx context.Context, entry *models.AuditLogEntry) error
 	List(ctx context.Context, filter AuditLogFilter) ([]*models.AuditLogEntry, error)
 	Count(ctx context.Context, filter AuditLogFilter) (int64, error)
-	GetByUser(ctx context.Context, userID string, limit int) ([]*models.AuditLogEntry, error)
 	DeleteOlderThan(ctx context.Context, before string) error
 }
 
@@ -245,7 +244,6 @@ type HLSJobRepository interface {
 // ValidationResultRepository provides media validation result storage
 type ValidationResultRepository interface {
 	Upsert(ctx context.Context, result *ValidationResultRecord) error
-	Get(ctx context.Context, path string) (*ValidationResultRecord, error)
 	Delete(ctx context.Context, path string) error
 	List(ctx context.Context) ([]*ValidationResultRecord, error)
 }
