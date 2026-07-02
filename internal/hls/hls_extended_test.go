@@ -3,7 +3,10 @@ package hls
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,6 +52,57 @@ func TestCancelJob_SaveError_DoesNotPropagate(t *testing.T) {
 	}
 	if got := m.jobs["j1"].Status; got != models.HLSStatusCanceled {
 		t.Errorf("in-memory status = %v, want Canceled", got)
+	}
+}
+
+// TestDeleteJob_DrainsLazyTranscode confirms DeleteJob waits for an in-flight
+// lazy transcode (tracked only in lazyWg, with no jobDone entry) to finish
+// before os.RemoveAll deletes the output directory.
+func TestDeleteJob_DrainsLazyTranscode(t *testing.T) {
+	outputDir := filepath.Join(t.TempDir(), "job1")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := &Module{
+		repo:       &stubHLSRepo{},
+		jobs:       map[string]*models.HLSJob{"job1": {ID: "job1", OutputDir: outputDir, Status: models.HLSStatusCompleted}},
+		jobCancels: map[string]context.CancelFunc{},
+		jobDone:    map[string]chan struct{}{}, // no jobDone entry — this is the lazy-transcode case
+		log:        logger.New("test"),
+	}
+
+	// Simulate an in-flight lazy transcode holding the per-job WaitGroup.
+	rawWg, _ := m.lazyWg.LoadOrStore("job1", new(sync.WaitGroup))
+	wg := rawWg.(*sync.WaitGroup)
+	wg.Add(1)
+
+	var mu sync.Mutex
+	var order []string
+	done := make(chan struct{})
+	go func() {
+		time.Sleep(80 * time.Millisecond)
+		mu.Lock()
+		order = append(order, "lazy-done")
+		mu.Unlock()
+		wg.Done() // must unblock DeleteJob's drain
+		close(done)
+	}()
+
+	if err := m.DeleteJob("job1"); err != nil {
+		t.Fatalf("DeleteJob: %v", err)
+	}
+	mu.Lock()
+	order = append(order, "delete-done")
+	mu.Unlock()
+
+	<-done
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) != 2 || order[0] != "lazy-done" {
+		t.Errorf("DeleteJob did not wait for the lazy transcode; order=%v", order)
+	}
+	if _, err := os.Stat(outputDir); !os.IsNotExist(err) {
+		t.Errorf("output dir should have been removed by DeleteJob, stat err=%v", err)
 	}
 }
 

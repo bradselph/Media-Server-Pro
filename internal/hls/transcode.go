@@ -341,6 +341,15 @@ func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, q
 		return nil
 	}
 
+	// Register this in-flight lazy transcode on the per-job WaitGroup BEFORE the
+	// semaphore wait, so DeleteJob/cleanInactiveJob drain queued-and-running lazy
+	// transcodes (which hold no jobDone entry) before os.RemoveAll deletes the
+	// output directory out from under an active ffmpeg write.
+	rawWg, _ := m.lazyWg.LoadOrStore(job.ID, new(sync.WaitGroup))
+	lWg := rawWg.(*sync.WaitGroup)
+	lWg.Add(1)
+	defer lWg.Done()
+
 	// Acquire dynamic semaphore with context awareness.
 	for !m.tryAcquireTranscode() {
 		select {

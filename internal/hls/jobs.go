@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"media-server-pro/pkg/models"
@@ -325,6 +326,15 @@ func (m *Module) DeleteJob(jobID string) error {
 		m.jobsMu.Lock()
 		delete(m.jobDone, jobID)
 		m.jobsMu.Unlock()
+	}
+
+	// Drain any lazy transcodes running in HTTP handler goroutines for this job.
+	// These hold m.activeJobs but have no jobDone entry, so the <-doneCh wait above
+	// does not cover them; without this an on-demand transcode could still be
+	// writing segments when os.RemoveAll runs below.
+	if rawWg, ok := m.lazyWg.Load(jobID); ok {
+		rawWg.(*sync.WaitGroup).Wait()
+		m.lazyWg.Delete(jobID)
 	}
 
 	// Filesystem cleanup (best-effort; warn only).

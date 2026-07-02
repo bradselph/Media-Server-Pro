@@ -76,6 +76,7 @@ type Module struct {
 	activeJobs         sync.WaitGroup     // Tracks active transcoding jobs for graceful shutdown
 	stopping           atomic.Bool        // Set to true during Stop() to distinguish cancellation from real failures
 	qualityLocks       sync.Map           // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
+	lazyWg             sync.Map           // Per-job WaitGroup for in-flight lazy transcodes (key: jobID → *sync.WaitGroup)
 	store              storage.Backend    // optional storage backend for HLS cache I/O
 	mediaInputResolver MediaInputResolver // resolves S3 media keys to ffmpeg-readable URLs
 }
@@ -468,6 +469,10 @@ func (m *Module) cleanQualityLocks(jobID string) {
 		}
 		return true
 	})
+	// Belt-and-suspenders: drop the lazy-transcode WaitGroup for this job. Callers
+	// (DeleteJob/cleanInactiveJob) already Wait+Delete before RemoveAll; Delete on a
+	// sync.Map is a no-op if the key is already absent.
+	m.lazyWg.Delete(jobID)
 }
 
 // IsAvailable returns true if HLS transcoding is available (ffmpeg found and module enabled)
