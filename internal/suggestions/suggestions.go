@@ -7,7 +7,6 @@ import (
 	"maps"
 	"math"
 	"math/rand" // Go 1.20+ auto-seeds the default source
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -522,6 +521,11 @@ func (m *Module) GetSuggestions(userID string, limit int, canViewMature bool) []
 		}
 	}
 
+	// Pre-build the set of categories the user viewed in the last 7 days once,
+	// instead of rescanning the full ViewHistory for every catalog item inside
+	// scoreRecentlyViewed (which made the pass O(catalog × history)).
+	recentCategorySet := recentlyViewedCategorySet(profile)
+
 	var suggestions []*Suggestion
 	for _, media := range m.mediaData {
 		if media.IsMature && !canViewMature {
@@ -531,7 +535,7 @@ func (m *Module) GetSuggestions(userID string, limit int, canViewMature bool) []
 			continue // Skip recently viewed
 		}
 
-		score, reasons := m.scoreMedia(profile, media)
+		score, reasons := m.scoreMedia(profile, media, recentCategorySet)
 
 		// Apply re-watch penalty for previously-seen items (penalty fades over 90 days)
 		if lastViewed, ok := oldViewedAt[media.Path]; ok {
@@ -600,12 +604,15 @@ func diversify(sorted []*Suggestion, limit, maxPerCategory int) []*Suggestion {
 	return picked
 }
 
-// scoreMedia calculates a suggestion score for a media item
-func (m *Module) scoreMedia(profile *UserProfile, media *MediaInfo) (score float64, reasons []string) {
+// scoreMedia calculates a suggestion score for a media item. recentCategorySet
+// is the pre-built set of categories the profile viewed in the last 7 days
+// (see recentlyViewedCategorySet), threaded through to avoid an O(history)
+// rescan per item in scoreRecentlyViewed.
+func (m *Module) scoreMedia(profile *UserProfile, media *MediaInfo, recentCategorySet map[string]bool) (score float64, reasons []string) {
 	score, reasons = scoreMediaBase(media)
 
 	if profile != nil {
-		profileScore, profileReasons := scoreMediaForProfile(profile, media)
+		profileScore, profileReasons := scoreMediaForProfile(profile, media, recentCategorySet)
 		score += profileScore
 		reasons = append(reasons, profileReasons...)
 	}
@@ -670,10 +677,10 @@ func topShuffled(sorted []*Suggestion, n int) []*Suggestion {
 }
 
 // scoreMediaForProfile calculates the personalized score based on a user profile.
-func scoreMediaForProfile(profile *UserProfile, media *MediaInfo) (score float64, reasons []string) {
+func scoreMediaForProfile(profile *UserProfile, media *MediaInfo, recentCategorySet map[string]bool) (score float64, reasons []string) {
 	score += scoreCategoryPreference(profile, media, &reasons)
 	score += scoreTypePreference(profile, media)
-	score += scoreRecentlyViewed(profile, media, &reasons)
+	score += scoreRecentlyViewed(recentCategorySet, media, &reasons)
 
 	return score, reasons
 }
@@ -726,18 +733,34 @@ func scoreTypePreference(profile *UserProfile, media *MediaInfo) float64 {
 	return (typeScore / totalTypeScore) * 0.3
 }
 
-// scoreRecentlyViewed adds a boost if the user recently viewed content in one of
-// the same curated categories. ViewHistory stores the primary category of the
-// viewed item, so a match means the candidate shares that category.
-func scoreRecentlyViewed(profile *UserProfile, media *MediaInfo, reasons *[]string) float64 {
-	if len(media.CategoryIDs) == 0 {
+// recentlyViewedCategorySet returns the set of primary category IDs the profile
+// viewed within the last 7 days. Building this once per GetSuggestions call
+// lets scoreRecentlyViewed do an O(len(CategoryIDs)) set lookup per item instead
+// of rescanning the whole ViewHistory for every catalog item.
+func recentlyViewedCategorySet(profile *UserProfile) map[string]bool {
+	if profile == nil {
+		return nil
+	}
+	set := make(map[string]bool)
+	for _, vh := range profile.ViewHistory {
+		if vh.Category != "" && time.Since(vh.LastViewed) < 7*24*time.Hour {
+			set[vh.Category] = true
+		}
+	}
+	return set
+}
+
+// scoreRecentlyViewed adds a boost if the candidate shares a curated category
+// with something the user viewed in the last 7 days. recentCategorySet is the
+// pre-built set from recentlyViewedCategorySet; this is semantically identical
+// to scanning ViewHistory per item (the boost is a constant 0.1 on first match)
+// but O(len(CategoryIDs)) instead of O(len(ViewHistory)).
+func scoreRecentlyViewed(recentCategorySet map[string]bool, media *MediaInfo, reasons *[]string) float64 {
+	if len(media.CategoryIDs) == 0 || len(recentCategorySet) == 0 {
 		return 0
 	}
-	for _, vh := range profile.ViewHistory {
-		if vh.Category == "" {
-			continue
-		}
-		if slices.Contains(media.CategoryIDs, vh.Category) && time.Since(vh.LastViewed) < 7*24*time.Hour {
+	for _, cid := range media.CategoryIDs {
+		if recentCategorySet[cid] {
 			*reasons = append(*reasons, "Similar to recently viewed")
 			return 0.1
 		}

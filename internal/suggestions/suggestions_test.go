@@ -34,7 +34,7 @@ func TestScoreMediaBase_PopularMedia(t *testing.T) {
 func TestScoreMediaForProfile_EmptyProfile(t *testing.T) {
 	profile := &UserProfile{}
 	media := &MediaInfo{Path: testMediaPath, CategoryIDs: []string{"movies"}, MediaType: "video"}
-	score, _ := scoreMediaForProfile(profile, media)
+	score, _ := scoreMediaForProfile(profile, media, recentlyViewedCategorySet(profile))
 	if score < 0 {
 		t.Error("score should not be negative")
 	}
@@ -47,7 +47,7 @@ func TestScoreMediaForProfile_MatchingCategory(t *testing.T) {
 		TotalViews:      12,
 	}
 	media := &MediaInfo{Path: testMediaPath, CategoryIDs: []string{"movies"}, MediaType: "video"}
-	score, _ := scoreMediaForProfile(profile, media)
+	score, _ := scoreMediaForProfile(profile, media, recentlyViewedCategorySet(profile))
 	if score <= 0 {
 		t.Error("matching category should give positive score")
 	}

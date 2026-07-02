@@ -17,7 +17,7 @@ func TestScoreRecentlyViewed_MatchingCategory(t *testing.T) {
 	}
 	media := &MediaInfo{CategoryIDs: []string{"movies"}, MediaType: "video"}
 	var reasons []string
-	score := scoreRecentlyViewed(profile, media, &reasons)
+	score := scoreRecentlyViewed(recentlyViewedCategorySet(profile), media, &reasons)
 	if score <= 0 {
 		t.Errorf("matching recent category should give positive score, got %f", score)
 	}
@@ -34,7 +34,7 @@ func TestScoreRecentlyViewed_OldHistory(t *testing.T) {
 	}
 	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
-	score := scoreRecentlyViewed(profile, media, &reasons)
+	score := scoreRecentlyViewed(recentlyViewedCategorySet(profile), media, &reasons)
 	if score != 0 {
 		t.Errorf("old history should not match, got score %f", score)
 	}
@@ -48,7 +48,7 @@ func TestScoreRecentlyViewed_DifferentCategory(t *testing.T) {
 	}
 	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
-	score := scoreRecentlyViewed(profile, media, &reasons)
+	score := scoreRecentlyViewed(recentlyViewedCategorySet(profile), media, &reasons)
 	if score != 0 {
 		t.Errorf("different category should not match, got score %f", score)
 	}
@@ -58,9 +58,41 @@ func TestScoreRecentlyViewed_EmptyHistory(t *testing.T) {
 	profile := &UserProfile{}
 	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
-	score := scoreRecentlyViewed(profile, media, &reasons)
+	score := scoreRecentlyViewed(recentlyViewedCategorySet(profile), media, &reasons)
 	if score != 0 {
 		t.Errorf("empty history should return 0, got %f", score)
+	}
+}
+
+// TestRecentlyViewedCategorySet validates the pre-built set that replaced the
+// per-item ViewHistory scan, so scoreRecentlyViewed stays semantically identical.
+func TestRecentlyViewedCategorySet(t *testing.T) {
+	if got := recentlyViewedCategorySet(nil); got != nil {
+		t.Errorf("nil profile should yield nil set, got %v", got)
+	}
+	if got := recentlyViewedCategorySet(&UserProfile{}); len(got) != 0 {
+		t.Errorf("empty history should yield empty set, got %v", got)
+	}
+	profile := &UserProfile{
+		ViewHistory: []ViewHistory{
+			{Category: "movies", LastViewed: time.Now().Add(-1 * time.Hour)},        // recent → included
+			{Category: "movies", LastViewed: time.Now().Add(-2 * time.Hour)},        // duplicate → dedup
+			{Category: "anime", LastViewed: time.Now().Add(-30 * 24 * time.Hour)},   // >7d → excluded
+			{Category: "", LastViewed: time.Now().Add(-1 * time.Hour)},              // empty cat → excluded
+		},
+	}
+	set := recentlyViewedCategorySet(profile)
+	if !set["movies"] {
+		t.Error("recent 'movies' should be in the set")
+	}
+	if set["anime"] {
+		t.Error("history older than 7 days should be excluded")
+	}
+	if set[""] {
+		t.Error("empty category should be excluded")
+	}
+	if len(set) != 1 {
+		t.Errorf("set should contain exactly 1 category (deduped), got %d: %v", len(set), set)
 	}
 }
 
