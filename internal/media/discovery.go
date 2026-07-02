@@ -1806,18 +1806,6 @@ func (m *Module) SetMatureFlag(path string, isMature bool, score float64, reason
 	return nil
 }
 
-// GetVersion returns the current media version (changes on each scan)
-func (m *Module) GetVersion() int64 {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.version
-}
-
-// GetConfig returns the current configuration
-func (m *Module) GetConfig() *config.Config {
-	return m.config.Get()
-}
-
 // Persistence functions
 func (m *Module) loadMetadata() error {
 	ctx := context.Background()

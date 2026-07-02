@@ -223,7 +223,7 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 
 // GetServerSettings returns public server settings
 func (h *Handler) GetServerSettings(c *gin.Context) {
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 
 	settings := map[string]any{
 		"thumbnails": map[string]any{
@@ -320,7 +320,7 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 			totalSize = used
 		}
 	} else {
-		cfg := h.media.GetConfig()
+		cfg := h.config.Get()
 		uploadsDir := cfg.Directories.Uploads
 		const maxFiles = 100000
 		if _, err := os.Stat(uploadsDir); err == nil {
@@ -406,7 +406,7 @@ func (h *Handler) AdminGetDatabaseStatus(c *gin.Context) {
 		repositoryType = "MySQL"
 	}
 
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 	status := map[string]any{
 		"connected":       connected,
 		"app_version":     h.buildInfo.Version,
@@ -479,7 +479,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		strings.HasPrefix(queryStripped, "DESCRIBE") ||
 		strings.HasPrefix(queryStripped, "EXPLAIN")
 
-	queryTimeout := h.media.GetConfig().Admin.QueryTimeout
+	queryTimeout := h.config.Get().Admin.QueryTimeout
 	if queryTimeout <= 0 {
 		queryTimeout = 30 * time.Second
 	}
@@ -553,7 +553,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		return
 	}
 
-	maxRows := h.media.GetConfig().Admin.MaxQueryRows
+	maxRows := h.config.Get().Admin.MaxQueryRows
 	if maxRows <= 0 {
 		maxRows = 1000
 	}

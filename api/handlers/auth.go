@@ -158,7 +158,7 @@ func (h *Handler) Logout(c *gin.Context) {
 
 // CheckSession returns the current session status
 func (h *Handler) CheckSession(c *gin.Context) {
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 	allowGuests := cfg.Auth.AllowGuests
 
 	user := getUser(c)

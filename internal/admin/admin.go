@@ -272,11 +272,6 @@ func (m *Module) GetServerStats() models.ServerStats {
 	}
 }
 
-// GetConfig returns current configuration (read-only view)
-func (m *Module) GetConfig() *config.Config {
-	return m.config.Get()
-}
-
 // UpdateConfig updates configuration atomically (write to temp file + rename).
 func (m *Module) UpdateConfig(updates map[string]any) error {
 	if err := m.config.SetValuesBatch(updates); err != nil {

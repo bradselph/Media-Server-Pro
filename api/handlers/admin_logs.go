@@ -15,7 +15,7 @@ import (
 func (h *Handler) GetServerLogs(c *gin.Context) {
 	limit := ParseQueryInt(c, "limit", QueryIntOpts{Default: 200, Min: 1, Max: 2000})
 
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 	logsDir := cfg.Directories.Logs
 	if logsDir == "" {
 		logsDir = "logs"

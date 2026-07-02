@@ -419,7 +419,7 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 		}
 	}
 
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 	count := cfg.Thumbnails.PreviewCount
 	if count <= 0 {
 		count = 3

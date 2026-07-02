@@ -819,7 +819,7 @@ func (h *Handler) checkMatureAccess(c *gin.Context, isMature bool) bool {
 
 // allowedMediaDirs returns the directories from which media can be served.
 func (h *Handler) allowedMediaDirs() AllowedDirs {
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 	return AllowedDirs{cfg.Directories.Videos, cfg.Directories.Music, cfg.Directories.Uploads}
 }
 
@@ -1057,7 +1057,7 @@ func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, id string) (path, i
 
 // getUserStorageQuota returns storage quota for user type
 func (h *Handler) getUserStorageQuota(userType string) int64 {
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 	for _, ut := range cfg.Auth.UserTypes {
 		if ut.Name == userType {
 			return ut.StorageQuota
@@ -1077,7 +1077,7 @@ func (h *Handler) getUserStorageQuota(userType string) int64 {
 
 // getUserStreamLimit returns concurrent stream limit for user type
 func (h *Handler) getUserStreamLimit(userType string) int {
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 	for _, ut := range cfg.Auth.UserTypes {
 		if ut.Name == userType {
 			return ut.MaxConcurrentStreams
@@ -1128,19 +1128,19 @@ func checkFeatureEnabled(c *gin.Context, module any, name string, enabled func()
 
 func (h *Handler) checkExtractorEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.extractor, "Extractor", func() bool {
-		return h.media.GetConfig().Extractor.Enabled
+		return h.config.Get().Extractor.Enabled
 	})
 }
 
 func (h *Handler) checkCrawlerEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.crawler, "Crawler", func() bool {
-		return h.media.GetConfig().Crawler.Enabled
+		return h.config.Get().Crawler.Enabled
 	})
 }
 
 func (h *Handler) checkRemoteMediaEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.remote, "Remote media", func() bool {
-		return h.media.GetConfig().RemoteMedia.Enabled
+		return h.config.Get().RemoteMedia.Enabled
 	})
 }
 

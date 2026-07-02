@@ -143,7 +143,7 @@ func (h *Handler) AdminUpdateConfig(c *gin.Context) {
 	// module that just persisted the update) instead of media (which keeps its
 	// own snapshot that may not have refreshed yet).
 	if h.security != nil {
-		updatedCfg := h.admin.GetConfig()
+		updatedCfg := h.config.Get()
 		h.security.SetWhitelistEnabled(updatedCfg.Security.EnableIPWhitelist)
 		h.security.SetBlacklistEnabled(updatedCfg.Security.EnableIPBlacklist)
 	}

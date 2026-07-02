@@ -202,7 +202,7 @@ func (h *Handler) resolveHLSJobForServe(c *gin.Context, jobID string) (*models.H
 	// Honour Streaming.RequireAuth here too — the HLS segment routes carry no auth
 	// middleware, so without this an anonymous holder of a job UUID could stream
 	// the full ladder while StreamMedia/DownloadMedia reject them (media.go).
-	if getSession(c) == nil && h.media.GetConfig().Streaming.RequireAuth {
+	if getSession(c) == nil && h.config.Get().Streaming.RequireAuth {
 		writeError(c, http.StatusUnauthorized, "Authentication required to stream media")
 		return nil, false
 	}

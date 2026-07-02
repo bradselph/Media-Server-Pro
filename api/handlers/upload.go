@@ -48,7 +48,7 @@ func (h *Handler) requireUploadSessionAndConfig(c *gin.Context) (session *models
 	if !h.requireUpload(c) {
 		return nil, nil, nil, false
 	}
-	cfg = h.media.GetConfig()
+	cfg = h.config.Get()
 	if !cfg.Uploads.Enabled {
 		writeError(c, http.StatusForbidden, "Uploads are disabled")
 		return nil, nil, nil, false

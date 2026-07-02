@@ -34,7 +34,7 @@ func (h *Handler) AdminGetStats(c *gin.Context) {
 	}
 
 	var diskTotal, diskFree uint64
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 	if cfg.Directories.Videos != "" {
 		if du, err := helpers.GetDiskUsage(cfg.Directories.Videos); err == nil {
 			diskTotal = du.Total
