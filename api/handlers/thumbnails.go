@@ -214,7 +214,7 @@ func (h *Handler) serveCensoredPlaceholderOrForbidden(c *gin.Context) {
 }
 
 // tryServeCensoredIfMature serves censored placeholder when item is mature and user cannot view. Returns true if served or error written.
-func (h *Handler) tryServeCensoredIfMature(c *gin.Context, path, _ string) bool {
+func (h *Handler) tryServeCensoredIfMature(c *gin.Context, path string) bool {
 	item, err := h.media.GetMedia(path)
 	if err != nil || item == nil || !item.IsMature {
 		return false
@@ -285,7 +285,7 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 	// the mature gate so shared links show the real thumbnail instead of the
 	// censored "red box"; normal in-app requests keep the gate. See ogThumbnailURL.
 	og := isOGImageRequest(c)
-	if !og && h.tryServeCensoredIfMature(c, path, id) {
+	if !og && h.tryServeCensoredIfMature(c, path) {
 		return
 	}
 	if !h.ensureThumbnailGenerated(c, path, id) {
@@ -348,11 +348,7 @@ func (h *Handler) ServeThumbnailFile(c *gin.Context) {
 	isMature := false
 	if item, err := h.media.GetMediaByID(mediaID); err == nil && item != nil && item.IsMature {
 		isMature = true
-		canView := false
-		if user := getUser(c); user != nil {
-			canView = user.Permissions.CanViewMature && user.Preferences.ShowMature
-		}
-		if !canView {
+		if !h.canViewMatureContent(c) {
 			if censoredPath, cErr := h.thumbnails.GetPlaceholderPath("censored"); cErr == nil {
 				// no-store prevents browser caching the censored image under the real thumbnail URL,
 				// which would cause authenticated users to see the red placeholder after a guest visit.
@@ -417,17 +413,13 @@ func (h *Handler) GetThumbnailPreviews(c *gin.Context) {
 
 	// Block preview thumbnails for mature content when user is not authorized.
 	if item, err := h.media.GetMedia(path); err == nil && item != nil && item.IsMature {
-		canView := false
-		if user := getUser(c); user != nil {
-			canView = user.Permissions.CanViewMature && user.Preferences.ShowMature
-		}
-		if !canView {
+		if !h.canViewMatureContent(c) {
 			writeSuccess(c, map[string]any{"previews": []string{}})
 			return
 		}
 	}
 
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 	count := cfg.Thumbnails.PreviewCount
 	if count <= 0 {
 		count = 3

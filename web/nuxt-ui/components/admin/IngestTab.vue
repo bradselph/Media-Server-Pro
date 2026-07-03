@@ -3,7 +3,6 @@
 // URLs; the three remote panels (synced HTTP sources, crawler/extractor,
 // receiver/follower) were previously the Sources tab — flattened in here so the
 // whole ingestion surface is one tab with a single sub-tab bar (no nesting).
-const route = useRoute()
 const subTabs = [
   {label: 'Downloader', value: 'downloader', icon: 'i-lucide-cloud-download'},
   {label: 'Remote Sources', value: 'remote', icon: 'i-lucide-server'},
@@ -11,8 +10,7 @@ const subTabs = [
   {label: 'Receiver', value: 'receiver', icon: 'i-lucide-radio-tower'},
 ]
 // Legacy deep-links: ?tab=downloader and ?tab=sources land on the right sub-tab.
-const SUB_FROM_TAB: Record<string, string> = {downloader: 'downloader', sources: 'remote'}
-const subTab = ref(SUB_FROM_TAB[route.query.tab as string] ?? 'downloader')
+const subTab = useSubTabRoute({downloader: 'downloader', sources: 'remote'}, 'downloader')
 </script>
 
 <template>

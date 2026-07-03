@@ -137,19 +137,12 @@ func IsTrustedProxy(remoteAddr string) bool {
 func GinRequestID() gin.HandlerFunc {
 	var counter atomic.Uint64
 	return func(c *gin.Context) {
-		requestID := c.GetHeader(headerRequestID)
+		requestID := sanitizeRequestID(c.GetHeader(headerRequestID))
 		if requestID == "" {
 			id := counter.Add(1)
 			requestID = fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
-			c.Header(headerRequestID, requestID)
-		} else {
-			requestID = sanitizeRequestID(requestID)
-			if requestID == "" {
-				id := counter.Add(1)
-				requestID = fmt.Sprintf("%d-%d", time.Now().UnixNano(), id)
-			}
-			c.Header(headerRequestID, requestID)
 		}
+		c.Header(headerRequestID, requestID)
 		c.Set(string(RequestIDKey), requestID)
 		c.Request = c.Request.WithContext(logger.ContextWithRequestID(c.Request.Context(), requestID))
 		c.Next()

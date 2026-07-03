@@ -9,7 +9,6 @@ definePageMeta({layout: 'default', title: 'Watch History', middleware: 'auth'})
 
 const watchHistoryApi = useWatchHistoryApi()
 const mediaApi = useMediaApi()
-const authStore = useAuthStore()
 const toast = useToast()
 
 const history = ref<WatchHistoryItem[]>([])
@@ -20,7 +19,6 @@ const removingId = ref<string | null>(null)
 const confirmClear = ref(false)
 const clearing = ref(false)
 const failedThumbs = reactive(new Set<string>())
-let hasFetched = false
 
 const filtered = computed(() => {
   if (filter.value === 'completed') return history.value.filter(h => h.completed)
@@ -65,7 +63,6 @@ const grouped = computed<HistoryGroup[]>(() => {
 })
 
 async function load() {
-  hasFetched = true
   loading.value = true
   try {
     history.value = (await watchHistoryApi.list()) ?? []
@@ -121,16 +118,7 @@ function resumeUrl(item: WatchHistoryItem): string {
       : `/player?id=${encodeURIComponent(item.media_id)}`
 }
 
-function thumbUrl(mediaId: string): string {
-  return mediaApi.getThumbnailUrl(mediaId)
-}
-
-onMounted(() => {
-  if (!authStore.isLoading && authStore.user) load()
-})
-watch(() => authStore.user, (user) => {
-  if (user && !hasFetched) load()
-})
+useAuthGate(load)
 </script>
 
 <template>
@@ -203,7 +191,7 @@ watch(() => authStore.user, (user) => {
                 <HoverPreviewImg
                     v-if="!failedThumbs.has(item.media_id)"
                     :media-id="item.media_id"
-                    :src="thumbUrl(item.media_id)"
+                    :src="mediaApi.getThumbnailUrl(item.media_id)"
                     :alt="item.media_name ?? ''"
                     img-class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                     @error="failedThumbs.add(item.media_id)"

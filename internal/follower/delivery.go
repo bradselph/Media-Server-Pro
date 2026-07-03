@@ -248,12 +248,6 @@ func relativizeUnderRoot(absPath string, roots []string) (string, bool) {
 	return "", false
 }
 
-// contentTypeForName maps a filename's extension to a MIME type, falling back
-// to application/octet-stream so the master always has a non-empty value.
-func contentTypeForName(name string) string {
-	return helpers.MediaContentType(name)
-}
-
 // deliverThumbnail handles a master's thumb_request by reading the local
 // thumbnail file for remoteID under the configured thumbnails directory and
 // POSTing it to the master's stream-push endpoint. The same delivery

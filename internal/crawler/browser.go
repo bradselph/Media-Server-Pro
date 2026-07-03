@@ -858,17 +858,13 @@ func cleanPageTitle(title string) string {
 	return title
 }
 
-func truncURL(u string) string {
-	if len(u) > 120 {
-		return u[:120] + "..."
-	}
-	return u
-}
-
 // logSafeURL strips the query string before truncating to prevent token leakage in logs.
 func logSafeURL(u string) string {
 	if idx := strings.IndexByte(u, '?'); idx != -1 {
 		u = u[:idx]
 	}
-	return truncURL(u)
+	if len(u) > 120 {
+		return u[:120] + "..."
+	}
+	return u
 }

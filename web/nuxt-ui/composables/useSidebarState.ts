@@ -17,6 +17,11 @@ const LS_OPEN = 'msp-sidebar-open'
 const LS_TAB = 'msp-sidebar-tab'
 const LS_PIN = 'msp-sidebar-pinned-playlist'
 
+// Routes where the sidebar (and its layout offset) are hidden entirely — the
+// full-screen player and the auth pages. Shared by NowPlayingSidebar and the
+// default layout so a new auth route only needs to be added in one place.
+export const SIDEBAR_HIDDEN_ROUTES = new Set(['/player', '/login', '/signup', '/register', '/admin-login'])
+
 // Module-scoped singletons. Initialized to the default (open) and synced
 // to localStorage in initFromStorage().
 const open = ref(true)

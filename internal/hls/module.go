@@ -76,6 +76,8 @@ type Module struct {
 	activeJobs         sync.WaitGroup     // Tracks active transcoding jobs for graceful shutdown
 	stopping           atomic.Bool        // Set to true during Stop() to distinguish cancellation from real failures
 	qualityLocks       sync.Map           // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
+	lazyWg             sync.Map           // Per-job WaitGroup for in-flight lazy transcodes (key: jobID → *sync.WaitGroup)
+	lazyCancels        sync.Map           // Per-job cancel funcs for in-flight lazy transcodes (key: jobID → *sync.Map of unique-key → context.CancelFunc)
 	store              storage.Backend    // optional storage backend for HLS cache I/O
 	mediaInputResolver MediaInputResolver // resolves S3 media keys to ffmpeg-readable URLs
 }
@@ -327,7 +329,7 @@ func (m *Module) resumeInterruptedJobs() int {
 			// is only written at graceful shutdown, so a crash beforehand reloads
 			// the job as Running and re-resumes it into the same failure on every
 			// restart. saveJob is mutex-free, so it is safe under the held jobsMu.
-			m.saveJob(job)
+			_ = m.saveJob(job)
 			continue
 		}
 		m.log.Info("Resuming interrupted HLS job %s for %s", job.ID, job.MediaPath)
@@ -468,6 +470,25 @@ func (m *Module) cleanQualityLocks(jobID string) {
 		}
 		return true
 	})
+	// Belt-and-suspenders: drop the lazy-transcode bookkeeping for this job. Callers
+	// (DeleteJob/cleanInactiveJob) already cancel+Wait+Delete before RemoveAll;
+	// Delete on a sync.Map is a no-op if the key is already absent.
+	m.lazyWg.Delete(jobID)
+	m.lazyCancels.Delete(jobID)
+}
+
+// cancelLazyTranscodes cancels every in-flight lazy transcode for a job so a
+// pending deletion aborts them (killing ffmpeg via their context) instead of
+// blocking the lazyWg drain until each on-demand encode finishes on its own.
+func (m *Module) cancelLazyTranscodes(jobID string) {
+	if rawSet, ok := m.lazyCancels.Load(jobID); ok {
+		rawSet.(*sync.Map).Range(func(_, v any) bool {
+			if c, ok := v.(context.CancelFunc); ok {
+				c()
+			}
+			return true
+		})
+	}
 }
 
 // IsAvailable returns true if HLS transcoding is available (ffmpeg found and module enabled)

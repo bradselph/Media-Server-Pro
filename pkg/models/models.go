@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-	"unicode/utf8"
 )
 
 // MediaType represents the type of media
@@ -53,19 +52,6 @@ type MediaItem struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
-// MediaTypeCategory represents an auto-derived media "type" bucket aggregated from
-// the media-type field on each item.
-//
-// Deprecated: the auto path-detected category system has been retired in favour
-// of the admin-curated MediaCategory feature below. This type is no longer
-// populated or served by any endpoint and is kept only so older generated
-// clients still compile. It will be removed in a future cleanup.
-type MediaTypeCategory struct {
-	Name        string   `json:"name"`
-	DisplayName string   `json:"display_name"`
-	Count       int      `json:"count"`
-	Tags        []string `json:"tags,omitempty"`
-}
 
 // User represents a system user.
 // PasswordHash and Salt are excluded from default JSON serialization (json:"-")
@@ -344,7 +330,7 @@ func stringInSetOrDefault(s string, allowed map[string]bool, defaultVal string) 
 
 // truncateString truncates s to at most maxLen runes, never splitting a multi-byte UTF-8 character.
 func truncateString(s string, maxLen int) string {
-	if maxLen <= 0 || utf8.RuneCountInString(s) <= maxLen {
+	if maxLen <= 0 {
 		return s
 	}
 	n := 0

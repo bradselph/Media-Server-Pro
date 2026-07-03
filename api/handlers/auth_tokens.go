@@ -8,11 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"media-server-pro/internal/auth"
-	"media-server-pro/pkg/models"
-)
-
-const (
-	timeFormatRFC3339Ext = "2006-01-02T15:04:05Z07:00"
 )
 
 // ListAPITokens returns the user's API tokens (without the raw token value).
@@ -20,10 +15,6 @@ const (
 func (h *Handler) ListAPITokens(c *gin.Context) {
 	session := RequireSession(c)
 	if session == nil {
-		return
-	}
-	if session.Role != models.RoleAdmin {
-		writeError(c, http.StatusForbidden, "API token management requires elevated privileges")
 		return
 	}
 	tokens, err := h.auth.ListAPITokens(c.Request.Context(), session.UserID)
@@ -45,13 +36,13 @@ func (h *Handler) ListAPITokens(c *gin.Context) {
 		v := tokenView{
 			ID:        t.ID,
 			Name:      t.Name,
-			CreatedAt: t.CreatedAt.Format(timeFormatRFC3339Ext),
+			CreatedAt: t.CreatedAt.Format(time.RFC3339),
 		}
 		if t.LastUsedAt != nil {
-			v.LastUsedAt = new(t.LastUsedAt.Format(timeFormatRFC3339Ext))
+			v.LastUsedAt = new(t.LastUsedAt.Format(time.RFC3339))
 		}
 		if t.ExpiresAt != nil {
-			v.ExpiresAt = new(t.ExpiresAt.Format(timeFormatRFC3339Ext))
+			v.ExpiresAt = new(t.ExpiresAt.Format(time.RFC3339))
 		}
 		views[i] = v
 	}
@@ -65,10 +56,6 @@ func (h *Handler) ListAPITokens(c *gin.Context) {
 func (h *Handler) CreateAPIToken(c *gin.Context) {
 	session := RequireSession(c)
 	if session == nil {
-		return
-	}
-	if session.Role != models.RoleAdmin {
-		writeError(c, http.StatusForbidden, "API token management requires elevated privileges")
 		return
 	}
 	var req struct {
@@ -102,12 +89,12 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 		"id":           rec.ID,
 		"name":         rec.Name,
 		"token":        raw,
-		"created_at":   rec.CreatedAt.Format(timeFormatRFC3339Ext),
+		"created_at":   rec.CreatedAt.Format(time.RFC3339),
 		"last_used_at": nil, // always null on creation
 		"expires_at":   nil, // null when no expiry (consistent with list response)
 	}
 	if rec.ExpiresAt != nil {
-		resp["expires_at"] = rec.ExpiresAt.Format(timeFormatRFC3339Ext)
+		resp["expires_at"] = rec.ExpiresAt.Format(time.RFC3339)
 	}
 	h.trackServerEvent(c, "api_token_create", map[string]any{
 		"token_id": rec.ID,
@@ -121,10 +108,6 @@ func (h *Handler) CreateAPIToken(c *gin.Context) {
 func (h *Handler) DeleteAPIToken(c *gin.Context) {
 	session := RequireSession(c)
 	if session == nil {
-		return
-	}
-	if session.Role != models.RoleAdmin {
-		writeError(c, http.StatusForbidden, "API token management requires elevated privileges")
 		return
 	}
 	tokenID, ok := RequireParamID(c, "id")

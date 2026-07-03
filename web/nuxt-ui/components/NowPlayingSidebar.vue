@@ -23,7 +23,7 @@ import {formatDuration} from '~/utils/format'
 import {getMediaGradient} from '~/utils/gradient'
 import {getDisplayTitle} from '~/utils/mediaTitle'
 import {useQueueStore} from '~/stores/queue'
-import {useSidebarState} from '~/composables/useSidebarState'
+import {SIDEBAR_HIDDEN_ROUTES, useSidebarState} from '~/composables/useSidebarState'
 
 const route = useRoute()
 const router = useRouter()
@@ -51,20 +51,13 @@ async function loadPinnedPlaylist() {
   }
 }
 
-onMounted(() => {
-  if (pinnedPlaylistId.value) loadPinnedPlaylist()
-})
-
-watch(pinnedPlaylistId, () => {
-  loadPinnedPlaylist()
-})
+watch(pinnedPlaylistId, loadPinnedPlaylist, {immediate: true})
 
 // ── Visibility ──────────────────────────────────────────────────
 // Hidden on /player (full controls available there), all auth pages
 // (sidebar references playback state that's irrelevant there), and the
 // account/admin login pages (no chrome until signed in).
-const HIDDEN_ROUTES = new Set(['/player', '/login', '/signup', '/register', '/admin-login'])
-const visible = computed(() => !HIDDEN_ROUTES.has(route.path))
+const visible = computed(() => !SIDEBAR_HIDDEN_ROUTES.has(route.path))
 
 // ── Keyboard shortcuts ──────────────────────────────────────────
 function shouldIgnoreShortcut(e: KeyboardEvent): boolean {
@@ -162,21 +155,9 @@ function playFromQueue(id: string) {
   router.push(`/player?id=${encodeURIComponent(id)}`)
 }
 
-function removeFromQueue(id: string) {
-  queue.remove(id)
-}
-
 function clearQueue() {
   queue.clear()
   toast.add({title: 'Queue cleared', icon: 'i-lucide-trash'})
-}
-
-function moveUp(id: string) {
-  queue.moveUp(id)
-}
-
-function moveDown(id: string) {
-  queue.moveDown(id)
 }
 
 function unpinPlaylist() {
@@ -317,7 +298,6 @@ onUnmounted(() => {
   if (typeof window !== 'undefined') window.removeEventListener('resize', syncIsMobile)
 })
 
-const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
 </script>
 
 <template>
@@ -327,7 +307,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
         v-if="visible && !isMobile"
         class="sb-root"
         :class="{ 'sb-root--open': open, 'sb-root--rail': !open }"
-        :data-state="railState"
+        :data-state="open ? 'open' : 'rail'"
         role="complementary"
         aria-label="Now playing"
     >
@@ -472,17 +452,17 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
                   <p class="row__sub"><span class="row__dur">{{ formatDuration(item.duration) }}</span></p>
                 </div>
                 <div class="row__actions">
-                  <button class="row-btn" aria-label="Move up" :disabled="i === 0" @click="moveUp(item.id)">
+                  <button class="row-btn" aria-label="Move up" :disabled="i === 0" @click="queue.moveUp(item.id)">
                     <UIcon name="i-lucide-chevron-up" class="size-3"/>
                   </button>
                   <button class="row-btn" aria-label="Move down" :disabled="i === queue.items.length - 1"
-                          @click="moveDown(item.id)">
+                          @click="queue.moveDown(item.id)">
                     <UIcon name="i-lucide-chevron-down" class="size-3"/>
                   </button>
                   <button class="row-btn" aria-label="Play now" @click="playFromQueue(item.id)">
                     <UIcon name="i-lucide-play" class="size-3"/>
                   </button>
-                  <button class="row-btn" aria-label="Remove" @click="removeFromQueue(item.id)">
+                  <button class="row-btn" aria-label="Remove" @click="queue.remove(item.id)">
                     <UIcon name="i-lucide-x" class="size-3.5"/>
                   </button>
                 </div>
@@ -773,7 +753,7 @@ const railState = computed<'open' | 'rail'>(() => open.value ? 'open' : 'rail')
                               @click="() => { mobileSheetOpen = false; playFromQueue(item.id) }">
                         <UIcon name="i-lucide-play" class="size-3.5"/>
                       </button>
-                      <button class="row-btn" aria-label="Remove" @click="removeFromQueue(item.id)">
+                      <button class="row-btn" aria-label="Remove" @click="queue.remove(item.id)">
                         <UIcon name="i-lucide-x" class="size-4"/>
                       </button>
                     </div>

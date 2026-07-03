@@ -86,7 +86,9 @@ func (m *Manager) applyReceiverEnvOverrides() {
 	if val, ok := envGetBool("RECEIVER_ENABLED"); ok {
 		m.config.Receiver.Enabled = val
 	}
-	m.applyReceiverAPIKeysOverride()
+	if keys := splitTrimmed(envGetStr("RECEIVER_API_KEY", "RECEIVER_API_KEYS")); len(keys) > 0 {
+		m.config.Receiver.APIKeys = keys
+	}
 	if val, ok := envGetInt("RECEIVER_MAX_PROXY_CONNS"); ok {
 		m.config.Receiver.MaxProxyConns = val
 	}
@@ -110,23 +112,6 @@ func (m *Manager) applyReceiverEnvOverrides() {
 	}
 	if val, ok := envGetDuration(time.Second, "RECEIVER_HEARTBEAT_DB_DEBOUNCE_SECONDS"); ok {
 		m.config.Receiver.HeartbeatDBDebounce = val
-	}
-}
-
-func (m *Manager) applyReceiverAPIKeysOverride() {
-	val := envGetStr("RECEIVER_API_KEY", "RECEIVER_API_KEYS")
-	if val == "" {
-		return
-	}
-	keys := strings.Split(val, ",")
-	trimmed := make([]string, 0, len(keys))
-	for _, k := range keys {
-		if s := strings.TrimSpace(k); s != "" {
-			trimmed = append(trimmed, s)
-		}
-	}
-	if len(trimmed) > 0 {
-		m.config.Receiver.APIKeys = trimmed
 	}
 }
 

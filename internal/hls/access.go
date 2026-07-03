@@ -56,7 +56,7 @@ func (m *Module) RecordAccess(jobID string) {
 	m.jobsMu.Unlock()
 
 	if jobCopy != nil {
-		m.saveJob(jobCopy)
+		_ = m.saveJob(jobCopy)
 	}
 }
 

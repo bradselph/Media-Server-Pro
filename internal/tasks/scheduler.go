@@ -483,6 +483,25 @@ func (m *Module) StopTask(taskID string) error {
 	return nil
 }
 
+// taskInfo builds the API view of a scheduled task. Callers must hold m.mu.
+func taskInfo(task *Task) TaskInfo {
+	var lastErr string
+	if task.LastError != nil {
+		lastErr = task.LastError.Error()
+	}
+	return TaskInfo{
+		ID:          task.ID,
+		Name:        task.Name,
+		Description: task.Description,
+		Schedule:    task.Schedule.String(),
+		LastRun:     task.LastRun,
+		NextRun:     task.NextRun,
+		Running:     task.Running,
+		LastError:   lastErr,
+		Enabled:     task.Enabled,
+	}
+}
+
 // ListTasks returns all registered tasks
 func (m *Module) ListTasks() []TaskInfo {
 	m.mu.RLock()
@@ -490,21 +509,7 @@ func (m *Module) ListTasks() []TaskInfo {
 
 	tasks := make([]TaskInfo, 0, len(m.tasks))
 	for _, task := range m.tasks {
-		var lastErr string
-		if task.LastError != nil {
-			lastErr = task.LastError.Error()
-		}
-		tasks = append(tasks, TaskInfo{
-			ID:          task.ID,
-			Name:        task.Name,
-			Description: task.Description,
-			Schedule:    task.Schedule.String(),
-			LastRun:     task.LastRun,
-			NextRun:     task.NextRun,
-			Running:     task.Running,
-			LastError:   lastErr,
-			Enabled:     task.Enabled,
-		})
+		tasks = append(tasks, taskInfo(task))
 	}
 
 	return tasks
@@ -536,22 +541,7 @@ func (m *Module) GetTask(taskID string) (*TaskInfo, error) {
 		return nil, fmt.Errorf("%w: %s", ErrTaskNotFound, taskID)
 	}
 
-	var lastErr string
-	if task.LastError != nil {
-		lastErr = task.LastError.Error()
-	}
-
-	return &TaskInfo{
-		ID:          task.ID,
-		Name:        task.Name,
-		Description: task.Description,
-		Schedule:    task.Schedule.String(),
-		LastRun:     task.LastRun,
-		NextRun:     task.NextRun,
-		Running:     task.Running,
-		LastError:   lastErr,
-		Enabled:     task.Enabled,
-	}, nil
+	return new(taskInfo(task)), nil
 }
 
 // UpdateSchedule changes a task's schedule and signals the running goroutine

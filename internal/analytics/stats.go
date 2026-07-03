@@ -101,7 +101,7 @@ func (m *Module) updateStats(event models.AnalyticsEvent, delta float64, isNewMe
 	// or bulk-imported) are bucketed to the correct day, not always "today".
 	today := event.Timestamp.Format(dateFormat)
 	m.updateDailyStatsLocked(event, today, delta)
-	m.updateMediaStatsLocked(event, isNewMedia, isFirstCompletion)
+	m.applyMediaEventLocked(event, isNewMedia, isFirstCompletion)
 	m.statsMu.Unlock()
 	// Persistence happens out-of-band on the flush ticker; here we just record
 	// the date as dirty so the flush picks it up. Done outside statsMu because
@@ -117,6 +117,31 @@ func (m *Module) updateDailyStatsLocked(event models.AnalyticsEvent, today strin
 		m.applyViewToDailyStatsLocked(event, daily, today)
 	case "playback":
 		m.applyPlaybackToDailyStatsLocked(delta, daily)
+	default:
+		applySimpleCountToDaily(daily, event.Type, event.Data)
+	}
+}
+
+// extractBytesInt64 pulls a positive bytes_sent value out of an event's data
+// payload, tolerating both float64 (JSON-decoded) and int64 (in-process)
+// representations. Returns 0 when the key is absent or non-positive.
+func extractBytesInt64(data map[string]any) int64 {
+	if bs, ok := data["bytes_sent"].(float64); ok && bs > 0 {
+		return int64(bs)
+	}
+	if bs, ok := data["bytes_sent"].(int64); ok && bs > 0 {
+		return bs
+	}
+	return 0
+}
+
+// applySimpleCountToDaily applies the one-line counter increments that most
+// event types contribute to a day's DailyStats. The "view" and "playback"
+// types carry extra per-caller context (unique-user sets, watch-time deltas)
+// and are handled by the callers, not here. This is the single source of
+// truth shared by the live counter path, backfill, and reconstruction.
+func applySimpleCountToDaily(daily *models.DailyStats, eventType string, data map[string]any) {
+	switch eventType {
 	case EventLogin:
 		daily.Logins++
 	case EventLoginFailed:
@@ -173,12 +198,7 @@ func (m *Module) updateDailyStatsLocked(event models.AnalyticsEvent, today strin
 		// stream_end events carry the bytes_sent total for the session; sum
 		// these into BytesServed so the dashboard can show a real bandwidth
 		// number rather than a session count alone.
-		if bs, ok := event.Data["bytes_sent"].(float64); ok && bs > 0 {
-			daily.BytesServed += int64(bs)
-		}
-		if bs, ok := event.Data["bytes_sent"].(int64); ok && bs > 0 {
-			daily.BytesServed += bs
-		}
+		daily.BytesServed += extractBytesInt64(data)
 	case EventMatureBlocked:
 		daily.MatureBlocked++
 	case EventPermissionDenied:
@@ -216,10 +236,6 @@ func (m *Module) applyPlaybackToDailyStatsLocked(delta float64, daily *models.Da
 	if delta > 0 {
 		daily.TotalWatchTime += delta
 	}
-}
-
-func (m *Module) updateMediaStatsLocked(event models.AnalyticsEvent, isNewMedia, isFirstCompletion bool) {
-	m.applyMediaEventLocked(event, isNewMedia, isFirstCompletion)
 }
 
 func (m *Module) applyMediaEventLocked(event models.AnalyticsEvent, isNewMedia, isFirstCompletion bool) {
@@ -1486,12 +1502,7 @@ func (m *Module) computeIPSummary(ctx context.Context, days, limit int) IPSummar
 		// Stream-end events carry bytes_sent — sum them so the top-by-bytes
 		// list reflects real bandwidth not just request count.
 		if ev.Type == EventStreamEnd {
-			if bs, ok := ev.Data["bytes_sent"].(float64); ok && bs > 0 {
-				b.bytes += int64(bs)
-			}
-			if bs, ok := ev.Data["bytes_sent"].(int64); ok && bs > 0 {
-				b.bytes += bs
-			}
+			b.bytes += extractBytesInt64(ev.Data)
 		}
 	}
 	out.UniqueIPs = len(rows)
@@ -2155,77 +2166,8 @@ func (m *Module) BackfillDailyStats(ctx context.Context, date string) (*models.D
 			if watch > 0 {
 				rebuilt.TotalWatchTime += watch
 			}
-		case EventLogin:
-			rebuilt.Logins++
-		case EventLoginFailed:
-			rebuilt.LoginsFailed++
-		case EventLogout:
-			rebuilt.Logouts++
-		case EventRegister:
-			rebuilt.NewUsers++
-			rebuilt.Registrations++
-		case EventAgeGatePass:
-			rebuilt.AgeGatePasses++
-		case EventDownload:
-			rebuilt.Downloads++
-		case EventSearch:
-			rebuilt.Searches++
-		case EventFavoriteAdd:
-			rebuilt.FavoritesAdded++
-		case EventFavoriteRemove:
-			rebuilt.FavoritesRemoved++
-		case EventRatingSet:
-			rebuilt.RatingsSet++
-		case EventPlaylistCreate:
-			rebuilt.PlaylistsCreated++
-		case EventPlaylistDelete:
-			rebuilt.PlaylistsDeleted++
-		case EventPlaylistItemAdd:
-			rebuilt.PlaylistItemsAdded++
-		case EventUploadSuccess:
-			rebuilt.UploadsSucceeded++
-		case EventUploadFailed:
-			rebuilt.UploadsFailed++
-		case EventPasswordChange:
-			rebuilt.PasswordChanges++
-		case EventAccountDelete:
-			rebuilt.AccountDeletions++
-		case EventHLSStart:
-			rebuilt.HLSStarts++
-		case EventHLSError:
-			rebuilt.HLSErrors++
-		case EventMediaDeleted:
-			rebuilt.MediaDeletions++
-		case EventAPITokenCreate:
-			rebuilt.APITokensCreated++
-		case EventAPITokenRevoke:
-			rebuilt.APITokensRevoked++
-		case EventAdminAction:
-			rebuilt.AdminActions++
-		case EventServerError:
-			rebuilt.ServerErrors++
-		case EventStreamStart:
-			rebuilt.StreamStarts++
-		case EventStreamEnd:
-			rebuilt.StreamEnds++
-			if bs, ok := ev.Data["bytes_sent"].(float64); ok && bs > 0 {
-				rebuilt.BytesServed += int64(bs)
-			}
-			if bs, ok := ev.Data["bytes_sent"].(int64); ok && bs > 0 {
-				rebuilt.BytesServed += bs
-			}
-		case EventMatureBlocked:
-			rebuilt.MatureBlocked++
-		case EventPermissionDenied:
-			rebuilt.PermissionDenied++
-		case EventPreferencesChange:
-			rebuilt.PreferencesChanges++
-		case EventBulkDelete:
-			rebuilt.BulkDeletes++
-		case EventBulkUpdate:
-			rebuilt.BulkUpdates++
-		case EventUserRoleChange:
-			rebuilt.UserRoleChanges++
+		default:
+			applySimpleCountToDaily(rebuilt, ev.Type, ev.Data)
 		}
 	}
 
@@ -2311,18 +2253,13 @@ func (m *Module) EvaluateAlerts(rules []AlertRule) []AlertResult {
 		}
 		msg := ""
 		if triggered {
-			msg = r.Metric + " " + r.Operator + " " + ftoa(r.Threshold) +
-				" (last " + itoa(win) + "d): " + ftoa(sum)
+			msg = r.Metric + " " + r.Operator + " " + strconv.FormatFloat(r.Threshold, 'f', -1, 64) +
+				" (last " + strconv.Itoa(win) + "d): " + strconv.FormatFloat(sum, 'f', -1, 64)
 		}
 		out = append(out, AlertResult{Rule: r, Triggered: triggered, Value: sum, Message: msg})
 	}
 	return out
 }
-
-// ftoa / itoa are tiny helpers so EvaluateAlerts doesn't drag strconv
-// formatting through every call site.
-func ftoa(f float64) string { return strconv.FormatFloat(f, 'f', -1, 64) }
-func itoa(i int) string     { return strconv.Itoa(i) }
 
 // RangeMetric is one row of an A/B comparison: the metric's totals in
 // each of the two ranges plus the absolute and percent delta. The frontend
@@ -2884,80 +2821,11 @@ func (m *Module) rebuildStatsFromEvent(event models.AnalyticsEvent, delta float6
 			m.dailyUsers[date][event.UserID] = struct{}{}
 			daily.UniqueUsers = len(m.dailyUsers[date])
 		}
-	case EventLogin:
-		daily.Logins++
-	case EventLoginFailed:
-		daily.LoginsFailed++
-	case EventLogout:
-		daily.Logouts++
-	case EventRegister:
-		daily.NewUsers++
-		daily.Registrations++
-	case EventAgeGatePass:
-		daily.AgeGatePasses++
-	case EventDownload:
-		daily.Downloads++
-	case EventSearch:
-		daily.Searches++
-	case EventFavoriteAdd:
-		daily.FavoritesAdded++
-	case EventFavoriteRemove:
-		daily.FavoritesRemoved++
-	case EventRatingSet:
-		daily.RatingsSet++
-	case EventPlaylistCreate:
-		daily.PlaylistsCreated++
-	case EventPlaylistDelete:
-		daily.PlaylistsDeleted++
-	case EventPlaylistItemAdd:
-		daily.PlaylistItemsAdded++
-	case EventUploadSuccess:
-		daily.UploadsSucceeded++
-	case EventUploadFailed:
-		daily.UploadsFailed++
-	case EventPasswordChange:
-		daily.PasswordChanges++
-	case EventAccountDelete:
-		daily.AccountDeletions++
-	case EventHLSStart:
-		daily.HLSStarts++
-	case EventHLSError:
-		daily.HLSErrors++
-	case EventMediaDeleted:
-		daily.MediaDeletions++
-	case EventAPITokenCreate:
-		daily.APITokensCreated++
-	case EventAPITokenRevoke:
-		daily.APITokensRevoked++
-	case EventAdminAction:
-		daily.AdminActions++
-	case EventServerError:
-		daily.ServerErrors++
-	case EventStreamStart:
-		daily.StreamStarts++
-	case EventStreamEnd:
-		daily.StreamEnds++
-		if bs, ok := event.Data["bytes_sent"].(float64); ok && bs > 0 {
-			daily.BytesServed += int64(bs)
-		}
-		if bs, ok := event.Data["bytes_sent"].(int64); ok && bs > 0 {
-			daily.BytesServed += bs
-		}
-	case EventMatureBlocked:
-		daily.MatureBlocked++
-	case EventPermissionDenied:
-		daily.PermissionDenied++
-	case EventPreferencesChange:
-		daily.PreferencesChanges++
-	case EventBulkDelete:
-		daily.BulkDeletes++
-	case EventBulkUpdate:
-		daily.BulkUpdates++
-	case EventUserRoleChange:
-		daily.UserRoleChanges++
 	case "playback":
 		// Reconstruct TotalWatchTime in daily stats using the calculated delta.
 		m.applyPlaybackToDailyStatsLocked(delta, daily)
+	default:
+		applySimpleCountToDaily(daily, event.Type, event.Data)
 	}
 
 	if event.MediaID == "" {

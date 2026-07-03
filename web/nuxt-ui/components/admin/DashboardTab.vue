@@ -31,20 +31,16 @@ const uploads = ref<UploadProgress[]>([])
 const statsLoading = ref(true)
 
 
-const diskPct = computed(() => {
-  if (!stats.value) return 0
-  return Math.round(((stats.value.disk_usage ?? 0) / ((stats.value.disk_total || 1))) * 100)
-})
+function usedPct(used: number | null | undefined, total: number | null | undefined) {
+  return Math.round(((used ?? 0) / (total || 1)) * 100)
+}
+const diskPct = computed(() => usedPct(stats.value?.disk_usage, stats.value?.disk_total))
 const diskColor = computed(() => {
   if (diskPct.value > 90) return 'error'
   if (diskPct.value > 70) return 'warning'
   return 'success'
 })
-
-const memPct = computed(() => {
-  if (!system.value) return 0
-  return Math.round(((system.value.memory_used ?? 0) / ((system.value.memory_total || 1))) * 100)
-})
+const memPct = computed(() => usedPct(system.value?.memory_used, system.value?.memory_total))
 
 
 async function loadAll() {

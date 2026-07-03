@@ -88,6 +88,23 @@ func (r *SuggestionProfileRepository) GetProfile(ctx context.Context, userID str
 		}
 		return nil, fmt.Errorf("failed to get suggestion profile: %w", err)
 	}
+	return rowToSuggestionProfileRecord(&row)
+}
+
+func (r *SuggestionProfileRepository) DeleteProfile(ctx context.Context, userID string) error {
+	result := r.db.WithContext(ctx).Where(sqlUserIDEq, userID).Delete(&suggestionProfileRow{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete suggestion profile: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return repositories.ErrSuggestionProfileNotFound
+	}
+	return nil
+}
+
+// rowToSuggestionProfileRecord builds a domain record from a DB row, decoding
+// the two JSON score maps and defaulting them to non-nil empty maps.
+func rowToSuggestionProfileRecord(row *suggestionProfileRow) (*repositories.SuggestionProfileRecord, error) {
 	rec := &repositories.SuggestionProfileRecord{
 		UserID:         row.UserID,
 		TotalViews:     row.TotalViews,
@@ -113,15 +130,19 @@ func (r *SuggestionProfileRepository) GetProfile(ctx context.Context, userID str
 	return rec, nil
 }
 
-func (r *SuggestionProfileRepository) DeleteProfile(ctx context.Context, userID string) error {
-	result := r.db.WithContext(ctx).Where(sqlUserIDEq, userID).Delete(&suggestionProfileRow{})
-	if result.Error != nil {
-		return fmt.Errorf("failed to delete suggestion profile: %w", result.Error)
+// buildViewHistoryRow maps a domain ViewHistoryRecord to its DB row for userID.
+func buildViewHistoryRow(userID string, e *repositories.ViewHistoryRecord) viewHistoryRow {
+	return viewHistoryRow{
+		UserID:      userID,
+		MediaPath:   e.MediaPath,
+		Category:    e.Category,
+		MediaType:   e.MediaType,
+		ViewCount:   e.ViewCount,
+		TotalTime:   e.TotalTime,
+		LastViewed:  e.LastViewed,
+		CompletedAt: e.CompletedAt,
+		Rating:      e.Rating,
 	}
-	if result.RowsAffected == 0 {
-		return repositories.ErrSuggestionProfileNotFound
-	}
-	return nil
 }
 
 func (r *SuggestionProfileRepository) ListProfiles(ctx context.Context) ([]*repositories.SuggestionProfileRecord, error) {
@@ -131,27 +152,9 @@ func (r *SuggestionProfileRepository) ListProfiles(ctx context.Context) ([]*repo
 	}
 	records := make([]*repositories.SuggestionProfileRecord, len(rows))
 	for i := range rows {
-		rec := &repositories.SuggestionProfileRecord{
-			UserID:         rows[i].UserID,
-			TotalViews:     rows[i].TotalViews,
-			TotalWatchTime: rows[i].TotalWatchTime,
-			LastUpdated:    rows[i].LastUpdated,
-		}
-		if rows[i].CategoryScores != "" {
-			if err := json.Unmarshal([]byte(rows[i].CategoryScores), &rec.CategoryScores); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal category_scores for user %s: %w", rows[i].UserID, err)
-			}
-		}
-		if rows[i].TypePreferences != "" {
-			if err := json.Unmarshal([]byte(rows[i].TypePreferences), &rec.TypePreferences); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal type_preferences for user %s: %w", rows[i].UserID, err)
-			}
-		}
-		if rec.CategoryScores == nil {
-			rec.CategoryScores = make(map[string]float64)
-		}
-		if rec.TypePreferences == nil {
-			rec.TypePreferences = make(map[string]float64)
+		rec, err := rowToSuggestionProfileRecord(&rows[i])
+		if err != nil {
+			return nil, err
 		}
 		records[i] = rec
 	}
@@ -162,17 +165,7 @@ func (r *SuggestionProfileRepository) SaveViewHistory(ctx context.Context, userI
 	if entry == nil {
 		return fmt.Errorf("entry cannot be nil")
 	}
-	row := viewHistoryRow{
-		UserID:      userID,
-		MediaPath:   entry.MediaPath,
-		Category:    entry.Category,
-		MediaType:   entry.MediaType,
-		ViewCount:   entry.ViewCount,
-		TotalTime:   entry.TotalTime,
-		LastViewed:  entry.LastViewed,
-		CompletedAt: entry.CompletedAt,
-		Rating:      entry.Rating,
-	}
+	row := buildViewHistoryRow(userID, entry)
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "user_id"}, {Name: "media_path"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -194,17 +187,7 @@ func (r *SuggestionProfileRepository) BatchSaveViewHistory(ctx context.Context, 
 		if e == nil {
 			return fmt.Errorf("nil entry at index %d", i)
 		}
-		rows[i] = viewHistoryRow{
-			UserID:      userID,
-			MediaPath:   e.MediaPath,
-			Category:    e.Category,
-			MediaType:   e.MediaType,
-			ViewCount:   e.ViewCount,
-			TotalTime:   e.TotalTime,
-			LastViewed:  e.LastViewed,
-			CompletedAt: e.CompletedAt,
-			Rating:      e.Rating,
-		}
+		rows[i] = buildViewHistoryRow(userID, e)
 	}
 	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "user_id"}, {Name: "media_path"}},

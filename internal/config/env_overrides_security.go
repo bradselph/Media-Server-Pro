@@ -8,18 +8,16 @@ import (
 )
 
 func (m *Manager) applySecurityEnvOverrides() {
-	m.applySecurityRateLimitOverrides()
-	m.applySecurityCORSOverrides()
-	m.applySecurityCSPOverrides()
-	m.applySecurityIPOverrides()
-	m.applySecurityUploadOverrides()
-}
-
-func (m *Manager) applySecurityRateLimitOverrides() {
 	m.applySecurityRateLimitCoreOverrides()
 	m.applySecurityBurstOverrides()
 	m.applySecurityBanOverrides()
 	m.applySecurityAuthRateOverrides()
+	m.applySecurityCORSOverrides()
+	m.applySecurityCSPOverrides()
+	m.applySecurityIPOverrides()
+	if val, ok := envGetInt("SECURITY_MAX_FILE_SIZE_MB"); ok && val > 0 {
+		m.config.Security.MaxFileSizeMB = val
+	}
 }
 
 func (m *Manager) applySecurityRateLimitCoreOverrides() {
@@ -136,12 +134,6 @@ func (m *Manager) applySecurityIPOverrides() {
 	}
 	if val := envGetStr("SECURITY_IP_BLACKLIST"); val != "" {
 		m.config.Security.IPBlacklist = filterValidIPs(splitTrimmed(val))
-	}
-}
-
-func (m *Manager) applySecurityUploadOverrides() {
-	if val, ok := envGetInt("SECURITY_MAX_FILE_SIZE_MB"); ok && val > 0 {
-		m.config.Security.MaxFileSizeMB = val
 	}
 }
 

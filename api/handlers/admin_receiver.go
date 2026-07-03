@@ -32,7 +32,7 @@ func (h *Handler) checkDuplicateDetectionEnabled(c *gin.Context) bool {
 // toggle a separate flag.
 func (h *Handler) checkReceiverEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.receiver, "Media receiver", func() bool {
-		rc := h.media.GetConfig().Receiver
+		rc := h.config.Get().Receiver
 		return rc.Enabled || len(rc.APIKeys) > 0
 	})
 }

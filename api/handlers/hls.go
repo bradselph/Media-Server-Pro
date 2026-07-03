@@ -66,17 +66,7 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 		"error":      job.Error,
 	}
 
-	if job.CompletedAt != nil {
-		response["completed_at"] = job.CompletedAt
-	}
-
-	if job.Status == models.HLSStatusCompleted {
-		response["available"] = true
-		response["hls_url"] = fmt.Sprintf(fmtHLSMasterURL, job.ID)
-	} else {
-		response["available"] = false
-		response["hls_url"] = ""
-	}
+	applyHLSCompletionFields(response, job)
 
 	writeSuccess(c, response)
 }
@@ -117,16 +107,24 @@ func buildGenerateHLSResponse(job *models.HLSJob) map[string]any {
 		"error":      job.Error,
 		"fail_count": job.FailCount,
 		"started_at": job.StartedAt,
-		"available":  job.Status == models.HLSStatusCompleted,
-		"hls_url":    "",
 	}
+	applyHLSCompletionFields(resp, job)
+	return resp
+}
+
+// applyHLSCompletionFields stamps the shared completion-related fields onto an
+// HLS job response map: availability, the master playlist URL, and (when the
+// job has finished) the completion timestamp.
+func applyHLSCompletionFields(resp map[string]any, job *models.HLSJob) {
+	resp["available"] = job.Status == models.HLSStatusCompleted
 	if job.Status == models.HLSStatusCompleted {
 		resp["hls_url"] = fmt.Sprintf(fmtHLSMasterURL, job.ID)
+	} else {
+		resp["hls_url"] = ""
 	}
 	if job.CompletedAt != nil {
 		resp["completed_at"] = job.CompletedAt
 	}
-	return resp
 }
 
 // GenerateHLS starts HLS generation for a media file
@@ -189,17 +187,7 @@ func (h *Handler) GetHLSStatus(c *gin.Context) {
 		"fail_count": job.FailCount,
 	}
 
-	if job.CompletedAt != nil {
-		response["completed_at"] = job.CompletedAt
-	}
-
-	if job.Status == models.HLSStatusCompleted {
-		response["available"] = true
-		response["hls_url"] = fmt.Sprintf(fmtHLSMasterURL, job.ID)
-	} else {
-		response["available"] = false
-		response["hls_url"] = ""
-	}
+	applyHLSCompletionFields(response, job)
 
 	writeSuccess(c, response)
 }
@@ -214,7 +202,7 @@ func (h *Handler) resolveHLSJobForServe(c *gin.Context, jobID string) (*models.H
 	// Honour Streaming.RequireAuth here too — the HLS segment routes carry no auth
 	// middleware, so without this an anonymous holder of a job UUID could stream
 	// the full ladder while StreamMedia/DownloadMedia reject them (media.go).
-	if getSession(c) == nil && h.media.GetConfig().Streaming.RequireAuth {
+	if getSession(c) == nil && h.config.Get().Streaming.RequireAuth {
 		writeError(c, http.StatusUnauthorized, "Authentication required to stream media")
 		return nil, false
 	}

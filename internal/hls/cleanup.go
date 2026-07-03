@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"media-server-pro/pkg/models"
@@ -121,6 +122,17 @@ func (m *Module) cleanInactiveJob(entry os.DirEntry, cutoff time.Time) bool {
 		delPath = path
 	}
 	m.jobsMu.Unlock()
+
+	// Drain any lazy transcodes running in HTTP handler goroutines for this job
+	// before deleting its files, so os.RemoveAll does not race an active ffmpeg
+	// write. These hold m.activeJobs but have no jobDone entry. Cancel first so the
+	// wait returns promptly rather than blocking on a full on-demand encode.
+	m.cancelLazyTranscodes(jobID)
+	if rawWg, ok := m.lazyWg.Load(jobID); ok {
+		rawWg.(*sync.WaitGroup).Wait()
+		m.lazyWg.Delete(jobID)
+	}
+	m.lazyCancels.Delete(jobID)
 
 	// Files and DB cleanup happen after the map entry is removed. If RemoveAll
 	// fails we log and return false, but the in-memory entry is already gone —

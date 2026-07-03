@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -34,8 +35,8 @@ func recordToView(rec *repositories.SavedSearchRecord) savedSearchView {
 		Tags:       tags,
 		TagMode:    rec.TagMode,
 		MediaType:  rec.MediaType,
-		CreatedAt:  rec.CreatedAt.Format(timeFormatRFC3339Ext),
-		LastSeenAt: rec.LastSeenAt.Format(timeFormatRFC3339Ext),
+		CreatedAt:  rec.CreatedAt.Format(time.RFC3339),
+		LastSeenAt: rec.LastSeenAt.Format(time.RFC3339),
 	}
 }
 

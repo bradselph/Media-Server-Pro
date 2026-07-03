@@ -233,22 +233,7 @@ func New(opts Options) (*Server, error) {
 		version:      version,
 	}
 
-	// Setup router middleware and base routes
-	s.setupRouter()
-
 	return s, nil
-}
-
-// setupRouter configures the Gin engine base routes.
-// CORS and security headers are applied by api/routes/routes.go via the middleware package.
-func (s *Server) setupRouter() {
-	s.setupBaseRoutes()
-}
-
-// setupBaseRoutes registers core routes that are always available.
-// /api/status and /api/modules are registered by routes.Setup with adminAuth.
-func (s *Server) setupBaseRoutes() {
-	// Status/modules routes are protected in routes.Setup
 }
 
 // RegisterModule adds a module to the server

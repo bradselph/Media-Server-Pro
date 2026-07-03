@@ -206,38 +206,22 @@ function isValidIPCIDR(ip: string): boolean {
   return true
 }
 
-async function loadWhitelist() {
-  whitelistLoading.value = true
+async function loadList<T>(
+    fn: () => Promise<T[]>, target: Ref<T[]>, loading: Ref<boolean>, msg: string,
+) {
+  loading.value = true
   try {
-    whitelist.value = (await adminApi.getWhitelist()) ?? []
+    target.value = (await fn()) ?? []
   } catch (e: unknown) {
-    notifyError(e, 'Failed to load whitelist', 'i-lucide-alert-circle')
+    notifyError(e, msg, 'i-lucide-alert-circle')
   } finally {
-    whitelistLoading.value = false
+    loading.value = false
   }
 }
 
-async function loadBlacklist() {
-  blacklistLoading.value = true
-  try {
-    blacklist.value = (await adminApi.getBlacklist()) ?? []
-  } catch (e: unknown) {
-    notifyError(e, 'Failed to load blacklist', 'i-lucide-alert-circle')
-  } finally {
-    blacklistLoading.value = false
-  }
-}
-
-async function loadBanned() {
-  bannedLoading.value = true
-  try {
-    banned.value = (await adminApi.getBannedIPs()) ?? []
-  } catch (e: unknown) {
-    notifyError(e, 'Failed to load banned IPs', 'i-lucide-alert-circle')
-  } finally {
-    bannedLoading.value = false
-  }
-}
+const loadWhitelist = () => loadList(adminApi.getWhitelist, whitelist, whitelistLoading, 'Failed to load whitelist')
+const loadBlacklist = () => loadList(adminApi.getBlacklist, blacklist, blacklistLoading, 'Failed to load blacklist')
+const loadBanned = () => loadList(adminApi.getBannedIPs, banned, bannedLoading, 'Failed to load banned IPs')
 
 async function addToList(type: 'whitelist' | 'blacklist') {
   // ipError is cleared by the input's @input handler as the user types;

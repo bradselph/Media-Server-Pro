@@ -77,10 +77,7 @@ type wsThumbRequestData struct {
 // sends a stream_request over WS, and waits for the slave to deliver
 // the file data via HTTP POST to /api/receiver/stream-push/:token.
 type PendingStream struct {
-	MediaID   string
 	SlaveID   string
-	Path      string
-	Range     string
 	Ready     chan *StreamDelivery // slave posts delivery here
 	CreatedAt time.Time
 	readyOnce sync.Once          // guards close(Ready) to prevent double-close panic
@@ -438,8 +435,6 @@ func (m *Module) RequestStream(slaveID, token, path, rangeHeader string) (*Pendi
 	ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in PendingStream.cancel, called on completion/timeout
 	ps := &PendingStream{
 		SlaveID:   slaveID,
-		Path:      path,
-		Range:     rangeHeader,
 		Ready:     make(chan *StreamDelivery, 1),
 		CreatedAt: time.Now(),
 		ctx:       ctx,

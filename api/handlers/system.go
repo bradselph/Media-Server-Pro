@@ -33,25 +33,28 @@ func (h *Handler) GetVersion(c *gin.Context) {
 	writeSuccess(c, map[string]string{"version": h.buildInfo.Version})
 }
 
+// moduleHealthEntry pairs a module name with its health-check function so
+// GetHealth and GetMetrics can iterate the critical modules uniformly.
+type moduleHealthEntry struct {
+	name   string
+	health func() models.HealthStatus
+}
+
 // GetHealth returns server health status for uptime monitors, nginx health checks, and the
 // systemd healthcheck script. Returns 200 when healthy, 503 when any critical module is
 // degraded or unhealthy. This endpoint is intentionally unauthenticated.
 func (h *Handler) GetHealth(c *gin.Context) {
-	type moduleEntry struct {
-		name   string
-		health func() models.HealthStatus
-	}
-	critical := []moduleEntry{
+	critical := []moduleHealthEntry{
 		{"database", h.database.Health},
 		{"auth", h.auth.Health},
 		{"media", h.media.Health},
 		{"streaming", h.streaming.Health},
 	}
 	if h.security != nil {
-		critical = append(critical, moduleEntry{"security", h.security.Health})
+		critical = append(critical, moduleHealthEntry{"security", h.security.Health})
 	}
 	if h.tasks != nil {
-		critical = append(critical, moduleEntry{"tasks", h.tasks.Health})
+		critical = append(critical, moduleHealthEntry{"tasks", h.tasks.Health})
 	}
 
 	modules := make(map[string]string, len(critical))
@@ -189,18 +192,14 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 	_, _ = fmt.Fprintf(&b, "media_uptime_seconds %.0f\n", time.Since(serverStartTime).Seconds())
 
 	// Module health (1 = healthy, 0 = unhealthy)
-	type moduleEntry struct {
-		name   string
-		health func() models.HealthStatus
-	}
-	modules := []moduleEntry{
+	modules := []moduleHealthEntry{
 		{"database", h.database.Health},
 		{"auth", h.auth.Health},
 		{"media", h.media.Health},
 		{"streaming", h.streaming.Health},
 	}
 	if h.security != nil {
-		modules = append(modules, moduleEntry{"security", h.security.Health})
+		modules = append(modules, moduleHealthEntry{"security", h.security.Health})
 	}
 
 	_, _ = fmt.Fprintf(&b, "# HELP media_module_healthy Module health status (1=healthy, 0=unhealthy)\n")
@@ -224,7 +223,7 @@ func (h *Handler) GetMetrics(c *gin.Context) {
 
 // GetServerSettings returns public server settings
 func (h *Handler) GetServerSettings(c *gin.Context) {
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 
 	settings := map[string]any{
 		"thumbnails": map[string]any{
@@ -321,7 +320,7 @@ func (h *Handler) GetStorageUsage(c *gin.Context) {
 			totalSize = used
 		}
 	} else {
-		cfg := h.media.GetConfig()
+		cfg := h.config.Get()
 		uploadsDir := cfg.Directories.Uploads
 		const maxFiles = 100000
 		if _, err := os.Stat(uploadsDir); err == nil {
@@ -407,7 +406,7 @@ func (h *Handler) AdminGetDatabaseStatus(c *gin.Context) {
 		repositoryType = "MySQL"
 	}
 
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 	status := map[string]any{
 		"connected":       connected,
 		"app_version":     h.buildInfo.Version,
@@ -480,7 +479,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		strings.HasPrefix(queryStripped, "DESCRIBE") ||
 		strings.HasPrefix(queryStripped, "EXPLAIN")
 
-	queryTimeout := h.media.GetConfig().Admin.QueryTimeout
+	queryTimeout := h.config.Get().Admin.QueryTimeout
 	if queryTimeout <= 0 {
 		queryTimeout = 30 * time.Second
 	}
@@ -554,7 +553,7 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		return
 	}
 
-	maxRows := h.media.GetConfig().Admin.MaxQueryRows
+	maxRows := h.config.Get().Admin.MaxQueryRows
 	if maxRows <= 0 {
 		maxRows = 1000
 	}

@@ -146,21 +146,6 @@ type queuePreviewThumbnailsLoopOpts struct {
 	HighPriority   bool
 }
 
-// generateThumbnailRequest holds arguments for generateThumbnailFromRequest to avoid string-heavy function arguments.
-type generateThumbnailRequest struct {
-	MediaPath    string
-	MediaID      string
-	IsAudio      bool
-	HighPriority bool
-}
-
-// generatePreviewThumbnailsRequest holds arguments for generatePreviewThumbnailsFromRequest to avoid string-heavy function arguments.
-type generatePreviewThumbnailsRequest struct {
-	MediaPath    string
-	MediaID      string
-	HighPriority bool
-}
-
 // ThumbnailSyncRequest groups parameters for synchronous thumbnail generation (avoids string-heavy function arguments).
 type ThumbnailSyncRequest struct {
 	MediaPath string

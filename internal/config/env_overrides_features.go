@@ -1,10 +1,5 @@
 package config
 
-func (m *Manager) applyFeatureEnvOverrides() {
-	m.applyFeatureFlagsPart1()
-	m.applyFeatureFlagsPart2()
-}
-
 // setFeatureBool applies a bool from env vars to dst if any of keys are set.
 func setFeatureBool(dst *bool, keys ...string) {
 	if val, ok := envGetBool(keys...); ok {
@@ -12,7 +7,7 @@ func setFeatureBool(dst *bool, keys ...string) {
 	}
 }
 
-func (m *Manager) applyFeatureFlagsPart1() {
+func (m *Manager) applyFeatureEnvOverrides() {
 	f := &m.config.Features
 	setFeatureBool(&f.EnableHLS, "FEATURE_HLS", "FEATURES_HLS")
 	setFeatureBool(&f.EnableAnalytics, "FEATURE_ANALYTICS", "FEATURES_ANALYTICS")
@@ -21,10 +16,6 @@ func (m *Manager) applyFeatureFlagsPart1() {
 	setFeatureBool(&f.EnableThumbnails, "FEATURE_THUMBNAILS", "FEATURES_THUMBNAILS")
 	setFeatureBool(&f.EnableMatureScanner, "FEATURE_MATURE_SCANNER", "FEATURES_MATURE_SCANNER")
 	setFeatureBool(&f.EnableRemoteMedia, "FEATURE_REMOTE_MEDIA", "FEATURES_REMOTE_MEDIA")
-}
-
-func (m *Manager) applyFeatureFlagsPart2() {
-	f := &m.config.Features
 	setFeatureBool(&f.EnableUserAuth, "FEATURE_USER_AUTH", "FEATURES_USER_AUTH")
 	setFeatureBool(&f.EnableAdminPanel, "FEATURE_ADMIN_PANEL", "FEATURES_ADMIN", "FEATURES_ADMIN_PANEL")
 	setFeatureBool(&f.EnableSuggestions, "FEATURE_SUGGESTIONS", "FEATURES_SUGGESTIONS")

@@ -32,12 +32,7 @@ func (m *Module) getThumbnailPathByIndex(mediaID MediaID, index int) string {
 	return filepath.Join(m.thumbnailDir, filename)
 }
 
-// GetThumbnailPath returns the thumbnail path for a media ID (public version)
-func (m *Module) GetThumbnailPath(mediaID MediaID) string {
-	return m.getThumbnailPath(mediaID)
-}
-
-// GetThumbnailFilePath returns the absolute file path for a media ID
+// GetThumbnailFilePath returns the absolute on-disk file path for a media ID.
 func (m *Module) GetThumbnailFilePath(mediaID MediaID) string {
 	return m.getThumbnailPath(mediaID)
 }
@@ -48,17 +43,6 @@ func (m *Module) HasThumbnail(mediaID MediaID) bool {
 		return false
 	}
 	return isValidThumbnailFile(m.getThumbnailPath(mediaID))
-}
-
-// HasWebPThumbnail checks if a WebP thumbnail exists for a media ID
-func (m *Module) HasWebPThumbnail(mediaID MediaID) bool {
-	if mediaID == "" {
-		return false
-	}
-	jpgPath := m.getThumbnailPath(mediaID)
-	webpPath := m.getThumbnailPathWebp(jpgPath)
-	_, err := os.Stat(webpPath)
-	return err == nil
 }
 
 // GetThumbnailFilePathWebp returns the absolute file path for WebP variant, or empty if not found

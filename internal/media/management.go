@@ -199,22 +199,7 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 	// Update in-memory indexes (media + metadata share mu). mediaByID key is by item.ID;
 	// the same *models.MediaItem is kept so ID lookups still work. fingerprintIndex is
 	// updated so the fingerprint maps to the new path.
-	m.mu.Lock()
-	if item, exists := m.media[oldPath]; exists {
-		item.Path = newPath
-		item.Name = newName
-		delete(m.media, oldPath)
-		m.media[newPath] = item
-	}
-	if meta, exists := m.metadata[oldPath]; exists {
-		delete(m.metadata, oldPath)
-		m.metadata[newPath] = meta
-		if meta.ContentFingerprint != "" {
-			m.fingerprintIndex[meta.ContentFingerprint] = newPath
-		}
-	}
-	m.version++ // catalog mutated — poll-based consumers must see a bump
-	m.mu.Unlock()
+	m.reindexPath(oldPath, newPath, newName)
 
 	m.log.Info("Renamed media: %s -> %s", oldPath, newPath)
 
@@ -224,18 +209,7 @@ func (m *Module) RenameMedia(oldPath, newName string) (string, error) {
 	// item on restart). Only once the new row is safely persisted do we delete
 	// the old one; a delete failure then leaves a benign ghost row that the
 	// in-memory m.media guard filters out of listings until the next scan prunes it.
-	if err := m.saveMetadataItem(newPath); err != nil {
-		m.log.Error("Failed to save metadata after rename of %s to %s: %v", oldPath, newPath, err)
-	}
-
-	// Delete the old DB row so the ghost does not re-appear after a restart.
-	if m.metadataRepo != nil {
-		dbCtx, dbCancel := context.WithTimeout(context.Background(), 8*time.Second)
-		if err := m.metadataRepo.Delete(dbCtx, oldPath); err != nil {
-			m.log.Warn("Failed to delete old metadata row after rename of %s: %v", oldPath, err)
-		}
-		dbCancel()
-	}
+	m.persistPathChange(oldPath, newPath)
 
 	return newPath, nil
 }
@@ -251,39 +225,13 @@ func (m *Module) ReindexMovedFile(oldPath, newPath string) {
 	}
 	newName := filepath.Base(newPath)
 
-	m.mu.Lock()
-	if item, exists := m.media[oldPath]; exists {
-		item.Path = newPath
-		item.Name = newName
-		delete(m.media, oldPath)
-		m.media[newPath] = item
-	}
-	if meta, exists := m.metadata[oldPath]; exists {
-		delete(m.metadata, oldPath)
-		m.metadata[newPath] = meta
-		if meta.ContentFingerprint != "" {
-			m.fingerprintIndex[meta.ContentFingerprint] = newPath
-		}
-	}
-	m.version++ // catalog mutated — poll-based consumers must see a bump
-	m.mu.Unlock()
+	m.reindexPath(oldPath, newPath, newName)
 
 	m.log.Info("Reindexed moved media: %s -> %s", oldPath, newPath)
 
 	// Upsert the new path row FIRST (see RenameMedia): a failed insert after the
 	// old row was already deleted would lose all metadata for the moved file.
-	if err := m.saveMetadataItem(newPath); err != nil {
-		m.log.Error("Failed to save metadata after move of %s to %s: %v", oldPath, newPath, err)
-	}
-
-	// Delete the old DB row so the ghost does not re-appear after a restart.
-	if m.metadataRepo != nil {
-		dbCtx, dbCancel := context.WithTimeout(context.Background(), 8*time.Second)
-		if err := m.metadataRepo.Delete(dbCtx, oldPath); err != nil {
-			m.log.Warn("Failed to delete old metadata row after move of %s: %v", oldPath, err)
-		}
-		dbCancel()
-	}
+	m.persistPathChange(oldPath, newPath)
 }
 
 // MoveMedia moves a media file to a new directory.
@@ -357,9 +305,27 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 	// A move no longer re-derives the category from the path — categorisation is
 	// driven solely by admin-curated MediaCategory membership, which is keyed by
 	// the stable media ID and is unaffected by a path change.
+	m.reindexPath(oldPath, newPath, "")
+
+	m.log.Info("Moved media: %s -> %s", oldPath, newPath)
+
+	// Upsert the new path row FIRST (see RenameMedia): a failed insert after the
+	// old row was already deleted would lose all metadata for the moved file.
+	m.persistPathChange(oldPath, newPath)
+
+	return newPath, nil
+}
+
+// reindexPath re-keys the in-memory media/metadata/fingerprint indexes from
+// oldPath to newPath under m.mu, renaming the item when newName is non-empty,
+// and bumps the catalog version. A no-op when oldPath isn't indexed.
+func (m *Module) reindexPath(oldPath, newPath, newName string) {
 	m.mu.Lock()
 	if item, exists := m.media[oldPath]; exists {
 		item.Path = newPath
+		if newName != "" {
+			item.Name = newName
+		}
 		delete(m.media, oldPath)
 		m.media[newPath] = item
 	}
@@ -372,25 +338,23 @@ func (m *Module) MoveMedia(oldPath, newDir string) (string, error) {
 	}
 	m.version++ // catalog mutated — poll-based consumers must see a bump
 	m.mu.Unlock()
+}
 
-	m.log.Info("Moved media: %s -> %s", oldPath, newPath)
-
-	// Upsert the new path row FIRST (see RenameMedia): a failed insert after the
-	// old row was already deleted would lose all metadata for the moved file.
+// persistPathChange upserts the newPath metadata row FIRST (so a failure leaves
+// the old row intact rather than losing all metadata) and only then deletes the
+// old row. A failed delete leaves a benign ghost row that the in-memory guard
+// filters out until the next scan prunes it.
+func (m *Module) persistPathChange(oldPath, newPath string) {
 	if err := m.saveMetadataItem(newPath); err != nil {
-		m.log.Error("Failed to save metadata after move of %s to %s: %v", oldPath, newPath, err)
+		m.log.Error("Failed to save metadata after path change of %s to %s: %v", oldPath, newPath, err)
 	}
-
-	// Delete the old DB row so the ghost does not re-appear after a restart.
 	if m.metadataRepo != nil {
 		dbCtx, dbCancel := context.WithTimeout(context.Background(), 8*time.Second)
 		if err := m.metadataRepo.Delete(dbCtx, oldPath); err != nil {
-			m.log.Warn("Failed to delete old metadata row after move of %s: %v", oldPath, err)
+			m.log.Warn("Failed to delete old metadata row after path change of %s: %v", oldPath, err)
 		}
 		dbCancel()
 	}
-
-	return newPath, nil
 }
 
 // DeleteMedia removes a media file from the filesystem and from in-memory indexes
@@ -531,7 +495,9 @@ func (m *Module) UpdateMetadata(mediaPath string, updates map[string]any) error 
 		m.metadata[mediaPath] = meta
 	}
 
-	applyMetadataUpdates(meta, updates)
+	for key, value := range updates {
+		applyMetadataField(meta, key, value)
+	}
 	m.syncMediaItem(mediaPath, updates)
 	m.mu.Unlock()
 
@@ -545,12 +511,6 @@ func (m *Module) UpdateMetadata(mediaPath string, updates map[string]any) error 
 	return nil
 }
 
-// applyMetadataUpdates applies a set of key-value updates to a Metadata struct.
-func applyMetadataUpdates(meta *Metadata, updates map[string]any) {
-	for key, value := range updates {
-		applyMetadataField(meta, key, value)
-	}
-}
 
 // applyMetadataField applies a single metadata field update.
 func applyMetadataField(meta *Metadata, key string, value any) {

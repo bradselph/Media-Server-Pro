@@ -48,7 +48,7 @@ func (h *Handler) requireUploadSessionAndConfig(c *gin.Context) (session *models
 	if !h.requireUpload(c) {
 		return nil, nil, nil, false
 	}
-	cfg = h.media.GetConfig()
+	cfg = h.config.Get()
 	if !cfg.Uploads.Enabled {
 		writeError(c, http.StatusForbidden, "Uploads are disabled")
 		return nil, nil, nil, false
@@ -74,7 +74,7 @@ func (h *Handler) requireUploadSessionAndConfig(c *gin.Context) (session *models
 }
 
 // parseUploadFormAndGetFiles parses the multipart form and returns file headers. Caller must call the returned cleanup.
-func (h *Handler) parseUploadFormAndGetFiles(c *gin.Context, _ *config.Config) ([]*multipart.FileHeader, func(), bool) {
+func (h *Handler) parseUploadFormAndGetFiles(c *gin.Context) ([]*multipart.FileHeader, func(), bool) {
 	// No MaxBytesReader here: per-file size is enforced by io.LimitReader inside ProcessFileHeader.
 	// Applying MaxBytesReader(MaxFileSize) at the body level incorrectly rejects any upload
 	// where multipart framing pushes the total body past the per-file limit.
@@ -144,7 +144,7 @@ func (h *Handler) UploadMedia(c *gin.Context) {
 	if !ok {
 		return
 	}
-	fileHeaders, cleanup, ok := h.parseUploadFormAndGetFiles(c, cfg)
+	fileHeaders, cleanup, ok := h.parseUploadFormAndGetFiles(c)
 	defer cleanup()
 	if !ok {
 		return

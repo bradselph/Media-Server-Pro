@@ -56,7 +56,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.20.0"
+	Version   = "1.19.15"
 	BuildDate = "dev"
 )
 
@@ -146,9 +146,7 @@ func parseFlags() (string, string, bool) {
 }
 
 func showVersion() {
-	versionStr := fmt.Sprintf("Media Server Pro v%s", Version)
-	versionStr += fmt.Sprintf(" (built %s)", BuildDate)
-	fmt.Println(versionStr)
+	fmt.Printf("Media Server Pro v%s (built %s)\n", Version, BuildDate)
 }
 
 func mapLogLevel(levelStr string) logger.Level {

@@ -1,13 +1,159 @@
 package hls
 
 import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/models"
 )
+
+// stubHLSRepo is a minimal HLSJobRepository used to exercise save-error paths.
+type stubHLSRepo struct {
+	saveErr error
+}
+
+func (s *stubHLSRepo) Save(_ context.Context, _ *models.HLSJob) error          { return s.saveErr }
+func (s *stubHLSRepo) Get(_ context.Context, _ string) (*models.HLSJob, error) { return nil, nil }
+func (s *stubHLSRepo) Delete(_ context.Context, _ string) error                { return nil }
+func (s *stubHLSRepo) List(_ context.Context) ([]*models.HLSJob, error)        { return nil, nil }
+
+// TestSaveJob_ReturnsError confirms saveJob now surfaces the repo error (and nil on success).
+func TestSaveJob_ReturnsError(t *testing.T) {
+	fail := &Module{repo: &stubHLSRepo{saveErr: errors.New("db down")}, log: logger.New("test")}
+	if err := fail.saveJob(&models.HLSJob{ID: "j1"}); err == nil {
+		t.Error("saveJob should return the underlying repo error")
+	}
+	ok := &Module{repo: &stubHLSRepo{}, log: logger.New("test")}
+	if err := ok.saveJob(&models.HLSJob{ID: "j1"}); err != nil {
+		t.Errorf("saveJob should return nil on success, got %v", err)
+	}
+}
+
+// TestCancelJob_SaveError_DoesNotPropagate confirms a failed status persist is
+// logged (as a warning) but does not fail CancelJob, and that the in-memory
+// status is still flipped to Canceled.
+func TestCancelJob_SaveError_DoesNotPropagate(t *testing.T) {
+	m := &Module{
+		repo:       &stubHLSRepo{saveErr: errors.New("db down")},
+		jobs:       map[string]*models.HLSJob{"j1": {ID: "j1", Status: models.HLSStatusRunning}},
+		jobCancels: map[string]context.CancelFunc{},
+		jobDone:    map[string]chan struct{}{},
+		log:        logger.New("test"),
+	}
+	if err := m.CancelJob("j1"); err != nil {
+		t.Fatalf("CancelJob must not propagate the save error, got %v", err)
+	}
+	if got := m.jobs["j1"].Status; got != models.HLSStatusCanceled {
+		t.Errorf("in-memory status = %v, want Canceled", got)
+	}
+}
+
+// TestDeleteJob_DrainsLazyTranscode confirms DeleteJob waits for an in-flight
+// lazy transcode (tracked only in lazyWg, with no jobDone entry) to finish
+// before os.RemoveAll deletes the output directory.
+func TestDeleteJob_DrainsLazyTranscode(t *testing.T) {
+	outputDir := filepath.Join(t.TempDir(), "job1")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := &Module{
+		repo:       &stubHLSRepo{},
+		jobs:       map[string]*models.HLSJob{"job1": {ID: "job1", OutputDir: outputDir, Status: models.HLSStatusCompleted}},
+		jobCancels: map[string]context.CancelFunc{},
+		jobDone:    map[string]chan struct{}{}, // no jobDone entry — this is the lazy-transcode case
+		log:        logger.New("test"),
+	}
+
+	// Simulate an in-flight lazy transcode holding the per-job WaitGroup.
+	rawWg, _ := m.lazyWg.LoadOrStore("job1", new(sync.WaitGroup))
+	wg := rawWg.(*sync.WaitGroup)
+	wg.Add(1)
+
+	var mu sync.Mutex
+	var order []string
+	done := make(chan struct{})
+	go func() {
+		time.Sleep(80 * time.Millisecond)
+		mu.Lock()
+		order = append(order, "lazy-done")
+		mu.Unlock()
+		wg.Done() // must unblock DeleteJob's drain
+		close(done)
+	}()
+
+	if err := m.DeleteJob("job1"); err != nil {
+		t.Fatalf("DeleteJob: %v", err)
+	}
+	mu.Lock()
+	order = append(order, "delete-done")
+	mu.Unlock()
+
+	<-done
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) != 2 || order[0] != "lazy-done" {
+		t.Errorf("DeleteJob did not wait for the lazy transcode; order=%v", order)
+	}
+	if _, err := os.Stat(outputDir); !os.IsNotExist(err) {
+		t.Errorf("output dir should have been removed by DeleteJob, stat err=%v", err)
+	}
+}
+
+// TestDeleteJob_CancelsLazyTranscode confirms DeleteJob cancels an in-flight
+// lazy transcode (rather than blocking on it): the simulated transcode only
+// finishes when its registered context is cancelled, so if cancellation didn't
+// fire, DeleteJob would hang and the test would time out.
+func TestDeleteJob_CancelsLazyTranscode(t *testing.T) {
+	outputDir := filepath.Join(t.TempDir(), "job1")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := &Module{
+		repo:       &stubHLSRepo{},
+		jobs:       map[string]*models.HLSJob{"job1": {ID: "job1", OutputDir: outputDir, Status: models.HLSStatusCompleted}},
+		jobCancels: map[string]context.CancelFunc{},
+		jobDone:    map[string]chan struct{}{},
+		log:        logger.New("test"),
+	}
+
+	// Simulate an in-flight lazy transcode: holds lazyWg and blocks on its
+	// registered cancellable context (as real ffmpeg does via exec.CommandContext).
+	rawWg, _ := m.lazyWg.LoadOrStore("job1", new(sync.WaitGroup))
+	wg := rawWg.(*sync.WaitGroup)
+	wg.Add(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	rawSet, _ := m.lazyCancels.LoadOrStore("job1", &sync.Map{})
+	rawSet.(*sync.Map).Store(new(int), context.CancelFunc(cancel))
+
+	started := make(chan struct{})
+	go func() {
+		close(started)
+		<-ctx.Done() // only returns once DeleteJob cancels us
+		wg.Done()
+	}()
+	<-started
+
+	done := make(chan error, 1)
+	go func() { done <- m.DeleteJob("job1") }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("DeleteJob: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("DeleteJob hung — cancellation of the lazy transcode did not unblock the drain")
+	}
+	if _, err := os.Stat(outputDir); !os.IsNotExist(err) {
+		t.Errorf("output dir should have been removed by DeleteJob, stat err=%v", err)
+	}
+}
 
 // ---------------------------------------------------------------------------
 // isSegmentLine

@@ -3,12 +3,6 @@ package config
 import "time"
 
 func (m *Manager) applyStreamingEnvOverrides() {
-	m.applyStreamingChunkOverrides()
-	m.applyStreamingKeepAliveOverrides()
-	m.applyStreamingAdaptiveOverrides()
-}
-
-func (m *Manager) applyStreamingChunkOverrides() {
 	if val, ok := envGetInt64("STREAMING_CHUNK_SIZE"); ok {
 		m.config.Streaming.DefaultChunkSize = val
 	}
@@ -18,18 +12,12 @@ func (m *Manager) applyStreamingChunkOverrides() {
 	if val, ok := envGetInt("STREAMING_BUFFER_SIZE"); ok {
 		m.config.Streaming.BufferSize = val
 	}
-}
-
-func (m *Manager) applyStreamingKeepAliveOverrides() {
 	if val, ok := envGetBool("STREAMING_KEEP_ALIVE_ENABLED"); ok {
 		m.config.Streaming.KeepAliveEnabled = val
 	}
 	if val, ok := envGetDuration(time.Second, "STREAMING_KEEP_ALIVE_TIMEOUT_SECONDS"); ok {
 		m.config.Streaming.KeepAliveTimeout = val
 	}
-}
-
-func (m *Manager) applyStreamingAdaptiveOverrides() {
 	if val, ok := envGetBool("STREAMING_ADAPTIVE"); ok {
 		m.config.Streaming.Adaptive = val
 	}

@@ -14,15 +14,10 @@ const errFFmpegNotAvailable = "ffmpeg not available"
 // GenerateThumbnailRequest queues thumbnail generation (generates all preview thumbnails).
 // Use highPriority=true for user-triggered (HTTP, hover); false for background scan.
 func (m *Module) GenerateThumbnailRequest(req *ThumbnailRequest) (string, error) {
-	return m.generateThumbnailFromRequest(&generateThumbnailRequest{
-		MediaPath:    req.MediaPath,
-		MediaID:      req.MediaID,
-		IsAudio:      req.IsAudio,
-		HighPriority: req.HighPriority,
-	})
+	return m.generateThumbnailFromRequest(req)
 }
 
-func (m *Module) generateThumbnailFromRequest(req *generateThumbnailRequest) (string, error) {
+func (m *Module) generateThumbnailFromRequest(req *ThumbnailRequest) (string, error) {
 	if m.ffmpegPath == "" {
 		return "", errors.New(errFFmpegNotAvailable)
 	}
@@ -37,7 +32,7 @@ func (m *Module) generateThumbnailFromRequest(req *generateThumbnailRequest) (st
 	outputPath := m.getThumbnailPath(MediaID(req.MediaID))
 
 	if !req.IsAudio {
-		return m.generatePreviewThumbnailsFromRequest(&generatePreviewThumbnailsRequest{
+		return m.generatePreviewThumbnailsFromRequest(&PreviewThumbnailsRequest{
 			MediaPath:    req.MediaPath,
 			MediaID:      req.MediaID,
 			HighPriority: req.HighPriority,
@@ -93,14 +88,10 @@ func (m *Module) generateThumbnailFromRequest(req *generateThumbnailRequest) (st
 // GeneratePreviewThumbnailsRequest generates multiple thumbnails at different timestamps for hover preview.
 // Use highPriority=true when user is viewing (hover); false for background scan.
 func (m *Module) GeneratePreviewThumbnailsRequest(req *PreviewThumbnailsRequest) (string, error) {
-	return m.generatePreviewThumbnailsFromRequest(&generatePreviewThumbnailsRequest{
-		MediaPath:    req.MediaPath,
-		MediaID:      req.MediaID,
-		HighPriority: req.HighPriority,
-	})
+	return m.generatePreviewThumbnailsFromRequest(req)
 }
 
-func (m *Module) generatePreviewThumbnailsFromRequest(req *generatePreviewThumbnailsRequest) (string, error) {
+func (m *Module) generatePreviewThumbnailsFromRequest(req *PreviewThumbnailsRequest) (string, error) {
 	if m.ffmpegPath == "" {
 		return "", errors.New(errFFmpegNotAvailable)
 	}
@@ -135,12 +126,6 @@ func (m *Module) generatePreviewThumbnailsFromRequest(req *generatePreviewThumbn
 		HighPriority:   req.HighPriority,
 	})
 	return "", ErrThumbnailPending
-}
-
-// GenerateThumbnailSyncRequest generates a thumbnail synchronously.
-// mediaPath is the filesystem path (for ffmpeg), mediaID is the stable UUID (for naming).
-func (m *Module) GenerateThumbnailSyncRequest(req *ThumbnailSyncRequest) (string, error) {
-	return m.generateThumbnailSyncFromRequest(req)
 }
 
 // QueueThumbnailIfMissing implements media.ThumbnailQueuer.
@@ -218,7 +203,9 @@ func (m *Module) SaveCustomThumbnail(mediaID string, r io.Reader) error {
 	return nil
 }
 
-func (m *Module) generateThumbnailSyncFromRequest(req *ThumbnailSyncRequest) (string, error) {
+// GenerateThumbnailSyncRequest generates a thumbnail synchronously.
+// mediaPath is the filesystem path (for ffmpeg), mediaID is the stable UUID (for naming).
+func (m *Module) GenerateThumbnailSyncRequest(req *ThumbnailSyncRequest) (string, error) {
 	if m.ffmpegPath == "" {
 		m.log.Error("Cannot generate thumbnail - FFmpeg not available")
 		return "", errors.New(errFFmpegNotAvailable)

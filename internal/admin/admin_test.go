@@ -73,7 +73,7 @@ func TestBuildConfigServerMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Server.Port = 8080
 	cfg.Server.Host = "0.0.0.0"
-	m := buildConfigServerMap(cfg, nil)
+	m := buildConfigServerMap(cfg)
 	if m == nil {
 		t.Fatal("buildConfigServerMap returned nil")
 	}
@@ -84,7 +84,7 @@ func TestBuildConfigServerMap(t *testing.T) {
 
 func TestBuildConfigFeaturesMap(t *testing.T) {
 	cfg := &config.Config{}
-	m := buildConfigFeaturesMap(cfg, nil)
+	m := buildConfigFeaturesMap(cfg)
 	if m == nil {
 		t.Fatal("buildConfigFeaturesMap returned nil")
 	}
@@ -92,7 +92,7 @@ func TestBuildConfigFeaturesMap(t *testing.T) {
 
 func TestBuildConfigSecurityMap(t *testing.T) {
 	cfg := &config.Config{}
-	m := buildConfigSecurityMap(cfg, nil)
+	m := buildConfigSecurityMap(cfg)
 	if m == nil {
 		t.Fatal("buildConfigSecurityMap returned nil")
 	}
@@ -101,7 +101,7 @@ func TestBuildConfigSecurityMap(t *testing.T) {
 func TestBuildConfigDatabaseMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Database.Host = "db.example.com"
-	m := buildConfigDatabaseMap(cfg, nil)
+	m := buildConfigDatabaseMap(cfg)
 	if m == nil {
 		t.Fatal("buildConfigDatabaseMap returned nil")
 	}

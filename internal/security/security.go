@@ -588,25 +588,22 @@ func (m *Module) SetBlacklistEnabled(enabled bool) {
 	m.log.Info("Blacklist enabled: %v", enabled)
 }
 
-// GetWhitelist returns a copy of the whitelist so callers cannot mutate internal state.
-func (m *Module) GetWhitelist() *IPList {
-	m.whitelist.mu.RLock()
-	name, enabled := m.whitelist.Name, m.whitelist.Enabled
-	entries := make([]IPEntry, len(m.whitelist.Entries))
-	copy(entries, m.whitelist.Entries)
-	m.whitelist.mu.RUnlock()
-	return &IPList{Name: name, Enabled: enabled, Entries: entries}
+// Clone returns a copy of the list (Name, Enabled, and a copied Entries slice)
+// taken under the read lock, so callers cannot mutate internal state and a
+// panic mid-copy cannot leak the lock.
+func (l *IPList) Clone() *IPList {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	entries := make([]IPEntry, len(l.Entries))
+	copy(entries, l.Entries)
+	return &IPList{Name: l.Name, Enabled: l.Enabled, Entries: entries}
 }
 
+// GetWhitelist returns a copy of the whitelist so callers cannot mutate internal state.
+func (m *Module) GetWhitelist() *IPList { return m.whitelist.Clone() }
+
 // GetBlacklist returns a copy of the blacklist so callers cannot mutate internal state.
-func (m *Module) GetBlacklist() *IPList {
-	m.blacklist.mu.RLock()
-	name, enabled := m.blacklist.Name, m.blacklist.Enabled
-	entries := make([]IPEntry, len(m.blacklist.Entries))
-	copy(entries, m.blacklist.Entries)
-	m.blacklist.mu.RUnlock()
-	return &IPList{Name: name, Enabled: enabled, Entries: entries}
-}
+func (m *Module) GetBlacklist() *IPList { return m.blacklist.Clone() }
 
 // GetStats returns security statistics
 func (m *Module) GetStats() Stats {
@@ -640,6 +637,30 @@ func (m *Module) GetStats() Stats {
 
 // Persistence — reads/writes via MySQL repository
 
+// loadIPListEntries loads and parses all entries for a named IP list into l,
+// skipping (with a warning) any entry that fails to parse.
+func (m *Module) loadIPListEntries(ctx context.Context, listType string, l *IPList) {
+	entries, err := m.repo.GetEntries(ctx, listType)
+	if err != nil {
+		m.log.Warn("Failed to load %s entries: %v", listType, err)
+		return
+	}
+	for _, rec := range entries {
+		entry := IPEntry{
+			Value:     rec.Value,
+			Comment:   rec.Comment,
+			AddedAt:   rec.AddedAt,
+			AddedBy:   rec.AddedBy,
+			ExpiresAt: rec.ExpiresAt,
+		}
+		if err := m.parseIPEntry(&entry); err != nil {
+			m.log.Warn("Skipping malformed %s entry %q: %v", listType, entry.Value, err)
+			continue
+		}
+		l.Entries = append(l.Entries, entry)
+	}
+}
+
 func (m *Module) loadIPLists() {
 	ctx := context.Background()
 
@@ -650,24 +671,7 @@ func (m *Module) loadIPLists() {
 	}
 
 	// Load whitelist entries
-	if entries, err := m.repo.GetEntries(ctx, "whitelist"); err != nil {
-		m.log.Warn("Failed to load whitelist entries: %v", err)
-	} else {
-		for _, rec := range entries {
-			entry := IPEntry{
-				Value:     rec.Value,
-				Comment:   rec.Comment,
-				AddedAt:   rec.AddedAt,
-				AddedBy:   rec.AddedBy,
-				ExpiresAt: rec.ExpiresAt,
-			}
-			if err := m.parseIPEntry(&entry); err != nil {
-				m.log.Warn("Skipping malformed whitelist entry %q: %v", entry.Value, err)
-				continue
-			}
-			m.whitelist.Entries = append(m.whitelist.Entries, entry)
-		}
-	}
+	m.loadIPListEntries(ctx, "whitelist", m.whitelist)
 
 	// Load blacklist config
 	if name, enabled, err := m.repo.GetListConfig(ctx, "blacklist"); err == nil && name != "" {
@@ -676,24 +680,7 @@ func (m *Module) loadIPLists() {
 	}
 
 	// Load blacklist entries
-	if entries, err := m.repo.GetEntries(ctx, "blacklist"); err != nil {
-		m.log.Warn("Failed to load blacklist entries: %v", err)
-	} else {
-		for _, rec := range entries {
-			entry := IPEntry{
-				Value:     rec.Value,
-				Comment:   rec.Comment,
-				AddedAt:   rec.AddedAt,
-				AddedBy:   rec.AddedBy,
-				ExpiresAt: rec.ExpiresAt,
-			}
-			if err := m.parseIPEntry(&entry); err != nil {
-				m.log.Warn("Skipping malformed blacklist entry %q: %v", entry.Value, err)
-				continue
-			}
-			m.blacklist.Entries = append(m.blacklist.Entries, entry)
-		}
-	}
+	m.loadIPListEntries(ctx, "blacklist", m.blacklist)
 
 	// Ensure "ban" ip_list_config row exists (AddEntry/GetEntries require it for FK).
 	if err := m.repo.SaveListConfig(ctx, "ban", "Banned IPs (rate limit)", true); err != nil {

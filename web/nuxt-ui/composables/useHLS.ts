@@ -448,8 +448,7 @@ export function useHLS(
                     clearInterval(pollTimer)
                     pollTimer = null
                 }
-                const settings = await settingsApi.get().catch(() => null)
-                if (settings && settings.streaming?.adaptive !== false) await activateHLS()
+                await autoActivateIfEnabled()
             } else if (updated.status !== 'running' && updated.status !== 'pending') {
                 jobRunning.value = false
                 if (pollTimer) {
@@ -470,6 +469,13 @@ export function useHLS(
         }
     }
 
+    // Activate HLS only when adaptive streaming is enabled in server settings
+    // (best-effort — a failed settings fetch leaves the player on direct stream).
+    async function autoActivateIfEnabled() {
+        const settings = await settingsApi.get().catch(() => null)
+        if (settings && settings.streaming?.adaptive !== false) await activateHLS()
+    }
+
     // Runs the availability check for a media id: activates HLS if it's ready, or
     // starts the completion poll if a transcode job is in progress. Extracted so
     // recheck() can re-run it on demand (e.g. after manual generation) without
@@ -480,13 +486,7 @@ export function useHLS(
             if (status.available && status.hls_url) {
                 hlsAvailable.value = true
                 hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
-                // Auto-activate HLS only when adaptive streaming is enabled in server settings.
-                // When disabled, the player falls back to direct streaming; user can still
-                // click "Switch to HLS" if the banner is shown.
-                const settings = await settingsApi.get().catch(() => null)
-                if (settings && settings.streaming?.adaptive !== false) {
-                    await activateHLS()
-                }
+                await autoActivateIfEnabled()
             } else if (status.status === 'running' || status.status === 'pending') {
                 jobRunning.value = true
                 jobProgress.value = status.progress

@@ -6,15 +6,13 @@ import (
 )
 
 func (m *Manager) applyHLSEnvOverrides() {
-	m.applyHLSBaseOverrides()
-	m.applyHLSQualityOverrides()
-	m.applyHLSOptionsOverrides()
-}
-
-func (m *Manager) applyHLSBaseOverrides() {
 	m.applyHLSBaseOverridesCore()
 	m.applyHLSCleanupOverrides()
-	m.applyHLSConcurrencyOverrides()
+	if val, ok := envGetInt("HLS_CONCURRENT_LIMIT", "HLS_MAX_CONCURRENT_JOBS"); ok && val >= 1 {
+		m.config.HLS.ConcurrentLimit = val
+	}
+	m.applyHLSQualityOverrides()
+	m.applyHLSOptionsOverrides()
 }
 
 func (m *Manager) applyHLSBaseOverridesCore() {
@@ -41,12 +39,6 @@ func (m *Manager) applyHLSCleanupOverrides() {
 	}
 	if val, ok := envGetInt("HLS_RETENTION_MINUTES"); ok && val >= 1 {
 		m.config.HLS.RetentionMinutes = val
-	}
-}
-
-func (m *Manager) applyHLSConcurrencyOverrides() {
-	if val, ok := envGetInt("HLS_CONCURRENT_LIMIT", "HLS_MAX_CONCURRENT_JOBS"); ok && val >= 1 {
-		m.config.HLS.ConcurrentLimit = val
 	}
 }
 

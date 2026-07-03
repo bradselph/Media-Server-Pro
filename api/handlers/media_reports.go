@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
@@ -120,7 +121,7 @@ func (h *Handler) SubmitMediaReport(c *gin.Context) {
 	writeSuccess(c, map[string]string{
 		"id":         rec.ID,
 		"status":     rec.Status,
-		"created_at": rec.CreatedAt.Format(timeFormatRFC3339Ext),
+		"created_at": rec.CreatedAt.Format(time.RFC3339),
 	})
 }
 
@@ -160,11 +161,11 @@ func (h *Handler) ListMediaReports(c *gin.Context) {
 			"reason":      r.Reason,
 			"notes":       r.Notes,
 			"status":      r.Status,
-			"created_at":  r.CreatedAt.Format(timeFormatRFC3339Ext),
+			"created_at":  r.CreatedAt.Format(time.RFC3339),
 			"ip_address":  r.IPAddress,
 		}
 		if r.ResolvedAt != nil {
-			v["resolved_at"] = r.ResolvedAt.Format(timeFormatRFC3339Ext)
+			v["resolved_at"] = r.ResolvedAt.Format(time.RFC3339)
 		}
 		if r.ResolvedBy != "" {
 			v["resolved_by"] = r.ResolvedBy

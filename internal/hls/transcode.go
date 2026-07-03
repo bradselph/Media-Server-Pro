@@ -341,11 +341,33 @@ func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, q
 		return nil
 	}
 
+	// Register this in-flight lazy transcode on the per-job WaitGroup BEFORE the
+	// semaphore wait, so DeleteJob/cleanInactiveJob drain queued-and-running lazy
+	// transcodes (which hold no jobDone entry) before os.RemoveAll deletes the
+	// output directory out from under an active ffmpeg write.
+	rawWg, _ := m.lazyWg.LoadOrStore(job.ID, new(sync.WaitGroup))
+	lWg := rawWg.(*sync.WaitGroup)
+	lWg.Add(1)
+	defer lWg.Done()
+
+	// Derive a context DeleteJob/cleanInactiveJob can cancel (via cancelLazyTranscodes)
+	// so a delete aborts this on-demand encode — killing ffmpeg — instead of blocking
+	// the lazyWg drain until it finishes on its own. Register the cancel under a unique
+	// key so concurrent transcodes of the same job (different qualities) each get their
+	// own entry.
+	lazyCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	rawSet, _ := m.lazyCancels.LoadOrStore(job.ID, &sync.Map{})
+	cancelSet := rawSet.(*sync.Map)
+	cancelKey := new(int)
+	cancelSet.Store(cancelKey, cancel)
+	defer cancelSet.Delete(cancelKey)
+
 	// Acquire dynamic semaphore with context awareness.
 	for !m.tryAcquireTranscode() {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-lazyCtx.Done():
+			return lazyCtx.Err()
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
@@ -370,9 +392,9 @@ func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, q
 
 	m.log.Info("On-demand lazy transcode of quality %s for job %s", quality, job.ID)
 
-	totalDuration := m.getMediaDuration(ctx, job.MediaPath)
+	totalDuration := m.getMediaDuration(lazyCtx, job.MediaPath)
 	run := &qualityRunParams{JobID: job.ID, TotalQualities: 1, CurrentQuality: 1, TotalDuration: totalDuration}
-	return m.transcodeQuality(ctx, job, quality, run)
+	return m.transcodeQuality(lazyCtx, job, quality, run)
 }
 
 // monitorProgress monitors ffmpeg progress output and parses time= for progress tracking.

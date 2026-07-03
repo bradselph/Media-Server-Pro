@@ -73,7 +73,7 @@ func (h *Handler) ScanContent(c *gin.Context) {
 		return
 	}
 
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 	allResults := h.scanConfiguredDirectories(cfg)
 	autoFlagged, reviewNeeded, clean := h.processScanResults(allResults, req.AutoApply)
 

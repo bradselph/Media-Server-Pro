@@ -121,7 +121,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	// to the full path below, which materializes the whole filtered set.
 	hideWatched := c.Query("hide_watched") == "true" || c.Query("hide_watched") == "1"
 	needFullSet := minRating > 0 || sortByRating || hideWatched ||
-		(h.extractor != nil && h.media.GetConfig().Extractor.Enabled) ||
+		(h.extractor != nil && h.config.Get().Extractor.Enabled) ||
 		(h.receiver != nil && len(h.receiver.GetAllMedia()) > 0)
 
 	if !needFullSet {
@@ -207,7 +207,7 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	// Merge extractor items into the listing so extracted external URLs
 	// appear in the unified library alongside local and slave media.
 	if h.extractor != nil {
-		if h.media.GetConfig().Extractor.Enabled {
+		if h.config.Get().Extractor.Enabled {
 			for _, ei := range h.extractor.GetAllItems() {
 				if ei.Status != "active" {
 					continue
@@ -624,7 +624,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 	}
 
 	session := getSession(c)
-	streamCfg := h.media.GetConfig().Streaming
+	streamCfg := h.config.Get().Streaming
 	if session == nil && streamCfg.RequireAuth {
 		writeError(c, http.StatusUnauthorized, "Authentication required to stream media")
 		return
@@ -876,7 +876,7 @@ func variantDownloadName(name, quality string) string {
 
 // DownloadMedia downloads a media file
 func (h *Handler) DownloadMedia(c *gin.Context) {
-	cfg := h.media.GetConfig()
+	cfg := h.config.Get()
 	if !cfg.Download.Enabled {
 		writeError(c, http.StatusForbidden, "Downloads are disabled")
 		return
@@ -1152,9 +1152,7 @@ func (h *Handler) TrackPlayback(c *gin.Context) {
 				Duration:  req.Duration,
 				WatchedAt: time.Now(),
 			}
-			if req.Duration > 0 {
-				item.Progress = req.Position / req.Duration
-			}
+			item.Progress = progress
 			item.Completed = item.Progress >= 0.9
 			if err := h.auth.AddToWatchHistory(c.Request.Context(), username, item); err != nil {
 				h.log.Warn("Watch history update failed for media %s: %v", req.ID, err)

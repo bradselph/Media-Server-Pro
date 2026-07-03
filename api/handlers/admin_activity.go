@@ -23,12 +23,7 @@ func (h *Handler) AdminGetActiveStreams(c *gin.Context) {
 		if s == nil {
 			continue
 		}
-		filename := s.MediaID
-		if h.media != nil {
-			if mi, err := h.media.GetMediaByID(s.MediaID); err == nil && mi != nil {
-				filename = mi.Name
-			}
-		}
+		filename := h.mediaNameByID(s.MediaID)
 		out = append(out, map[string]any{
 			"id":          s.ID,
 			"media_id":    s.MediaID,
