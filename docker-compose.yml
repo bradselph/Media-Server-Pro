@@ -25,9 +25,11 @@
 #     two paths do not share any state and don't fight over .env (deploy.sh
 #     reads .deploy.env locally + writes .env on the VPS; this stack reads
 #     .env.docker locally and never touches .env).
-#   - The Go binary is byte-identical to the one deploy.sh produces (same
-#     Go version, same -trimpath/-ldflags). Issues observed here will
-#     reproduce on a native VPS install.
+#   - The Go binary is built from the same source with the same Go/Node
+#     versions and the same VERSION/BuildDate stamp as deploy.sh produces.
+#     (The image hardens the build a bit more — CGO off, -trimpath -s -w —
+#     but the server has no cgo deps so behaviour is identical.) Issues
+#     observed here will reproduce on a native VPS install.
 
 name: media-server-pro
 
@@ -42,11 +44,12 @@ x-logging: &default-logging
 services:
   # ───────────────────────────────────────────────────────────────────────
   # MariaDB — the application's primary datastore.
-  # MariaDB version pinned to 11 (LTS) so a host pulling :latest doesn't
-  # produce a surprise upgrade between deploys.
+  # Pinned to the 11.4 LTS series (not the floating :11 tag, which would
+  # advance onto a short-support 11.5+ release on the next host pull).
+  # MARIADB_AUTO_UPGRADE=1 handles in-place schema upgrades within the line.
   # ───────────────────────────────────────────────────────────────────────
   db:
-    image: mariadb:11
+    image: mariadb:11.4
     restart: unless-stopped
     logging: *default-logging
     environment:
@@ -79,7 +82,7 @@ services:
   # works; compose prefers the local image when it exists with this tag.
   # ───────────────────────────────────────────────────────────────────────
   server:
-    image: ghcr.io/bradselph/media-server-pro:${IMAGE_TAG:-main}
+    image: ghcr.io/bradselph/media-server-pro:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile

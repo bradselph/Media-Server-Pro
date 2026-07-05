@@ -7,6 +7,11 @@ config.json
 .env.generated
 .env.recovery
 .deploy.env
+# Docker runtime env — holds DB/admin secrets; only .env.docker.example is tracked
+.env.docker
+.env.docker.local
+# Personal Cosmos Cloud import (not part of the project's official deploy path)
+docker-compose.cosmos.yml
 dev-tools/
 
 /web/static/react/
