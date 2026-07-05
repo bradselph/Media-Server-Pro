@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.21.0] - 2026-07-05 (minor)
+
+- fix(docker): bring compose deployment to parity with deploy.sh
+- refactor(web): dedupe composables/wrappers; extract shared helpers
+- refactor(pkg,cmd): simplify helpers, dedupe CSRF check, drop dead code
+- refactor(repositories): dedupe row-mapping/filter helpers; drop dead methods
+- refactor(thumbnails): drop duplicate types, dead method, and thin wrappers
+- refactor(admin,auth): drop dead configMapSection param; reuse admin defaults
+- refactor(internal): dedupe list-load/task-info/tls-mode helpers
+- refactor(media): extract reindexPath/persistPathChange from Rename/Move/Reindex
+- refactor(internal): remove dead code and thin wrappers
+- refactor: drop media/admin GetConfig() wrappers; route handlers via h.config
+- refactor(handlers): dedupe boilerplate and drop dead code
+- refactor(analytics): dedupe the DailyStats event-count switch into one helper
+- refactor(config): inline single-caller env-override dispatchers and wrappers
+- fix(hls): cancel in-flight lazy transcodes on delete instead of only waiting
+- fix(hls): make HW-encoder probe mirror the production filter chain
+- perf(analytics): coalesce concurrent cold-cache misses with singleflight
+- perf(suggestions): pre-build recent-category set once per GetSuggestions
+- fix(hls): fence in-flight lazy transcodes before deleting job output
+- fix(hls): propagate saveJob errors; warn when CancelJob fails to persist
+
+
 ## [1.20.0] - 2026-07-01 (minor)
 
 - cleanup(ui): wrap inline @click handlers to fix void-return typecheck errors (components/layouts)
