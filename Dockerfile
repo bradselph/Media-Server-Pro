@@ -3,15 +3,18 @@
 # Media Server Pro — production image.
 #
 # This image mirrors the binary that deploy.sh produces on a VPS: same
-# Go version, same Node version, same ldflags, same embedded Nuxt build.
-# Use it as a self-contained alternative to deploy.sh when you'd rather
-# ship a container than build natively on the host.
+# Go/Node versions, same VERSION/BuildDate stamp, same embedded Nuxt build.
+# It intentionally hardens the build further than the native path — CGO
+# disabled + `-trimpath -s -w` — for a smaller, fully static binary (the
+# server has no cgo dependencies, so behaviour is identical). Use it as a
+# self-contained alternative to deploy.sh when you'd rather ship a container
+# than build natively on the host.
 #
 # Build:
 #   docker build -t media-server-pro:latest .
 #
 # Build args (defaults match go.mod / package.json + deploy-knobs.sh):
-#   GO_VERSION   — Go toolchain version (default: 1.26)
+#   GO_VERSION   — Go toolchain version (default: 1.26.4, tracks go.mod)
 #   NODE_VERSION — Node.js version for the Nuxt build (default: 22)
 #   APP_UID      — uid of the runtime user (default: 1000)
 #   APP_GID      — gid of the runtime group (default: 1000)
@@ -30,7 +33,10 @@
 #
 # Full stack (MariaDB + server): see docker-compose.yml.
 
-ARG GO_VERSION=1.26
+# GO_VERSION tracks go.mod's `go` directive so the image build uses the same
+# toolchain deploy.sh installs on a VPS (get_go_version reads go.mod). Bump
+# this in lockstep whenever go.mod's `go` line changes.
+ARG GO_VERSION=1.26.4
 ARG NODE_VERSION=22
 ARG DEBIAN_VARIANT=bookworm-slim
 
@@ -209,7 +215,10 @@ VOLUME ["/data"]
 ENTRYPOINT ["/usr/bin/tini", "--", "/app/entrypoint.sh"]
 CMD ["server"]
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+# start-period/retries match docker-compose.yml so a standalone `docker run`
+# tolerates the same first-boot DB-migration window (cold MariaDB + 30+
+# CREATE TABLE statements) that compose users get.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
     CMD curl --fail --silent --show-error \
         "http://127.0.0.1:${SERVER_PORT:-3000}/health" >/dev/null || exit 1
 
