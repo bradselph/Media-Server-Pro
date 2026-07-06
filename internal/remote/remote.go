@@ -720,6 +720,17 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 	m.mediaCache[remoteURL] = cached
 	m.mu.Unlock()
 
+	// Persist the index row immediately (before CleanCache may evict it) so a
+	// non-graceful crash before the next Stop() doesn't leave the file on disk
+	// with no DB row — an untracked orphan outside eviction accounting.
+	if m.repo != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		if err := m.repo.Save(ctx, cachedToRecord(cached)); err != nil {
+			m.log.Warn("Failed to persist cache entry for %s: %v", remoteURL, err)
+		}
+		cancel()
+	}
+
 	// Trigger eviction if cache exceeds size limit or has expired entries
 	m.CleanCache()
 
@@ -839,6 +850,19 @@ func (m *Module) loadCacheIndex() {
 // saveCacheIndex persists the in-memory cache index to the repository.
 // Continues on individual save failures to persist as many entries as possible.
 // Returns the last error encountered so callers know persistence was partial.
+// cachedToRecord builds the persistent index record for a cached media entry.
+func cachedToRecord(c *CachedMedia) *repositories.RemoteCacheRecord {
+	return &repositories.RemoteCacheRecord{
+		RemoteURL:   c.RemoteURL,
+		LocalPath:   c.LocalPath,
+		Size:        c.Size,
+		ContentType: c.ContentType,
+		CachedAt:    c.CachedAt,
+		LastAccess:  c.LastAccess,
+		Hits:        c.Hits,
+	}
+}
+
 func (m *Module) saveCacheIndex() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -846,16 +870,7 @@ func (m *Module) saveCacheIndex() error {
 	ctx := context.Background()
 	var lastErr error
 	for _, cached := range m.mediaCache {
-		rec := &repositories.RemoteCacheRecord{
-			RemoteURL:   cached.RemoteURL,
-			LocalPath:   cached.LocalPath,
-			Size:        cached.Size,
-			ContentType: cached.ContentType,
-			CachedAt:    cached.CachedAt,
-			LastAccess:  cached.LastAccess,
-			Hits:        cached.Hits,
-		}
-		if err := m.repo.Save(ctx, rec); err != nil {
+		if err := m.repo.Save(ctx, cachedToRecord(cached)); err != nil {
 			m.log.Warn("Failed to save cache entry for %s: %v", cached.RemoteURL, err)
 			lastErr = err
 		}
@@ -933,6 +948,18 @@ func (m *Module) CleanCache() int {
 		} else {
 			removed++
 		}
+	}
+
+	// Drop the persisted index rows for evicted entries so the DB doesn't keep
+	// stale rows pointing at deleted files until the next graceful Stop().
+	if m.repo != nil && len(toEvict) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		for _, t := range toEvict {
+			if err := m.repo.Delete(ctx, t.url); err != nil {
+				m.log.Warn("Failed to delete cache index row for %s: %v", t.url, err)
+			}
+		}
+		cancel()
 	}
 
 	if removed > 0 {
