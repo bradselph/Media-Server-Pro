@@ -67,9 +67,45 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 	user.Salt = salt
 	m.usersMu.Unlock()
 
+	// Keep the built-in admin's login credential (cfg.Admin.PasswordHash) in sync,
+	// otherwise the change persists only to the unused DB record and login still
+	// requires the old password.
+	if err := m.syncAdminConfigPasswordIfNeeded(username, newPassword); err != nil {
+		return err
+	}
+
 	// Evict all sessions so the old password cannot be reused via an existing session.
 	m.evictSessionsForUser(ctx, username, "password changed by user")
 
+	return nil
+}
+
+// syncAdminConfigPasswordIfNeeded keeps cfg.Admin.PasswordHash — the credential
+// AdminAuthenticate checks for the built-in admin, stored UNSALTED — in lockstep
+// when the admin account's password is changed through the generic user paths
+// (UpdatePassword / SetPassword). Those paths only write the DB/cache user record,
+// which admin login never reads, so without this the new password would never
+// work at login and the old one would keep working indefinitely. A no-op for
+// every other username. Uses an unsalted hash to match AdminAuthenticate's
+// bcrypt.CompareHashAndPassword(cfg.Admin.PasswordHash, password) check.
+func (m *Module) syncAdminConfigPasswordIfNeeded(username, newPassword string) error {
+	if m.config == nil {
+		return nil
+	}
+	cfg := m.config.Get()
+	if cfg.Admin.Username == "" || username != cfg.Admin.Username {
+		return nil
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf(errHashPasswordFmt, err)
+	}
+	if err := m.config.Update(func(c *config.Config) {
+		c.Admin.PasswordHash = string(hash)
+	}); err != nil {
+		return fmt.Errorf("failed to sync admin password to config: %w", err)
+	}
+	m.log.Info("Synced built-in admin login credential after password change")
 	return nil
 }
 
@@ -114,6 +150,13 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 	user.PasswordHash = newHash
 	user.Salt = salt
 	m.usersMu.Unlock()
+
+	// Keep the built-in admin's login credential (cfg.Admin.PasswordHash) in sync
+	// (see UpdatePassword) so an admin-initiated reset of the admin account takes
+	// effect at login instead of only touching the unused DB record.
+	if err := m.syncAdminConfigPasswordIfNeeded(username, newPassword); err != nil {
+		return err
+	}
 
 	// Evict all sessions so the old password cannot be reused via an existing session.
 	m.evictSessionsForUser(ctx, username, "password reset by admin")
