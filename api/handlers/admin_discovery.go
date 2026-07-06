@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -116,8 +115,12 @@ func (h *Handler) DismissDiscoverySuggestion(c *gin.Context) {
 	}
 	// Gin's *path wildcard always carries a leading '/'; keep it so the
 	// suggestion's absolute path survives intact (apply gets it via JSON body).
-	path, err := url.PathUnescape(c.Param("path"))
-	if err != nil || path == "" || path == "/" {
+	// gin already returns the percent-decoded value here (UseRawPath is unset,
+	// so routing uses net/http's already-unescaped URL.Path). Do NOT unescape
+	// again — a filename containing a literal '%' (e.g. "50% Off.mp4") would make
+	// a second url.PathUnescape fail ("invalid URL escape") and 400 every dismiss.
+	path := c.Param("path")
+	if path == "" || path == "/" {
 		writeError(c, http.StatusBadRequest, errPathParamRequired)
 		return
 	}
