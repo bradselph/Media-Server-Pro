@@ -86,8 +86,13 @@ func (r *MediaReportRepository) List(ctx context.Context, status string, limit, 
 
 func (r *MediaReportRepository) UpdateStatus(ctx context.Context, id, status, resolvedBy string) error {
 	updates := map[string]any{"status": status, "resolved_by": resolvedBy}
-	if status == "resolved" || status == "dismissed" {
+	switch status {
+	case "resolved", "dismissed":
 		updates["resolved_at"] = new(time.Now().UTC())
+	case "open":
+		// Reopening clears the resolution stamp so the report no longer shows a
+		// stale "resolved/dismissed by <admin> at <time>" attribution.
+		updates["resolved_at"] = nil
 	}
 	result := r.db.WithContext(ctx).
 		Model(&mediaReportRow{}).
