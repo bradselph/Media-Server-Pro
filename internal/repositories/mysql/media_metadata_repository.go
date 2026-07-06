@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -38,9 +39,40 @@ type mediaMetadataRow struct {
 	ProbeModTime       *time.Time `gorm:"column:probe_mod_time"`
 	BlurHash           string     `gorm:"column:blur_hash"`
 	Duration           float64    `gorm:"column:duration"`
+	// CustomMeta holds admin-set custom key/value fields as a JSON object string.
+	CustomMeta string `gorm:"column:custom_meta"`
 }
 
 func (mediaMetadataRow) TableName() string { return "media_metadata" }
+
+// marshalCustomMeta encodes the custom-metadata map to a JSON object string for
+// the custom_meta column. An empty/nil map stores the empty string (NULL-like)
+// rather than "{}" so unchanged rows don't churn.
+func marshalCustomMeta(m map[string]string) string {
+	if len(m) == 0 {
+		return ""
+	}
+	// json.Marshal of a map[string]string sorts keys, so the stored value is
+	// stable across saves and cannot fail for string values.
+	b, err := json.Marshal(m)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// unmarshalCustomMeta decodes a custom_meta column back into a map. An empty or
+// unparseable value yields a nil map (callers treat nil as "no custom fields").
+func unmarshalCustomMeta(s string) map[string]string {
+	if s == "" {
+		return nil
+	}
+	var m map[string]string
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		return nil
+	}
+	return m
+}
 
 // mediaTagRow maps to the media_tags table.
 type mediaTagRow struct {
@@ -106,6 +138,7 @@ func buildMetadataRow(path string, metadata *repositories.MediaMetadata) mediaMe
 		ProbeModTime:       probeModTime,
 		BlurHash:           metadata.BlurHash,
 		Duration:           metadata.Duration,
+		CustomMeta:         marshalCustomMeta(metadata.CustomMeta),
 	}
 }
 
@@ -128,6 +161,10 @@ func mediaMetadataConflictClause() clause.OnConflict {
 			"category":       gorm.Expr("VALUES(category)"),
 			"probe_mod_time": gorm.Expr("VALUES(probe_mod_time)"),
 			"duration":       gorm.Expr("IF(VALUES(duration) > 0, VALUES(duration), media_metadata.duration)"),
+			// custom_meta is always the in-memory truth: it is loaded on startup
+			// (convertRepoToInternal) and every write path carries the current map,
+			// so overwriting with the incoming value is correct.
+			"custom_meta": gorm.Expr("VALUES(custom_meta)"),
 			// Only write stable_id when it's not already set
 			"stable_id": gorm.Expr("IF(media_metadata.stable_id IS NULL OR media_metadata.stable_id = '', VALUES(stable_id), media_metadata.stable_id)"),
 			// Track the latest fingerprint: overwrite with the incoming value when it
@@ -531,6 +568,7 @@ func (r *MediaMetadataRepository) rowToMetadata(row *mediaMetadataRow) *reposito
 	}
 	metadata.BlurHash = row.BlurHash
 	metadata.Duration = row.Duration
+	metadata.CustomMeta = unmarshalCustomMeta(row.CustomMeta)
 
 	return metadata
 }

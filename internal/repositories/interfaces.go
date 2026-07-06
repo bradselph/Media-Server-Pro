@@ -138,6 +138,9 @@ type MediaMetadata struct {
 	BlurHash string
 	// Duration is the media file duration in seconds, extracted by ffprobe.
 	Duration float64
+	// CustomMeta holds admin-set custom key/value fields (e.g. description).
+	// Persisted as a JSON object in the media_metadata.custom_meta column.
+	CustomMeta map[string]string
 }
 
 // ScanResult holds scan metadata (ScannedAt/ReviewedAt as strings; MySQL impl parses to time).
