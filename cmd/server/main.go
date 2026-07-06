@@ -444,6 +444,9 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	// Receiver (non-critical — requires database for slave registry and media catalog)
 	m.receiver = receiver.NewModule(cfg, m.database)
 	m.receiver.SetDuplicatesModule(m.duplicates)
+	// Reverse link so resolving a receiver-side duplicate also evicts the item
+	// from the receiver's live in-memory catalog (not just its DB row).
+	m.duplicates.SetReceiverModule(m.receiver)
 	mustRegister(srv, m.receiver)
 
 	// Follower (non-critical — turns this server into a slave of another master

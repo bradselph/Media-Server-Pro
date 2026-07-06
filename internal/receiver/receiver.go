@@ -754,6 +754,16 @@ func (m *Module) GetMediaItem(id string) *MediaItem {
 	return m.media[id]
 }
 
+// RemoveMediaItem evicts a single item from the in-memory catalog. The duplicates
+// module calls this after deleting the item's receiver_media DB row, so a
+// resolved receiver-side duplicate stops appearing in the unified /api/media
+// listing and stops being streamable/downloadable without waiting for a restart.
+func (m *Module) RemoveMediaItem(id string) {
+	m.mu.Lock()
+	delete(m.media, id)
+	m.mu.Unlock()
+}
+
 // GetStats returns a summary of the receiver module state.
 func (m *Module) GetStats() Stats {
 	m.mu.RLock()
