@@ -192,6 +192,24 @@ func (h *Handler) GetHLSStatus(c *gin.Context) {
 	writeSuccess(c, response)
 }
 
+// hlsJobIsMature resolves whether an HLS job's source media is mature. It keys
+// the lookup on the job's stable ID (job.ID == the media's StableID, by design
+// so HLS cache survives moves/renames) rather than job.MediaPath, which is a
+// snapshot taken at job-creation time and is never refreshed when the catalog
+// re-keys on RenameMedia/MoveMedia — a path lookup would spuriously miss after
+// any rename. A completed job whose source is genuinely no longer indexed (the
+// file was deleted/rescanned away) fails closed: it was gate-eligible at gen
+// time, so verified users still pass checkMatureAccess while anonymous/unverified
+// callers are blocked. A pending/running job with no index entry yet (startup
+// scan race) is treated as non-mature so an in-progress, not-yet-flagged item
+// isn't gated.
+func (h *Handler) hlsJobIsMature(job *models.HLSJob) bool {
+	if item, err := h.media.GetMediaByID(job.ID); err == nil && item != nil {
+		return item.IsMature
+	}
+	return job.Status == models.HLSStatusCompleted
+}
+
 // resolveHLSJobForServe loads an HLS job by ID, checks mature access, and records access. On success returns (job, true). On failure writes the error response and returns (nil, false).
 func (h *Handler) resolveHLSJobForServe(c *gin.Context, jobID string) (*models.HLSJob, bool) {
 	job, err := h.hls.GetJobStatus(jobID)
@@ -206,21 +224,7 @@ func (h *Handler) resolveHLSJobForServe(c *gin.Context, jobID string) (*models.H
 		writeError(c, http.StatusUnauthorized, "Authentication required to stream media")
 		return nil, false
 	}
-	// Resolve IsMature from the in-memory index.
-	var isMature bool
-	if item, lookupErr := h.media.GetMedia(job.MediaPath); lookupErr == nil && item != nil {
-		isMature = item.IsMature
-	} else if job.Status == models.HLSStatusCompleted {
-		// A completed job whose source is no longer indexed: the media was
-		// deleted/moved externally after generation, but the cached .ts segments
-		// still serve. The source existed (and may have been mature) at gen time,
-		// so gate it closed rather than fail open — verified users still pass
-		// checkMatureAccess; anonymous/unverified callers are blocked. (For a
-		// pending/running job with no index entry yet — startup scan race — leave
-		// isMature false so an in-progress, not-yet-flagged item isn't gated.)
-		isMature = true
-	}
-	if !h.checkMatureAccess(c, isMature) {
+	if !h.checkMatureAccess(c, h.hlsJobIsMature(job)) {
 		return nil, false
 	}
 	// Only refresh the access timestamp for jobs that are still usable.
