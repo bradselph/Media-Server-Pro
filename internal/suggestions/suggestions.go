@@ -879,11 +879,22 @@ func (m *Module) GetSimilarMedia(mediaID string, limit int, canViewMature bool) 
 	// If we found too few similar items, pad with random library items.
 	// Use low scores so random filler doesn't outrank genuinely similar items.
 	if len(suggestions) < limit/2 {
+		// randomSample only excludes the source item, so it can re-draw items
+		// already present as genuine matches. Skip those, otherwise the same
+		// MediaID appears twice (once as a real match, once as filler) — nothing
+		// downstream (sort/topShuffled/diversify) de-dupes by MediaID.
+		seen := make(map[string]bool, len(suggestions))
+		for _, s := range suggestions {
+			seen[s.MediaID] = true
+		}
 		filler := m.randomSample(sourceMedia.StableID, limit, canViewMature)
 		for _, f := range filler {
+			if seen[f.MediaID] {
+				continue
+			}
 			f.Score *= 0.1 // scale down so filler stays below real matches
+			suggestions = append(suggestions, f)
 		}
-		suggestions = append(suggestions, filler...)
 	}
 
 	// Sort by jittered score, then sample from top pool for variety
