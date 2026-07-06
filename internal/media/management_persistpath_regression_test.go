@@ -10,7 +10,7 @@ import (
 )
 
 // fakePersistRepo implements MediaMetadataRepository; only Upsert and Delete
-// carry behaviour for the persistPathChange regression test.
+// carry behavior for the persistPathChange regression test.
 type fakePersistRepo struct {
 	upsertErr    error
 	deletedPaths []string
@@ -27,10 +27,10 @@ func (f *fakePersistRepo) BulkUpsert(context.Context, map[string]*repositories.M
 	return 0, nil
 }
 func (f *fakePersistRepo) Get(context.Context, string) (*repositories.MediaMetadata, error) {
-	return nil, nil
+	return nil, repositories.ErrMetadataNotFound
 }
 func (f *fakePersistRepo) List(context.Context) (map[string]*repositories.MediaMetadata, error) {
-	return nil, nil
+	return map[string]*repositories.MediaMetadata{}, nil
 }
 func (f *fakePersistRepo) ListFiltered(context.Context, repositories.MediaFilter) ([]*repositories.MediaMetadata, int64, error) {
 	return nil, 0, nil
@@ -43,7 +43,7 @@ func (f *fakePersistRepo) GetPlaybackPosition(context.Context, string, string) (
 	return 0, nil
 }
 func (f *fakePersistRepo) BatchGetPlaybackPositions(context.Context, []string, string) (map[string]float64, error) {
-	return nil, nil
+	return map[string]float64{}, nil
 }
 func (f *fakePersistRepo) DeleteAllPlaybackPositionsByUser(context.Context, string) error { return nil }
 func (f *fakePersistRepo) DeletePlaybackPositionsByPath(context.Context, string) error    { return nil }
@@ -52,7 +52,7 @@ func (f *fakePersistRepo) GetPathByStableID(context.Context, string) (string, er
 	return "", nil
 }
 func (f *fakePersistRepo) ListDuplicateCandidates(context.Context) (map[string]*repositories.MediaMetadata, error) {
-	return nil, nil
+	return map[string]*repositories.MediaMetadata{}, nil
 }
 
 func newPersistTestModule(repo repositories.MediaMetadataRepository) *Module {

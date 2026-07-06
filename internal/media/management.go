@@ -349,7 +349,7 @@ func (m *Module) persistPathChange(oldPath, newPath string) {
 		// The new-path upsert failed: do NOT delete the old row. Keeping it
 		// preserves the item's stable ID, tags, is_mature flag and view count —
 		// fingerprint-based move detection re-keys them onto newPath on the next
-		// scan. Deleting here (the previous behaviour, contradicting this
+		// scan. Deleting here (the previous behavior, contradicting this
 		// function's own contract) would strand the moved file with zero DB rows,
 		// so a restart before the next full save loses all its metadata and a
 		// mature item silently reverts to non-mature.

@@ -524,15 +524,15 @@ func (h *Handler) GetMediaCategories(c *gin.Context) {
 			}
 			return ids
 		}())
-		itemResp := make([]categoryItemResponse, len(items))
+		itemResp := make([]categoryItemResponse, 0, len(items))
 		explicit := make(map[string]bool, len(items))
-		for j, it := range items {
+		for _, it := range items {
 			explicit[it.MediaID] = true
-			itemResp[j] = categoryItemResponse{
+			itemResp = append(itemResp, categoryItemResponse{
 				MediaID:   it.MediaID,
 				MediaName: names[it.MediaID],
 				Position:  it.Position,
-			}
+			})
 		}
 		// Append tag-backed members not already listed explicitly, so a smart
 		// category returned here carries its live members (mirror GetCategory).

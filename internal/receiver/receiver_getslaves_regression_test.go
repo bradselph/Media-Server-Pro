@@ -32,7 +32,7 @@ func TestGetSlaves_ReturnsSnapshotCopies(t *testing.T) {
 	m.mu.Unlock()
 
 	// The already-returned slice must be an isolated snapshot: a caller
-	// JSON-marshalling it must not observe the concurrent in-place writes.
+	// JSON-marshaling it must not observe the concurrent in-place writes.
 	if snap[0].Status != "online" || snap[0].MediaCount != 3 {
 		t.Fatalf("GetSlaves must return copies, not live pointers: snapshot leaked mutation Status=%q MediaCount=%d",
 			snap[0].Status, snap[0].MediaCount)
