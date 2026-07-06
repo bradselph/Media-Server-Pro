@@ -474,7 +474,7 @@ func (m *Module) applyRemoveResolution(ctx context.Context, p removeResolutionPa
 	if err := m.dupRepo.UpdateStatus(ctx, p.id, p.action, p.resolvedBy); err != nil {
 		return err
 	}
-	if err := m.dupRepo.UpdateStatusForItem(ctx, p.itemID, p.action, p.resolvedBy); err != nil {
+	if err := m.dupRepo.UpdateStatusForItem(ctx, p.itemID, p.resolvedBy); err != nil {
 		m.log.Warn("ResolveDuplicate: cascade update failed for item %s: %v", p.itemID, err)
 	}
 	return nil

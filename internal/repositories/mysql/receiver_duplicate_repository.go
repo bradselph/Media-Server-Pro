@@ -131,12 +131,16 @@ func (r *ReceiverDuplicateRepository) UpdateStatus(ctx context.Context, id, stat
 	return nil
 }
 
-// UpdateStatusForItem marks all pending duplicate records that reference the given item ID
-// (on either side) with the given status.  Used to cascade resolution when an item is removed.
-// Zero rows affected is not an error — the item may have had no pending duplicates.
-func (r *ReceiverDuplicateRepository) UpdateStatusForItem(ctx context.Context, itemID, status, resolvedBy string) error {
+// UpdateStatusForItem closes every OTHER pending duplicate record that references
+// the removed item (on either side), so the admin isn't re-prompted to resolve a
+// pair whose item is already gone. The terminal status is derived PER ROW from
+// which side the item is on — remove_a when it's item A of that pair, remove_b
+// when it's item B — because writing the triggering pair's action verbatim
+// mislabeled pairs where the removed item is the opposite side. Zero rows
+// affected is not an error — the item may have had no other pending duplicates.
+func (r *ReceiverDuplicateRepository) UpdateStatusForItem(ctx context.Context, itemID, resolvedBy string) error {
 	updates := map[string]any{
-		"status":      status,
+		"status":      gorm.Expr("CASE WHEN item_a_id = ? THEN 'remove_a' ELSE 'remove_b' END", itemID),
 		"resolved_by": resolvedBy,
 		"resolved_at": time.Now().Format(sqlTimeFormat),
 	}

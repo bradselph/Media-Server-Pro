@@ -430,7 +430,7 @@ type ReceiverDuplicateRepository interface {
 	ExistsByPair(ctx context.Context, itemAID, itemBID string) (bool, error)
 	ExistsResolvedRemoval(ctx context.Context, fingerprint string) (bool, error)
 	UpdateStatus(ctx context.Context, id, status, resolvedBy string) error
-	UpdateStatusForItem(ctx context.Context, itemID, status, resolvedBy string) error
+	UpdateStatusForItem(ctx context.Context, itemID, resolvedBy string) error
 	CountPending(ctx context.Context) (int64, error)
 	// DeleteBySlave removes all duplicate records where either side belongs to slaveID.
 	DeleteBySlave(ctx context.Context, slaveID string) error
