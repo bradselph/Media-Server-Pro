@@ -537,19 +537,22 @@ func TestIsAllowedExtension_Rejected(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // http.DetectContentType sniffs many legitimate media containers (raw AAC/ADTS,
-// ALAC, .opus, some MOV/MP4 variants) as "text/plain; charset=utf-8" or
-// application/octet-stream. Those must pass for an allowed extension, otherwise
-// the upload is rejected with "file content does not match extension".
+// ALAC, .opus, some MOV/MP4 variants) as application/octet-stream because their
+// first 512 bytes contain non-text data. That must pass for an allowed
+// extension, otherwise the upload is rejected with "file content does not match
+// extension". text/plain, by contrast, is NOT allowed for video/audio — a real
+// binary media file never sniffs as text/plain (see the dangerous-disguise test).
 func TestIsContentTypeAllowed_AmbiguousBinaryPasses(t *testing.T) {
 	m := newTestModule(t)
-	ambiguous := []string{"text/plain; charset=utf-8", "text/plain", mimeOctetStream}
-	for _, ct := range ambiguous {
-		if !m.isContentTypeAllowed(ct, MediaTypeVideo) {
-			t.Errorf("video: %q should be allowed (ambiguous binary)", ct)
-		}
-		if !m.isContentTypeAllowed(ct, MediaTypeAudio) {
-			t.Errorf("audio: %q should be allowed (ambiguous binary)", ct)
-		}
+	if !m.isContentTypeAllowed(mimeOctetStream, MediaTypeVideo) {
+		t.Errorf("video: %q should be allowed (ambiguous binary)", mimeOctetStream)
+	}
+	if !m.isContentTypeAllowed(mimeOctetStream, MediaTypeAudio) {
+		t.Errorf("audio: %q should be allowed (ambiguous binary)", mimeOctetStream)
+	}
+	// Ambiguous text/plain is still allowed for the unknown/other media type.
+	if !m.isContentTypeAllowed("text/plain; charset=utf-8", MediaTypeUnknown) {
+		t.Error("unknown: text/plain should remain allowed")
 	}
 }
 
@@ -566,11 +569,17 @@ func TestIsContentTypeAllowed_RealMediaPasses(t *testing.T) {
 	}
 }
 
-// The anti-disguise protection must remain: HTML/JS/XML are still rejected even
-// for an allowed extension, since those sniff as their own specific MIME types.
+// The anti-disguise protection must remain: HTML/JS/XML are rejected even for an
+// allowed extension, since those sniff as their own specific MIME types. text/plain
+// must ALSO be rejected for video/audio — a textual payload with a media extension
+// (e.g. one starting "x<script>..." that Go classifies text/plain, not text/html,
+// because the tag isn't at offset 0) would otherwise be accepted as media.
 func TestIsContentTypeAllowed_DangerousDisguisesRejected(t *testing.T) {
 	m := newTestModule(t)
-	dangerous := []string{"text/html; charset=utf-8", "text/xml", "application/javascript"}
+	dangerous := []string{
+		"text/html; charset=utf-8", "text/xml", "application/javascript",
+		"text/plain; charset=utf-8", "text/plain",
+	}
 	for _, ct := range dangerous {
 		if m.isContentTypeAllowed(ct, MediaTypeVideo) {
 			t.Errorf("video: %q must be rejected (disguised content)", ct)

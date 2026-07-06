@@ -630,11 +630,13 @@ func (m *Module) isAllowedExtension(ext string) bool {
 func (m *Module) isContentTypeAllowed(detected string, expected MediaType) bool {
 	// Ambiguous binary: many legitimate media containers (raw AAC/ADTS, ALAC,
 	// .opus, and some MOV/MP4 variants) are not recognized by
-	// http.DetectContentType and come back as application/octet-stream or
-	// "text/plain; charset=utf-8". Allow both — the dangerous disguises
-	// (HTML/JS/XML) are detected as their own specific MIME types
-	// (text/html, text/xml, application/javascript), which we still reject below.
-	if detected == mimeOctetStream || strings.HasPrefix(detected, "text/plain") {
+	// http.DetectContentType and come back as application/octet-stream. Allow that
+	// for any expected type. NOTE: "text/plain" is deliberately NOT blanket-allowed
+	// here — a real (binary) media file never sniffs as text/plain, so text/plain
+	// on a video/audio upload means a genuinely textual payload disguised with a
+	// media extension (e.g. a file starting "x<script>..." that Go classifies as
+	// text/plain rather than text/html because the tag isn't at offset 0).
+	if detected == mimeOctetStream {
 		return true
 	}
 	switch expected {
@@ -643,7 +645,8 @@ func (m *Module) isContentTypeAllowed(detected string, expected MediaType) bool 
 	case MediaTypeAudio:
 		return strings.HasPrefix(detected, "audio/") || detected == "application/ogg"
 	default:
-		// Unknown media type — reject HTML/JS/XML which are the dangerous ones.
+		// Unknown media type — allow ambiguous text/plain but reject HTML/JS/XML,
+		// which are the dangerous disguises.
 		return !strings.HasPrefix(detected, "text/html") && !strings.HasPrefix(detected, "text/xml") &&
 			!strings.HasPrefix(detected, "application/javascript")
 	}
