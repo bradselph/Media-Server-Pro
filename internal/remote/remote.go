@@ -610,14 +610,28 @@ func (m *Module) getCachedMedia(remoteURL string) *CachedMedia {
 	if cfg.RemoteMedia.CacheTTL > 0 && time.Since(cached.LastAccess) > cfg.RemoteMedia.CacheTTL {
 		m.mu.RUnlock()
 		// Lazily evict expired entry — re-check under write lock to avoid races
+		evicted := false
 		m.mu.Lock()
 		if entry, ok := m.mediaCache[remoteURL]; ok && time.Since(entry.LastAccess) > cfg.RemoteMedia.CacheTTL {
 			if err := os.Remove(entry.LocalPath); err != nil && !os.IsNotExist(err) {
 				m.log.Warn("Failed to remove expired cache file %s: %v", entry.LocalPath, err)
 			}
 			delete(m.mediaCache, remoteURL)
+			evicted = true
 		}
 		m.mu.Unlock()
+		// Drop the persisted index row too (outside the lock), matching CleanCache.
+		// This is the most frequently hit eviction path — without it a lazily
+		// TTL-evicted entry leaves an orphaned remote_cache row that reloads into
+		// the cache (and skews LRU size accounting) on the next restart, since it's
+		// no longer in mediaCache for CleanCache's map-scan to ever find.
+		if evicted && m.repo != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			if err := m.repo.Delete(ctx, remoteURL); err != nil {
+				m.log.Warn("Failed to delete cache index row for %s: %v", remoteURL, err)
+			}
+			cancel()
+		}
 		return nil
 	}
 
