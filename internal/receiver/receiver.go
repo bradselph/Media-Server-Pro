@@ -634,7 +634,12 @@ func (m *Module) Heartbeat(slaveID string) error {
 	if time.Since(prevLastSeen) < debounce {
 		return nil
 	}
-	return m.slaveRepo.Upsert(context.Background(), record)
+	// Bound the DB write so a slow/hung database can't block the WS read loop
+	// (the sole caller, wsconn.go) indefinitely — mirrors RegisterSlave (FND-0239)
+	// and markStaleSlaves, which bound the identical Upsert for the same reason.
+	dbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return m.slaveRepo.Upsert(dbCtx, record)
 }
 
 // UnregisterSlave removes a slave and its entire media catalog.
@@ -673,6 +678,15 @@ func (m *Module) UnregisterSlave(slaveID string) error {
 	// Remove all duplicate records for this slave (any status) — the slave is gone permanently.
 	if m.dupModule != nil {
 		m.dupModule.ClearForSlave(slaveID)
+	}
+
+	// Close the slave's live WebSocket if it still has one, so its read loop and
+	// 25s ping goroutine exit via their existing deferred cleanup instead of
+	// pinging a slave that was just removed. Closing the conn makes ReadMessage
+	// error out, which triggers removeSlaveWS — the same teardown setSlaveWS uses
+	// when replacing a reconnecting slave's old connection.
+	if sw := m.getSlaveWS(slaveID); sw != nil {
+		_ = sw.conn.Close()
 	}
 	return nil
 }
