@@ -53,22 +53,8 @@ func TestParseProbeStreams_VideoAndAudio(t *testing.T) {
 	result := &ValidationResult{}
 	data := &ProbeData{}
 	data.Streams = append(data.Streams,
-		struct {
-			Index     int    `json:"index"`
-			CodecType string `json:"codec_type"`
-			CodecName string `json:"codec_name"`
-			Width     int    `json:"width,omitempty"`
-			Height    int    `json:"height,omitempty"`
-			BitRate   string `json:"bit_rate,omitempty"`
-		}{CodecType: "video", CodecName: "h264", Width: 1920, Height: 1080},
-		struct {
-			Index     int    `json:"index"`
-			CodecType string `json:"codec_type"`
-			CodecName string `json:"codec_name"`
-			Width     int    `json:"width,omitempty"`
-			Height    int    `json:"height,omitempty"`
-			BitRate   string `json:"bit_rate,omitempty"`
-		}{CodecType: "audio", CodecName: "aac"},
+		probeStream{CodecType: "video", CodecName: "h264", Width: 1920, Height: 1080},
+		probeStream{CodecType: "audio", CodecName: "aac"},
 	)
 	parseProbeStreams(result, data)
 	if result.VideoCodec != "h264" {
@@ -88,20 +74,40 @@ func TestParseProbeStreams_VideoAndAudio(t *testing.T) {
 func TestParseProbeStreams_AudioOnly(t *testing.T) {
 	result := &ValidationResult{}
 	data := &ProbeData{}
-	data.Streams = append(data.Streams, struct {
-		Index     int    `json:"index"`
-		CodecType string `json:"codec_type"`
-		CodecName string `json:"codec_name"`
-		Width     int    `json:"width,omitempty"`
-		Height    int    `json:"height,omitempty"`
-		BitRate   string `json:"bit_rate,omitempty"`
-	}{CodecType: "audio", CodecName: "mp3"})
+	data.Streams = append(data.Streams, probeStream{CodecType: "audio", CodecName: "mp3"})
 	parseProbeStreams(result, data)
 	if result.AudioCodec != "mp3" {
 		t.Errorf("AudioCodec = %q, want mp3", result.AudioCodec)
 	}
 	if result.VideoCodec != "" {
 		t.Errorf("VideoCodec = %q, want empty", result.VideoCodec)
+	}
+}
+
+// TestParseProbeStreams_EmbeddedCoverArtIgnored guards the fix for audio files
+// with embedded album art: ffprobe reports the artwork as a codec_type=video
+// stream with disposition.attached_pic=1. That must NOT be treated as the file's
+// real video stream (which would flag the audio file with an unsupported video
+// codec like png), so VideoCodec/Width/Height stay empty while the audio stream
+// is still parsed.
+func TestParseProbeStreams_EmbeddedCoverArtIgnored(t *testing.T) {
+	result := &ValidationResult{}
+	data := &ProbeData{}
+	coverArt := probeStream{CodecType: "video", CodecName: "png", Width: 500, Height: 500}
+	coverArt.Disposition.AttachedPic = 1
+	data.Streams = append(data.Streams,
+		probeStream{CodecType: "audio", CodecName: "aac"},
+		coverArt,
+	)
+	parseProbeStreams(result, data)
+	if result.VideoCodec != "" {
+		t.Errorf("VideoCodec = %q, want empty (attached_pic cover art must be ignored)", result.VideoCodec)
+	}
+	if result.Width != 0 || result.Height != 0 {
+		t.Errorf("Width/Height = %d/%d, want 0/0 (cover-art dimensions must not leak)", result.Width, result.Height)
+	}
+	if result.AudioCodec != "aac" {
+		t.Errorf("AudioCodec = %q, want aac", result.AudioCodec)
 	}
 }
 
