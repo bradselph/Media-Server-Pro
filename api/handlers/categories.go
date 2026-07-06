@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 
@@ -475,15 +476,31 @@ func (h *Handler) GetMediaCategories(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Failed to query category memberships: "+err.Error())
 		return
 	}
-	if len(rows) == 0 {
-		writeSuccess(c, []categoryWithItems{})
+	catIDSet := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		catIDSet[r.CategoryID] = true
+	}
+	// Tag-backed ("smart") memberships: a category whose tag this item carries is
+	// also one of the item's categories, even with no explicit media_category_items
+	// row. Without this, the reverse lookup disagrees with GetCategory /
+	// GetCategoryMemberIDs and the player omits smart-category badges.
+	if item, err := h.media.GetMediaByID(mediaID); err == nil && item != nil && len(item.Tags) > 0 {
+		var tagged []models.MediaCategory
+		if err := db.Select("id", "tag").Where("tag <> ''").Find(&tagged).Error; err == nil {
+			for _, cat := range tagged {
+				if cat.Tag != "" && slices.Contains(item.Tags, cat.Tag) {
+					catIDSet[cat.ID] = true
+				}
+			}
+		}
+	}
+	if len(catIDSet) == 0 {
+		writeSuccess(c, []gin.H{})
 		return
 	}
-	catIDs := make([]string, len(rows))
-	posMap := make(map[string]int, len(rows))
-	for i, r := range rows {
-		catIDs[i] = r.CategoryID
-		posMap[r.CategoryID] = r.Position
+	catIDs := make([]string, 0, len(catIDSet))
+	for id := range catIDSet {
+		catIDs = append(catIDs, id)
 	}
 	var cats []models.MediaCategory
 	if err := db.Where("id IN ?", catIDs).Find(&cats).Error; err != nil {
@@ -508,11 +525,36 @@ func (h *Handler) GetMediaCategories(c *gin.Context) {
 			return ids
 		}())
 		itemResp := make([]categoryItemResponse, len(items))
+		explicit := make(map[string]bool, len(items))
 		for j, it := range items {
+			explicit[it.MediaID] = true
 			itemResp[j] = categoryItemResponse{
 				MediaID:   it.MediaID,
 				MediaName: names[it.MediaID],
 				Position:  it.Position,
+			}
+		}
+		// Append tag-backed members not already listed explicitly, so a smart
+		// category returned here carries its live members (mirror GetCategory).
+		if cat.Tag != "" {
+			extra := make([]string, 0)
+			for id := range h.media.MediaIDsWithTag(cat.Tag) {
+				if !explicit[id] {
+					extra = append(extra, id)
+				}
+			}
+			if len(extra) > 0 {
+				sort.Strings(extra)
+				extraNames := h.media.GetMediaNamesByIDs(extra)
+				basePos := len(itemResp)
+				for k, id := range extra {
+					itemResp = append(itemResp, categoryItemResponse{
+						MediaID:   id,
+						MediaName: extraNames[id],
+						Position:  basePos + k,
+						Auto:      true,
+					})
+				}
 			}
 		}
 		results[i] = gin.H{

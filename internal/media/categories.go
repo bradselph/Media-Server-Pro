@@ -98,6 +98,34 @@ func (m *Module) GetCategoryIDsForItems(ctx context.Context, mediaIDs []string) 
 			out[r.MediaID] = append(out[r.MediaID], r.CategoryID)
 		}
 	}
+
+	// Union tag-backed ("smart") category membership so this reverse lookup
+	// (item -> categories) agrees with the forward GetCategoryMemberIDs: a
+	// category with a non-empty tag contains every item carrying that tag, even
+	// without an explicit media_category_items row. Read each item's tags under a
+	// single read lock (rather than calling MediaIDsWithTag, which would re-take
+	// m.mu) and match against the tag-backed category set.
+	var tagged []models.MediaCategory
+	if err := gdb.WithContext(ctx).Select("id", "tag").Where("tag <> ''").Find(&tagged).Error; err == nil && len(tagged) > 0 {
+		m.mu.RLock()
+		itemTags := make(map[string][]string, len(mediaIDs))
+		for _, id := range mediaIDs {
+			if it := m.mediaByID[id]; it != nil {
+				itemTags[id] = it.Tags
+			}
+		}
+		m.mu.RUnlock()
+		for _, cat := range tagged {
+			if cat.Tag == "" {
+				continue
+			}
+			for id, tags := range itemTags {
+				if slices.Contains(tags, cat.Tag) && !slices.Contains(out[id], cat.ID) {
+					out[id] = append(out[id], cat.ID)
+				}
+			}
+		}
+	}
 	return out, nil
 }
 
