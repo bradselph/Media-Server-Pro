@@ -135,6 +135,10 @@ export function useHLS(
     const MAX_CONSECUTIVE_ERRORS = 10
 
     function cleanup() {
+        // Invalidate any in-flight activation so a stale attachHLS (paused on its
+        // hls.js dynamic import) can't attach the previous media's stream to the
+        // (still-connected) video element after the user switches items.
+        activationGen++
         if (checkDebounce) {
             clearTimeout(checkDebounce)
             checkDebounce = null
@@ -181,7 +185,7 @@ export function useHLS(
         }
     }
 
-    async function attachHLS(url: string) {
+    async function attachHLS(url: string, gen: number) {
         const el = videoRef.value
         if (!el) return
 
@@ -201,8 +205,10 @@ export function useHLS(
             return
         }
 
-        // Re-validate after async import — component may have unmounted
-        if (!videoRef.value?.isConnected) {
+        // Re-validate after async import — the component may have unmounted, or
+        // the user may have switched media (activationGen bumped by cleanup/a newer
+        // activation) during the import. Either way this activation is stale.
+        if (!videoRef.value?.isConnected || gen !== activationGen) {
             hlsActivated.value = false
             return
         }
@@ -368,8 +374,11 @@ export function useHLS(
             hlsInstance = null
         })
 
-        // Re-validate before attaching — component may have unmounted during event listener setup
-        if (!el.isConnected) {
+        // Re-validate before attaching — the component may have unmounted, or the
+        // media may have switched, during event-listener setup. The gen check is
+        // what prevents this stale activation from attaching the previous media's
+        // stream to the (still-connected) element.
+        if (!el.isConnected || gen !== activationGen) {
             hls.destroy()
             hlsInstance = null
             hlsActivated.value = false
@@ -407,7 +416,7 @@ export function useHLS(
 
         if (thisGen !== activationGen) return
 
-        attachHLS(capturedUrl).catch((err: unknown) => {
+        attachHLS(capturedUrl, thisGen).catch((err: unknown) => {
             if (thisGen === activationGen) {
                 hlsActivated.value = false
                 // Clear the loading flag here too: attachHLS sets it true before its
