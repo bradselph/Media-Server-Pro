@@ -223,7 +223,12 @@ func (h *Handler) TestFollowerPairing(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
+	// Validate the resolved IP at connection time (see wsloop.go) so the pairing
+	// test can't be steered to an internal address via DNS rebinding.
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+		NetDialContext:   helpers.SafeDialContext,
+	}
 	headers := http.Header{}
 	headers.Set("X-API-Key", apiKey)
 

@@ -3,6 +3,7 @@ package follower
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -277,6 +278,10 @@ func TestEndToEndPairing(t *testing.T) {
 	// register + catalog messages are still sent (with an empty list), which
 	// is what we're asserting on.
 	m := NewModule(mgr, nil)
+	// The httptest master binds to loopback, which the production
+	// helpers.SafeDialContext (correctly) rejects. Use a plain dialer here so the
+	// end-to-end pairing path can reach it; production keeps the SSRF-safe default.
+	m.dialContext = (&net.Dialer{Timeout: 5 * time.Second}).DialContext
 	if err := m.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}

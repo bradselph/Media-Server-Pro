@@ -20,6 +20,10 @@ import (
 var streamHTTPClient = &http.Client{
 	Timeout: 0,
 	Transport: &http.Transport{
+		// Validate the resolved IP at connection time so a rebound master
+		// hostname can't redirect a stream-push (which carries the shared token)
+		// to an internal address. See helpers.SafeDialContext.
+		DialContext:         helpers.SafeDialContext,
 		MaxIdleConns:        10,
 		IdleConnTimeout:     90 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,

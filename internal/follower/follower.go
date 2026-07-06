@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -52,6 +53,13 @@ type Module struct {
 	loopMu   sync.Mutex
 	cancel   context.CancelFunc
 	loopDone chan struct{}
+
+	// dialContext establishes the TCP connection for the master websocket. It
+	// defaults to helpers.SafeDialContext, which re-validates the resolved IP and
+	// rejects private/loopback/reserved addresses — closing the DNS-rebinding SSRF
+	// gap the one-time save-time ValidateURLForSSRF check leaves open. Tests
+	// override it to reach a loopback httptest master.
+	dialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 }
 
 // NewModule constructs the follower module. media is required because the
@@ -59,9 +67,10 @@ type Module struct {
 // is no separate scan loop.
 func NewModule(cfg *config.Manager, mediaMod *media.Module) *Module {
 	return &Module{
-		config: cfg,
-		log:    logger.New("follower"),
-		media:  mediaMod,
+		config:      cfg,
+		log:         logger.New("follower"),
+		media:       mediaMod,
+		dialContext: helpers.SafeDialContext,
 	}
 }
 
