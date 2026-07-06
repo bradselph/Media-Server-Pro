@@ -100,6 +100,10 @@ function clearSelection() {
 const previewCount = ref<number | null>(null)
 const previewLoading = ref(false)
 let previewTimer: ReturnType<typeof setTimeout> | null = null
+// Monotonic token so a slower earlier preview request can't overwrite a newer
+// selection's count when responses arrive out of order (debounce only spaces out
+// the scheduling, not in-flight requests).
+let previewToken = 0
 
 watch([selected, mode], () => {
   if (previewTimer) clearTimeout(previewTimer)
@@ -117,6 +121,7 @@ async function refreshPreview() {
     previewCount.value = null
     return
   }
+  const token = ++previewToken
   previewLoading.value = true
   try {
     const res = await mediaApi.list({
@@ -125,11 +130,12 @@ async function refreshPreview() {
       limit: 1,
       page: 1,
     })
+    if (token !== previewToken) return // a newer preview started — drop this stale count
     previewCount.value = res.total_items ?? 0
   } catch {
-    previewCount.value = null
+    if (token === previewToken) previewCount.value = null
   } finally {
-    previewLoading.value = false
+    if (token === previewToken) previewLoading.value = false
   }
 }
 
