@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
@@ -56,7 +58,8 @@ type Module struct {
 	syncTicker   *time.Ticker
 	syncDone     chan struct{}
 	syncDoneOnce sync.Once     // guards close(syncDone) to avoid double-close panic
-	cacheSem     chan struct{} // bounds concurrent background cache downloads
+	cacheSem     chan struct{}      // bounds concurrent background cache downloads
+	cacheGroup   singleflight.Group // coalesces concurrent downloads of the same remote URL
 	ctx          context.Context
 	cancel       context.CancelFunc // canceled on Stop so CacheMedia aborts
 }
@@ -639,8 +642,24 @@ func (m *Module) getCachedMedia(remoteURL string) *CachedMedia {
 	return cached
 }
 
-// CacheMedia downloads and caches a remote media file
+// CacheMedia downloads and caches a remote media file. Concurrent calls for the
+// same remoteURL are coalesced via singleflight: the download+temp-file+rename is
+// keyed on the URL, so two callers can't os.Create/truncate the same deterministic
+// ".tmp" path and interleave their writes into a corrupted cache file (the second
+// caller waits for and reuses the first download's result).
 func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) {
+	v, err, _ := m.cacheGroup.Do(remoteURL, func() (any, error) {
+		return m.cacheMediaOnce(remoteURL, sourceName)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*CachedMedia), nil
+}
+
+// cacheMediaOnce performs a single download+cache of remoteURL. Callers must go
+// through CacheMedia so concurrent duplicate downloads are coalesced.
+func (m *Module) cacheMediaOnce(remoteURL, sourceName string) (*CachedMedia, error) {
 	// Validate URL against SSRF before downloading
 	if err := validateURL(remoteURL); err != nil {
 		return nil, fmt.Errorf("SSRF check failed: %w", err)
