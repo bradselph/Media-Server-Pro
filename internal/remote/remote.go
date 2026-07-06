@@ -654,7 +654,11 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 	if err != nil {
 		return nil, err
 	}
-	return v.(*CachedMedia), nil
+	cached, ok := v.(*CachedMedia)
+	if !ok {
+		return nil, fmt.Errorf("unexpected cache result type %T", v)
+	}
+	return cached, nil
 }
 
 // cacheMediaOnce performs a single download+cache of remoteURL. Callers must go
