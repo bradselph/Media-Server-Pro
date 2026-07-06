@@ -2733,9 +2733,9 @@ func (m *Module) reconstructStats() {
 
 	// Temporary session tracker for reconstruction to handle deltas and unique counts.
 	type reconSession struct {
-		positions   map[string]float64
-		completions map[string]struct{}
-		viewed      map[string]struct{}
+		positions       map[string]float64
+		completions     map[string]struct{}
+		playbackStarted map[string]struct{}
 	}
 	reconSessions := make(map[string]*reconSession)
 
@@ -2748,19 +2748,23 @@ func (m *Module) reconstructStats() {
 			rs, ok := reconSessions[ev.SessionID]
 			if !ok {
 				rs = &reconSession{
-					positions:   make(map[string]float64),
-					completions: make(map[string]struct{}),
-					viewed:      make(map[string]struct{}),
+					positions:       make(map[string]float64),
+					completions:     make(map[string]struct{}),
+					playbackStarted: make(map[string]struct{}),
 				}
 				reconSessions[ev.SessionID] = rs
 			}
 
 			if ev.MediaID != "" {
-				_, seen := rs.viewed[ev.MediaID]
-				isNewMedia = !seen
-				rs.viewed[ev.MediaID] = struct{}{}
-
 				if ev.Type == "playback" {
+					// isNewMedia gates TotalPlaybacks++: first playback heartbeat of
+					// this session for this media. Mirror updateSession — track
+					// playbacks in their own set so a prior "view" event doesn't
+					// suppress the increment on rebuild.
+					_, seen := rs.playbackStarted[ev.MediaID]
+					isNewMedia = !seen
+					rs.playbackStarted[ev.MediaID] = struct{}{}
+
 					if pos, ok := ev.Data["position"].(float64); ok {
 						prev := rs.positions[ev.MediaID]
 						if pos > prev {

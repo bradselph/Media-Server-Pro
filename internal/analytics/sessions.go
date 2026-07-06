@@ -7,16 +7,22 @@ import (
 )
 
 type sessionData struct {
-	ID               string
-	UserID           string
-	IPAddress        string
-	UserAgent        string
-	StartedAt        time.Time
-	LastActivity     time.Time
-	MediaViewed      map[string]time.Time
-	MediaPositions   map[string]float64
-	MediaCompletions map[string]struct{} // key: MediaID -> completed?
-	EventCount       int
+	ID           string
+	UserID       string
+	IPAddress    string
+	UserAgent    string
+	StartedAt    time.Time
+	LastActivity time.Time
+	// MediaPlaybackStarted tracks which media have already had a playback
+	// heartbeat in this session, so TotalPlaybacks is incremented exactly once
+	// per (session, media). It must NOT be shared with the "view" event handler:
+	// a "view" fires before the first playback heartbeat with the same session,
+	// and folding both into one set made every first heartbeat look non-new,
+	// so TotalPlaybacks (and the derived CompletionRate) never incremented.
+	MediaPlaybackStarted map[string]struct{}
+	MediaPositions       map[string]float64
+	MediaCompletions     map[string]struct{} // key: MediaID -> completed?
+	EventCount           int
 }
 
 // maxAnalyticsSessions is the maximum number of in-memory analytics sessions.
@@ -44,14 +50,14 @@ func (m *Module) updateSession(event models.AnalyticsEvent) (delta float64, isNe
 			delete(m.sessions, oldestID)
 		}
 		session = &sessionData{
-			ID:               event.SessionID,
-			UserID:           event.UserID,
-			IPAddress:        event.IPAddress,
-			UserAgent:        event.UserAgent,
-			StartedAt:        event.Timestamp,
-			MediaViewed:      make(map[string]time.Time),
-			MediaPositions:   make(map[string]float64),
-			MediaCompletions: make(map[string]struct{}),
+			ID:                   event.SessionID,
+			UserID:               event.UserID,
+			IPAddress:            event.IPAddress,
+			UserAgent:            event.UserAgent,
+			StartedAt:            event.Timestamp,
+			MediaPlaybackStarted: make(map[string]struct{}),
+			MediaPositions:       make(map[string]float64),
+			MediaCompletions:     make(map[string]struct{}),
 		}
 		m.sessions[event.SessionID] = session
 	}
@@ -60,11 +66,14 @@ func (m *Module) updateSession(event models.AnalyticsEvent) (delta float64, isNe
 	session.EventCount++
 
 	if event.MediaID != "" {
-		_, seen := session.MediaViewed[event.MediaID]
-		isNewMedia = !seen
-		session.MediaViewed[event.MediaID] = event.Timestamp
-
 		if event.Type == "playback" {
+			// isNewMedia gates TotalPlaybacks++ and means "first playback heartbeat
+			// of this session for this media" — tracked in a playback-only set so a
+			// preceding "view" event on the same session/media doesn't suppress it.
+			_, seen := session.MediaPlaybackStarted[event.MediaID]
+			isNewMedia = !seen
+			session.MediaPlaybackStarted[event.MediaID] = struct{}{}
+
 			if pos, ok := event.Data["position"].(float64); ok {
 				prev := session.MediaPositions[event.MediaID]
 				// Only count forward progress as watch time. Backward seeks reset
