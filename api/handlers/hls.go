@@ -140,6 +140,15 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// Gate mature content before kicking off transcoding, mirroring
+	// CheckHLSAvailability. Without this a user lacking CanViewMature/ShowMature
+	// could POST a known mature media ID and start real ffmpeg jobs (and poll
+	// their status) for content GetMedia would 403.
+	if item, err := h.media.GetMedia(absPath); err == nil && item != nil {
+		if !h.checkMatureAccess(c, item.IsMature) {
+			return
+		}
+	}
 	job, err := h.hls.GenerateHLS(c.Request.Context(), &hls.GenerateHLSParams{MediaPath: absPath, MediaID: id, Qualities: qualities})
 	if err != nil {
 		h.log.Error("%v", err)
@@ -170,6 +179,12 @@ func (h *Handler) GetHLSStatus(c *gin.Context) {
 	job, err := h.hls.GetJobStatus(jobID)
 	if err != nil {
 		writeError(c, http.StatusNotFound, "Job not found")
+		return
+	}
+	// Apply the same mature gate as the serve/availability paths: the job ID is
+	// the media's stable UUID, so status (progress/qualities/error/completion)
+	// must not leak for a mature item to a caller who can't view it.
+	if !h.checkMatureAccess(c, h.hlsJobIsMature(job)) {
 		return
 	}
 
