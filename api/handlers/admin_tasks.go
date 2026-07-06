@@ -16,8 +16,9 @@ import (
 // minTaskScheduleSecs is the lower bound for an admin-supplied task schedule.
 // Anything faster than 60s is treated as a misconfiguration — tasks that
 // genuinely need sub-minute cadence belong in their own ticker loop, not the
-// general scheduler.
-const minTaskScheduleSecs = 60
+// general scheduler. Shared with the boot-time override clamp (cmd/server) so
+// both paths enforce the same floor.
+const minTaskScheduleSecs = tasks.MinScheduleSecs
 
 // persistTaskOverride merges an admin task tweak into Tasks.Overrides so the
 // change survives a restart. mutate runs under the config lock; pass nil

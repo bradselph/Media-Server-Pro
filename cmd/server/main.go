@@ -699,7 +699,17 @@ func registerTasks(
 	registerWithOverride := func(reg tasks.TaskRegistration) {
 		if over, ok := cfg.Get().Tasks.Overrides[reg.ID]; ok {
 			if over.ScheduleSecs != nil && *over.ScheduleSecs > 0 {
-				reg.Schedule = time.Duration(*over.ScheduleSecs) * time.Second
+				secs := *over.ScheduleSecs
+				// The admin API rejects sub-minute schedules, but a hand-edited or
+				// restored older config.json could carry one. Clamp to the floor so a
+				// persisted override can't make a task run more often than once a
+				// minute (which would blow past computeTaskTimeout and pin a core).
+				if secs < tasks.MinScheduleSecs {
+					log.Warn("Task %q override schedule %ds is below the %ds minimum; clamping to %ds",
+						reg.ID, secs, tasks.MinScheduleSecs, tasks.MinScheduleSecs)
+					secs = tasks.MinScheduleSecs
+				}
+				reg.Schedule = time.Duration(secs) * time.Second
 			}
 		}
 		scheduler.RegisterTask(reg)
