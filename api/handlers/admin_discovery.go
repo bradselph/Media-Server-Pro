@@ -102,6 +102,9 @@ func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 		if h.suggestions != nil {
 			h.suggestions.RenameMediaPath(absPath, newPath)
 		}
+		if h.scanner != nil {
+			h.scanner.RenamePath(absPath, newPath)
+		}
 	}
 
 	h.trackServerEvent(c, analytics.EventDiscoveryRun, map[string]any{"scope": "apply", "path": absPath})

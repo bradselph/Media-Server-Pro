@@ -275,6 +275,11 @@ func (h *Handler) applyAdminRenameIfNeeded(path, reqName string) (string, error)
 	if h.suggestions != nil {
 		h.suggestions.RenameMediaPath(path, newPath)
 	}
+	// Re-key the mature-scanner review queue too, or a pending review becomes
+	// unresolvable (approve/reject looks up by the current path).
+	if h.scanner != nil {
+		h.scanner.RenamePath(path, newPath)
+	}
 	return newPath, nil
 }
 
