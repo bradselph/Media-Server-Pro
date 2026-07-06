@@ -346,7 +346,15 @@ func (m *Module) reindexPath(oldPath, newPath, newName string) {
 // filters out until the next scan prunes it.
 func (m *Module) persistPathChange(oldPath, newPath string) {
 	if err := m.saveMetadataItem(newPath); err != nil {
-		m.log.Error("Failed to save metadata after path change of %s to %s: %v", oldPath, newPath, err)
+		// The new-path upsert failed: do NOT delete the old row. Keeping it
+		// preserves the item's stable ID, tags, is_mature flag and view count —
+		// fingerprint-based move detection re-keys them onto newPath on the next
+		// scan. Deleting here (the previous behaviour, contradicting this
+		// function's own contract) would strand the moved file with zero DB rows,
+		// so a restart before the next full save loses all its metadata and a
+		// mature item silently reverts to non-mature.
+		m.log.Error("Failed to save metadata after path change of %s to %s; keeping old row as fallback: %v", oldPath, newPath, err)
+		return
 	}
 	if m.metadataRepo != nil {
 		dbCtx, dbCancel := context.WithTimeout(context.Background(), 8*time.Second)
