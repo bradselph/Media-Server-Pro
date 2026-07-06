@@ -677,13 +677,20 @@ func (m *Module) UnregisterSlave(slaveID string) error {
 	return nil
 }
 
-// GetSlaves returns all registered slave nodes.
+// GetSlaves returns all registered slave nodes as value copies. Unlike media
+// items (which are always replaced wholesale on update), SlaveNode instances are
+// mutated in place under m.mu — Heartbeat/markStaleSlaves/PushCatalog write
+// Status/LastSeen/MediaCount on the stored struct. Returning the live pointers
+// would let callers (e.g. AdminReceiverListSlaves -> c.JSON) read those fields
+// with no lock held, racing the mutating goroutines. Copy under the RLock so the
+// caller gets a stable snapshot.
 func (m *Module) GetSlaves() []*SlaveNode {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	nodes := make([]*SlaveNode, 0, len(m.slaves))
 	for _, n := range m.slaves {
-		nodes = append(nodes, n)
+		cp := *n
+		nodes = append(nodes, &cp)
 	}
 	return nodes
 }
