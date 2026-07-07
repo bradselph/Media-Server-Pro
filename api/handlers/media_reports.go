@@ -66,9 +66,10 @@ func (h *Handler) SubmitMediaReport(c *gin.Context) {
 	if !ok {
 		return
 	}
-	// Make sure the media item actually exists before persisting a report
-	// against it — keeps the table clean and rejects scrapers spraying IDs.
-	if _, err := h.media.GetMediaByID(mediaID); err != nil {
+	// Make sure the media item actually exists (local or federated) before
+	// persisting a report against it — keeps the table clean and rejects scrapers
+	// spraying IDs.
+	if _, ok := h.resolveMediaItemOrReceiver(mediaID); !ok {
 		writeError(c, http.StatusNotFound, "Media not found")
 		return
 	}

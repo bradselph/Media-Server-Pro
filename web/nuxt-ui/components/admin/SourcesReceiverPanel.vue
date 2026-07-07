@@ -25,6 +25,7 @@ const showSlaveMedia = ref(false)
 const selectedSlaveMedia = ref<ReceiverMedia | null>(null)
 const slaveMediaDetailLoading = ref(false)
 const activeDetailRequestId = ref(0)
+const copyingMediaId = ref<string | null>(null)
 const revealedKeys = ref<Set<number>>(new Set())
 
 // Follower (this-server-as-slave) state. Loaded alongside the receiver data
@@ -104,6 +105,21 @@ async function openSlaveMediaDetail(id: string) {
     if (!destroyed && activeDetailRequestId.value === myId) {
       slaveMediaDetailLoading.value = false
     }
+  }
+}
+
+// Copy a federated (peer) item into the local library. Afterwards it behaves as
+// ordinary local media (editable, HLS-able) and survives the peer disconnecting.
+async function copyMediaToLibrary(item: ReceiverMedia) {
+  if (copyingMediaId.value) return
+  copyingMediaId.value = item.id
+  try {
+    const result = await adminApi.copyReceiverMediaToLibrary(item.id)
+    if (!destroyed) notifySuccess(result?.message || 'Copied to local library')
+  } catch (e: unknown) {
+    if (!destroyed) notifyError(e, 'Failed to copy to library')
+  } finally {
+    if (!destroyed) copyingMediaId.value = null
   }
 }
 
@@ -668,7 +684,19 @@ onMounted(async () => {
         </div>
       </template>
       <template #footer>
-        <UButton variant="ghost" color="neutral" label="Close" @click="() => { selectedSlaveMedia = null }"/>
+        <div class="flex items-center justify-between gap-2 w-full">
+          <UButton
+              v-if="selectedSlaveMedia"
+              label="Copy to Library"
+              icon="i-lucide-download"
+              size="sm"
+              color="primary"
+              :loading="copyingMediaId === selectedSlaveMedia.id"
+              @click="copyMediaToLibrary(selectedSlaveMedia)"
+          />
+          <span v-else/>
+          <UButton variant="ghost" color="neutral" label="Close" @click="() => { selectedSlaveMedia = null }"/>
+        </div>
       </template>
     </UModal>
   </div>

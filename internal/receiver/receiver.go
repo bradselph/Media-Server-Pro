@@ -1030,6 +1030,162 @@ func (m *Module) proxyViaHTTP(w http.ResponseWriter, r *http.Request, slave *Sla
 	return copyErr
 }
 
+// mediaFetchReader wraps a federated item's byte stream so Close releases the
+// proxy-connection slot (and, on the WS path, cancels the pending-stream
+// context). Close is guarded by sync.Once so it is safe to call from both a
+// defer and a cancellation watcher.
+type mediaFetchReader struct {
+	body    io.ReadCloser
+	release func()
+	once    sync.Once
+}
+
+func (r *mediaFetchReader) Read(p []byte) (int, error) { return r.body.Read(p) }
+
+func (r *mediaFetchReader) Close() error {
+	err := r.body.Close()
+	r.once.Do(r.release)
+	return err
+}
+
+// FetchMedia opens the full byte stream of a federated (slave) media item for
+// server-side consumption — e.g. copying it into the local library so it
+// survives the peer disconnecting. Unlike ProxyStream it returns an
+// io.ReadCloser rather than writing to an http.ResponseWriter. No Range is
+// requested, so the whole file is fetched.
+//
+// The caller MUST Close the returned reader; Close releases the
+// MaxProxyConns slot (and the WS pending-stream context). It mirrors
+// ProxyStream's resolution order: WebSocket push first (works even when the
+// slave has no reachable BaseURL, e.g. a follower that dialed out), HTTP GET to
+// the slave's BaseURL as a fallback.
+func (m *Module) FetchMedia(ctx context.Context, mediaID string) (io.ReadCloser, *MediaItem, error) {
+	item := m.GetMediaItem(mediaID)
+	if item == nil {
+		return nil, nil, fmt.Errorf("receiver media not found: %s", mediaID)
+	}
+
+	// Enforce MaxProxyConns like ProxyStream; the slot is held until the caller
+	// closes the returned reader.
+	if m.proxySem != nil {
+		select {
+		case m.proxySem <- struct{}{}:
+		default:
+			return nil, nil, fmt.Errorf("too many concurrent proxy connections")
+		}
+	}
+	releaseSem := func() {
+		if m.proxySem != nil {
+			<-m.proxySem
+		}
+	}
+
+	m.mu.RLock()
+	_, exists := m.slaves[item.SlaveID]
+	m.mu.RUnlock()
+	if !exists {
+		releaseSem()
+		return nil, nil, fmt.Errorf("slave not found for media %s", mediaID)
+	}
+
+	if m.getSlaveWS(item.SlaveID) != nil {
+		body, cancel, err := m.fetchViaWS(ctx, item)
+		if err == nil {
+			return &mediaFetchReader{body: body, release: func() { cancel(); releaseSem() }}, item, nil
+		}
+		m.log.Warn("WS fetch failed for %s, trying HTTP fallback: %v", mediaID, err)
+	}
+
+	// Re-read slave under lock before fallback — it may have been removed since.
+	m.mu.RLock()
+	slave, exists := m.slaves[item.SlaveID]
+	m.mu.RUnlock()
+	if !exists {
+		releaseSem()
+		return nil, nil, fmt.Errorf("slave no longer registered for media %s", mediaID)
+	}
+	body, err := m.fetchViaHTTP(ctx, slave, item)
+	if err != nil {
+		releaseSem()
+		return nil, nil, err
+	}
+	return &mediaFetchReader{body: body, release: releaseSem}, item, nil
+}
+
+// fetchViaWS requests the whole file from a connected slave over WebSocket and
+// returns the delivery body plus the pending-stream cancel func to invoke when
+// the caller is done reading. The cancel must NOT be called before the read
+// completes: ps.ctx is the consumer context, and canceling it early makes the
+// push handler tear the pipe down (see DeliverStream).
+func (m *Module) fetchViaWS(ctx context.Context, item *MediaItem) (io.ReadCloser, context.CancelFunc, error) {
+	token := uuid.New().String()
+	ps, err := m.RequestStream(item.SlaveID, token, item.Path, "")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to request stream: %w", err)
+	}
+
+	cfg := m.config.Get()
+	timeout := cfg.Receiver.ProxyTimeout
+	if timeout == 0 {
+		timeout = defaultProxyTimeout
+	}
+
+	select {
+	case delivery, ok := <-ps.Ready:
+		if !ok || delivery == nil {
+			ps.cancel()
+			return nil, nil, fmt.Errorf("stream delivery failed for %s", item.ID)
+		}
+		if delivery.StatusCode >= 400 {
+			if delivery.Body != nil {
+				_ = delivery.Body.Close()
+			}
+			ps.cancel()
+			return nil, nil, fmt.Errorf("slave returned status %d for %s", delivery.StatusCode, item.ID)
+		}
+		return delivery.Body, ps.cancel, nil
+	case <-time.After(timeout):
+		m.pendingMu.Lock()
+		delete(m.pendingStreams, token)
+		m.pendingMu.Unlock()
+		ps.cancel()
+		return nil, nil, fmt.Errorf("stream request timed out for %s", item.ID)
+	case <-ctx.Done():
+		m.pendingMu.Lock()
+		delete(m.pendingStreams, token)
+		m.pendingMu.Unlock()
+		ps.cancel()
+		return nil, nil, ctx.Err()
+	}
+}
+
+// fetchViaHTTP downloads the whole file from the slave's HTTP endpoint. Fallback
+// for when the slave has no live WebSocket. The caller must Close the body.
+// Unlike proxyViaHTTP it applies no per-request timeout — a full-file copy can
+// legitimately run long; ctx (the caller's request context) governs cancellation.
+func (m *Module) fetchViaHTTP(ctx context.Context, slave *SlaveNode, item *MediaItem) (io.ReadCloser, error) {
+	baseURL := slave.BaseURL
+	if baseURL == "" || baseURL == "ws-connected" {
+		return nil, fmt.Errorf("slave %s has no HTTP base URL for fallback", item.SlaveID)
+	}
+	targetURL := strings.TrimRight(baseURL, "/") + "/media?path=" + url.QueryEscape(item.Path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build fetch request: %w", err)
+	}
+	req.Header.Set("User-Agent", "MediaServerPro-Receiver/1.0")
+
+	resp, err := m.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP fetch from slave failed: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("slave returned status %d for %s", resp.StatusCode, item.ID)
+	}
+	return resp.Body, nil
+}
+
 // --- Conversion helpers ---
 
 func slaveRecordToNode(rec *repositories.ReceiverSlaveRecord) *SlaveNode {

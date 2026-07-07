@@ -1587,6 +1587,17 @@ func (m *Module) UpdateBlurHash(ctx context.Context, path, hash string) error {
 // UpdatePlaybackPosition updates playback position, total duration, and progress
 // fraction for a user. duration and progress may be 0 when the values are unknown.
 func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string, position, duration, progress float64) error {
+	// Federated (slave) media uses a "receiver:<id>" synthetic path that isn't in
+	// the local m.media catalog. Persist its position to the DB only (its FK to
+	// media_metadata was dropped to allow this) and skip the local-existence checks
+	// and in-memory mirror below, which apply to local media.
+	if strings.HasPrefix(path, "receiver:") {
+		if m.metadataRepo == nil {
+			return nil
+		}
+		return m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, position, duration, progress)
+	}
+
 	// Reject unknown media up-front so a path deleted between resolution and this
 	// call cannot leave an orphaned playback_positions row (the repo upserts) or
 	// an orphaned in-memory metadata entry.

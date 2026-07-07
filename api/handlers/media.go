@@ -153,87 +153,14 @@ func (h *Handler) ListMedia(c *gin.Context) {
 	// Note: merge runs whenever the receiver module is wired in. Slaves that connect
 	// after the master process started are surfaced regardless of the Enabled flag —
 	// the flag only governs whether the master health-check loop and DB load run.
-	hasReceiverItems := false
-	if h.receiver != nil {
-		// Track fingerprints already added from receiver items so that if
-		// the same file exists on two different slaves, only the first is kept.
-		seenFP := make(map[string]bool)
-		for _, ri := range h.receiver.GetAllMedia() {
-			// Skip ID duplicates (same item from multiple sources)
-			if seenIDs[ri.ID] {
-				continue
-			}
-			if ri.ContentFingerprint != "" {
-				// Skip master-vs-slave duplicates
-				if h.media.HasFingerprint(ri.ContentFingerprint) {
-					continue
-				}
-				// Skip slave-vs-slave duplicates
-				if seenFP[ri.ContentFingerprint] {
-					continue
-				}
-				seenFP[ri.ContentFingerprint] = true
-			}
-			// IsMature combines the slave's own flag with the master's
-			// fingerprint-based detection so an item is hidden from
-			// unauthorized users in either case.
-			isMature := ri.IsMature || h.isReceiverItemMature(ri.ContentFingerprint)
-			item := &models.MediaItem{
-				ID:           ri.ID,
-				Name:         ri.Name,
-				Type:         models.MediaType(ri.MediaType),
-				Size:         ri.Size,
-				Duration:     ri.Duration,
-				Width:        ri.Width,
-				Height:       ri.Height,
-				Category:     ri.Category,
-				Tags:         ri.Tags,
-				BlurHash:     ri.BlurHash,
-				DateAdded:    ri.DateAdded,
-				DateModified: ri.DateModified,
-				IsMature:     isMature,
-			}
-			// Apply the exact same filter logic as local media (category,
-			// tags, search, type, is_mature — not just type+search).
-			if !filterNoPagination.Matches(item) {
-				continue
-			}
-			allItems = append(allItems, item)
-			seenIDs[ri.ID] = true
-			hasReceiverItems = true
-		}
-	}
-
-	// Merge extractor items into the listing so extracted external URLs
-	// appear in the unified library alongside local and slave media.
-	if h.extractor != nil {
-		if h.config.Get().Extractor.Enabled {
-			for _, ei := range h.extractor.GetAllItems() {
-				if ei.Status != "active" {
-					continue
-				}
-				// Skip ID duplicates (same item already present from local or receiver)
-				if seenIDs[ei.ID] {
-					continue
-				}
-				item := &models.MediaItem{
-					ID:   ei.ID,
-					Name: ei.Title,
-					Type: models.MediaTypeVideo,
-				}
-				if !filterNoPagination.Matches(item) {
-					continue
-				}
-				allItems = append(allItems, item)
-				seenIDs[ei.ID] = true
-				hasReceiverItems = true // reuse flag to trigger re-sort
-			}
-		}
-	}
-
-	// Re-sort the combined list so receiver/extractor items are interleaved correctly
-	// with local items instead of being appended at the end.
-	if hasReceiverItems {
+	// Merge federated (slave) and extractor media into the unified listing so
+	// users see one library — federated items are indistinguishable from local.
+	// See appendReceiverItems/appendExtractorItems for the fingerprint+id de-dup
+	// rules. Re-sort so merged items interleave with local items instead of being
+	// appended at the end.
+	allItems, addedR := h.appendReceiverItems(allItems, seenIDs, filterNoPagination)
+	allItems, addedE := h.appendExtractorItems(allItems, seenIDs, filterNoPagination)
+	if addedR || addedE {
 		filterNoPagination.SortItems(allItems)
 	}
 
@@ -438,28 +365,27 @@ func (h *Handler) GetMedia(c *gin.Context) {
 
 	item, err := h.media.GetMediaByID(id)
 	if err != nil {
-		// Try receiver media — return it as a models.MediaItem so it's transparent
+		// Try federated (slave) media — return it as a models.MediaItem so it's
+		// transparent, including the caller's own rating and a thumbnail URL like
+		// local media (rating keyed by the synthetic "receiver:"+id path).
 		if h.receiver != nil {
 			if ri := h.receiver.GetMediaItem(id); ri != nil {
-				isMature := ri.IsMature || h.isReceiverItemMature(ri.ContentFingerprint)
-				if !h.checkMatureAccess(c, isMature) {
+				fed := h.receiverItemToModel(ri)
+				if !h.checkMatureAccess(c, fed.IsMature) {
 					return
 				}
-				writeSuccess(c, &models.MediaItem{
-					ID:           ri.ID,
-					Name:         ri.Name,
-					Type:         models.MediaType(ri.MediaType),
-					Size:         ri.Size,
-					Duration:     ri.Duration,
-					Width:        ri.Width,
-					Height:       ri.Height,
-					Category:     ri.Category,
-					Tags:         ri.Tags,
-					BlurHash:     ri.BlurHash,
-					DateAdded:    ri.DateAdded,
-					DateModified: ri.DateModified,
-					IsMature:     isMature,
-				})
+				if session := getSession(c); session != nil {
+					c.Header(headerCacheControl, "private, no-cache")
+					if ratings := h.userRatingsByPath(c); ratings != nil {
+						if r := ratings[fed.Path]; r > 0 {
+							fed.UserRating = r
+						}
+					}
+				}
+				if fed.ThumbnailURL == "" && h.thumbnails != nil {
+					fed.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(fed.ID))
+				}
+				writeSuccess(c, fed)
 				return
 			}
 		}
@@ -578,6 +504,22 @@ func (h *Handler) refreshSuggestionsCatalog() {
 			AddedAt:     item.DateAdded,
 			IsMature:    item.IsMature,
 		})
+	}
+	// Include federated (slave) media so related/personalized/trending rows cover
+	// it too — keyed by the same "receiver:"+id synthetic path used elsewhere.
+	if h.receiver != nil {
+		for _, ri := range h.receiver.GetAllMedia() {
+			mediaInfos = append(mediaInfos, &suggestions.MediaInfo{
+				Path:      receiverSyntheticPath(ri.ID),
+				StableID:  ri.ID,
+				Title:     ri.Name,
+				MediaType: ri.MediaType,
+				Tags:      ri.Tags,
+				Duration:  ri.Duration,
+				AddedAt:   ri.DateAdded,
+				IsMature:  ri.IsMature || h.isReceiverItemMature(ri.ContentFingerprint),
+			})
+		}
 	}
 	h.suggestions.UpdateMediaData(mediaInfos)
 }
@@ -1053,8 +995,10 @@ func (h *Handler) GetBatchMedia(c *gin.Context) {
 		if id == "" {
 			continue
 		}
-		item, err := h.media.GetMediaByID(id)
-		if err != nil {
+		// Resolve local first, then federated (receiver) so favorites/history/
+		// category views hydrate slave items instead of showing blank cards.
+		item, ok := h.resolveMediaItemOrReceiver(id)
+		if !ok {
 			continue
 		}
 		if item.IsMature && !canViewMature {

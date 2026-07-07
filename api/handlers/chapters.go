@@ -38,11 +38,11 @@ func (h *Handler) ListChapters(c *gin.Context) {
 		return
 	}
 
-	// Gate chapter metadata for mature local media the same way GetMedia does:
-	// an unauthorized caller must not enumerate chapter labels/timestamps for
-	// restricted content. checkMatureAccess writes the error and returns false
-	// when denied. Unknown IDs (e.g. receiver media) fall through unchanged.
-	if item, err := h.media.GetMediaByID(mediaID); err == nil && item != nil && !h.checkMatureAccess(c, item.IsMature) {
+	// Gate chapter metadata for mature media — local OR federated — the same way
+	// GetMedia does: an unauthorized caller must not enumerate chapter
+	// labels/timestamps for restricted content. checkMatureAccess writes the error
+	// and returns false when denied. Unknown IDs fall through unchanged.
+	if item, ok := h.resolveMediaItemOrReceiver(mediaID); ok && !h.checkMatureAccess(c, item.IsMature) {
 		return
 	}
 

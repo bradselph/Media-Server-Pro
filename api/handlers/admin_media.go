@@ -286,6 +286,13 @@ func (h *Handler) applyAdminRenameIfNeeded(path, reqName string) (string, error)
 // AdminUpdateMedia updates media metadata
 func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 	id := c.Param("id")
+	// Federated (slave) media metadata is owned by the peer that shared it; the
+	// master cannot edit it. Return a clear message instead of a confusing 404.
+	// (Master-side metadata overrides are a planned follow-up.)
+	if h.isFederatedMedia(id) {
+		writeError(c, http.StatusConflict, "This item is shared from a connected peer; edit its metadata on the source server")
+		return
+	}
 	path, ok := h.resolveMediaByID(c, id)
 	if !ok {
 		return
@@ -386,25 +393,31 @@ func (h *Handler) cleanupDeletedMedia(ctx context.Context, mediaID, mediaPath st
 	}
 
 	// Purge analytics events and playback positions that have no FK cascade.
-	// Favorites, playlist items, and watch history entries have ON DELETE CASCADE
-	// FK constraints and are cleaned automatically by the DB.
+	// Watch history entries still have an ON DELETE CASCADE FK and are cleaned by
+	// the DB. Favorites and playlist items USED to cascade, but their FK to
+	// media_metadata was dropped so federated media can be favorited/queued — so
+	// they must now be purged explicitly by path below.
 	if h.analytics != nil {
 		h.analytics.DeleteEventsByMedia(ctx, mediaID)
 	}
 	if h.media != nil {
 		h.media.DeletePlaybackPositionsByPath(ctx, mediaPath)
 	}
-	// media_chapters and media_category_items have no FK on media_id, so rows
-	// must be purged explicitly to avoid orphans that still appear in
-	// ListChapters / category views after the media is gone.
+	// media_chapters and media_category_items have no FK on media_id, and
+	// user_favorites/playlist_items no longer have an FK cascade on media_path, so
+	// all four must be purged explicitly to avoid orphans that still appear in
+	// ListChapters / category / favorites / playlist views after the media is gone.
 	if h.database != nil {
 		if gdb := h.database.GORM(); gdb != nil {
-			if err := gdb.WithContext(ctx).Exec("DELETE FROM media_chapters WHERE media_id = ?", mediaID).Error; err != nil {
-				h.log.Warn("Failed to cleanup chapters for deleted media %s: %v", mediaID, err)
+			purge := func(table, column, key string) {
+				if err := gdb.WithContext(ctx).Exec("DELETE FROM "+table+" WHERE "+column+" = ?", key).Error; err != nil {
+					h.log.Warn("Failed to cleanup %s for deleted media %s: %v", table, mediaID, err)
+				}
 			}
-			if err := gdb.WithContext(ctx).Exec("DELETE FROM media_category_items WHERE media_id = ?", mediaID).Error; err != nil {
-				h.log.Warn("Failed to cleanup category items for deleted media %s: %v", mediaID, err)
-			}
+			purge("media_chapters", "media_id", mediaID)
+			purge("media_category_items", "media_id", mediaID)
+			purge("user_favorites", "media_path", mediaPath)
+			purge("playlist_items", "media_path", mediaPath)
 		}
 	}
 	// Purge suggestion view history rows keyed by media path (no FK cascade on that column).

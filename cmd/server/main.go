@@ -56,7 +56,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-    Version   = "1.22.0"
+    Version   = "1.22.2"
 
 	BuildDate = "dev"
 )
@@ -121,14 +121,14 @@ func main() {
 
 	// ── Register background tasks ──────────────────────────────────────────
 	registerTasks(mods.tasks, mods.media, mods.scanner, mods.thumbnails,
-		mods.auth, mods.backup, mods.suggestions, mods.duplicates, mods.admin, mods.hls,
+		mods.auth, mods.backup, mods.suggestions, mods.receiver, mods.duplicates, mods.admin, mods.hls,
 		mods.remote, mods.streaming, mods.analytics, cfg, log)
 
 	// ── Wire up routes ─────────────────────────────────────────────────────
 	setupRoutes(srv, cfg, mods, ageGate, cookieConsent)
 
 	// Seed suggestions when the media module's initial scan completes
-	wireSuggestionsSeeding(mods.media, mods.suggestions, log)
+	wireSuggestionsSeeding(mods.media, mods.suggestions, mods.receiver, log)
 
 	// ── Start server (blocks until graceful shutdown) ──────────────────────
 	if err := srv.Start(); err != nil {
@@ -459,7 +459,7 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	m.downloader.SetMediaModule(m.media)
 	// Re-feed the suggestions catalog after post-import rescans so imported
 	// files become recommendable immediately, not at the next scheduled scan.
-	m.downloader.SetPostScanHook(func() { feedSuggestions(m.media, m.suggestions) })
+	m.downloader.SetPostScanHook(func() { feedSuggestions(m.media, m.suggestions, m.receiver) })
 	mustRegister(srv, m.downloader)
 
 	// Extractor (non-critical — requires database for item persistence)
@@ -563,7 +563,7 @@ func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate 
 	routes.Setup(srv.Engine(), srv, h, mods.auth, mods.security, cfg, ageGate, cookieConsent)
 }
 
-func wireSuggestionsSeeding(mediaModule *media.Module, suggestionsModule *suggestions.Module, log *logger.Logger) {
+func wireSuggestionsSeeding(mediaModule *media.Module, suggestionsModule *suggestions.Module, receiverModule *receiver.Module, log *logger.Logger) {
 	mediaModule.SetOnInitialScanDone(func(items []*models.MediaItem) {
 		ids := make([]string, 0, len(items))
 		for _, item := range items {
@@ -590,6 +590,7 @@ func wireSuggestionsSeeding(mediaModule *media.Module, suggestionsModule *sugges
 				IsMature:    item.IsMature,
 			})
 		}
+		mediaInfos = appendReceiverSuggestionInfos(mediaInfos, receiverModule, mediaModule)
 		suggestionsModule.UpdateMediaData(mediaInfos)
 		if len(mediaInfos) > 0 {
 			log.Info("Seeded suggestions with %d items from initial media scan", len(mediaInfos))
@@ -687,6 +688,7 @@ func registerTasks(
 	authModule *auth.Module,
 	backupModule *backup.Module,
 	suggestionsModule *suggestions.Module,
+	receiverModule *receiver.Module,
 	duplicatesModule *duplicates.Module,
 	adminModule *admin.Module,
 	hlsModule *hls.Module,
@@ -723,7 +725,7 @@ func registerTasks(
 		}
 	}
 
-	registerMediaTasks(registerWithOverride, cfg, mediaModule, suggestionsModule)
+	registerMediaTasks(registerWithOverride, cfg, mediaModule, suggestionsModule, receiverModule)
 	registerThumbnailTasks(registerWithOverride, cfg, mediaModule, thumbnailsModule, log)
 	registerSessionBackupTasks(registerWithOverride, cfg, authModule, backupModule, log)
 	registerScannerTasks(registerWithOverride, cfg, mediaModule, scannerModule, duplicatesModule, log)
@@ -734,7 +736,7 @@ func registerTasks(
 }
 
 // registerMediaTasks registers the media library scan and metadata cleanup tasks.
-func registerMediaTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, mediaModule *media.Module, suggestionsModule *suggestions.Module) {
+func registerMediaTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, mediaModule *media.Module, suggestionsModule *suggestions.Module, receiverModule *receiver.Module) {
 	// Media library scan — discovers new/removed files every hour.
 	// Gated on Features.EnableAutoDiscovery so the flag is honored at tick
 	// time (not just at startup); when it's off the task tick is a no-op.
@@ -750,7 +752,7 @@ func registerMediaTasks(registerWithOverride func(tasks.TaskRegistration), cfg *
 			if err := mediaModule.Scan(); err != nil {
 				return err
 			}
-			feedSuggestions(mediaModule, suggestionsModule)
+			feedSuggestions(mediaModule, suggestionsModule, receiverModule)
 			return nil
 		},
 	})
@@ -769,14 +771,39 @@ func registerMediaTasks(registerWithOverride func(tasks.TaskRegistration), cfg *
 			// no-op and this 24h scan is the only catalog refresh — without
 			// re-feeding here, the suggestions engine served recommendations
 			// from a snapshot frozen at boot.
-			feedSuggestions(mediaModule, suggestionsModule)
+			feedSuggestions(mediaModule, suggestionsModule, receiverModule)
 			return nil
 		},
 	})
 }
 
-// feedSuggestions pushes the current media catalog into the suggestions engine.
-func feedSuggestions(mediaModule *media.Module, suggestionsModule *suggestions.Module) {
+// appendReceiverSuggestionInfos appends federated (slave) media to the suggestions
+// catalog input so related/personalized/trending/continue-watching rows include
+// federated items, not just local ones. Keyed by the same "receiver:"+id synthetic
+// path used everywhere else so per-user view history resolves consistently.
+func appendReceiverSuggestionInfos(infos []*suggestions.MediaInfo, receiverModule *receiver.Module, mediaModule *media.Module) []*suggestions.MediaInfo {
+	if receiverModule == nil {
+		return infos
+	}
+	for _, ri := range receiverModule.GetAllMedia() {
+		isMature := ri.IsMature ||
+			(ri.ContentFingerprint != "" && mediaModule != nil && mediaModule.IsFingerprintMature(ri.ContentFingerprint))
+		infos = append(infos, &suggestions.MediaInfo{
+			Path:      "receiver:" + ri.ID,
+			StableID:  ri.ID,
+			Title:     ri.Name,
+			MediaType: ri.MediaType,
+			Tags:      ri.Tags,
+			Duration:  ri.Duration,
+			AddedAt:   ri.DateAdded,
+			IsMature:  isMature,
+		})
+	}
+	return infos
+}
+
+// feedSuggestions pushes the current media catalog (local + federated) into the suggestions engine.
+func feedSuggestions(mediaModule *media.Module, suggestionsModule *suggestions.Module, receiverModule *receiver.Module) {
 	if suggestionsModule == nil {
 		return
 	}
@@ -805,6 +832,7 @@ func feedSuggestions(mediaModule *media.Module, suggestionsModule *suggestions.M
 			IsMature:    item.IsMature,
 		})
 	}
+	mediaInfos = appendReceiverSuggestionInfos(mediaInfos, receiverModule, mediaModule)
 	suggestionsModule.UpdateMediaData(mediaInfos)
 }
 

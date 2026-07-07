@@ -387,7 +387,7 @@ func (h *Handler) GetRecentContent(c *gin.Context) {
 	}
 
 	cutoff := time.Now().AddDate(0, 0, -days)
-	all := h.media.ListMedia(media.Filter{SortBy: "date_added", SortDesc: true})
+	all := h.mergedMediaList(media.Filter{SortBy: "date_added", SortDesc: true}) // include federated media
 
 	results := make([]*mediaRecentItem, 0, limit)
 	for _, item := range all {
@@ -444,7 +444,7 @@ func (h *Handler) GetNewSinceLastVisit(c *gin.Context) {
 		cutoff = *user.PreviousLastLogin
 	}
 
-	all := h.media.ListMedia(media.Filter{SortBy: "date_added", SortDesc: true})
+	all := h.mergedMediaList(media.Filter{SortBy: "date_added", SortDesc: true}) // include federated media
 
 	results := make([]*mediaRecentItem, 0, limit)
 	for _, item := range all {

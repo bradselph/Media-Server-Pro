@@ -117,7 +117,7 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 		}
 	}
 
-	allItems := h.media.ListMedia(filter)
+	allItems := h.mergedMediaList(filter) // include federated media in the feed
 
 	// Filter out mature content for users who are not authorized to view it.
 	items := allItems[:0]

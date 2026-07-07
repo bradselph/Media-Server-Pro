@@ -729,6 +729,11 @@ export function useAdminApi() {
         removeReceiverSlave: (id: string) =>
             api.delete<void>(`${base}/receiver/slaves/${encodeURIComponent(id)}`),
         getSlaveMedia: () => api.get<ReceiverMedia[]>(`/api/receiver/media`),
+        // Copy a federated (peer) item into the local library so it becomes real
+        // local media (editable, HLS-able) instead of a live-proxied reference.
+        copyReceiverMediaToLibrary: (id: string) =>
+            api.post<{ message: string; item: MediaItem | null }>(
+                `${base}/receiver/media/${encodeURIComponent(id)}/copy`, {}),
         listDuplicates: (status = 'pending') =>
             api.get<ReceiverDuplicate[]>(`${base}/duplicates?status=${encodeURIComponent(status)}`),
         resolveDuplicate: (id: string, action: string) =>
