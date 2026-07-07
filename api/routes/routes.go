@@ -927,6 +927,9 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.GET("/receiver/slaves", h.AdminReceiverListSlaves)
 	adminGrp.GET("/receiver/stats", h.AdminReceiverGetStats)
 	adminGrp.DELETE("/receiver/slaves/:id", h.AdminReceiverRemoveSlave)
+	// Copy a federated (peer) item into the local library so it becomes real
+	// local media instead of a proxied reference.
+	adminGrp.POST("/receiver/media/:id/copy", h.AdminReceiverCopyMedia)
 	// Cross-server pairing helper. Admin enters peer URL+key here and this
 	// server reaches out to the peer's /api/receiver/pair to configure the
 	// pairing without the admin having to log into both servers.
