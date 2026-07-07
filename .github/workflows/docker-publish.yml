@@ -100,7 +100,7 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             GO_VERSION=1.26
-            NODE_VERSION=22
+            NODE_VERSION=24
 
       - name: Summary
         run: |

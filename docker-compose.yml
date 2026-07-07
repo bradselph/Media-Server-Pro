@@ -88,7 +88,7 @@ services:
       dockerfile: Dockerfile
       args:
         GO_VERSION: "${GO_VERSION:-1.26}"
-        NODE_VERSION: "${NODE_VERSION:-22}"
+        NODE_VERSION: "${NODE_VERSION:-24}"
         APP_UID: "${APP_UID:-1000}"
         APP_GID: "${APP_GID:-1000}"
         # Build-scope NUXT_PUBLIC_* knobs are baked into the bundle at

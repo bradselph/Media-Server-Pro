@@ -15,7 +15,7 @@
 #
 # Build args (defaults match go.mod / package.json + deploy-knobs.sh):
 #   GO_VERSION   — Go toolchain version (default: 1.26.4, tracks go.mod)
-#   NODE_VERSION — Node.js version for the Nuxt build (default: 22)
+#   NODE_VERSION — Node.js version for the Nuxt build (default: 24)
 #   APP_UID      — uid of the runtime user (default: 1000)
 #   APP_GID      — gid of the runtime group (default: 1000)
 #   NUXT_PUBLIC_*  — frontend knobs baked into the Nuxt bundle. Match the
@@ -37,7 +37,10 @@
 # toolchain deploy.sh installs on a VPS (get_go_version reads go.mod). Bump
 # this in lockstep whenever go.mod's `go` line changes.
 ARG GO_VERSION=1.26.4
-ARG NODE_VERSION=22
+# Node major must ship the same npm major that writes package-lock.json
+# (npm 11, from Node 24). npm 10 rejects lockfiles where npm 11 left an
+# optional peer dep unresolved ("Missing: <pkg> from lock file" EUSAGE).
+ARG NODE_VERSION=24
 ARG DEBIAN_VARIANT=bookworm-slim
 
 # ─────────────────────────────────────────────────────────────────────────────
