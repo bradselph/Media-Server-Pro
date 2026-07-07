@@ -119,7 +119,9 @@ var tableDefs = []struct {
 			progress   FLOAT   NOT NULL DEFAULT 0,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			PRIMARY KEY (path, user_id),
-			FOREIGN KEY (path)    REFERENCES media_metadata(path) ON DELETE CASCADE,
+			-- No FK on path -> media_metadata: federated (slave) media uses a
+			-- "receiver:<id>" synthetic path that has no media_metadata row. Cleanup
+			-- on local media deletion is handled in application code (cleanupDeletedMedia).
 			FOREIGN KEY (user_id) REFERENCES users(id)            ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"playlists", `
