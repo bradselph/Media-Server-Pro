@@ -34,6 +34,13 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 		return
 	}
 	id := c.Query("id")
+	// HLS transcoding needs a local source file; federated (slave) media has none
+	// on the master (it's served via direct proxy). Report HLS unavailable cleanly
+	// so the player falls back to direct play instead of erroring.
+	if h.isFederatedMedia(id) {
+		writeSuccess(c, map[string]any{"available": false, "status": "unavailable"})
+		return
+	}
 	absPath, ok := h.resolveMediaByID(c, id)
 	if !ok {
 		return
@@ -134,6 +141,12 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 	}
 	id, qualities, ok := h.parseGenerateHLSRequest(c)
 	if !ok {
+		return
+	}
+	// HLS transcoding needs a local source file — federated (slave) media has none
+	// on the master. Reject cleanly instead of 404/500 so the player uses direct play.
+	if h.isFederatedMedia(id) {
+		writeError(c, http.StatusBadRequest, "HLS transcoding is not available for federated media; it plays via direct streaming")
 		return
 	}
 	absPath, ok := h.resolveMediaByID(c, id)

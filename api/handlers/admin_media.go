@@ -286,6 +286,13 @@ func (h *Handler) applyAdminRenameIfNeeded(path, reqName string) (string, error)
 // AdminUpdateMedia updates media metadata
 func (h *Handler) AdminUpdateMedia(c *gin.Context) {
 	id := c.Param("id")
+	// Federated (slave) media metadata is owned by the peer that shared it; the
+	// master cannot edit it. Return a clear message instead of a confusing 404.
+	// (Master-side metadata overrides are a planned follow-up.)
+	if h.isFederatedMedia(id) {
+		writeError(c, http.StatusConflict, "This item is shared from a connected peer; edit its metadata on the source server")
+		return
+	}
 	path, ok := h.resolveMediaByID(c, id)
 	if !ok {
 		return

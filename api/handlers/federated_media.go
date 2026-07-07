@@ -116,6 +116,20 @@ func (h *Handler) mergedMediaList(filter media.Filter) []*models.MediaItem {
 	return items
 }
 
+// isFederatedMedia reports whether id refers to a federated (slave) item rather
+// than a local one. Used to gracefully degrade features that need a local source
+// file (HLS transcode, hover-frame previews) or that don't apply to federated
+// media (master-side metadata editing).
+func (h *Handler) isFederatedMedia(id string) bool {
+	if id == "" || h.receiver == nil {
+		return false
+	}
+	if _, err := h.media.GetMediaByID(id); err == nil {
+		return false // local media takes precedence
+	}
+	return h.receiver.GetMediaItem(id) != nil
+}
+
 // resolveMediaItemOrReceiver resolves a single media ID to a unified
 // models.MediaItem — local first, then federated (receiver) — so single-item
 // handlers (batch lookup, chapters, reports, categories, ...) treat federated
