@@ -634,7 +634,12 @@ func (m *Module) Heartbeat(slaveID string) error {
 	if time.Since(prevLastSeen) < debounce {
 		return nil
 	}
-	return m.slaveRepo.Upsert(context.Background(), record)
+	// Bound the DB write so a slow/hung database can't block the WS read loop
+	// (the sole caller, wsconn.go) indefinitely — mirrors RegisterSlave (FND-0239)
+	// and markStaleSlaves, which bound the identical Upsert for the same reason.
+	dbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return m.slaveRepo.Upsert(dbCtx, record)
 }
 
 // UnregisterSlave removes a slave and its entire media catalog.
@@ -674,16 +679,32 @@ func (m *Module) UnregisterSlave(slaveID string) error {
 	if m.dupModule != nil {
 		m.dupModule.ClearForSlave(slaveID)
 	}
+
+	// Close the slave's live WebSocket if it still has one, so its read loop and
+	// 25s ping goroutine exit via their existing deferred cleanup instead of
+	// pinging a slave that was just removed. Closing the conn makes ReadMessage
+	// error out, which triggers removeSlaveWS — the same teardown setSlaveWS uses
+	// when replacing a reconnecting slave's old connection.
+	if sw := m.getSlaveWS(slaveID); sw != nil {
+		_ = sw.conn.Close()
+	}
 	return nil
 }
 
-// GetSlaves returns all registered slave nodes.
+// GetSlaves returns all registered slave nodes as value copies. Unlike media
+// items (which are always replaced wholesale on update), SlaveNode instances are
+// mutated in place under m.mu — Heartbeat/markStaleSlaves/PushCatalog write
+// Status/LastSeen/MediaCount on the stored struct. Returning the live pointers
+// would let callers (e.g. AdminReceiverListSlaves -> c.JSON) read those fields
+// with no lock held, racing the mutating goroutines. Copy under the RLock so the
+// caller gets a stable snapshot.
 func (m *Module) GetSlaves() []*SlaveNode {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	nodes := make([]*SlaveNode, 0, len(m.slaves))
 	for _, n := range m.slaves {
-		nodes = append(nodes, n)
+		cp := *n
+		nodes = append(nodes, &cp)
 	}
 	return nodes
 }
@@ -731,6 +752,16 @@ func (m *Module) GetMediaItem(id string) *MediaItem {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.media[id]
+}
+
+// RemoveMediaItem evicts a single item from the in-memory catalog. The duplicates
+// module calls this after deleting the item's receiver_media DB row, so a
+// resolved receiver-side duplicate stops appearing in the unified /api/media
+// listing and stops being streamable/downloadable without waiting for a restart.
+func (m *Module) RemoveMediaItem(id string) {
+	m.mu.Lock()
+	delete(m.media, id)
+	m.mu.Unlock()
 }
 
 // GetStats returns a summary of the receiver module state.

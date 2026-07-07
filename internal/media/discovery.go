@@ -1912,6 +1912,9 @@ func (m *Module) convertRepoToInternal(repoMeta *repositories.MediaMetadata) *Me
 		MatureReasons:      []string{},
 	}
 
+	// Restore admin-set custom fields (description, etc.) persisted in custom_meta.
+	maps.Copy(meta.CustomMeta, repoMeta.CustomMeta)
+
 	// Parse DateAdded
 	if dateAdded, err := time.Parse(time.RFC3339, repoMeta.DateAdded); err == nil {
 		meta.DateAdded = dateAdded
@@ -1950,6 +1953,15 @@ func (m *Module) convertInternalToRepo(path string, meta *Metadata) *repositorie
 		Tags:               meta.Tags,
 		BlurHash:           meta.BlurHash,
 		Duration:           meta.Duration,
+	}
+	// Deep-copy CustomMeta: applyMetadataField mutates this map in place (unlike
+	// Tags, which is always replaced), and the repo layer marshals it after the
+	// caller's read lock is released — a shared reference would race a concurrent
+	// UpdateMetadata. Callers of convertInternalToRepo hold at least m.mu.RLock.
+	if len(meta.CustomMeta) > 0 {
+		cm := make(map[string]string, len(meta.CustomMeta))
+		maps.Copy(cm, meta.CustomMeta)
+		repoMeta.CustomMeta = cm
 	}
 	if !meta.ProbeModTime.IsZero() {
 		repoMeta.ProbeModTime = new(meta.ProbeModTime)

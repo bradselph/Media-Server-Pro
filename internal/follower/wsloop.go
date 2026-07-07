@@ -146,7 +146,18 @@ func (m *Module) connectAndRun(ctx context.Context) error {
 		return fmt.Errorf("invalid master URL: %w", err)
 	}
 
-	dialer := websocket.Dialer{HandshakeTimeout: 15 * time.Second}
+	// NetDialContext re-validates the resolved IP at connection time (rejects
+	// private/loopback/reserved), so a master hostname that passed the one-time
+	// ValidateURLForSSRF check at save/test time can't later be DNS-rebound to an
+	// internal address and receive the shared X-API-Key header below.
+	dial := m.dialContext
+	if dial == nil {
+		dial = helpers.SafeDialContext
+	}
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 15 * time.Second,
+		NetDialContext:   dial,
+	}
 	headers := http.Header{}
 	headers.Set("X-API-Key", cfg.APIKey)
 

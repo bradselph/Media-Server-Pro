@@ -21,6 +21,13 @@ var (
 	ErrTaskNotRunning = errors.New("task not currently running")
 )
 
+// MinScheduleSecs is the lower bound (in seconds) for an admin-supplied task
+// schedule. Anything faster than this is treated as a misconfiguration; tasks
+// that genuinely need sub-minute cadence belong in their own ticker loop, not
+// the general scheduler. Enforced both by the admin API and by the boot-time
+// override path (a persisted/restored config must not bypass the floor).
+const MinScheduleSecs = 60
+
 // TaskFunc is a function that performs a task
 type TaskFunc func(ctx context.Context) error
 

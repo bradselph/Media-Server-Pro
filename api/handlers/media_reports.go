@@ -203,10 +203,14 @@ func (h *Handler) UpdateMediaReportStatus(c *gin.Context) {
 		writeError(c, http.StatusBadRequest, "Invalid status")
 		return
 	}
-	adminSession := getSession(c)
+	// Only attribute a resolver when actually resolving/dismissing. Reopening a
+	// report (status "open") must not stamp the reopening admin as its resolver —
+	// the repository clears resolved_at for that case too.
 	resolvedBy := ""
-	if adminSession != nil {
-		resolvedBy = adminSession.Username
+	if status != "open" {
+		if adminSession := getSession(c); adminSession != nil {
+			resolvedBy = adminSession.Username
+		}
 	}
 	if err := h.mediaReports.UpdateStatus(c.Request.Context(), id, status, resolvedBy); err != nil {
 		h.log.Error("UpdateMediaReportStatus: %v", err)

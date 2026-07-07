@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -52,6 +53,13 @@ type Module struct {
 	loopMu   sync.Mutex
 	cancel   context.CancelFunc
 	loopDone chan struct{}
+
+	// dialContext establishes the TCP connection for the master websocket. It
+	// defaults to helpers.SafeDialContext, which re-validates the resolved IP and
+	// rejects private/loopback/reserved addresses — closing the DNS-rebinding SSRF
+	// gap the one-time save-time ValidateURLForSSRF check leaves open. Tests
+	// override it to reach a loopback httptest master.
+	dialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 }
 
 // NewModule constructs the follower module. media is required because the
@@ -59,9 +67,10 @@ type Module struct {
 // is no separate scan loop.
 func NewModule(cfg *config.Manager, mediaMod *media.Module) *Module {
 	return &Module{
-		config: cfg,
-		log:    logger.New("follower"),
-		media:  mediaMod,
+		config:      cfg,
+		log:         logger.New("follower"),
+		media:       mediaMod,
+		dialContext: helpers.SafeDialContext,
 	}
 }
 
@@ -158,7 +167,14 @@ func (m *Module) GetStatus() Status {
 // admin handler after the user updates pairing settings so changes take
 // effect without a server restart.
 func (m *Module) Reload(ctx context.Context) error {
-	m.stopLoop(ctx)
+	if !m.stopLoop(ctx) {
+		// The previous loop hasn't confirmed exit within the deadline. Do NOT start
+		// a second loop over it (two WS sessions registering the same slave to the
+		// master) — surface a retryable error; its shutdown is bounded by the WS
+		// write/dial deadlines and a subsequent Reload will succeed.
+		m.setHealth(false, "Reload deferred: previous connection still shutting down")
+		return fmt.Errorf("previous follower loop still shutting down; retry shortly")
+	}
 	cfg := m.config.Get().Follower
 	if !m.hasRequiredConfig(cfg) {
 		m.setHealth(true, "Disabled — not configured (master_url + api_key required)")
@@ -225,32 +241,44 @@ func (m *Module) startLoop() error {
 	return nil
 }
 
-// stopLoop cancels the running loop and waits for it to exit. ctx caps the
-// shutdown wait so the server's Stop sequence can't be hung by a stuck
-// follower goroutine.
-func (m *Module) stopLoop(ctx context.Context) {
+// stopLoop cancels the running loop and waits (bounded by ctx) for it to exit.
+// It returns true only when the loop CONFIRMED exit. On a timeout it returns
+// false and leaves m.cancel/m.loopDone intact — so a caller (Reload) won't start
+// a second loop over one that is still shutting down, and a later stopLoop retry
+// will observe done once it finally closes. ctx caps the wait so the server's
+// Stop sequence can't be hung by a stuck follower goroutine.
+func (m *Module) stopLoop(ctx context.Context) bool {
 	m.loopMu.Lock()
 	cancel := m.cancel
 	done := m.loopDone
-	m.cancel = nil
-	m.loopDone = nil
 	m.loopMu.Unlock()
 
-	if cancel != nil {
-		cancel()
+	if cancel == nil || done == nil {
+		return true // nothing running
 	}
-	if done == nil {
-		return
-	}
-	if ctx == nil {
+	cancel()
+
+	if ctx != nil {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			// Not confirmed exited — keep the guard fields so no second loop starts.
+			m.log.Warn("Follower loop did not exit within shutdown deadline")
+			return false
+		}
+	} else {
 		<-done
-		return
 	}
-	select {
-	case <-done:
-	case <-ctx.Done():
-		m.log.Warn("Follower loop did not exit within shutdown deadline")
+
+	// Confirmed exit — clear the guard fields (only if a concurrent restart hasn't
+	// already replaced them; the admin handler serializes reloads, but be safe).
+	m.loopMu.Lock()
+	if m.loopDone == done {
+		m.cancel = nil
+		m.loopDone = nil
 	}
+	m.loopMu.Unlock()
+	return true
 }
 
 // recordError stores the most recent failure for /admin/follower/status.

@@ -136,8 +136,10 @@ func (h *Handler) UpdateFollowerSettings(c *gin.Context) {
 	}
 
 	// Reload the follower loop so the new settings take effect immediately.
-	// Bound the wait so a stuck loop can't hang the admin request.
-	reloadCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	// Bound the wait so a stuck loop can't hang the admin request. Use a
+	// background-derived context (not c.Request.Context()) so an admin-side client
+	// disconnect can't shrink the shutdown wait and trip the reload into deferring.
+	reloadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := h.follower.Reload(reloadCtx); err != nil {
 		// Settings are saved; only the reload failed. Surface a 200 with a
@@ -223,7 +225,12 @@ func (h *Handler) TestFollowerPairing(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
-	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
+	// Validate the resolved IP at connection time (see wsloop.go) so the pairing
+	// test can't be steered to an internal address via DNS rebinding.
+	dialer := websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+		NetDialContext:   helpers.SafeDialContext,
+	}
 	headers := http.Header{}
 	headers.Set("X-API-Key", apiKey)
 

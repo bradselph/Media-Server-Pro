@@ -95,48 +95,51 @@ func ValidateURLForSSRF(rawURL string) error {
 	return nil
 }
 
-// SafeHTTPTransport resolves the target hostname and validates all resolved IPs
-// against private/loopback before connecting. Only ips[0] is used for the actual
-// dial; mixed results (e.g. public first, private second) connect to the first
-// validated IP. DNS rebinding (different IPs on subsequent lookups) is not fully
-// mitigated; behavior is documented and acceptable for typical server-side use.
+// SafeDialContext resolves the target host and refuses to connect to any
+// private/loopback/reserved IP, then dials the first validated address. It is the
+// shared dial hook behind SafeHTTPTransport and is also usable directly as a
+// websocket.Dialer.NetDialContext, so any server-side client reaching a
+// user/admin-supplied destination re-validates the resolved IP at connection
+// time. This closes the DNS-rebinding gap that a one-time ValidateURLForSSRF
+// check leaves open: the hostname may resolve to a public IP at save/validate
+// time but an internal IP at connect time.
+//
+// Only ips[0] is dialed; a mixed result (public first, private second) is
+// rejected outright because any private IP in the set fails the loop below.
+func SafeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	ips, err := net.DefaultResolver.LookupHost(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no addresses resolved for %s", host)
+	}
+
+	for _, ipStr := range ips {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			continue
+		}
+		if isPrivateIP(ip) {
+			return nil, fmt.Errorf("connection to private/reserved address %s (%s) is not allowed", host, ipStr)
+		}
+	}
+
+	d := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+	return d.DialContext(ctx, network, net.JoinHostPort(ips[0], port))
+}
 
 // SafeHTTPTransport returns an *http.Transport whose DialContext resolves the
 // target hostname and rejects connections to private/loopback IP addresses.
 // Use this for any server-side HTTP client that fetches user-supplied URLs.
 func SafeHTTPTransport() *http.Transport {
-	d := &net.Dialer{
-		Timeout:   10 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}
 	return &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			host, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, err
-			}
-
-			ips, err := net.DefaultResolver.LookupHost(ctx, host)
-			if err != nil {
-				return nil, err
-			}
-
-			for _, ipStr := range ips {
-				ip := net.ParseIP(ipStr)
-				if ip == nil {
-					continue
-				}
-				if isPrivateIP(ip) {
-					return nil, fmt.Errorf("connection to private/reserved address %s (%s) is not allowed", host, ipStr)
-				}
-			}
-
-			if len(ips) == 0 {
-				return nil, fmt.Errorf("no addresses resolved for %s", host)
-			}
-
-			return d.DialContext(ctx, network, net.JoinHostPort(ips[0], port))
-		},
+		DialContext:           SafeDialContext,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
 		MaxIdleConns:          10,

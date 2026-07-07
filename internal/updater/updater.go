@@ -1181,7 +1181,12 @@ func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
 		return &UpdateStatus{Error: "a source build is already in progress", InProgress: false},
 			fmt.Errorf("a source build is already in progress")
 	}
-	m.activeBuild = status
+	// Store a copy, not the alias: `status` is mutated later outside buildMu
+	// (e.g. status.Stage/Progress before the first publishBuildStatus), and
+	// GetActiveBuildStatus reads m.activeBuild's fields under RLock. Publishing a
+	// copy (as publishBuildStatus does) keeps m.activeBuild from aliasing the
+	// still-mutating struct, avoiding a data race with concurrent progress polls.
+	m.activeBuild = new(*status)
 	m.buildMu.Unlock()
 
 	cfg := m.config.Get()

@@ -282,14 +282,22 @@ type ProbeData struct {
 		BitRate    string `json:"bit_rate"`
 		Size       string `json:"size"`
 	} `json:"format"`
-	Streams []struct {
-		Index     int    `json:"index"`
-		CodecType string `json:"codec_type"`
-		CodecName string `json:"codec_name"`
-		Width     int    `json:"width,omitempty"`
-		Height    int    `json:"height,omitempty"`
-		BitRate   string `json:"bit_rate,omitempty"`
-	} `json:"streams"`
+	Streams []probeStream `json:"streams"`
+}
+
+// probeStream is a single ffprobe stream entry.
+type probeStream struct {
+	Index     int    `json:"index"`
+	CodecType string `json:"codec_type"`
+	CodecName string `json:"codec_name"`
+	Width     int    `json:"width,omitempty"`
+	Height    int    `json:"height,omitempty"`
+	BitRate   string `json:"bit_rate,omitempty"`
+	// Disposition.AttachedPic is 1 for an embedded cover-art "video" stream
+	// (album art in MP3/M4A/FLAC). Such streams are not the file's real video.
+	Disposition struct {
+		AttachedPic int `json:"attached_pic"`
+	} `json:"disposition"`
 }
 
 // parseProbeData extracts relevant info from probe data
@@ -338,6 +346,13 @@ func parseProbeStreams(result *ValidationResult, data *ProbeData) {
 	for _, stream := range data.Streams {
 		switch stream.CodecType {
 		case "video":
+			// Skip embedded cover art (attached_pic): ffprobe reports album art in
+			// audio files as a codec_type=video stream (e.g. png/mjpeg), which would
+			// otherwise be treated as the file's real video and flag the audio file
+			// with an "unsupported video codec".
+			if stream.Disposition.AttachedPic == 1 {
+				continue
+			}
 			if result.VideoCodec == "" {
 				result.VideoCodec = stream.CodecName
 				result.Width = stream.Width
@@ -499,6 +514,11 @@ func (m *Module) FixFile(path string) (*ValidationResult, error) {
 	output, err := cmdWithContext.CombinedOutput()
 	if err != nil {
 		m.log.Error("FFmpeg fix failed: %s", string(output))
+		// ffmpeg (OverWriteOutput) typically creates and partially writes the
+		// output before failing or being killed by the timeout. Remove the partial
+		// file so repeated fix attempts don't accumulate orphaned *_fixed*.mp4
+		// files via the uniqueness loop above.
+		_ = os.Remove(outputPath)
 		return nil, fmt.Errorf("transcoding failed: %w", err)
 	}
 

@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/database"
 	"media-server-pro/internal/logger"
@@ -56,7 +58,8 @@ type Module struct {
 	syncTicker   *time.Ticker
 	syncDone     chan struct{}
 	syncDoneOnce sync.Once     // guards close(syncDone) to avoid double-close panic
-	cacheSem     chan struct{} // bounds concurrent background cache downloads
+	cacheSem     chan struct{}      // bounds concurrent background cache downloads
+	cacheGroup   singleflight.Group // coalesces concurrent downloads of the same remote URL
 	ctx          context.Context
 	cancel       context.CancelFunc // canceled on Stop so CacheMedia aborts
 }
@@ -610,14 +613,28 @@ func (m *Module) getCachedMedia(remoteURL string) *CachedMedia {
 	if cfg.RemoteMedia.CacheTTL > 0 && time.Since(cached.LastAccess) > cfg.RemoteMedia.CacheTTL {
 		m.mu.RUnlock()
 		// Lazily evict expired entry — re-check under write lock to avoid races
+		evicted := false
 		m.mu.Lock()
 		if entry, ok := m.mediaCache[remoteURL]; ok && time.Since(entry.LastAccess) > cfg.RemoteMedia.CacheTTL {
 			if err := os.Remove(entry.LocalPath); err != nil && !os.IsNotExist(err) {
 				m.log.Warn("Failed to remove expired cache file %s: %v", entry.LocalPath, err)
 			}
 			delete(m.mediaCache, remoteURL)
+			evicted = true
 		}
 		m.mu.Unlock()
+		// Drop the persisted index row too (outside the lock), matching CleanCache.
+		// This is the most frequently hit eviction path — without it a lazily
+		// TTL-evicted entry leaves an orphaned remote_cache row that reloads into
+		// the cache (and skews LRU size accounting) on the next restart, since it's
+		// no longer in mediaCache for CleanCache's map-scan to ever find.
+		if evicted && m.repo != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			if err := m.repo.Delete(ctx, remoteURL); err != nil {
+				m.log.Warn("Failed to delete cache index row for %s: %v", remoteURL, err)
+			}
+			cancel()
+		}
 		return nil
 	}
 
@@ -625,8 +642,28 @@ func (m *Module) getCachedMedia(remoteURL string) *CachedMedia {
 	return cached
 }
 
-// CacheMedia downloads and caches a remote media file
+// CacheMedia downloads and caches a remote media file. Concurrent calls for the
+// same remoteURL are coalesced via singleflight: the download+temp-file+rename is
+// keyed on the URL, so two callers can't os.Create/truncate the same deterministic
+// ".tmp" path and interleave their writes into a corrupted cache file (the second
+// caller waits for and reuses the first download's result).
 func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) {
+	v, err, _ := m.cacheGroup.Do(remoteURL, func() (any, error) {
+		return m.cacheMediaOnce(remoteURL, sourceName)
+	})
+	if err != nil {
+		return nil, err
+	}
+	cached, ok := v.(*CachedMedia)
+	if !ok {
+		return nil, fmt.Errorf("unexpected cache result type %T", v)
+	}
+	return cached, nil
+}
+
+// cacheMediaOnce performs a single download+cache of remoteURL. Callers must go
+// through CacheMedia so concurrent duplicate downloads are coalesced.
+func (m *Module) cacheMediaOnce(remoteURL, sourceName string) (*CachedMedia, error) {
 	// Validate URL against SSRF before downloading
 	if err := validateURL(remoteURL); err != nil {
 		return nil, fmt.Errorf("SSRF check failed: %w", err)
@@ -719,6 +756,17 @@ func (m *Module) CacheMedia(remoteURL, sourceName string) (*CachedMedia, error) 
 	}
 	m.mediaCache[remoteURL] = cached
 	m.mu.Unlock()
+
+	// Persist the index row immediately (before CleanCache may evict it) so a
+	// non-graceful crash before the next Stop() doesn't leave the file on disk
+	// with no DB row — an untracked orphan outside eviction accounting.
+	if m.repo != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		if err := m.repo.Save(ctx, cachedToRecord(cached)); err != nil {
+			m.log.Warn("Failed to persist cache entry for %s: %v", remoteURL, err)
+		}
+		cancel()
+	}
 
 	// Trigger eviction if cache exceeds size limit or has expired entries
 	m.CleanCache()
@@ -839,6 +887,19 @@ func (m *Module) loadCacheIndex() {
 // saveCacheIndex persists the in-memory cache index to the repository.
 // Continues on individual save failures to persist as many entries as possible.
 // Returns the last error encountered so callers know persistence was partial.
+// cachedToRecord builds the persistent index record for a cached media entry.
+func cachedToRecord(c *CachedMedia) *repositories.RemoteCacheRecord {
+	return &repositories.RemoteCacheRecord{
+		RemoteURL:   c.RemoteURL,
+		LocalPath:   c.LocalPath,
+		Size:        c.Size,
+		ContentType: c.ContentType,
+		CachedAt:    c.CachedAt,
+		LastAccess:  c.LastAccess,
+		Hits:        c.Hits,
+	}
+}
+
 func (m *Module) saveCacheIndex() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -846,16 +907,7 @@ func (m *Module) saveCacheIndex() error {
 	ctx := context.Background()
 	var lastErr error
 	for _, cached := range m.mediaCache {
-		rec := &repositories.RemoteCacheRecord{
-			RemoteURL:   cached.RemoteURL,
-			LocalPath:   cached.LocalPath,
-			Size:        cached.Size,
-			ContentType: cached.ContentType,
-			CachedAt:    cached.CachedAt,
-			LastAccess:  cached.LastAccess,
-			Hits:        cached.Hits,
-		}
-		if err := m.repo.Save(ctx, rec); err != nil {
+		if err := m.repo.Save(ctx, cachedToRecord(cached)); err != nil {
 			m.log.Warn("Failed to save cache entry for %s: %v", cached.RemoteURL, err)
 			lastErr = err
 		}
@@ -933,6 +985,18 @@ func (m *Module) CleanCache() int {
 		} else {
 			removed++
 		}
+	}
+
+	// Drop the persisted index rows for evicted entries so the DB doesn't keep
+	// stale rows pointing at deleted files until the next graceful Stop().
+	if m.repo != nil && len(toEvict) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		for _, t := range toEvict {
+			if err := m.repo.Delete(ctx, t.url); err != nil {
+				m.log.Warn("Failed to delete cache index row for %s: %v", t.url, err)
+			}
+		}
+		cancel()
 	}
 
 	if removed > 0 {

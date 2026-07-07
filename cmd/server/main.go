@@ -56,7 +56,8 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.21.0"
+    Version   = "1.21.5"
+
 	BuildDate = "dev"
 )
 
@@ -443,6 +444,9 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	// Receiver (non-critical — requires database for slave registry and media catalog)
 	m.receiver = receiver.NewModule(cfg, m.database)
 	m.receiver.SetDuplicatesModule(m.duplicates)
+	// Reverse link so resolving a receiver-side duplicate also evicts the item
+	// from the receiver's live in-memory catalog (not just its DB row).
+	m.duplicates.SetReceiverModule(m.receiver)
 	mustRegister(srv, m.receiver)
 
 	// Follower (non-critical — turns this server into a slave of another master
@@ -698,7 +702,17 @@ func registerTasks(
 	registerWithOverride := func(reg tasks.TaskRegistration) {
 		if over, ok := cfg.Get().Tasks.Overrides[reg.ID]; ok {
 			if over.ScheduleSecs != nil && *over.ScheduleSecs > 0 {
-				reg.Schedule = time.Duration(*over.ScheduleSecs) * time.Second
+				secs := *over.ScheduleSecs
+				// The admin API rejects sub-minute schedules, but a hand-edited or
+				// restored older config.json could carry one. Clamp to the floor so a
+				// persisted override can't make a task run more often than once a
+				// minute (which would blow past computeTaskTimeout and pin a core).
+				if secs < tasks.MinScheduleSecs {
+					log.Warn("Task %q override schedule %ds is below the %ds minimum; clamping to %ds",
+						reg.ID, secs, tasks.MinScheduleSecs, tasks.MinScheduleSecs)
+					secs = tasks.MinScheduleSecs
+				}
+				reg.Schedule = time.Duration(secs) * time.Second
 			}
 		}
 		scheduler.RegisterTask(reg)

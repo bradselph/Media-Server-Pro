@@ -60,24 +60,38 @@ type mediaIndexRemover interface {
 	RemoveMedia(path string) error
 }
 
+// receiverItemRemover is the subset of the receiver module needed to evict a
+// single item from its in-memory catalog when a receiver-side duplicate is
+// removed (the DB delete alone leaves the receiver's live m.media map stale).
+type receiverItemRemover interface {
+	RemoveMediaItem(id string)
+}
+
 // Module manages detection and resolution of duplicate media items.
 type Module struct {
-	cfg          *config.Manager
-	log          *logger.Logger
-	dbModule     *database.Module
-	dupRepo      repositories.ReceiverDuplicateRepository
-	metaRepo     repositories.MediaMetadataRepository
-	receiverRepo repositories.ReceiverMediaRepository
-	mediaModule  mediaIndexRemover
-	healthMu     sync.RWMutex
-	healthy      bool
-	healthMsg    string
+	cfg            *config.Manager
+	log            *logger.Logger
+	dbModule       *database.Module
+	dupRepo        repositories.ReceiverDuplicateRepository
+	metaRepo       repositories.MediaMetadataRepository
+	receiverRepo   repositories.ReceiverMediaRepository
+	mediaModule    mediaIndexRemover
+	receiverModule receiverItemRemover
+	healthMu       sync.RWMutex
+	healthy        bool
+	healthMsg      string
 }
 
 // SetMediaModule wires the media module so deleteLocalFileAndMetadata can evict
 // ghost items from the in-memory indexes after removing a duplicate.
 func (m *Module) SetMediaModule(mm mediaIndexRemover) {
 	m.mediaModule = mm
+}
+
+// SetReceiverModule wires the receiver module so removeReceiverItem can evict the
+// item from the receiver's in-memory catalog after deleting its DB row.
+func (m *Module) SetReceiverModule(rm receiverItemRemover) {
+	m.receiverModule = rm
 }
 
 // NewModule creates a new duplicates module.
@@ -474,7 +488,7 @@ func (m *Module) applyRemoveResolution(ctx context.Context, p removeResolutionPa
 	if err := m.dupRepo.UpdateStatus(ctx, p.id, p.action, p.resolvedBy); err != nil {
 		return err
 	}
-	if err := m.dupRepo.UpdateStatusForItem(ctx, p.itemID, p.action, p.resolvedBy); err != nil {
+	if err := m.dupRepo.UpdateStatusForItem(ctx, p.itemID, p.resolvedBy); err != nil {
 		m.log.Warn("ResolveDuplicate: cascade update failed for item %s: %v", p.itemID, err)
 	}
 	return nil
@@ -543,10 +557,19 @@ func (m *Module) deleteLocalFileAndMetadata(ctx context.Context, path string) er
 	return nil
 }
 
-// removeReceiverItem deletes the item from receiver_media by ID.
+// removeReceiverItem deletes the item from receiver_media by ID and evicts it
+// from the receiver's in-memory catalog. Without the eviction the DB row is gone
+// but the live m.media map still serves the item (unified listing, stream,
+// download) until the next restart or full catalog re-push.
 func (m *Module) removeReceiverItem(ctx context.Context, itemID string) error {
 	if m.receiverRepo == nil {
 		return fmt.Errorf("receiver repository not available")
 	}
-	return m.receiverRepo.DeleteByID(ctx, itemID)
+	if err := m.receiverRepo.DeleteByID(ctx, itemID); err != nil {
+		return err
+	}
+	if m.receiverModule != nil {
+		m.receiverModule.RemoveMediaItem(itemID)
+	}
+	return nil
 }

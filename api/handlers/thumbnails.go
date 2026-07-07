@@ -34,8 +34,7 @@ func (h *Handler) GenerateThumbnail(c *gin.Context) {
 		return
 	}
 	var req struct {
-		ID      string `json:"id"`
-		IsAudio bool   `json:"is_audio"`
+		ID string `json:"id"`
 	}
 	if !BindJSON(c, &req, errInvalidRequest) {
 		return
@@ -44,8 +43,14 @@ func (h *Handler) GenerateThumbnail(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// Derive is-audio from the resolved file extension rather than trusting a
+	// client-supplied flag: the admin "Generate thumbnail" button always sent
+	// is_audio=false, which queued a doomed video-frame ffmpeg extraction for
+	// audio items (failing silently in the worker). Mirrors the scan-time /
+	// sync-thumbnail paths (ensureThumbnailGenerated) and fixes every caller.
+	isAudio := helpers.IsAudioExtension(filepath.Ext(absPath))
 
-	_, err := h.thumbnails.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: absPath, MediaID: req.ID, IsAudio: req.IsAudio, HighPriority: true})
+	_, err := h.thumbnails.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: absPath, MediaID: req.ID, IsAudio: isAudio, HighPriority: true})
 	if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, errInternalServer)

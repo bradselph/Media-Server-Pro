@@ -138,6 +138,9 @@ type MediaMetadata struct {
 	BlurHash string
 	// Duration is the media file duration in seconds, extracted by ffprobe.
 	Duration float64
+	// CustomMeta holds admin-set custom key/value fields (e.g. description).
+	// Persisted as a JSON object in the media_metadata.custom_meta column.
+	CustomMeta map[string]string
 }
 
 // ScanResult holds scan metadata (ScannedAt/ReviewedAt as strings; MySQL impl parses to time).
@@ -427,7 +430,7 @@ type ReceiverDuplicateRepository interface {
 	ExistsByPair(ctx context.Context, itemAID, itemBID string) (bool, error)
 	ExistsResolvedRemoval(ctx context.Context, fingerprint string) (bool, error)
 	UpdateStatus(ctx context.Context, id, status, resolvedBy string) error
-	UpdateStatusForItem(ctx context.Context, itemID, status, resolvedBy string) error
+	UpdateStatusForItem(ctx context.Context, itemID, resolvedBy string) error
 	CountPending(ctx context.Context) (int64, error)
 	// DeleteBySlave removes all duplicate records where either side belongs to slaveID.
 	DeleteBySlave(ctx context.Context, slaveID string) error

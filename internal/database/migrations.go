@@ -671,6 +671,10 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"media_metadata", "stable_id", "VARCHAR(36) NULL"},
 		{"media_metadata", "content_fingerprint", "VARCHAR(64) NULL"},
 		{"media_metadata", "blur_hash", "VARCHAR(100) NULL"},
+		// Admin-set custom metadata (arbitrary key/value strings, e.g. description)
+		// stored as a JSON object. Without this column those fields lived only in
+		// memory and were lost on every restart/rescan.
+		{"media_metadata", "custom_meta", "TEXT NULL"},
 		{"receiver_media", "content_fingerprint", "VARCHAR(64) NULL"},
 		// Federated display metadata so slave-sourced items render identically
 		// to local items in the unified library (category, tags, blur_hash, dates,

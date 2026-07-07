@@ -33,22 +33,32 @@ useSeoMeta({
   ogDescription: seoDesc,
 })
 
+// Guards against out-of-order responses: fast /categories/A -> /categories/B
+// navigation reuses this component instance, and useApi has no per-call abort, so
+// A's slower response could otherwise clobber B's state. Mirrors the loadSeq /
+// searchToken guards in index.vue / search.vue / player.vue.
+let loadSeq = 0
+
 async function load() {
+  const seq = ++loadSeq
   loading.value = true
   notFound.value = false
   try {
     const cat = await categoriesApi.get(categoryId.value)
+    if (seq !== loadSeq) return // a newer load started — drop this stale response
     category.value = cat
     // Resolve full media items by ID so cards show thumbnails/duration, mirroring
     // the favorites page. The category only stores media_id + name.
     const ids = (cat.items ?? []).map(i => i.media_id)
     if (ids.length > 0) {
       const res = await mediaApi.getBatch(ids)
+      if (seq !== loadSeq) return
       mediaMap.value = res?.items ?? {}
     } else {
       mediaMap.value = {}
     }
   } catch (e: unknown) {
+    if (seq !== loadSeq) return // don't surface a stale error over the newer load
     const msg = e instanceof Error ? e.message : 'Failed to load category'
     if (msg.toLowerCase().includes('not found')) {
       notFound.value = true
@@ -56,7 +66,7 @@ async function load() {
       toast.add({title: msg, color: 'error', icon: 'i-lucide-alert-circle'})
     }
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 

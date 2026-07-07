@@ -840,6 +840,53 @@ func (s *MatureScanner) addToReviewQueue(result *ScanResult) {
 	s.mu.Unlock()
 }
 
+// RenamePath re-keys any in-memory scan result and pending review-queue entry,
+// plus the persisted scan_results row, from oldPath to newPath. Without it a
+// moved/renamed file's pending mature review is orphaned: ReviewItem and the
+// review-queue UI look up by the current path, so approve/reject would fail with
+// "item not found in review queue". Mirrors suggestions.RenameMediaPath, which is
+// already invoked from the same rename sites.
+func (s *MatureScanner) RenamePath(oldPath, newPath string) {
+	if oldPath == "" || newPath == "" || oldPath == newPath {
+		return
+	}
+
+	s.mu.Lock()
+	if res, ok := s.results[oldPath]; ok {
+		res.Path = newPath
+		delete(s.results, oldPath)
+		s.results[newPath] = res
+	}
+	if item, ok := s.reviewQueue[oldPath]; ok {
+		item.MediaPath = newPath
+		item.Name = filepath.Base(newPath)
+		item.ID = stableReviewID(newPath)
+		delete(s.reviewQueue, oldPath)
+		s.reviewQueue[newPath] = item
+	}
+	s.mu.Unlock()
+
+	if s.scanRepo == nil || s.repoDown.Load() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	// Upsert the new-path row FIRST, then delete the old one (like persistPathChange)
+	// so a failure can't lose a pending review. No persisted row is a clean no-op.
+	res, err := s.scanRepo.Get(ctx, oldPath)
+	if err != nil || res == nil {
+		return
+	}
+	res.Path = newPath
+	if err := s.scanRepo.Save(ctx, res); err != nil {
+		s.log.Error("failed to persist scan-result re-key %q -> %q: %v", oldPath, newPath, err)
+		return
+	}
+	if err := s.scanRepo.Delete(ctx, oldPath); err != nil {
+		s.log.Warn("failed to delete old scan-result row %q after rename: %v", oldPath, err)
+	}
+}
+
 // GetReviewQueue returns items pending review
 func (s *MatureScanner) GetReviewQueue() []*models.MatureReviewItem {
 	s.mu.RLock()

@@ -2142,13 +2142,15 @@ func (m *Module) BackfillDailyStats(ctx context.Context, date string) (*models.D
 	// there from the live counter path.
 	rebuilt := &models.DailyStats{Date: date}
 	usersForDay := make(map[string]struct{})
+	// Watch time is the sum of forward position DELTAS per (session, media): the
+	// player heartbeats every 15s with the video's cumulative position, not a
+	// per-event watched-duration sample. Summing raw positions would ~10x-inflate
+	// a multi-heartbeat session. Track the previous position and add only
+	// (pos - prev), mirroring the live path (updateSession delta) and
+	// reconstructStats so backfill agrees with them.
+	posBySessionMedia := make(map[string]float64)
 
 	for _, ev := range events {
-		// Per-event arithmetic mirrors updateDailyStatsLocked + the
-		// reconstruction switch in rebuildStatsFromEvent. Keeping a third
-		// copy of this switch is fragile, so we route through the same
-		// helper used during reconstruction by temporarily binding a
-		// dailyUsers entry for the date.
 		switch ev.Type {
 		case "view":
 			rebuilt.TotalViews++
@@ -2157,15 +2159,18 @@ func (m *Module) BackfillDailyStats(ctx context.Context, date string) (*models.D
 				rebuilt.UniqueUsers = len(usersForDay)
 			}
 		case "playback":
-			pos, _ := ev.Data["position"].(float64)
-			dur, _ := ev.Data["duration"].(float64)
-			watch := pos
-			if watch > dur && dur > 0 {
-				watch = dur
+			pos, ok := ev.Data["position"].(float64)
+			if !ok {
+				break
 			}
-			if watch > 0 {
-				rebuilt.TotalWatchTime += watch
+			// Key by (session, media); an empty session falls back to per-media so a
+			// stray session-less event still tracks a delta baseline rather than
+			// being summed raw. delta = max(0, pos-prev) mirrors the live path.
+			key := ev.SessionID + "\x00" + ev.MediaID
+			if prev := posBySessionMedia[key]; pos > prev {
+				rebuilt.TotalWatchTime += pos - prev
 			}
+			posBySessionMedia[key] = pos
 		default:
 			applySimpleCountToDaily(rebuilt, ev.Type, ev.Data)
 		}
@@ -2733,9 +2738,9 @@ func (m *Module) reconstructStats() {
 
 	// Temporary session tracker for reconstruction to handle deltas and unique counts.
 	type reconSession struct {
-		positions   map[string]float64
-		completions map[string]struct{}
-		viewed      map[string]struct{}
+		positions       map[string]float64
+		completions     map[string]struct{}
+		playbackStarted map[string]struct{}
 	}
 	reconSessions := make(map[string]*reconSession)
 
@@ -2748,19 +2753,23 @@ func (m *Module) reconstructStats() {
 			rs, ok := reconSessions[ev.SessionID]
 			if !ok {
 				rs = &reconSession{
-					positions:   make(map[string]float64),
-					completions: make(map[string]struct{}),
-					viewed:      make(map[string]struct{}),
+					positions:       make(map[string]float64),
+					completions:     make(map[string]struct{}),
+					playbackStarted: make(map[string]struct{}),
 				}
 				reconSessions[ev.SessionID] = rs
 			}
 
 			if ev.MediaID != "" {
-				_, seen := rs.viewed[ev.MediaID]
-				isNewMedia = !seen
-				rs.viewed[ev.MediaID] = struct{}{}
-
 				if ev.Type == "playback" {
+					// isNewMedia gates TotalPlaybacks++: first playback heartbeat of
+					// this session for this media. Mirror updateSession — track
+					// playbacks in their own set so a prior "view" event doesn't
+					// suppress the increment on rebuild.
+					_, seen := rs.playbackStarted[ev.MediaID]
+					isNewMedia = !seen
+					rs.playbackStarted[ev.MediaID] = struct{}{}
+
 					if pos, ok := ev.Data["position"].(float64); ok {
 						prev := rs.positions[ev.MediaID]
 						if pos > prev {
