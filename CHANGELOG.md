@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.23.0] - 2026-07-07 (minor)
+
+- feat(federation): let admins copy a peer item into the local library
+- chore(db): drop the playback_positions->media_metadata FK from CREATE TABLE too
+- feat(federation): graceful degradation for HLS and metadata on federated media
+- feat(federation): let federated media be favorited, queued, and resume-tracked
+- feat(federation): make federated media first-class in read/discovery paths
+
+
 ## [1.22.0] - 2026-07-07 (minor)
 
 - fix(follower): don't start a second loop when the old one hasn't stopped
