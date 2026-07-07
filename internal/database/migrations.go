@@ -861,6 +861,17 @@ func (m *Module) ensureIndex(ctx context.Context, table, index, alterSQL string)
 // Orphaned rows are cleaned first so that the FK addition cannot fail due to
 // referential violations on data that pre-dates the constraint.
 func (m *Module) ensureSchemaForeignKeys(ctx context.Context) error {
+	// Federated (slave) media is stored with a synthetic "receiver:<id>" path that
+	// is not a media_metadata row, so a hard FK to media_metadata(path) would
+	// reject favorites/playlist/position rows for federated items. Drop those FKs
+	// (idempotent); the ON DELETE CASCADE they provided for LOCAL media deletion is
+	// replaced by explicit cleanup in application code (media.DeleteMedia).
+	for _, t := range []string{"user_favorites", "playlist_items", "playback_positions"} {
+		if err := m.dropMediaMetadataFK(ctx, t); err != nil {
+			return err
+		}
+	}
+
 	type fkSpec struct {
 		table, constraint, cleanupSQL, alterSQL string
 	}
@@ -919,18 +930,10 @@ func (m *Module) ensureSchemaForeignKeys(ctx context.Context) error {
 			cleanupSQL: "DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)",
 			alterSQL:   "ALTER TABLE sessions ADD CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
 		},
-		{
-			table:      "playlist_items",
-			constraint: "fk_playlist_items_media",
-			cleanupSQL: "DELETE FROM playlist_items WHERE media_path != '' AND media_path NOT IN (SELECT path FROM media_metadata)",
-			alterSQL:   "ALTER TABLE playlist_items ADD CONSTRAINT fk_playlist_items_media FOREIGN KEY (media_path) REFERENCES media_metadata(path) ON DELETE CASCADE",
-		},
-		{
-			table:      "user_favorites",
-			constraint: "fk_user_favorites_media",
-			cleanupSQL: "DELETE FROM user_favorites WHERE media_path NOT IN (SELECT path FROM media_metadata)",
-			alterSQL:   "ALTER TABLE user_favorites ADD CONSTRAINT fk_user_favorites_media FOREIGN KEY (media_path) REFERENCES media_metadata(path) ON DELETE CASCADE",
-		},
+		// NOTE: fk_playlist_items_media and fk_user_favorites_media (playlist_items /
+		// user_favorites -> media_metadata(path)) are intentionally NOT (re-)added —
+		// they are dropped at the top of this function so federated media's synthetic
+		// "receiver:<id>" paths can be stored. Local-delete cleanup is in code.
 		{
 			table:      "media_category_items",
 			constraint: "fk_media_category_items_category",
@@ -948,6 +951,39 @@ func (m *Module) ensureSchemaForeignKeys(ctx context.Context) error {
 
 // ensureForeignKey checks whether a named FK constraint exists. If not, it first
 // removes any orphaned rows (to avoid constraint-violation failures) then adds the FK.
+// dropMediaMetadataFK drops the foreign key on `table` that references
+// media_metadata, if one exists. Looks the constraint up by referenced table (not
+// by name) so it handles both named FKs (fk_user_favorites_media,
+// fk_playlist_items_media) and the inline auto-named FK on playback_positions
+// uniformly. Idempotent — a no-op once the FK is gone.
+func (m *Module) dropMediaMetadataFK(ctx context.Context, table string) error {
+	if !validIdent.MatchString(table) {
+		return fmt.Errorf("invalid table name: %q", table)
+	}
+	var name string
+	err := m.sqlDB.QueryRowContext(ctx, `
+		SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+		WHERE TABLE_SCHEMA          = DATABASE()
+		  AND TABLE_NAME            = ?
+		  AND REFERENCED_TABLE_NAME = 'media_metadata'
+		LIMIT 1
+	`, table).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // already dropped (or never existed)
+	}
+	if err != nil {
+		return fmt.Errorf("lookup media_metadata FK on %s: %w", table, err)
+	}
+	if !validIdent.MatchString(name) {
+		return fmt.Errorf("unexpected FK name %q on %s", name, table)
+	}
+	m.log.Info("Dropping media_metadata FK %s on %s to allow federated-media rows", name, table)
+	if _, err := m.sqlDB.ExecContext(ctx, "ALTER TABLE "+table+" DROP FOREIGN KEY "+name); err != nil {
+		return fmt.Errorf("drop FK %s on %s: %w", name, table, err)
+	}
+	return nil
+}
+
 func (m *Module) ensureForeignKey(ctx context.Context, table, constraint, cleanupSQL, alterSQL string) error {
 	if !validIdent.MatchString(table) || !validIdent.MatchString(constraint) {
 		return fmt.Errorf("invalid table or constraint name: %q.%q", table, constraint)
