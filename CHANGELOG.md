@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.22.0] - 2026-07-07 (minor)
+
+- fix(follower): don't start a second loop when the old one hasn't stopped
+- fix(duplicates): evict receiver item from in-memory catalog on dup resolution
+- fix(remote): use comma-ok type assertion in CacheMedia singleflight wrapper
+- fix(browse): guard tag-cloud preview count against out-of-order responses
+- fix(duplicates): derive cascade status per-row, not from the triggering action
+- fix(remote): coalesce concurrent CacheMedia downloads of the same URL
+- fix(receiver): bound heartbeat DB write + close WS on slave unregister
+- fix(categories): guard category page load() against out-of-order responses
+- fix(thumbnails): derive is_audio server-side in GenerateThumbnail
+- test(frontend): bootstrap Vitest harness + first unit suites
+- fix(useHLS): guard attachHLS against stale activation after a media switch
+- fix(analytics): sum watch-time deltas in BackfillDailyStats, not raw positions
+- fix(updater): don't alias the mutating build status in activeBuild
+- fix(remote): delete cache index row on lazy TTL eviction too
+- chore(lint): resolve new golangci-lint findings from the bug-fix pass
+- fix(follower): re-validate SSRF at connection time on all master dials
+- fix(remote): keep the cache DB index in sync continuously, not only at Stop()
+- fix(scanner): re-key mature review queue on media rename/move
+- fix(categories): include tag-backed membership in item->category lookups
+- fix(tasks): enforce the 60s schedule floor on persisted task overrides
+- fix(media-reports): clear resolver attribution when a report is reopened
+- fix(validator): ignore embedded cover art and clean up failed fix output
+- fix(analytics): count TotalPlaybacks on first playback heartbeat, not first event
+- fix(upload): stop accepting text/plain payloads as video/audio uploads
+- fix(auth): sync built-in admin login credential on generic password change
+- fix(media): persist admin-set custom metadata across restarts
+- fix(hls): enforce mature gate on GenerateHLS and GetHLSStatus
+- fix(hls): resolve mature gate by stable job ID, not stale MediaPath
+- fix(media): keep old metadata row when path-change upsert fails
+- fix(suggestions): de-dupe random filler in GetSimilarMedia
+- fix(receiver): return SlaveNode copies from GetSlaves to end a data race
+- fix(discovery): stop double-unescaping the dismiss *path param
+- Merge branch 'main' into development
+
+
 ## [1.21.0] - 2026-07-05 (minor)
 
 - fix(docker): bring compose deployment to parity with deploy.sh
