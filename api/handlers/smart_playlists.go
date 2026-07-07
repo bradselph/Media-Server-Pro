@@ -449,7 +449,7 @@ func (h *Handler) PreviewSmartPlaylist(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "Invalid rules stored in playlist")
 		return
 	}
-	all := h.media.ListMedia(media.Filter{})
+	all := h.mergedMediaList(media.Filter{}) // include federated media as candidates
 	catMembers := h.buildSmartCategoryMembers(c.Request.Context(), rules)
 	items := applySmartRules(all, rules, catMembers)
 	if items == nil {

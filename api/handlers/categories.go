@@ -484,7 +484,7 @@ func (h *Handler) GetMediaCategories(c *gin.Context) {
 	// also one of the item's categories, even with no explicit media_category_items
 	// row. Without this, the reverse lookup disagrees with GetCategory /
 	// GetCategoryMemberIDs and the player omits smart-category badges.
-	if item, err := h.media.GetMediaByID(mediaID); err == nil && item != nil && len(item.Tags) > 0 {
+	if item, ok := h.resolveMediaItemOrReceiver(mediaID); ok && len(item.Tags) > 0 {
 		var tagged []models.MediaCategory
 		if err := db.Select("id", "tag").Where("tag <> ''").Find(&tagged).Error; err == nil {
 			for _, cat := range tagged {
