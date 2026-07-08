@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.24.0] - 2026-07-08 (minor)
+
+- fix(build): bump Node 22->24 so CI npm matches the lockfile author
+
+
 ## [1.23.0] - 2026-07-07 (minor)
 
 - feat(federation): let admins copy a peer item into the local library
