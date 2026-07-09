@@ -930,6 +930,13 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// Copy a federated (peer) item into the local library so it becomes real
 	// local media instead of a proxied reference.
 	adminGrp.POST("/receiver/media/:id/copy", h.AdminReceiverCopyMedia)
+	// Bulk copy-to-library: POST starts a background job over a list of IDs
+	// (sequential transfers, duplicates auto-skipped), GET polls its progress,
+	// DELETE cancels it. Lives at /receiver/copy-bulk rather than under
+	// /receiver/media so it can't conflict with the :id wildcard above.
+	adminGrp.POST("/receiver/copy-bulk", h.AdminReceiverBulkCopyStart)
+	adminGrp.GET("/receiver/copy-bulk", h.AdminReceiverBulkCopyStatus)
+	adminGrp.DELETE("/receiver/copy-bulk", h.AdminReceiverBulkCopyCancel)
 	// Cross-server pairing helper. Admin enters peer URL+key here and this
 	// server reaches out to the peer's /api/receiver/pair to configure the
 	// pairing without the admin having to log into both servers.

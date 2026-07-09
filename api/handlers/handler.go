@@ -185,6 +185,9 @@ type Handler struct {
 	regTokens           sync.Map      // key: token string → value: time.Time issued; single-use, 15-min TTL
 	classifyDirRunning  atomic.Bool   // true while a ClassifyDirectory background job is active
 	classifyAllRunning  atomic.Bool   // true while a ClassifyAllPending background job is active
+	receiverCopyBusy    sync.Map      // key: federated media ID → struct{} while a copy-to-library of it runs
+	receiverBulkMu      sync.Mutex    // guards receiverBulkJob
+	receiverBulkJob     *receiverBulkCopyJob // latest bulk copy-to-library job; nil until the first run
 	lifecycleInProgress atomic.Bool   // true once a shutdown/restart has been initiated
 	feedCacheMu         sync.Mutex
 	feedCache           map[string]feedCacheEntry // key: "cacheKey" → cached XML + expiry
@@ -348,6 +351,14 @@ func NewHandler(deps HandlerDeps) *Handler {
 	h.shutdownFunc = func() {
 		h.stopViewCooldownSweeper()
 		h.stopFeedCacheSweeper()
+		// Stop a running bulk copy-to-library job from issuing further peer
+		// transfers — its context is not tied to the server lifecycle and the
+		// process is about to exit.
+		h.receiverBulkMu.Lock()
+		if job := h.receiverBulkJob; job != nil && job.isRunning() {
+			job.markCanceled()
+		}
+		h.receiverBulkMu.Unlock()
 		outerShutdown()
 	}
 	h.startViewCooldownSweeper()

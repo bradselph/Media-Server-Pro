@@ -3,6 +3,7 @@ import type {
   FollowerSettings,
   FollowerStatus,
   ReceiverAdminSettings,
+  ReceiverBulkCopyStatus,
   ReceiverDuplicate,
   ReceiverMedia,
   ReceiverStats,
@@ -27,6 +28,99 @@ const slaveMediaDetailLoading = ref(false)
 const activeDetailRequestId = ref(0)
 const copyingMediaId = ref<string | null>(null)
 const revealedKeys = ref<Set<number>>(new Set())
+
+// Bulk copy-to-library state. Selection is tracked by ID; the job itself runs
+// server-side and is polled, so it survives closing the browser card or
+// navigating away and back.
+const selectedIds = ref<Set<string>>(new Set())
+const hideAlreadyLocal = ref(true)
+const bulkStatus = ref<ReceiverBulkCopyStatus | null>(null)
+const bulkStarting = ref(false)
+let bulkTimer: ReturnType<typeof setInterval> | null = null
+
+const alreadyLocalCount = computed(() => slaveMedia.value.filter(m => m.already_local).length)
+const visibleSlaveMedia = computed(() =>
+    hideAlreadyLocal.value ? slaveMedia.value.filter(m => !m.already_local) : slaveMedia.value)
+const selectableIds = computed(() =>
+    visibleSlaveMedia.value.filter(m => !m.already_local).map(m => m.id))
+const allSelected = computed(() =>
+    selectableIds.value.length > 0 && selectableIds.value.every(id => selectedIds.value.has(id)))
+const bulkRunning = computed(() => !!bulkStatus.value?.running)
+const bulkFailures = computed(() =>
+    (bulkStatus.value?.results ?? []).filter(r => r.status === 'failed'))
+
+function toggleSelect(id: string) {
+  const next = new Set(selectedIds.value)
+  if (next.has(id)) next.delete(id); else next.add(id)
+  selectedIds.value = next
+}
+
+function toggleSelectAll() {
+  selectedIds.value = allSelected.value ? new Set() : new Set(selectableIds.value)
+}
+
+function stopBulkPolling() {
+  if (bulkTimer) {
+    clearInterval(bulkTimer)
+    bulkTimer = null
+  }
+}
+
+function startBulkPolling() {
+  stopBulkPolling()
+  bulkTimer = setInterval(refreshBulkStatus, 2000)
+}
+
+async function refreshBulkStatus() {
+  try {
+    const st = await adminApi.getReceiverBulkCopyStatus()
+    if (destroyed) return
+    const wasRunning = bulkStatus.value?.running
+    bulkStatus.value = st
+    if (!st.running) {
+      stopBulkPolling()
+      if (wasRunning) {
+        // The job we were watching just finished — refresh so already_local
+        // flags and the receiver stats reflect the new local copies.
+        const summary = `${st.copied} copied, ${st.skipped} skipped, ${st.failed} failed`
+        if (st.failed > 0) notifyWarning(`Bulk copy finished — ${summary}`)
+        else notifySuccess(`Bulk copy ${st.canceled ? 'canceled' : 'finished'} — ${summary}`)
+        // Don't force the browser card back open if the admin closed it —
+        // the flags refresh on the next open anyway.
+        if (showSlaveMedia.value) await loadSlaveMedia()
+      }
+    }
+  } catch {
+    // Silent — status polling, don't toast on every transient failure.
+  }
+}
+
+async function startBulkCopy() {
+  const ids = [...selectedIds.value]
+  if (ids.length === 0 || bulkStarting.value || bulkRunning.value) return
+  bulkStarting.value = true
+  try {
+    const st = await adminApi.bulkCopyReceiverMedia(ids)
+    // Guard: if the panel unmounted while the POST was in flight, starting a
+    // poll timer here would orphan it (onUnmounted already ran).
+    if (destroyed) return
+    bulkStatus.value = st
+    selectedIds.value = new Set()
+    startBulkPolling()
+  } catch (e: unknown) {
+    if (!destroyed) notifyError(e, 'Failed to start bulk copy')
+  } finally {
+    if (!destroyed) bulkStarting.value = false
+  }
+}
+
+async function cancelBulkCopy() {
+  try {
+    bulkStatus.value = await adminApi.cancelReceiverBulkCopy()
+  } catch (e: unknown) {
+    if (!destroyed) notifyError(e, 'Failed to cancel bulk copy')
+  }
+}
 
 // Follower (this-server-as-slave) state. Loaded alongside the receiver data
 // so admins see both directions (incoming slaves + this server's outbound
@@ -79,6 +173,7 @@ let followerStatusTimer: ReturnType<typeof setInterval> | null = null
 onUnmounted(() => {
   destroyed = true
   if (followerStatusTimer) clearInterval(followerStatusTimer)
+  stopBulkPolling()
 })
 
 function statusColor(status: string): 'success' | 'warning' | 'error' | 'neutral' {
@@ -115,7 +210,17 @@ async function copyMediaToLibrary(item: ReceiverMedia) {
   copyingMediaId.value = item.id
   try {
     const result = await adminApi.copyReceiverMediaToLibrary(item.id)
-    if (!destroyed) notifySuccess(result?.message || 'Copied to local library')
+    if (!destroyed) {
+      notifySuccess(result?.message || 'Copied to local library')
+      // The modal shows a standalone item the list refresh below won't touch —
+      // flip its flag so the copy button disables ("Already in library").
+      if (selectedSlaveMedia.value?.id === item.id) {
+        selectedSlaveMedia.value = {...selectedSlaveMedia.value, already_local: true}
+      }
+      // Refresh the open browser list so the item now shows its
+      // "In library" badge (and hides under the duplicate filter).
+      if (showSlaveMedia.value) await loadSlaveMedia()
+    }
   } catch (e: unknown) {
     if (!destroyed) notifyError(e, 'Failed to copy to library')
   } finally {
@@ -155,6 +260,9 @@ async function loadSlaveMedia() {
     if (!destroyed) {
       slaveMedia.value = media
       showSlaveMedia.value = true
+      // Prune selections that vanished or became local since the last load.
+      selectedIds.value = new Set(
+          [...selectedIds.value].filter(id => media.some(m => m.id === id && !m.already_local)))
     }
   } catch (e: unknown) {
     if (!destroyed) {
@@ -163,6 +271,18 @@ async function loadSlaveMedia() {
   } finally {
     if (!destroyed) slaveMediaLoading.value = false
   }
+  // Pick up a bulk job still running from an earlier visit so the progress
+  // panel reappears instead of the job running invisibly. Silent on failure —
+  // it's auxiliary to the listing.
+  try {
+    if (!destroyed && !bulkTimer) {
+      const st = await adminApi.getReceiverBulkCopyStatus()
+      if (!destroyed) {
+        bulkStatus.value = st
+        if (st.running) startBulkPolling()
+      }
+    }
+  } catch { /* silent */ }
 }
 
 async function removeSlave(id: string) {
@@ -602,8 +722,10 @@ onMounted(async () => {
     </div>
     <UCard v-if="showSlaveMedia">
       <template #header>
-        <div class="flex items-center justify-between">
-          <span class="font-semibold">Slave Media ({{ slaveMedia.length }})</span>
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <span class="font-semibold">
+            Slave Media ({{ visibleSlaveMedia.length }}<template v-if="visibleSlaveMedia.length !== slaveMedia.length"> of {{ slaveMedia.length }}</template>)
+          </span>
           <UButton icon="i-lucide-refresh-cw" aria-label="Refresh slave media" variant="ghost" color="neutral" size="xs"
                    @click="loadSlaveMedia"/>
         </div>
@@ -611,22 +733,91 @@ onMounted(async () => {
       <div v-if="slaveMediaLoading" class="flex justify-center py-4">
         <UIcon name="i-lucide-loader-2" class="animate-spin size-5"/>
       </div>
-      <div v-else-if="slaveMedia.length === 0" class="text-center py-4 text-muted text-sm">No media from slave nodes.
-      </div>
-      <div v-else class="divide-y divide-default max-h-64 overflow-y-auto">
-        <button
-            v-for="m in slaveMedia"
-            :key="m.id"
-            class="flex items-center gap-3 py-2 w-full text-left hover:bg-muted/40 transition-colors px-1 rounded"
-            @click="openSlaveMediaDetail(m.id)"
-        >
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium truncate">{{ m.name }}</p>
-            <p class="text-xs text-muted">{{ m.media_type }} · {{ formatBytes(m.size) }}</p>
+      <template v-else>
+        <!-- Bulk controls -->
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <USwitch
+              v-model="hideAlreadyLocal"
+              size="sm"
+              :label="`Hide items already in library (${alreadyLocalCount})`"
+          />
+          <div class="flex items-center gap-2">
+            <UButton
+                size="xs"
+                variant="outline"
+                color="neutral"
+                :label="allSelected ? 'Clear selection' : 'Select all'"
+                :disabled="selectableIds.length === 0 || bulkRunning"
+                @click="toggleSelectAll"
+            />
+            <UButton
+                size="xs"
+                color="primary"
+                icon="i-lucide-download"
+                :label="`Copy selected (${selectedIds.size})`"
+                :disabled="selectedIds.size === 0 || bulkRunning"
+                :loading="bulkStarting"
+                @click="startBulkCopy"
+            />
           </div>
-          <span class="text-xs text-muted font-mono shrink-0">{{ m.slave_id.slice(0, 8) }}…</span>
-        </button>
-      </div>
+        </div>
+
+        <!-- Bulk progress / last result -->
+        <div v-if="bulkStatus && bulkStatus.total > 0" class="text-xs bg-muted/40 rounded px-3 py-2 mb-3 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="min-w-0 truncate">
+              <template v-if="bulkRunning">
+                Copying {{ Math.min(bulkStatus.done + 1, bulkStatus.total) }}/{{ bulkStatus.total }}
+                <span v-if="bulkStatus.current" class="text-muted">— {{ bulkStatus.current }}</span>
+              </template>
+              <template v-else>
+                Last bulk copy{{ bulkStatus.canceled ? ' (canceled)' : '' }}:
+                {{ bulkStatus.copied }} copied · {{ bulkStatus.skipped }} skipped · {{ bulkStatus.failed }} failed
+              </template>
+            </span>
+            <UButton
+                v-if="bulkRunning"
+                label="Cancel"
+                size="xs"
+                variant="outline"
+                color="error"
+                @click="cancelBulkCopy"
+            />
+          </div>
+          <UProgress v-if="bulkRunning" :model-value="bulkStatus.done" :max="bulkStatus.total" size="sm"/>
+          <div v-if="!bulkRunning && bulkFailures.length > 0" class="space-y-0.5">
+            <p v-for="f in bulkFailures" :key="f.id" class="text-error truncate">
+              {{ f.name }} — {{ f.detail || 'failed' }}
+            </p>
+          </div>
+        </div>
+
+        <div v-if="visibleSlaveMedia.length === 0" class="text-center py-4 text-muted text-sm">
+          {{ slaveMedia.length === 0 ? 'No media from slave nodes.' : 'All slave media is already in the local library.' }}
+        </div>
+        <div v-else class="divide-y divide-default max-h-64 overflow-y-auto">
+          <div v-for="m in visibleSlaveMedia" :key="m.id" class="flex items-center gap-2 py-2 px-1">
+            <UCheckbox
+                :model-value="selectedIds.has(m.id)"
+                :disabled="!!m.already_local || bulkRunning"
+                :aria-label="`Select ${m.name}`"
+                @update:model-value="toggleSelect(m.id)"
+            />
+            <button
+                class="flex items-center gap-3 flex-1 min-w-0 text-left hover:bg-muted/40 transition-colors rounded px-1"
+                @click="openSlaveMediaDetail(m.id)"
+            >
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium truncate">{{ m.name }}</p>
+                <p class="text-xs text-muted">{{ m.media_type }} · {{ formatBytes(m.size) }}</p>
+              </div>
+              <UBadge v-if="m.already_local" label="In library" color="success" variant="subtle" size="xs"
+                      class="shrink-0"/>
+              <span class="text-xs text-muted font-mono shrink-0">{{ m.slave_id.slice(0, 8) }}…</span>
+            </button>
+          </div>
+        </div>
+      </template>
     </UCard>
 
     <!-- Duplicates -->
@@ -687,10 +878,11 @@ onMounted(async () => {
         <div class="flex items-center justify-between gap-2 w-full">
           <UButton
               v-if="selectedSlaveMedia"
-              label="Copy to Library"
+              :label="selectedSlaveMedia.already_local ? 'Already in library' : 'Copy to Library'"
               icon="i-lucide-download"
               size="sm"
               color="primary"
+              :disabled="!!selectedSlaveMedia.already_local"
               :loading="copyingMediaId === selectedSlaveMedia.id"
               @click="copyMediaToLibrary(selectedSlaveMedia)"
           />
