@@ -974,6 +974,30 @@ export interface ReceiverMedia {
     content_fingerprint?: string
     width?: number
     height?: number
+    /** Content already exists in the local library (fingerprint match). */
+    already_local?: boolean
+}
+
+export interface ReceiverBulkCopyResult {
+    id: string
+    name: string
+    status: 'copied' | 'skipped' | 'failed'
+    detail?: string
+}
+
+/** Snapshot of the background bulk copy-to-library job. */
+export interface ReceiverBulkCopyStatus {
+    running: boolean
+    canceled: boolean
+    total: number
+    done: number
+    copied: number
+    skipped: number
+    failed: number
+    current?: string
+    started_at?: string
+    finished_at?: string
+    results: ReceiverBulkCopyResult[]
 }
 
 export interface CrawlerTarget {

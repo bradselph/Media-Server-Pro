@@ -131,7 +131,32 @@ func (h *Handler) ReceiverHeartbeat(c *gin.Context) {
 	writeSuccess(c, gin.H{"status": "ok"})
 }
 
-// ReceiverListMedia returns all media from all online slaves.
+// receiverMediaListItem decorates a federated media item with server-side
+// knowledge the admin UI needs: whether the item's content already exists in
+// the local library (fingerprint match), so duplicates can be hidden or badged
+// before the admin copies them again.
+type receiverMediaListItem struct {
+	*receiver.MediaItem
+	AlreadyLocal bool `json:"already_local"`
+}
+
+// annotateReceiverMedia wraps federated items with the already_local flag.
+// Items without a fingerprint report false — we can't prove they duplicate
+// local content, so the admin keeps the option to copy them.
+func (h *Handler) annotateReceiverMedia(items []*receiver.MediaItem) []receiverMediaListItem {
+	out := make([]receiverMediaListItem, 0, len(items))
+	for _, it := range items {
+		out = append(out, receiverMediaListItem{
+			MediaItem:    it,
+			AlreadyLocal: it.ContentFingerprint != "" && h.media.HasFingerprint(it.ContentFingerprint),
+		})
+	}
+	return out
+}
+
+// ReceiverListMedia returns all media from all online slaves, each annotated
+// with already_local so the admin UI can hide/badge items whose content is
+// already in the local library.
 // GET /api/receiver/media
 func (h *Handler) ReceiverListMedia(c *gin.Context) {
 	if !h.checkReceiverEnabled(c) {
@@ -140,32 +165,20 @@ func (h *Handler) ReceiverListMedia(c *gin.Context) {
 
 	query := c.Query("q")
 	if query != "" {
-		items := h.receiver.SearchMedia(query)
-		if items == nil {
-			items = []*receiver.MediaItem{}
-		}
-		writeSuccess(c, items)
+		writeSuccess(c, h.annotateReceiverMedia(h.receiver.SearchMedia(query)))
 		return
 	}
 
 	slaveID := c.Query("slave_id")
 	if slaveID != "" {
-		items := h.receiver.GetSlaveMedia(slaveID)
-		if items == nil {
-			items = []*receiver.MediaItem{}
-		}
-		writeSuccess(c, items)
+		writeSuccess(c, h.annotateReceiverMedia(h.receiver.GetSlaveMedia(slaveID)))
 		return
 	}
 
-	items := h.receiver.GetAllMedia()
-	if items == nil {
-		items = []*receiver.MediaItem{}
-	}
-	writeSuccess(c, items)
+	writeSuccess(c, h.annotateReceiverMedia(h.receiver.GetAllMedia()))
 }
 
-// ReceiverGetMedia returns a single media item by ID.
+// ReceiverGetMedia returns a single media item by ID, annotated like the list.
 // GET /api/receiver/media/:id
 func (h *Handler) ReceiverGetMedia(c *gin.Context) {
 	if !h.checkReceiverEnabled(c) {
@@ -179,7 +192,10 @@ func (h *Handler) ReceiverGetMedia(c *gin.Context) {
 		return
 	}
 
-	writeSuccess(c, item)
+	writeSuccess(c, receiverMediaListItem{
+		MediaItem:    item,
+		AlreadyLocal: item.ContentFingerprint != "" && h.media.HasFingerprint(item.ContentFingerprint),
+	})
 }
 
 // receiverAdminSettings is the body of GET /api/admin/receiver/settings.

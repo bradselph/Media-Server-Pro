@@ -82,6 +82,7 @@ import type {
     RangeComparison,
     RatedItem,
     ReceiverAdminSettings,
+    ReceiverBulkCopyStatus,
     ReceiverDuplicate,
     ReceiverMedia,
     ReceiverStats,
@@ -734,6 +735,15 @@ export function useAdminApi() {
         copyReceiverMediaToLibrary: (id: string) =>
             api.post<{ message: string; item: MediaItem | null }>(
                 `${base}/receiver/media/${encodeURIComponent(id)}/copy`, {}),
+        // Bulk copy-to-library: POST starts a background job on the server
+        // (sequential transfers, already-local items auto-skipped), GET polls
+        // its progress until running=false, DELETE cancels it.
+        bulkCopyReceiverMedia: (ids: string[]) =>
+            api.post<ReceiverBulkCopyStatus>(`${base}/receiver/copy-bulk`, {ids}),
+        getReceiverBulkCopyStatus: () =>
+            api.get<ReceiverBulkCopyStatus>(`${base}/receiver/copy-bulk`),
+        cancelReceiverBulkCopy: () =>
+            api.delete<ReceiverBulkCopyStatus>(`${base}/receiver/copy-bulk`),
         listDuplicates: (status = 'pending') =>
             api.get<ReceiverDuplicate[]>(`${base}/duplicates?status=${encodeURIComponent(status)}`),
         resolveDuplicate: (id: string, action: string) =>

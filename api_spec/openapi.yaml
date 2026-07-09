@@ -7297,7 +7297,10 @@ paths:
           description: Filter by slave
       responses:
         '200':
-          description: Receiver media list
+          description: >
+            Receiver media list. Each item carries already_local — true when
+            the item's content fingerprint matches a local library file — so
+            clients can hide or badge duplicates.
 
   /api/receiver/media/{id}:
     get:
@@ -7313,7 +7316,7 @@ paths:
             type: string
       responses:
         '200':
-          description: Receiver media item
+          description: Receiver media item (annotated with already_local)
 
   /api/admin/receiver/settings:
     get:
@@ -7446,6 +7449,80 @@ paths:
       responses:
         '200':
           description: Slave removed
+
+  /api/admin/receiver/media/{id}/copy:
+    post:
+      tags: [ admin-receiver ]
+      summary: Copy a federated media item into the local library
+      description: >
+        Pulls the item's bytes from its peer and registers the file like an
+        upload, so it becomes ordinary local media that survives the peer
+        disconnecting.
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Copied to local library
+        '409':
+          description: Content already in the local library, or a copy of this item is already in flight
+
+  /api/admin/receiver/copy-bulk:
+    post:
+      tags: [ admin-receiver ]
+      summary: Start a bulk copy-to-library job
+      description: >
+        Queues a background job that copies the given federated media items
+        into the local library one at a time. Items whose content already
+        exists locally are skipped automatically. Poll progress with GET on
+        this path; cancel with DELETE.
+      security:
+        - sessionCookie: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ ids ]
+              properties:
+                ids:
+                  type: array
+                  maxItems: 500
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Job started — initial status snapshot
+        '400':
+          description: ids missing, empty, or over the 500-item cap
+        '409':
+          description: A bulk copy is already running
+    get:
+      tags: [ admin-receiver ]
+      summary: Get bulk copy-to-library progress
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: >
+            Job status: running/canceled flags, total/done/copied/skipped/failed
+            counts, current item name, and per-item terminal results.
+    delete:
+      tags: [ admin-receiver ]
+      summary: Cancel the running bulk copy-to-library job
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '200':
+          description: Cancellation requested — job snapshot
+        '409':
+          description: No bulk copy is running
 
   # ─── Downloader subsystem ───
 

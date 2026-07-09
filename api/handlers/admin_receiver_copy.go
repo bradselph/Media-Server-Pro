@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"mime"
@@ -51,6 +52,17 @@ func (h *Handler) AdminReceiverCopyMedia(c *gin.Context) {
 		return
 	}
 
+	// One copy of a given content at a time — a double-click or a concurrent
+	// bulk job must not download the same bytes twice in parallel (the
+	// fingerprint guard above can't see a copy that hasn't finished
+	// registering yet).
+	guardKey := receiverCopyGuardKey(id, item)
+	if !h.beginReceiverCopy(guardKey) {
+		writeError(c, http.StatusConflict, "this item is already being copied")
+		return
+	}
+	defer h.endReceiverCopy(guardKey)
+
 	destDir, isAudio, errMsg := h.receiverCopyDestDir(item)
 	if errMsg != "" {
 		writeError(c, http.StatusInternalServerError, errMsg)
@@ -62,7 +74,7 @@ func (h *Handler) AdminReceiverCopyMedia(c *gin.Context) {
 		return
 	}
 
-	destPath, err := h.streamReceiverItemToDir(c, id, item, destDir)
+	destPath, err := h.streamReceiverItemToDir(c.Request.Context(), id, item, destDir)
 	if err != nil {
 		h.log.Error("copy federated media %s: %v", id, err)
 		writeError(c, http.StatusBadGateway, "failed to copy media from peer")
@@ -79,6 +91,11 @@ func (h *Handler) AdminReceiverCopyMedia(c *gin.Context) {
 		writeError(c, http.StatusInternalServerError, "copied the file but failed to index it")
 		return
 	}
+
+	// No explicit fingerprint step needed: RegisterUploadedFile fingerprints
+	// the freshly-written bytes synchronously (createMediaItem), and both
+	// servers compute fingerprints the same way — so the copy is recognized
+	// as the peer item's content (already_local, re-copy 409) immediately.
 
 	newItem, _ := h.media.GetMedia(destPath)
 	h.applyReceiverCopyMetadata(destPath, item)
@@ -131,17 +148,18 @@ func (h *Handler) receiverCopyDestDir(item *receiver.MediaItem) (dir string, isA
 // streamReceiverItemToDir pulls the federated item's bytes from the peer into a
 // temp file under destDir, then atomically moves it to a unique final name so a
 // concurrent library scan never sees a partially-written media file. Returns the
-// final path.
-func (h *Handler) streamReceiverItemToDir(c *gin.Context, id string, item *receiver.MediaItem, destDir string) (string, error) {
-	reader, _, err := h.receiver.FetchMedia(c.Request.Context(), id)
+// final path. ctx cancellation (admin disconnect on the single-copy path, job
+// cancel on the bulk path) aborts the transfer.
+func (h *Handler) streamReceiverItemToDir(ctx context.Context, id string, item *receiver.MediaItem, destDir string) (string, error) {
+	reader, _, err := h.receiver.FetchMedia(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("fetch from peer: %w", err)
 	}
 	defer func() { _ = reader.Close() }()
-	// Unblock a blocked read if the admin cancels the request mid-copy; Close is
-	// idempotent so the deferred Close above stays safe.
+	// Unblock a blocked read if ctx is canceled mid-copy; Close is idempotent so
+	// the deferred Close above stays safe.
 	go func() {
-		<-c.Request.Context().Done()
+		<-ctx.Done()
 		_ = reader.Close()
 	}()
 
