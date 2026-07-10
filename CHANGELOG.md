@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.25.0] - 2026-07-10 (minor)
+
+- Batch operations and optimize hot paths with caching
+- feat(receiver): bulk copy-to-library and duplicate hiding for peer media
+- Update .gitignore
+- Update .gitignore
+
+
 ## [1.24.0] - 2026-07-08 (minor)
 
 - fix(build): bump Node 22->24 so CI npm matches the lockfile author
