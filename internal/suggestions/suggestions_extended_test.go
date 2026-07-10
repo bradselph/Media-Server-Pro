@@ -107,7 +107,7 @@ func TestScoreCategoryPreference_HighScore(t *testing.T) {
 	}
 	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
-	score := scoreCategoryPreference(profile, media, &reasons)
+	score := scoreCategoryPreference(profile, media, &reasons, computeProfileTotals(profile).categoryTotal)
 	if score <= 0 {
 		t.Errorf("high category preference should give positive score, got %f", score)
 	}
@@ -120,7 +120,7 @@ func TestScoreCategoryPreference_NoPreference(t *testing.T) {
 	}
 	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
-	score := scoreCategoryPreference(profile, media, &reasons)
+	score := scoreCategoryPreference(profile, media, &reasons, computeProfileTotals(profile).categoryTotal)
 	if score != 0 {
 		t.Errorf("no category match should give 0, got %f", score)
 	}
@@ -136,7 +136,7 @@ func TestScoreTypePreference_EmptyPreferences(t *testing.T) {
 		TotalViews:      15,
 	}
 	media := &MediaInfo{MediaType: "video"}
-	score := scoreTypePreference(profile, media)
+	score := scoreTypePreference(profile, media, computeProfileTotals(profile).typeTotal)
 	if score != 0 {
 		t.Errorf("empty type preferences should give 0, got %f", score)
 	}
@@ -149,7 +149,7 @@ func TestScoreTypePreference_EmptyPreferences(t *testing.T) {
 func TestComputeSimilarity_DifferentMedia(t *testing.T) {
 	a := &MediaInfo{CategoryIDs: []string{"movies"}, MediaType: "video", Title: "Action Movie", Tags: []string{"action"}}
 	b := &MediaInfo{CategoryIDs: []string{"music"}, MediaType: "audio", Title: "Jazz Album", Tags: []string{"jazz"}}
-	score, _ := computeSimilarity(a, b)
+	score, _ := computeSimilarity(a, b, titleWords(a.Title))
 	if score > 0.5 {
 		t.Errorf("very different media should have low similarity, got %f", score)
 	}
@@ -158,7 +158,7 @@ func TestComputeSimilarity_DifferentMedia(t *testing.T) {
 func TestComputeSimilarity_IdenticalMedia(t *testing.T) {
 	a := &MediaInfo{CategoryIDs: []string{"movies"}, MediaType: "video", Title: "Test Movie", Tags: []string{"action", "sci-fi"}}
 	b := &MediaInfo{CategoryIDs: []string{"movies"}, MediaType: "video", Title: "Test Movie", Tags: []string{"action", "sci-fi"}}
-	score, _ := computeSimilarity(a, b)
+	score, _ := computeSimilarity(a, b, titleWords(a.Title))
 	if score < 0.5 {
 		t.Errorf("identical media should have high similarity, got %f", score)
 	}
@@ -185,7 +185,7 @@ func TestComputeTagSimilarity_PartialOverlap(t *testing.T) {
 func TestComputeTitleSimilarity_Identical(t *testing.T) {
 	source := &MediaInfo{Title: "Star Wars"}
 	candidate := &MediaInfo{Title: "Star Wars"}
-	score := computeTitleSimilarity(source, candidate)
+	score := computeTitleSimilarity(titleWords(source.Title), candidate)
 	if score <= 0 {
 		t.Errorf("identical titles should have positive similarity, got %f", score)
 	}
@@ -194,7 +194,7 @@ func TestComputeTitleSimilarity_Identical(t *testing.T) {
 func TestComputeTitleSimilarity_SharedWords(t *testing.T) {
 	source := &MediaInfo{Title: "Star Wars Episode IV"}
 	candidate := &MediaInfo{Title: "Star Wars Episode V"}
-	score := computeTitleSimilarity(source, candidate)
+	score := computeTitleSimilarity(titleWords(source.Title), candidate)
 	if score <= 0 {
 		t.Errorf("shared words should give positive similarity, got %f", score)
 	}
@@ -203,7 +203,7 @@ func TestComputeTitleSimilarity_SharedWords(t *testing.T) {
 func TestComputeTitleSimilarity_NoOverlap(t *testing.T) {
 	source := &MediaInfo{Title: "Alpha"}
 	candidate := &MediaInfo{Title: "Bravo"}
-	score := computeTitleSimilarity(source, candidate)
+	score := computeTitleSimilarity(titleWords(source.Title), candidate)
 	if score != 0 {
 		t.Errorf("no shared words should give 0, got %f", score)
 	}
@@ -212,7 +212,7 @@ func TestComputeTitleSimilarity_NoOverlap(t *testing.T) {
 func TestComputeTitleSimilarity_Empty(t *testing.T) {
 	source := &MediaInfo{Title: ""}
 	candidate := &MediaInfo{Title: "Test"}
-	score := computeTitleSimilarity(source, candidate)
+	score := computeTitleSimilarity(titleWords(source.Title), candidate)
 	if score != 0 {
 		t.Errorf("empty title should give 0, got %f", score)
 	}

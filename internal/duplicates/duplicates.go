@@ -207,8 +207,10 @@ func buildReceiverFingerprintIndex(recs []*repositories.ReceiverMediaRecord, exc
 
 // tryRecordReceiverPair checks if the item/existing pair should be recorded as a
 // duplicate (pair not already recorded, no resolved removal for this fingerprint),
-// and if so creates the record. Returns true if a record was created.
-func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item ReceiverItemRef, existing *repositories.ReceiverMediaRecord) bool {
+// and if so creates the record. Returns true if a record was created. resolvedFPs
+// caches the per-fingerprint resolved-removal check across the batch (mirroring the
+// local-scan path) so a repeated fingerprint doesn't re-query the DB per pair.
+func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item ReceiverItemRef, existing *repositories.ReceiverMediaRecord, resolvedFPs map[string]bool) bool {
 	exists, err := m.dupRepo.ExistsByPair(ctx, item.OpaqueID, existing.ID)
 	if err != nil {
 		m.log.Warn("RecordDuplicatesFromSlave: pair check failed: %v", err)
@@ -217,10 +219,7 @@ func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item
 	if exists {
 		return false
 	}
-	if resolved, err := m.dupRepo.ExistsResolvedRemoval(ctx, item.ContentFingerprint); err != nil {
-		m.log.Warn("RecordDuplicatesFromSlave: resolved-removal check failed: %v", err)
-		return false
-	} else if resolved {
+	if m.isResolvedRemovalCached(ctx, item.ContentFingerprint, resolvedFPs) {
 		return false
 	}
 	rec := &repositories.ReceiverDuplicateRecord{
@@ -248,20 +247,36 @@ func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item
 	return true
 }
 
-// RecordDuplicatesFromSlave compares newly-pushed slave items against the full receiver catalog (loads all receiver_media).
+// RecordDuplicatesFromSlave compares newly-pushed slave items against existing
+// receiver media that shares one of the pushed fingerprints. It loads only the
+// fingerprint-matching rows for other slaves (WHERE content_fingerprint IN (...)),
+// not the entire receiver_media table — so an incremental push of a handful of items
+// no longer re-reads and marshals every slave's whole catalog.
 func (m *Module) RecordDuplicatesFromSlave(slaveID string, items []ReceiverItemRef) {
 	if !m.enabled() || m.receiverRepo == nil {
 		return
 	}
 	ctx := context.Background()
 
-	allRecs, err := m.receiverRepo.ListAll(ctx)
-	if err != nil {
-		m.log.Warn("RecordDuplicatesFromSlave: failed to list receiver media: %v", err)
+	// Collect the distinct non-empty fingerprints present in this push.
+	fps := make([]string, 0, len(items))
+	for _, item := range items {
+		if item.ContentFingerprint != "" {
+			fps = append(fps, item.ContentFingerprint)
+		}
+	}
+	if len(fps) == 0 {
 		return
 	}
 
-	fpIndex := buildReceiverFingerprintIndex(allRecs, slaveID)
+	matchRecs, err := m.receiverRepo.ListByFingerprints(ctx, slaveID, fps)
+	if err != nil {
+		m.log.Warn("RecordDuplicatesFromSlave: failed to list receiver media by fingerprints: %v", err)
+		return
+	}
+
+	fpIndex := buildReceiverFingerprintIndex(matchRecs, slaveID)
+	resolvedFPs := make(map[string]bool)
 
 	for _, item := range items {
 		if item.ContentFingerprint == "" {
@@ -269,7 +284,7 @@ func (m *Module) RecordDuplicatesFromSlave(slaveID string, items []ReceiverItemR
 		}
 		matches := fpIndex[item.ContentFingerprint]
 		for _, existing := range matches {
-			m.tryRecordReceiverPair(ctx, slaveID, item, existing)
+			m.tryRecordReceiverPair(ctx, slaveID, item, existing, resolvedFPs)
 		}
 	}
 }

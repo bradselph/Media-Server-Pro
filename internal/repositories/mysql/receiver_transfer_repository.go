@@ -228,6 +228,43 @@ func (r *ReceiverMediaRepository) ListAll(ctx context.Context) ([]*repositories.
 	return r.rowsToMediaRecords(rows), nil
 }
 
+// ListByFingerprints returns rows matching any of the given content fingerprints
+// (deduped) and belonging to a different slave. It chunks the WHERE IN so a large
+// pushed batch cannot produce an oversized SQL statement, and relies on the
+// idx_receiver_media_fingerprint index. Empty fingerprints are ignored.
+func (r *ReceiverMediaRepository) ListByFingerprints(ctx context.Context, excludeSlaveID string, fingerprints []string) ([]*repositories.ReceiverMediaRecord, error) {
+	// Dedupe and drop empties.
+	seen := make(map[string]struct{}, len(fingerprints))
+	unique := make([]string, 0, len(fingerprints))
+	for _, fp := range fingerprints {
+		if fp == "" {
+			continue
+		}
+		if _, ok := seen[fp]; ok {
+			continue
+		}
+		seen[fp] = struct{}{}
+		unique = append(unique, fp)
+	}
+	if len(unique) == 0 {
+		return nil, nil
+	}
+
+	const chunkSize = 500
+	var out []*repositories.ReceiverMediaRecord
+	for start := 0; start < len(unique); start += chunkSize {
+		end := min(start+chunkSize, len(unique))
+		var rows []receiverMediaRow
+		if err := r.db.WithContext(ctx).
+			Where("slave_id <> ? AND content_fingerprint IN ?", excludeSlaveID, unique[start:end]).
+			Find(&rows).Error; err != nil {
+			return nil, fmt.Errorf("failed to list receiver media by fingerprints: %w", err)
+		}
+		out = append(out, r.rowsToMediaRecords(rows)...)
+	}
+	return out, nil
+}
+
 func (r *ReceiverMediaRepository) DeleteBySlave(ctx context.Context, slaveID string) error {
 	// Note: DeleteBySlave is a no-op if the slave ID has no media; this is expected behavior
 	// and not an error (a slave may be replaced before any media is indexed).

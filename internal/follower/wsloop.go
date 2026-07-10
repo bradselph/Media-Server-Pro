@@ -208,7 +208,10 @@ func (m *Module) connectAndRun(ctx context.Context) error {
 		return fmt.Errorf("register: %w", err)
 	}
 
-	// 2. Initial catalog push (full)
+	// 2. Initial catalog push (full).
+	// Capture the catalog version BEFORE building so a mutation racing the build is
+	// re-evaluated on the next tick rather than skipped.
+	lastSeenVersion := m.catalogVersion()
 	items := m.buildCatalog()
 	if err := sendJSON(conn, &writeMu, "catalog", map[string]any{
 		"slave_id": m.resolveSlaveID(cfg),
@@ -219,7 +222,11 @@ func (m *Module) connectAndRun(ctx context.Context) error {
 	}
 	m.recordCatalogPush(len(items))
 	m.log.Info("Pushed %d items to master", len(items))
-	lastCatalogHash := hashCatalog(items)
+	// lastSentByID maps each pushed item ID to a hash of its master-visible fields,
+	// so later ticks can push only the items that actually changed (a delta) instead
+	// of re-marshaling and re-sending the whole catalog on every change.
+	lastSentByID := catalogByID(items)
+	var rawTicks int
 
 	// 3. Read loop in a goroutine; main loop drives heartbeat + catalog timers.
 	streamCtx, streamCancel := context.WithCancel(ctx)
@@ -301,23 +308,72 @@ func (m *Module) connectAndRun(ctx context.Context) error {
 	for {
 		select {
 		case <-scanTicker.C:
-			items := m.buildCatalog()
-			h := hashCatalog(items)
-			if h == lastCatalogHash {
+			rawTicks++
+			// Every fullResyncEveryTicks, force a full catalog replace as a self-heal
+			// against any drift (a dropped delta, a master restart) even if only
+			// additions/changes occurred since the last push.
+			forceFull := rawTicks%fullResyncEveryTicks == 0
+
+			// #24: skip the O(catalog) rebuild+diff entirely when the media module's
+			// monotonic version hasn't advanced since we last processed it — the
+			// steady-state common case — unless a periodic full resync is due.
+			v := m.catalogVersion()
+			if v == lastSeenVersion && !forceFull {
 				continue
 			}
-			if err := sendJSON(conn, &writeMu, "catalog", map[string]any{
-				"slave_id": m.resolveSlaveID(cfg),
-				"items":    items,
-				"full":     true,
-			}); err != nil {
-				streamCancel()
-				wg.Wait()
-				return fmt.Errorf("catalog push: %w", err)
+			lastSeenVersion = v
+
+			current := m.buildCatalog()
+			currentByID := catalogByID(current)
+
+			// Items whose hashed fields differ from what we last sent (new or changed).
+			var changed []*catalogItem
+			for _, it := range current {
+				if lastSentByID[it.ID] != currentByID[it.ID] {
+					changed = append(changed, it)
+				}
 			}
-			m.recordCatalogPush(len(items))
-			lastCatalogHash = h
-			m.log.Info("Re-pushed %d items to master", len(items))
+			// A removal (item present last time, gone now) can only be reflected by a
+			// full replace: the master's incremental path upserts and never deletes.
+			removed := false
+			for id := range lastSentByID {
+				if _, ok := currentByID[id]; !ok {
+					removed = true
+					break
+				}
+			}
+
+			switch {
+			case removed || forceFull:
+				if err := sendJSON(conn, &writeMu, "catalog", map[string]any{
+					"slave_id": m.resolveSlaveID(cfg),
+					"items":    current,
+					"full":     true,
+				}); err != nil {
+					streamCancel()
+					wg.Wait()
+					return fmt.Errorf("catalog push: %w", err)
+				}
+				m.recordCatalogPush(len(current))
+				m.log.Info("Re-pushed full catalog (%d items) to master", len(current))
+			case len(changed) > 0:
+				// Incremental upsert: send only the changed items. The master merges
+				// these via UpsertBatch without touching the rest of the catalog.
+				if err := sendJSON(conn, &writeMu, "catalog", map[string]any{
+					"slave_id": m.resolveSlaveID(cfg),
+					"items":    changed,
+					"full":     false,
+				}); err != nil {
+					streamCancel()
+					wg.Wait()
+					return fmt.Errorf("catalog delta push: %w", err)
+				}
+				m.recordCatalogPush(len(changed))
+				m.log.Info("Pushed %d changed item(s) to master", len(changed))
+			default:
+				// Version advanced but no master-visible field changed — nothing to send.
+			}
+			lastSentByID = currentByID
 
 		case <-heartbeatTicker.C:
 			if err := sendJSON(conn, &writeMu, "heartbeat", map[string]string{
@@ -345,6 +401,16 @@ func (m *Module) connectAndRun(ctx context.Context) error {
 			return nil
 		}
 	}
+}
+
+// catalogVersion returns the media module's monotonic catalog version, or 0 when
+// no media module is wired (e.g. in tests). Used to cheaply skip rebuilding the
+// catalog on a scan tick when nothing has changed.
+func (m *Module) catalogVersion() int64 {
+	if m.media == nil {
+		return 0
+	}
+	return m.media.GetVersion()
 }
 
 // buildCatalog snapshots the local media library and converts it into the
@@ -400,14 +466,28 @@ func (m *Module) buildCatalog() []*catalogItem {
 	return out
 }
 
-// hashCatalog produces a stable hash of the catalog used to skip redundant
-// pushes when nothing has changed since the last scan tick.
-func hashCatalog(items []*catalogItem) string {
+// fullResyncEveryTicks is how many scan ticks pass between forced full-catalog
+// resyncs. At the default 5-minute scan interval this is roughly hourly — often
+// enough to self-heal any drift from a dropped delta or a master restart, rare
+// enough that the steady state is cheap incremental (or skipped) pushes.
+const fullResyncEveryTicks = 12
+
+// itemHash hashes the master-visible fields of one catalog item (the same fields
+// the previous whole-catalog hash compared). Used to detect which items changed
+// between scans so only the delta is pushed.
+func itemHash(it *catalogItem) string {
 	h := sha256.New()
-	for _, it := range items {
-		_, _ = fmt.Fprintf(h, "%s|%s|%d|%s\n", it.Path, it.Name, it.Size, it.ContentFingerprint)
-	}
+	_, _ = fmt.Fprintf(h, "%s|%s|%d|%s", it.Path, it.Name, it.Size, it.ContentFingerprint)
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// catalogByID builds an item-ID → item-hash map for delta detection.
+func catalogByID(items []*catalogItem) map[string]string {
+	byID := make(map[string]string, len(items))
+	for _, it := range items {
+		byID[it.ID] = itemHash(it)
+	}
+	return byID
 }
 
 // wsWriteDeadline bounds how long any single WebSocket frame can take to

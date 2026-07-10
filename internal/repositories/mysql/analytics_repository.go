@@ -31,6 +31,17 @@ func (r *AnalyticsRepository) Create(ctx context.Context, event *models.Analytic
 	return r.db.WithContext(ctx).Create(event).Error
 }
 
+// CreateBatch inserts many events with GORM's CreateInBatches (chunked multi-row
+// INSERT) so the analytics module can flush a buffer of events in one round trip
+// instead of one Create per event.
+func (r *AnalyticsRepository) CreateBatch(ctx context.Context, events []*models.AnalyticsEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	const batchSize = 200
+	return r.db.WithContext(ctx).CreateInBatches(events, batchSize).Error
+}
+
 // listWhereSpec describes a single optional WHERE clause for List filtering.
 type listWhereSpec struct {
 	ok     bool

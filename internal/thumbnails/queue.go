@@ -118,7 +118,7 @@ func (m *Module) worker(id int) {
 			return
 		}
 
-		m.log.Info("Worker %d: Generating thumbnail for %s", id, job.MediaPath)
+		m.log.Debug("Worker %d: Generating thumbnail for %s", id, job.MediaPath)
 
 		m.statsMu.Lock()
 		m.stats.Pending--
@@ -141,7 +141,7 @@ func (m *Module) worker(id int) {
 				m.stats.Failed++
 				m.statsMu.Unlock()
 			} else {
-				m.log.Info("Worker %d: ✓ Thumbnail generated: %s", id, job.OutputPath)
+				m.log.Debug("Worker %d: ✓ Thumbnail generated: %s", id, job.OutputPath)
 				m.statsMu.Lock()
 				m.stats.Generated++
 				m.statsMu.Unlock()

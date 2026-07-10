@@ -526,6 +526,9 @@ func (m *Module) GetSuggestions(userID string, limit int, canViewMature bool) []
 	// scoreRecentlyViewed (which made the pass O(catalog × history)).
 	recentCategorySet := recentlyViewedCategorySet(profile)
 
+	// Sum the profile's category/type preference maps once, not per catalog item.
+	totals := computeProfileTotals(profile)
+
 	var suggestions []*Suggestion
 	for _, media := range m.mediaData {
 		if media.IsMature && !canViewMature {
@@ -535,7 +538,7 @@ func (m *Module) GetSuggestions(userID string, limit int, canViewMature bool) []
 			continue // Skip recently viewed
 		}
 
-		score, reasons := m.scoreMedia(profile, media, recentCategorySet)
+		score, reasons := m.scoreMedia(profile, media, recentCategorySet, totals)
 
 		// Apply re-watch penalty for previously-seen items (penalty fades over 90 days)
 		if lastViewed, ok := oldViewedAt[media.Path]; ok {
@@ -608,11 +611,35 @@ func diversify(sorted []*Suggestion, limit, maxPerCategory int) []*Suggestion {
 // is the pre-built set of categories the profile viewed in the last 7 days
 // (see recentlyViewedCategorySet), threaded through to avoid an O(history)
 // rescan per item in scoreRecentlyViewed.
-func (m *Module) scoreMedia(profile *UserProfile, media *MediaInfo, recentCategorySet map[string]bool) (score float64, reasons []string) {
+// profileTotals holds sums over a profile's preference maps that are constant for
+// the duration of one scoring pass. Precomputing them once per GetSuggestions call
+// (instead of re-summing inside scoreCategoryPreference/scoreTypePreference for every
+// catalog item) turns an O(catalog x profile-size) cost into O(catalog + profile-size).
+type profileTotals struct {
+	categoryTotal float64
+	typeTotal     float64
+}
+
+// computeProfileTotals sums the profile's category and type preference maps once.
+func computeProfileTotals(profile *UserProfile) profileTotals {
+	var t profileTotals
+	if profile == nil {
+		return t
+	}
+	for _, s := range profile.CategoryScores {
+		t.categoryTotal += s
+	}
+	for _, s := range profile.TypePreferences {
+		t.typeTotal += s
+	}
+	return t
+}
+
+func (m *Module) scoreMedia(profile *UserProfile, media *MediaInfo, recentCategorySet map[string]bool, totals profileTotals) (score float64, reasons []string) {
 	score, reasons = scoreMediaBase(media)
 
 	if profile != nil {
-		profileScore, profileReasons := scoreMediaForProfile(profile, media, recentCategorySet)
+		profileScore, profileReasons := scoreMediaForProfile(profile, media, recentCategorySet, totals)
 		score += profileScore
 		reasons = append(reasons, profileReasons...)
 	}
@@ -677,9 +704,11 @@ func topShuffled(sorted []*Suggestion, n int) []*Suggestion {
 }
 
 // scoreMediaForProfile calculates the personalized score based on a user profile.
-func scoreMediaForProfile(profile *UserProfile, media *MediaInfo, recentCategorySet map[string]bool) (score float64, reasons []string) {
-	score += scoreCategoryPreference(profile, media, &reasons)
-	score += scoreTypePreference(profile, media)
+// totals carries the pre-summed category/type preference totals so the sub-scorers
+// don't re-sum the whole profile for every catalog item.
+func scoreMediaForProfile(profile *UserProfile, media *MediaInfo, recentCategorySet map[string]bool, totals profileTotals) (score float64, reasons []string) {
+	score += scoreCategoryPreference(profile, media, &reasons, totals.categoryTotal)
+	score += scoreTypePreference(profile, media, totals.typeTotal)
 	score += scoreRecentlyViewed(recentCategorySet, media, &reasons)
 
 	return score, reasons
@@ -688,7 +717,7 @@ func scoreMediaForProfile(profile *UserProfile, media *MediaInfo, recentCategory
 // scoreCategoryPreference calculates the category preference boost. An item can
 // belong to several curated categories; it is scored by its strongest matching
 // category against the user's accumulated category scores.
-func scoreCategoryPreference(profile *UserProfile, media *MediaInfo, reasons *[]string) float64 {
+func scoreCategoryPreference(profile *UserProfile, media *MediaInfo, reasons *[]string, totalCategoryScore float64) float64 {
 	if len(media.CategoryIDs) == 0 {
 		return 0
 	}
@@ -700,10 +729,6 @@ func scoreCategoryPreference(profile *UserProfile, media *MediaInfo, reasons *[]
 	}
 	if bestScore <= 0 {
 		return 0
-	}
-	totalCategoryScore := 0.0
-	for _, s := range profile.CategoryScores {
-		totalCategoryScore += s
 	}
 	if totalCategoryScore <= 0 {
 		return 0
@@ -717,15 +742,13 @@ func scoreCategoryPreference(profile *UserProfile, media *MediaInfo, reasons *[]
 	return normalizedCategoryScore
 }
 
-// scoreTypePreference calculates the media type preference boost.
-func scoreTypePreference(profile *UserProfile, media *MediaInfo) float64 {
+// scoreTypePreference calculates the media type preference boost. totalTypeScore is
+// the pre-summed total of the profile's type preferences (constant across a scoring
+// pass), passed in rather than re-summed per catalog item.
+func scoreTypePreference(profile *UserProfile, media *MediaInfo, totalTypeScore float64) float64 {
 	typeScore, ok := profile.TypePreferences[media.MediaType]
 	if !ok {
 		return 0
-	}
-	totalTypeScore := 0.0
-	for _, s := range profile.TypePreferences {
-		totalTypeScore += s
 	}
 	if totalTypeScore <= 0 {
 		return 0
@@ -848,6 +871,10 @@ func (m *Module) GetSimilarMedia(mediaID string, limit int, canViewMature bool) 
 		return m.randomSample(mediaID, limit, canViewMature)
 	}
 
+	// Tokenize the source title once — it is invariant across every candidate, so
+	// computeTitleSimilarity should not re-lower/re-split it per catalog item.
+	sourceWords := titleWords(sourceMedia.Title)
+
 	var suggestions []*Suggestion
 
 	for _, media := range m.mediaData {
@@ -858,7 +885,7 @@ func (m *Module) GetSimilarMedia(mediaID string, limit int, canViewMature bool) 
 			continue // Exclude mature items when user has not enabled mature content
 		}
 
-		score, reasons := computeSimilarity(sourceMedia, media)
+		score, reasons := computeSimilarity(sourceMedia, media, sourceWords)
 
 		// Add ±50% score jitter for variety in related-media results
 		score *= 1.0 + (rand.Float64()*1.00 - 0.50) //nolint:gosec // G404: math/rand is fine for suggestion jitter, not security
@@ -939,8 +966,15 @@ func (m *Module) randomSample(excludeID string, n int, canViewMature bool) []*Su
 	return pool
 }
 
-// computeSimilarity calculates how similar two media items are by category, type, tags, and title.
-func computeSimilarity(source, candidate *MediaInfo) (score float64, reasons []string) {
+// titleWords lowercases and splits a title into words for overlap scoring.
+func titleWords(title string) []string {
+	return strings.Fields(strings.ToLower(title))
+}
+
+// computeSimilarity calculates how similar two media items are by category, type,
+// tags, and title. sourceWords is the pre-tokenized source title (see titleWords),
+// passed in so a per-candidate call does not re-tokenize the constant source title.
+func computeSimilarity(source, candidate *MediaInfo, sourceWords []string) (score float64, reasons []string) {
 	if hasCommonCategory(candidate.CategoryIDs, source.CategoryIDs) {
 		score += 0.3
 		reasons = append(reasons, "Same category")
@@ -950,7 +984,7 @@ func computeSimilarity(source, candidate *MediaInfo) (score float64, reasons []s
 	}
 
 	score += computeTagSimilarity(source, candidate, &reasons)
-	score += computeTitleSimilarity(source, candidate)
+	score += computeTitleSimilarity(sourceWords, candidate)
 
 	return score, reasons
 }
@@ -970,9 +1004,9 @@ func computeTagSimilarity(source, candidate *MediaInfo, reasons *[]string) float
 	return score
 }
 
-// computeTitleSimilarity calculates a simple word-overlap score between two media titles.
-func computeTitleSimilarity(source, candidate *MediaInfo) float64 {
-	sourceWords := strings.Fields(strings.ToLower(source.Title))
+// computeTitleSimilarity calculates a simple word-overlap score between a
+// pre-tokenized source title (sourceWords) and a candidate's title.
+func computeTitleSimilarity(sourceWords []string, candidate *MediaInfo) float64 {
 	mediaWords := strings.Fields(strings.ToLower(candidate.Title))
 	var score float64
 	for _, sw := range sourceWords {

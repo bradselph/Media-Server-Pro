@@ -88,21 +88,21 @@ const (
 	// admin actions panel and audit log, but intentionally NOT mapped to a
 	// daily_stats column. Adding a column for every micro-action would balloon
 	// the schema; counts come from event-by-type queries on demand.
-	EventCategoryCreate     = "category_create"
-	EventCategoryUpdate     = "category_update"
-	EventCategoryDelete     = "category_delete"
-	EventCategoryItemsAdd   = "category_items_add"
-	EventCategoryItemRemove = "category_item_remove"
-	EventSmartPlaylistCreate  = "smart_playlist_create"
-	EventSmartPlaylistUpdate  = "smart_playlist_update"
-	EventSmartPlaylistDelete  = "smart_playlist_delete"
-	EventChapterCreate        = "chapter_create"
-	EventChapterUpdate        = "chapter_update"
-	EventChapterDelete        = "chapter_delete"
-	EventAutoTagRuleCreate    = "auto_tag_rule_create"
-	EventAutoTagRuleUpdate    = "auto_tag_rule_update"
-	EventAutoTagRuleDelete    = "auto_tag_rule_delete"
-	EventAutoTagRulesApply    = "auto_tag_rules_apply"
+	EventCategoryCreate      = "category_create"
+	EventCategoryUpdate      = "category_update"
+	EventCategoryDelete      = "category_delete"
+	EventCategoryItemsAdd    = "category_items_add"
+	EventCategoryItemRemove  = "category_item_remove"
+	EventSmartPlaylistCreate = "smart_playlist_create"
+	EventSmartPlaylistUpdate = "smart_playlist_update"
+	EventSmartPlaylistDelete = "smart_playlist_delete"
+	EventChapterCreate       = "chapter_create"
+	EventChapterUpdate       = "chapter_update"
+	EventChapterDelete       = "chapter_delete"
+	EventAutoTagRuleCreate   = "auto_tag_rule_create"
+	EventAutoTagRuleUpdate   = "auto_tag_rule_update"
+	EventAutoTagRuleDelete   = "auto_tag_rule_delete"
+	EventAutoTagRulesApply   = "auto_tag_rules_apply"
 
 	// Account governance events — surface user-driven deletion requests in the
 	// admin review UI without polling the deletion_requests table directly.
@@ -212,11 +212,11 @@ func (m *Module) TrackEvent(ctx context.Context, event models.AnalyticsEvent) {
 		event.ID = generateEventID()
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	if err := m.eventRepo.Create(ctx, &event); err != nil {
-		m.log.Error("Failed to create analytics event: %v", err)
-	}
+	// Buffer the raw event for batched insertion instead of a synchronous per-event
+	// DB round trip on the hot path (playback heartbeats alone fire every ~10-30s
+	// per active stream). The buffer is flushed on a short ticker, on shutdown, and
+	// before any event purge/read that must see the latest rows.
+	m.enqueueEvent(event)
 
 	var delta float64
 	isNewMedia := true
@@ -229,29 +229,42 @@ func (m *Module) TrackEvent(ctx context.Context, event models.AnalyticsEvent) {
 	// Selective invalidation rather than a full flush — it's cheap, and a
 	// flush-everything would mean every event causes a 50k-event scan on
 	// the next dashboard refresh, defeating the cache entirely.
-	m.invalidateCachesFor(event.Type)
+	m.invalidateCachesFor(event)
 	// Broadcast to live subscribers (SSE listeners). Best-effort: a slow
 	// subscriber doesn't block the hot event path.
 	m.broadcastEvent(event)
 	m.log.Debug("Tracked event: %s for %s", event.Type, event.MediaID)
 }
 
-// invalidateCachesFor drops cached entries that could be affected by the
-// given event type. Each event type maps to a small set of cache prefixes;
-// unrelated entries (e.g. heatmap when a login arrives) are left alone so
-// the cache continues to serve other panels.
-func (m *Module) invalidateCachesFor(eventType string) {
+// invalidateCachesFor drops only the cached aggregation entries an event can
+// actually change, keyed off both its type and whether it carries a user. This
+// replaces the previous "bust all five expensive prefixes on every event", which —
+// under playback-heartbeat traffic — invalidated the caches far faster than their
+// own TTL and defeated the point of caching (each dashboard refresh re-scanned the
+// full events table). The gating matches the compute* functions exactly:
+//   - heatmap counts every event into a time bucket → always.
+//   - cohort / top-users are user-scoped → only when UserID is set.
+//   - funnel is derived solely from view/playback → only those.
+//   - device/browser breakdown meaningfully shifts on real engagement events that
+//     carry a client user-agent → view/playback/hls_start (TTL bounds any lag).
+func (m *Module) invalidateCachesFor(event models.AnalyticsEvent) {
 	if m.cache == nil {
 		return
 	}
-	// Every event affects the cohort + heatmap totals + top-users (if it
-	// has a user_id) + funnel. The cheap path is to drop those four prefixes
-	// for every event — they cover most aggregations.
-	m.cache.invalidate("cohort")
 	m.cache.invalidate("heatmap")
-	m.cache.invalidate("topusers")
-	m.cache.invalidate("funnel")
-	switch eventType {
+	if event.UserID != "" {
+		m.cache.invalidate("cohort")
+		m.cache.invalidate("topusers")
+	}
+	switch event.Type {
+	case "view", "playback":
+		m.cache.invalidate("funnel")
+	}
+	switch event.Type {
+	case "view", "playback", EventHLSStart:
+		m.cache.invalidate("devices")
+	}
+	switch event.Type {
 	case EventSearch:
 		m.cache.invalidate("topsearches")
 	case EventLoginFailed:
@@ -261,10 +274,6 @@ func (m *Module) invalidateCachesFor(eventType string) {
 	case EventStreamStart, EventStreamEnd:
 		m.cache.invalidate("quality")
 	}
-	// Device breakdown is keyed off user-agent which only changes when a
-	// new client appears — invalidate on every event keeps the device
-	// distribution honest after sudden traffic shifts.
-	m.cache.invalidate("devices")
 }
 
 // TrackView records a view event.
@@ -453,6 +462,11 @@ func (m *Module) DeleteEventsByMedia(ctx context.Context, mediaID string) {
 		// (and view totals) diverge from what's stored.
 		m.updateStats(tombstone, 0, false, false)
 	}
+
+	// Flush any buffered raw events BEFORE the purge so events for this media that
+	// are still in the in-memory buffer get written and then deleted — otherwise
+	// they would be inserted after DeleteByMediaID and linger as orphaned rows.
+	m.flushEvents(ctx)
 
 	if err := m.eventRepo.DeleteByMediaID(ctx, mediaID); err != nil {
 		m.log.Warn("Failed to purge analytics events for deleted media %s: %v", mediaID, err)

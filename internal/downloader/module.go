@@ -59,6 +59,46 @@ type Module struct {
 
 	cancelHealth context.CancelFunc
 	scanWG       sync.WaitGroup
+
+	// destWritableCache memoizes the (stat + temp-file) writability probe per
+	// destination directory for a short TTL, so a batch auto-import sweep targeting
+	// the same folder doesn't repeat real (and, on a network mount, round-tripping)
+	// filesystem I/O for every file.
+	destWritableMu    sync.Mutex
+	destWritableCache map[string]destWritableEntry
+}
+
+// destWritableEntry is one cached destination-writability probe result.
+type destWritableEntry struct {
+	ok bool
+	at time.Time
+}
+
+// destWritableTTL bounds how long a cached writability result is trusted.
+const destWritableTTL = 5 * time.Second
+
+// destinationWritableCached wraps destinationWritable with a short per-directory TTL
+// cache. The result cannot change between two imports milliseconds apart into the
+// same folder, so a sweep of N pending downloads probes each destination once per
+// TTL window instead of N times.
+func (m *Module) destinationWritableCached(dir string) bool {
+	now := time.Now()
+	m.destWritableMu.Lock()
+	if m.destWritableCache == nil {
+		m.destWritableCache = make(map[string]destWritableEntry)
+	}
+	if e, ok := m.destWritableCache[dir]; ok && now.Sub(e.at) < destWritableTTL {
+		m.destWritableMu.Unlock()
+		return e.ok
+	}
+	m.destWritableMu.Unlock()
+
+	ok := destinationWritable(dir)
+
+	m.destWritableMu.Lock()
+	m.destWritableCache[dir] = destWritableEntry{ok: ok, at: now}
+	m.destWritableMu.Unlock()
+	return ok
 }
 
 // NewModule creates a new downloader integration module.
@@ -282,7 +322,7 @@ func (m *Module) Import(filename, destination, subfolder string, deleteSource, t
 	// Pre-flight writability check: catch a read-only destination (e.g. a HiDrive
 	// mount mounted --read-only) here, with a clear message, instead of letting
 	// the admin discover it as a raw EROFS after the copy is attempted.
-	if !destinationWritable(destDir) {
+	if !m.destinationWritableCached(destDir) {
 		return "", false, ErrDestinationReadOnly
 	}
 

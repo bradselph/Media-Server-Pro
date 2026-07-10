@@ -109,6 +109,22 @@ func (m *Module) previewURLForIndex(opts *buildPreviewURLListOpts, i int) string
 	return ""
 }
 
+// existingPreviewURLs returns the preview URL list when all `count` preview frames
+// for mediaID already exist on disk (ok=true). If any frame is missing it returns
+// (nil, false) so the caller falls back to the probe-and-generate path. The filename
+// and URL construction mirror previewURLForIndex exactly.
+func (m *Module) existingPreviewURLs(mediaID string, count int) (urls []string, ok bool) {
+	urls = make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		previewFilename := fmt.Sprintf("%s_preview_%d.jpg", mediaID, i)
+		if !isValidThumbnailFile(filepath.Join(m.thumbnailDir, previewFilename)) {
+			return nil, false
+		}
+		urls = append(urls, "/thumbnails/"+previewFilename)
+	}
+	return urls, true
+}
+
 // buildPreviewURLList fills and returns the list of preview URLs for the given media.
 func (m *Module) buildPreviewURLList(opts *buildPreviewURLListOpts) []string {
 	urls := make([]string, 0, opts.Count)
@@ -189,6 +205,16 @@ func (m *Module) getPreviewURLsFromRequest(req *getPreviewURLsRequest) []string 
 	if count <= 0 {
 		return []string{}
 	}
+
+	// Fast path: if every expected preview frame already exists on disk (the steady
+	// state for a scanned catalog), build the URL list directly. The media duration
+	// is only needed to compute timestamps for (re)generation — which isn't
+	// happening here — so probing it via ffprobe on every hover would be pure waste
+	// (and, for remote-backed media, an extra presigned-URL resolution round trip).
+	if urls, ok := m.existingPreviewURLs(req.MediaID, count); ok {
+		return urls
+	}
+
 	duration := m.getPreviewDuration(req.MediaPath)
 	if duration < 10 {
 		return []string{}

@@ -57,9 +57,10 @@ type Module struct {
 	cacheDir     string
 	syncTicker   *time.Ticker
 	syncDone     chan struct{}
-	syncDoneOnce sync.Once     // guards close(syncDone) to avoid double-close panic
+	syncDoneOnce sync.Once          // guards close(syncDone) to avoid double-close panic
 	cacheSem     chan struct{}      // bounds concurrent background cache downloads
 	cacheGroup   singleflight.Group // coalesces concurrent downloads of the same remote URL
+	syncGroup    singleflight.Group // coalesces concurrent syncs of the same source
 	ctx          context.Context
 	cancel       context.CancelFunc // canceled on Stop so CacheMedia aborts
 }
@@ -284,8 +285,18 @@ func (m *Module) SyncSource(sourceName string) error {
 
 	m.log.Info("Syncing remote source: %s", sourceName)
 
-	// Try to discover media from source
-	media, err := m.discoverMedia(state.Source)
+	// Coalesce concurrent syncs of the SAME source (the periodic syncTicker firing
+	// while an on-demand admin/API sync is already in flight, or several callers
+	// racing an empty source) into one fetch+parse instead of duplicate full HTTP
+	// GETs and JSON decodes. Every coalesced caller shares the leader's result and
+	// runs the same status write-back below.
+	v, err, _ := m.syncGroup.Do(sourceName, func() (any, error) {
+		return m.discoverMedia(state.Source)
+	})
+	var media []*MediaItem
+	if err == nil {
+		media, _ = v.([]*MediaItem)
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()

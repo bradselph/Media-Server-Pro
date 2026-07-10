@@ -25,6 +25,9 @@ func (f *fakeReceiverMediaRepo) ReplaceSlaveMedia(context.Context, string, []*re
 func (f *fakeReceiverMediaRepo) ListAll(context.Context) ([]*repositories.ReceiverMediaRecord, error) {
 	return []*repositories.ReceiverMediaRecord{}, nil
 }
+func (f *fakeReceiverMediaRepo) ListByFingerprints(context.Context, string, []string) ([]*repositories.ReceiverMediaRecord, error) {
+	return []*repositories.ReceiverMediaRecord{}, nil
+}
 func (f *fakeReceiverMediaRepo) DeleteBySlave(context.Context, string) error { return nil }
 
 type fakeReceiverRemover struct {

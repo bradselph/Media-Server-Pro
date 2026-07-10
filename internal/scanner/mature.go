@@ -370,13 +370,24 @@ func (s *MatureScanner) ResetRepoState() {
 
 // ScanFile scans a file for mature content and persists the result.
 func (s *MatureScanner) ScanFile(path string) *ScanResult {
-	result := s.scanFileInternal(path)
+	return s.scanFileWithCache(path, nil)
+}
+
+// scanFileWithCache scans a file, consulting an optional preloaded repository-result
+// map (from a batched GetByPaths) instead of issuing a per-file repo Get. It persists
+// the result only when a genuinely fresh scan happened (fromCache == false); a cache
+// hit is already stored identically in the repo, so a full re-scan of an unchanged
+// catalog issues zero redundant Save transactions. Passing preloaded == nil restores
+// the per-file Get behavior (used by single-file callers).
+func (s *MatureScanner) scanFileWithCache(path string, preloaded map[string]*repositories.ScanResult) *ScanResult {
+	result, fromCache := s.scanFileInternal(path, preloaded)
 	if result == nil {
 		return nil
 	}
 
-	// Save to repository for persistent cache (skip if repo is down to avoid log spam)
-	if s.scanRepo != nil && !s.repoDown.Load() {
+	// Save to repository for persistent cache only on a fresh scan (skip if repo is
+	// down to avoid log spam). Cache hits are byte-identical to what is already stored.
+	if !fromCache && s.scanRepo != nil && !s.repoDown.Load() {
 		repoResult := s.convertScannerToRepo(result)
 		if err := s.scanRepo.Save(context.Background(), repoResult); err != nil {
 			errCount := s.repoErrors.Add(1)
@@ -395,15 +406,32 @@ func (s *MatureScanner) ScanFile(path string) *ScanResult {
 	return result
 }
 
-// scanFileInternal performs the actual scan without persisting.
-func (s *MatureScanner) scanFileInternal(path string) *ScanResult {
+// lookupRepoResult returns the persisted scan result for path, preferring a
+// preloaded batch map (from GetByPaths) over a per-file repo Get. When preloaded is
+// non-nil, an absent path means "no persisted row" and no per-file query is made.
+func (s *MatureScanner) lookupRepoResult(path string, preloaded map[string]*repositories.ScanResult) (*repositories.ScanResult, bool) {
+	if preloaded != nil {
+		rr, ok := preloaded[path]
+		return rr, ok
+	}
+	rr, err := s.scanRepo.Get(context.Background(), path)
+	if err != nil || rr == nil {
+		return nil, false
+	}
+	return rr, true
+}
+
+// scanFileInternal performs the actual scan without persisting. The second return
+// value is true when the result came from a cache (persisted repo row or in-memory
+// entry) and therefore does not need to be re-saved.
+func (s *MatureScanner) scanFileInternal(path string, preloaded map[string]*repositories.ScanResult) (*ScanResult, bool) {
 	s.log.Debug("→ Scanning: %s", filepath.Base(path))
 
 	// Check repository first for persistent cache (only if repo is ready)
 	if s.scanRepo != nil {
 		// First verify the file still exists before loading cache (mitigates TOCTOU race)
 		if info, err := os.Stat(path); err == nil {
-			if repoResult, err := s.scanRepo.Get(context.Background(), path); err == nil {
+			if repoResult, ok := s.lookupRepoResult(path, preloaded); ok {
 				// Parse scanned_at timestamp
 				scannedAt, err := time.Parse(time.RFC3339, repoResult.ScannedAt)
 				if err == nil {
@@ -414,7 +442,7 @@ func (s *MatureScanner) scanFileInternal(path string) *ScanResult {
 						if repoResult.ReviewedBy != "" || repoResult.ReviewDecision != "" || repoResult.IsMature {
 							s.log.Debug("  Skipping scan - already processed in repository (reviewed: %v, decision: %v, flagged: %v)",
 								repoResult.ReviewedBy != "", repoResult.ReviewDecision != "", repoResult.IsMature)
-							return s.convertRepoToScanner(repoResult)
+							return s.convertRepoToScanner(repoResult), true
 						}
 						// For unreviewed content, use the cache only while it is fresh
 						// (matching the in-memory cache's 24h TTL) so config/keyword
@@ -422,7 +450,7 @@ func (s *MatureScanner) scanFileInternal(path string) *ScanResult {
 						// a persistent repo entry that never expires.
 						if time.Since(scannedAt) < 24*time.Hour {
 							s.log.Debug("  Using repository cached scan result (scanned: %v)", scannedAt.Format("2006-01-02 15:04"))
-							return s.convertRepoToScanner(repoResult)
+							return s.convertRepoToScanner(repoResult), true
 						}
 					}
 				}
@@ -441,13 +469,13 @@ func (s *MatureScanner) scanFileInternal(path string) *ScanResult {
 				s.mu.RUnlock()
 				s.log.Debug("  Skipping scan - already processed (reviewed: %v, decision: %v, flagged: %v)",
 					existing.ReviewedBy != "", existing.ReviewDecision != "", existing.IsMature)
-				return existing
+				return existing, true
 			}
 			// For unreviewed content, use cache if less than 24 hours old
 			if time.Since(existing.ScannedAt) < 24*time.Hour {
 				s.mu.RUnlock()
 				s.log.Debug("  Using in-memory cached scan result (age: %v)", time.Since(existing.ScannedAt).Round(time.Minute))
-				return existing
+				return existing, true
 			}
 		}
 	}
@@ -475,7 +503,8 @@ func (s *MatureScanner) scanFileInternal(path string) *ScanResult {
 	// an admin's review decision with a fresh auto-scan result.
 	if existing, ok := s.results[path]; ok && (existing.ReviewedBy != "" || existing.ReviewDecision != "") {
 		s.mu.Unlock()
-		return existing
+		// Already persisted by the concurrent ReviewItem's own Save; treat as a cache hit.
+		return existing, true
 	}
 	s.results[path] = result
 	s.mu.Unlock()
@@ -499,7 +528,7 @@ func (s *MatureScanner) scanFileInternal(path string) *ScanResult {
 		s.log.Debug("  ○ Clean: %s (confidence: %.2f)", filepath.Base(path), confidence)
 	}
 
-	return result
+	return result, false
 }
 
 // computeConfidence calculates the total mature-content confidence score for a file.
@@ -771,11 +800,18 @@ func (s *MatureScanner) applyThresholds(result *ScanResult) {
 	}
 }
 
-// ScanDirectory scans all files in a directory
+// ScanDirectory scans all files in a directory.
+//
+// It runs in two phases: first it walks the tree to collect the candidate media
+// paths, then it batch-loads their cached scan results in a single query (chunked)
+// and scans each file against that preloaded map. This avoids the previous N+1 of a
+// per-file repository Get, and — combined with the fromCache short-circuit in
+// scanFileWithCache — issues DB writes only for files that actually changed, instead
+// of re-persisting every file on every scheduled scan.
 func (s *MatureScanner) ScanDirectory(dir string) ([]*ScanResult, error) {
-	var results []*ScanResult
-
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	// Phase 1: collect candidate paths (cheap; no DB, no scanning).
+	var paths []string
+	walkErr := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			s.log.Warn("Failed to access %s during scan: %v", path, err)
 			return nil // Continue on error
@@ -783,22 +819,35 @@ func (s *MatureScanner) ScanDirectory(dir string) ([]*ScanResult, error) {
 		if d.IsDir() {
 			return nil
 		}
-
 		// Only scan media files matching configured allowed extensions
 		ext := strings.ToLower(filepath.Ext(path))
 		if !s.isAllowedExtension(ext) {
 			return nil
 		}
-
-		result := s.ScanFile(path)
-		if result != nil {
-			results = append(results, result)
-		}
-
+		paths = append(paths, path)
 		return nil
 	})
 
-	return results, err
+	// Phase 2a: batch-preload cached results. On any error, fall back to per-file
+	// lookups (preloaded == nil) so a failed batch load never skips the cache check.
+	var preloaded map[string]*repositories.ScanResult
+	if s.scanRepo != nil && len(paths) > 0 {
+		if loaded, err := s.scanRepo.GetByPaths(context.Background(), paths); err == nil {
+			preloaded = loaded
+		} else {
+			s.log.Warn("Batch preload of %d scan results failed, falling back to per-file lookups: %v", len(paths), err)
+		}
+	}
+
+	// Phase 2b: scan each file against the preloaded cache.
+	results := make([]*ScanResult, 0, len(paths))
+	for _, path := range paths {
+		if result := s.scanFileWithCache(path, preloaded); result != nil {
+			results = append(results, result)
+		}
+	}
+
+	return results, walkErr
 }
 
 // isAllowedExtension checks if a file extension is in the configured AllowedExtensions list.

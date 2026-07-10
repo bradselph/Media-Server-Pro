@@ -56,7 +56,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-    Version   = "1.23.2"
+	Version = "1.23.2"
 
 	BuildDate = "dev"
 )
@@ -764,13 +764,23 @@ func registerMediaTasks(registerWithOverride func(tasks.TaskRegistration), cfg *
 		Description: "Removes metadata entries for media files that no longer exist on disk",
 		Schedule:    24 * time.Hour,
 		Func: func(_ context.Context) error {
+			// When auto-discovery is ON, the hourly media-scan task already does a
+			// full filesystem walk that discovers new files AND prunes removed ones
+			// (Scan rebuilds the catalog from a fresh WalkDir every call), plus feeds
+			// suggestions. Re-running the same expensive scan here every 24h produces
+			// no information the hourly scan didn't already produce, so skip it and
+			// let the hourly task keep the catalog current.
+			//
+			// Only when auto-discovery is OFF is the hourly scan a no-op, making this
+			// 24h scan the sole catalog refresh — the one case where it must run.
+			if cfg.Get().Features.EnableAutoDiscovery {
+				return nil
+			}
 			if err := mediaModule.Scan(); err != nil {
 				return err
 			}
-			// When EnableAutoDiscovery is off, the media-scan task above is a
-			// no-op and this 24h scan is the only catalog refresh — without
-			// re-feeding here, the suggestions engine served recommendations
-			// from a snapshot frozen at boot.
+			// Without re-feeding here, the suggestions engine would serve
+			// recommendations from a snapshot frozen at boot.
 			feedSuggestions(mediaModule, suggestionsModule, receiverModule)
 			return nil
 		},
@@ -1162,7 +1172,10 @@ func registerHLSStreamingTasks(registerWithOverride func(tasks.TaskRegistration)
 				if item.Type != "video" {
 					continue
 				}
-				if hlsModule.HasHLS(item.Path) {
+				// Use the O(1) ID lookup (job ID == media ID) instead of HasHLS(path),
+				// which linearly scans every job. This loop runs over the whole catalog
+				// each pre-generation cycle, so a path scan would be O(items x jobs).
+				if hlsModule.HasHLSByID(item.ID) {
 					continue
 				}
 				if _, err := hlsModule.GenerateHLS(ctx, &hls.GenerateHLSParams{

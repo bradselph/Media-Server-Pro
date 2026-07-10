@@ -16,6 +16,9 @@ import (
 type noOpAnalyticsRepo struct{}
 
 func (noOpAnalyticsRepo) Create(context.Context, *models.AnalyticsEvent) error { return nil }
+func (noOpAnalyticsRepo) CreateBatch(context.Context, []*models.AnalyticsEvent) error {
+	return nil
+}
 
 func (noOpAnalyticsRepo) List(context.Context, repositories.AnalyticsFilter) ([]*models.AnalyticsEvent, error) {
 	return nil, nil
