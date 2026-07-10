@@ -145,6 +145,11 @@ func (m *Module) cleanInactiveJob(entry os.DirEntry, cutoff time.Time) bool {
 
 	m.accessTracker.mu.Lock()
 	delete(m.accessTracker.lastAccess, jobID)
+	// Also drop the persist-debounce entry. Previously only lastAccess was cleaned,
+	// so every job that was ever accessed left a permanent lastSaved entry even after
+	// the job and its files were deleted — an unbounded map leak over a long-running
+	// server with catalog churn.
+	delete(m.accessTracker.lastSaved, jobID)
 	m.accessTracker.mu.Unlock()
 
 	if m.repo != nil {

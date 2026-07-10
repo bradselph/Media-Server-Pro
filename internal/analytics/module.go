@@ -39,10 +39,15 @@ type Module struct {
 	healthMsg            string
 	healthMu             sync.RWMutex
 	flushTicker          *time.Ticker
+	eventFlushTicker     *time.Ticker
 	done                 chan struct{}
 	stopOnce             sync.Once
 	bgWg                 sync.WaitGroup
 	maxEvents            int
+	// eventBuf accumulates raw events so they can be flushed to the DB in batches
+	// instead of one synchronous INSERT per TrackEvent call. Guarded by eventBufMu.
+	eventBuf   []*models.AnalyticsEvent
+	eventBufMu sync.Mutex
 	// dirtyDays records dates whose in-memory stats have changed since the last
 	// successful flush to daily_stats. Guarded by dirtyMu, NOT statsMu, so the
 	// flush loop can drain it without blocking the hot event path.
@@ -121,6 +126,10 @@ func (m *Module) Start(_ context.Context) error {
 	// lose at most ~30s of aggregate data (the raw events themselves are still
 	// persisted on every TrackEvent call so reconstruction recovers them).
 	m.flushTicker = time.NewTicker(30 * time.Second)
+	// Raw events are buffered and flushed on a much shorter cadence than the daily
+	// aggregate so the DB sees batched inserts while dashboard event feeds lag by at
+	// most one interval.
+	m.eventFlushTicker = time.NewTicker(eventFlushInterval)
 
 	m.bgWg.Add(1)
 	go m.backgroundLoop()
@@ -141,6 +150,9 @@ func (m *Module) Stop(_ context.Context) error {
 		if m.flushTicker != nil {
 			m.flushTicker.Stop()
 		}
+		if m.eventFlushTicker != nil {
+			m.eventFlushTicker.Stop()
+		}
 		close(m.done)
 		m.bgWg.Wait()
 		// One last flush so any stats touched between the final tick and
@@ -148,6 +160,9 @@ func (m *Module) Stop(_ context.Context) error {
 		// caller's ctx does not abort the cleanup writes.
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+		// Drain buffered raw events first so they aren't lost on shutdown, then
+		// persist the daily aggregate they contributed to.
+		m.flushEvents(ctx)
 		m.flushDirtyDailyStats(ctx)
 		// Cleanly close any live SSE subscribers so handlers exit fast
 		// instead of waiting for the request context cancellation.
@@ -191,9 +206,67 @@ func (m *Module) backgroundLoop() {
 				defer cancel()
 				m.flushDirtyDailyStats(ctx)
 			}()
+		case <-m.eventFlushTicker.C:
+			func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				m.flushEvents(ctx)
+			}()
 		case <-m.done:
 			return
 		}
+	}
+}
+
+// eventFlushInterval is how often buffered raw events are flushed to the DB, and
+// eventBufFlushThreshold forces an early flush when the buffer fills between ticks
+// so a burst of traffic can't grow it without bound.
+const (
+	eventFlushInterval     = 2 * time.Second
+	eventBufFlushThreshold = 500
+	eventBufHardCap        = 20000
+)
+
+// enqueueEvent buffers a raw event for batched insertion. When the buffer reaches
+// the flush threshold it is drained inline so memory stays bounded under load; a
+// hard cap drops the oldest events (with a warning) if the DB can't keep up at all.
+func (m *Module) enqueueEvent(event models.AnalyticsEvent) {
+	ev := event
+	m.eventBufMu.Lock()
+	m.eventBuf = append(m.eventBuf, &ev)
+	overThreshold := len(m.eventBuf) >= eventBufFlushThreshold
+	if len(m.eventBuf) > eventBufHardCap {
+		drop := len(m.eventBuf) - eventBufHardCap
+		m.eventBuf = m.eventBuf[drop:]
+		m.log.Warn("analytics event buffer over hard cap; dropped %d oldest events (DB slow?)", drop)
+	}
+	m.eventBufMu.Unlock()
+
+	if overThreshold {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		m.flushEvents(ctx)
+	}
+}
+
+// flushEvents drains the buffered events into the DB in one batched insert. Safe for
+// concurrent callers (each drains a disjoint batch). On error the batch is logged and
+// dropped, matching the pre-batching behavior where a failed Create dropped its event.
+func (m *Module) flushEvents(ctx context.Context) {
+	if m.eventRepo == nil {
+		return
+	}
+	m.eventBufMu.Lock()
+	if len(m.eventBuf) == 0 {
+		m.eventBufMu.Unlock()
+		return
+	}
+	batch := m.eventBuf
+	m.eventBuf = nil
+	m.eventBufMu.Unlock()
+
+	if err := m.eventRepo.CreateBatch(ctx, batch); err != nil {
+		m.log.Warn("Failed to flush %d analytics events: %v", len(batch), err)
 	}
 }
 

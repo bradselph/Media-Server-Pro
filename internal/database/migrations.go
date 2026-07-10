@@ -446,7 +446,9 @@ var tableDefs = []struct {
 			resolved_at     TIMESTAMP    NULL,
 			detected_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
 			INDEX idx_dup_fingerprint (fingerprint),
-			INDEX idx_dup_status (status)
+			INDEX idx_dup_status (status),
+			INDEX idx_dup_pair_ab (item_a_id, item_b_id),
+			INDEX idx_dup_pair_ba (item_b_id, item_a_id)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"user_favorites", `
 		CREATE TABLE IF NOT EXISTS user_favorites (
@@ -739,6 +741,15 @@ func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 			"ALTER TABLE media_metadata ADD INDEX idx_media_mature_views (is_mature, views)"},
 		{"receiver_media", "idx_receiver_media_fingerprint",
 			"ALTER TABLE receiver_media ADD INDEX idx_receiver_media_fingerprint (content_fingerprint)"},
+		// Duplicate detection probes ExistsByPair on every candidate pair with
+		// (item_a_id=? AND item_b_id=?) OR (item_b_id=? AND item_a_id=?). Without an
+		// index on the pair columns this is a full table scan of receiver_duplicates
+		// per pair, worsening as the history grows. Two composite indexes cover both
+		// orderings of the OR so each branch is an indexed probe.
+		{"receiver_duplicates", "idx_dup_pair_ab",
+			"ALTER TABLE receiver_duplicates ADD INDEX idx_dup_pair_ab (item_a_id, item_b_id)"},
+		{"receiver_duplicates", "idx_dup_pair_ba",
+			"ALTER TABLE receiver_duplicates ADD INDEX idx_dup_pair_ba (item_b_id, item_a_id)"},
 		// Curated-category membership is keyed by (category_id, media_id) PK, which
 		// serves category->members lookups but NOT member->categories ones. The
 		// media_id index powers per-view category attribution (RecordView), the

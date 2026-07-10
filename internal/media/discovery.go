@@ -619,6 +619,10 @@ func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType mode
 		return nil
 	}
 
+	// Resolve the thumbnails directory once for the whole walk instead of calling
+	// config.Get() (a full Config deep-copy) for every file in createMediaItem.
+	thumbsDir := m.config.Get().Directories.Thumbnails
+
 	return filepath.WalkDir(absDir, func(path string, d os.DirEntry, err error) error {
 		// Check for cancellation periodically
 		select {
@@ -665,7 +669,7 @@ func (m *Module) scanDirectory(ctx context.Context, dir string, defaultType mode
 			return nil
 		}
 
-		item := m.createMediaItem(path, info, mediaType)
+		item := m.createMediaItem(path, info, mediaType, thumbsDir)
 		result[path] = item
 
 		return nil
@@ -779,7 +783,7 @@ func (m *Module) createMediaItemFromStorageInfo(absKey string, info storage.File
 // The MediaItem.ID is a stable UUID loaded from the database (generated on
 // first encounter and persisted). This decouples the public ID from the
 // filesystem path so that IDs survive file moves and config changes.
-func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models.MediaType) *models.MediaItem {
+func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models.MediaType, thumbsDir string) *models.MediaItem {
 	item := &models.MediaItem{
 		Path:         path,
 		Name:         info.Name(),
@@ -969,10 +973,27 @@ func (m *Module) createMediaItem(path string, info os.FileInfo, mediaType models
 	// Check whether a thumbnail already exists on disk and pre-populate the URL.
 	// Thumbnail files are named by stable UUID; the public URL uses the same ID
 	// so the handler can apply mature-content checks.
-	cfg := m.config.Get()
-	thumbFile := filepath.Join(cfg.Directories.Thumbnails, item.ID+".jpg")
-	if _, err := os.Stat(thumbFile); err == nil {
-		item.ThumbnailURL = "/thumbnail?id=" + item.ID
+	//
+	// Skip this stat for items already known to have a thumbnail: the post-scan
+	// merge step (see Scan) carries the old ThumbnailURL forward for any item that
+	// survives into the new catalog, so the stat would be pure duplicate I/O across
+	// the unchanged catalog every scan. New items, and known items whose thumbnail
+	// was still missing, are still stat'd so a freshly generated thumbnail is picked
+	// up. thumbsDir is resolved once per scan by the caller instead of via a
+	// per-file config.Get() (which deep-copies the whole Config struct).
+	alreadyHasThumb := false
+	if item.ID != "" {
+		m.mu.RLock()
+		if old, ok := m.mediaByID[item.ID]; ok && old.ThumbnailURL != "" {
+			alreadyHasThumb = true
+		}
+		m.mu.RUnlock()
+	}
+	if !alreadyHasThumb {
+		thumbFile := filepath.Join(thumbsDir, item.ID+".jpg")
+		if _, err := os.Stat(thumbFile); err == nil {
+			item.ThumbnailURL = "/thumbnail?id=" + item.ID
+		}
 	}
 
 	return item
@@ -1207,13 +1228,13 @@ func (m *Module) ListMediaPaginated(ctx context.Context, filter Filter, limit, o
 	repoFilter := repositories.MediaFilter{
 		CategoryID: filter.CategoryID,
 		IsMature:   filter.IsMature,
-		Search:   filter.Search,
-		Type:     string(filter.Type),
-		Tags:     filter.Tags,
-		TagsAll:  filter.TagsAll,
-		SortDesc: filter.SortDesc,
-		Limit:    limit,
-		Offset:   offset,
+		Search:     filter.Search,
+		Type:       string(filter.Type),
+		Tags:       filter.Tags,
+		TagsAll:    filter.TagsAll,
+		SortDesc:   filter.SortDesc,
+		Limit:      limit,
+		Offset:     offset,
 	}
 	switch filter.SortBy {
 	case "views":
@@ -1469,6 +1490,17 @@ func (m *Module) IsFingerprintMature(fp string) bool {
 	}
 	item, ok := m.media[path]
 	return ok && item.IsMature
+}
+
+// GetVersion returns the monotonic catalog version, bumped on every mutation
+// (scan swap, add/remove/rename/metadata update). It is an O(1) read — unlike
+// GetStats, which iterates the whole catalog — so callers that only need to detect
+// "did anything change since last time" (e.g. the federation follower's periodic
+// scan) can cheaply skip a full catalog rebuild when the version is unchanged.
+func (m *Module) GetVersion() int64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.version
 }
 
 // GetStats returns media statistics

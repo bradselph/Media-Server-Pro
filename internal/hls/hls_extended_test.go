@@ -64,11 +64,12 @@ func TestDeleteJob_DrainsLazyTranscode(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &Module{
-		repo:       &stubHLSRepo{},
-		jobs:       map[string]*models.HLSJob{"job1": {ID: "job1", OutputDir: outputDir, Status: models.HLSStatusCompleted}},
-		jobCancels: map[string]context.CancelFunc{},
-		jobDone:    map[string]chan struct{}{}, // no jobDone entry — this is the lazy-transcode case
-		log:        logger.New("test"),
+		repo:          &stubHLSRepo{},
+		jobs:          map[string]*models.HLSJob{"job1": {ID: "job1", OutputDir: outputDir, Status: models.HLSStatusCompleted}},
+		jobCancels:    map[string]context.CancelFunc{},
+		jobDone:       map[string]chan struct{}{}, // no jobDone entry — this is the lazy-transcode case
+		accessTracker: &AccessTracker{lastAccess: make(map[string]time.Time), lastSaved: make(map[string]time.Time)},
+		log:           logger.New("test"),
 	}
 
 	// Simulate an in-flight lazy transcode holding the per-job WaitGroup.
@@ -116,11 +117,12 @@ func TestDeleteJob_CancelsLazyTranscode(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &Module{
-		repo:       &stubHLSRepo{},
-		jobs:       map[string]*models.HLSJob{"job1": {ID: "job1", OutputDir: outputDir, Status: models.HLSStatusCompleted}},
-		jobCancels: map[string]context.CancelFunc{},
-		jobDone:    map[string]chan struct{}{},
-		log:        logger.New("test"),
+		repo:          &stubHLSRepo{},
+		jobs:          map[string]*models.HLSJob{"job1": {ID: "job1", OutputDir: outputDir, Status: models.HLSStatusCompleted}},
+		jobCancels:    map[string]context.CancelFunc{},
+		jobDone:       map[string]chan struct{}{},
+		accessTracker: &AccessTracker{lastAccess: make(map[string]time.Time), lastSaved: make(map[string]time.Time)},
+		log:           logger.New("test"),
 	}
 
 	// Simulate an in-flight lazy transcode: holds lazyWg and blocks on its
@@ -430,5 +432,46 @@ func TestParseProbeHeight_InvalidJSON(t *testing.T) {
 	got := m.parseProbeHeight("bad")
 	if got != 0 {
 		t.Errorf("invalid JSON should return 0, got %d", got)
+	}
+}
+
+// TestHasHLSByID verifies the O(1) ID-keyed HLS presence check used by the
+// pre-generation sweep (which replaced an O(items x jobs) path scan): true only for
+// a Completed job whose master playlist exists on disk, false for a missing ID, a
+// non-completed job, or a completed job whose playlist is gone.
+func TestHasHLSByID(t *testing.T) {
+	dir := t.TempDir()
+	completedDir := filepath.Join(dir, "done")
+	if err := os.MkdirAll(completedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(completedDir, masterPlaylistName), []byte("#EXTM3U"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	noPlaylistDir := filepath.Join(dir, "noplaylist")
+	if err := os.MkdirAll(noPlaylistDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &Module{
+		jobs: map[string]*models.HLSJob{
+			"done":       {ID: "done", OutputDir: completedDir, Status: models.HLSStatusCompleted},
+			"running":    {ID: "running", OutputDir: completedDir, Status: models.HLSStatusRunning},
+			"noplaylist": {ID: "noplaylist", OutputDir: noPlaylistDir, Status: models.HLSStatusCompleted},
+		},
+		log: logger.New("test"),
+	}
+
+	if !m.HasHLSByID("done") {
+		t.Error("completed job with master playlist should report HLS present")
+	}
+	if m.HasHLSByID("missing") {
+		t.Error("unknown ID should report no HLS")
+	}
+	if m.HasHLSByID("running") {
+		t.Error("non-completed job should report no HLS")
+	}
+	if m.HasHLSByID("noplaylist") {
+		t.Error("completed job without master playlist on disk should report no HLS")
 	}
 }

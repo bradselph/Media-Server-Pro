@@ -362,9 +362,10 @@ func (h *Handler) AdminDeleteMedia(c *gin.Context) {
 // cleanupDeletedMedia removes HLS cache, thumbnails, and other data associated
 // with a media item that was just deleted. All operations are best-effort.
 func (h *Handler) cleanupDeletedMedia(ctx context.Context, mediaID, mediaPath string) {
-	// HLS cache and job
+	// HLS cache and job. Look up by media ID (== HLS job ID) via the O(1) map lookup
+	// instead of GetJobByMediaPath, which linearly scans every job.
 	if h.hls != nil {
-		if job, err := h.hls.GetJobByMediaPath(mediaPath); err == nil && job != nil {
+		if job, err := h.hls.GetJobStatus(mediaID); err == nil && job != nil {
 			if delErr := h.hls.DeleteJob(job.ID); delErr != nil {
 				h.log.Warn("Failed to cleanup HLS job for deleted media %s: %v", mediaID, delErr)
 			}

@@ -151,7 +151,18 @@ type ClientState struct {
 	Violations    int
 	LastViolation time.Time
 	BurstRequests []time.Time
+	// LastSeen is updated on every CheckRequest so the periodic cleanup can evict
+	// idle clients by age. Without it, a client that makes one request and never
+	// returns is never reclaimed (its Requests slice stays len>=1 until the same IP
+	// calls again), leaking one map entry per unique source IP for the process life.
+	LastSeen time.Time
 }
+
+// maxTrackedClients caps the rate-limiter clients map as a hard safety net against a
+// flood of distinct source IPs (trivial with IPv6/botnets) arriving faster than the
+// once-a-minute cleanup can reclaim them. Time-based eviction is the primary
+// mechanism; this bound guarantees the map cannot grow without limit between sweeps.
+const maxTrackedClients = 100_000
 
 // Stats holds security statistics.
 type Stats struct {
@@ -872,12 +883,18 @@ func (r *RateLimiter) CheckRequest(ip string) (allowed bool, remaining int, rese
 	// Get or create client state
 	client, exists := r.clients[ip]
 	if !exists {
+		// Enforce the hard cap before inserting a new client so a burst of unique
+		// IPs cannot grow the map without bound between cleanup sweeps.
+		if len(r.clients) >= maxTrackedClients {
+			r.evictOldestClientLocked()
+		}
 		client = &ClientState{
 			Requests:      make([]time.Time, 0),
 			BurstRequests: make([]time.Time, 0),
 		}
 		r.clients[ip] = client
 	}
+	client.LastSeen = now
 
 	// Clean old requests outside the window
 	validRequests := make([]time.Time, 0)
@@ -995,16 +1012,42 @@ func (r *RateLimiter) GetBannedIPs() map[string]BanRecord {
 	return result
 }
 
+// evictOldestClientLocked removes the least-recently-seen client. Caller holds r.mu.
+// Used only as the hard-cap safety net when a flood fills the map faster than the
+// periodic cleanup can drain it.
+func (r *RateLimiter) evictOldestClientLocked() {
+	var oldestIP string
+	var oldest time.Time
+	first := true
+	for ip, c := range r.clients {
+		if first || c.LastSeen.Before(oldest) {
+			oldestIP, oldest, first = ip, c.LastSeen, false
+		}
+	}
+	if oldestIP != "" {
+		delete(r.clients, oldestIP)
+	}
+}
+
 func (r *RateLimiter) cleanup() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	now := time.Now()
-	windowStart := now.Add(-2 * time.Minute)
+	// Evict clients idle longer than the rate-limit window (so no in-window requests
+	// remain to forget), with a 2-minute floor. The old predicate required
+	// len(Requests)==0, but CheckRequest always leaves >=1 timestamp and only trims
+	// on the same IP's next call, so one-shot IPs were never reclaimed. Eviction is
+	// gated on LastViolation too so a client still accruing violations toward a ban
+	// isn't dropped early.
+	staleAfter := r.config.RateLimitWindow
+	if staleAfter < 2*time.Minute {
+		staleAfter = 2 * time.Minute
+	}
+	cutoff := now.Add(-staleAfter)
 
-	// Clean up old client states
 	for ip, client := range r.clients {
-		if len(client.Requests) == 0 && client.LastViolation.Before(windowStart) {
+		if client.LastSeen.Before(cutoff) && client.LastViolation.Before(cutoff) {
 			delete(r.clients, ip)
 		}
 	}

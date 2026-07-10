@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"sync"
 	"time"
 
@@ -210,11 +211,37 @@ func (m *Module) RegisterTask(opts TaskRegistration) {
 	}
 }
 
+// taskJitter returns a deterministic per-task startup offset derived from the task
+// ID, bounded to a tenth of the task's own schedule (capped at 5m). Adding it to the
+// shared startup delay decorrelates tasks that share the same interval so they don't
+// fire in permanent lock-step — spreading the recurring CPU/disk spike of many tasks
+// firing at the same instant over time. It is deterministic (a hash of the ID, not
+// random) so NextRun estimates stay stable and tests remain reproducible, and it only
+// offsets the initial delay, never the ticker period (which would change how often a
+// task runs).
+func taskJitter(task *Task) time.Duration {
+	bound := task.Schedule / 10
+	if bound > 5*time.Minute {
+		bound = 5 * time.Minute
+	}
+	if bound <= 0 {
+		return 0
+	}
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(task.ID))
+	return time.Duration(h.Sum64() % uint64(bound))
+}
+
 // waitForStartupDelay waits for the configured startup delay unless ctx is canceled.
 // Returns false if context was canceled during the wait, true otherwise.
 func (m *Module) waitForStartupDelay(ctx context.Context, task *Task) bool {
 	m.mu.RLock()
 	delay := m.startupDelay
+	// Only stagger when a startup delay is configured; a zero delay means "run
+	// immediately" (used by tests) and must stay immediate.
+	if delay > 0 {
+		delay += taskJitter(task)
+	}
 	m.mu.RUnlock()
 	if delay == 0 {
 		return true

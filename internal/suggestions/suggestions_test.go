@@ -34,7 +34,7 @@ func TestScoreMediaBase_PopularMedia(t *testing.T) {
 func TestScoreMediaForProfile_EmptyProfile(t *testing.T) {
 	profile := &UserProfile{}
 	media := &MediaInfo{Path: testMediaPath, CategoryIDs: []string{"movies"}, MediaType: "video"}
-	score, _ := scoreMediaForProfile(profile, media, recentlyViewedCategorySet(profile))
+	score, _ := scoreMediaForProfile(profile, media, recentlyViewedCategorySet(profile), computeProfileTotals(profile))
 	if score < 0 {
 		t.Error("score should not be negative")
 	}
@@ -47,7 +47,7 @@ func TestScoreMediaForProfile_MatchingCategory(t *testing.T) {
 		TotalViews:      12,
 	}
 	media := &MediaInfo{Path: testMediaPath, CategoryIDs: []string{"movies"}, MediaType: "video"}
-	score, _ := scoreMediaForProfile(profile, media, recentlyViewedCategorySet(profile))
+	score, _ := scoreMediaForProfile(profile, media, recentlyViewedCategorySet(profile), computeProfileTotals(profile))
 	if score <= 0 {
 		t.Error("matching category should give positive score")
 	}
@@ -64,7 +64,7 @@ func TestScoreCategoryPreference_Match(t *testing.T) {
 	}
 	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
-	score := scoreCategoryPreference(profile, media, &reasons)
+	score := scoreCategoryPreference(profile, media, &reasons, computeProfileTotals(profile).categoryTotal)
 	if score <= 0 {
 		t.Error("matching category should give positive score")
 	}
@@ -77,7 +77,7 @@ func TestScoreCategoryPreference_NoMatch(t *testing.T) {
 	}
 	media := &MediaInfo{CategoryIDs: []string{"music"}}
 	var reasons []string
-	score := scoreCategoryPreference(profile, media, &reasons)
+	score := scoreCategoryPreference(profile, media, &reasons, computeProfileTotals(profile).categoryTotal)
 	if score != 0 {
 		t.Errorf("non-matching category should give 0, got %f", score)
 	}
@@ -90,7 +90,7 @@ func TestScoreCategoryPreference_ZeroTotal(t *testing.T) {
 	}
 	media := &MediaInfo{CategoryIDs: []string{"movies"}}
 	var reasons []string
-	score := scoreCategoryPreference(profile, media, &reasons)
+	score := scoreCategoryPreference(profile, media, &reasons, computeProfileTotals(profile).categoryTotal)
 	if score != 0 {
 		t.Errorf("zero total views should give 0, got %f", score)
 	}
@@ -106,7 +106,7 @@ func TestScoreTypePreference_Match(t *testing.T) {
 		TotalViews:      10,
 	}
 	media := &MediaInfo{MediaType: "video"}
-	score := scoreTypePreference(profile, media)
+	score := scoreTypePreference(profile, media, computeProfileTotals(profile).typeTotal)
 	if score <= 0 {
 		t.Error("matching type should give positive score")
 	}
@@ -118,7 +118,7 @@ func TestScoreTypePreference_NoMatch(t *testing.T) {
 		TotalViews:      10,
 	}
 	media := &MediaInfo{MediaType: "audio"}
-	score := scoreTypePreference(profile, media)
+	score := scoreTypePreference(profile, media, computeProfileTotals(profile).typeTotal)
 	if score != 0 {
 		t.Errorf("non-matching type should give 0, got %f", score)
 	}
@@ -131,7 +131,7 @@ func TestScoreTypePreference_NoMatch(t *testing.T) {
 func TestComputeSimilarity_SameCategory(t *testing.T) {
 	source := &MediaInfo{Path: "/s.mp4", CategoryIDs: []string{"movies"}, MediaType: "video", Tags: []string{"action"}}
 	candidate := &MediaInfo{Path: "/c.mp4", CategoryIDs: []string{"movies"}, MediaType: "video", Tags: []string{"action"}}
-	score, _ := computeSimilarity(source, candidate)
+	score, _ := computeSimilarity(source, candidate, titleWords(source.Title))
 	if score <= 0 {
 		t.Error("same category+type should give positive similarity")
 	}
@@ -178,7 +178,7 @@ func TestComputeTagSimilarity_NilTags(t *testing.T) {
 func TestComputeTitleSimilarity_Overlap(t *testing.T) {
 	source := &MediaInfo{Title: "The Dark Knight Returns"}
 	candidate := &MediaInfo{Title: "Dark Knight Rises"}
-	score := computeTitleSimilarity(source, candidate)
+	score := computeTitleSimilarity(titleWords(source.Title), candidate)
 	if score <= 0 {
 		t.Error("overlapping title words should give positive score")
 	}

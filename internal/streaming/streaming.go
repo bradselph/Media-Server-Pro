@@ -68,7 +68,22 @@ type Module struct {
 	// do its own DB I/O.
 	onSessionStart func(*models.StreamSession)
 	onSessionEnd   func(*models.StreamSession)
+
+	// hookCh is a bounded queue draining session-lifecycle analytics hooks through a
+	// small fixed worker pool, instead of spawning an unbounded `go` per Stream()
+	// call (which fires per Range request, not per logical session). This bounds
+	// goroutine churn and provides backpressure if the analytics DB is briefly slow.
+	hookCh       chan func()
+	hookStop     chan struct{}
+	hookStopOnce sync.Once
+	hookWG       sync.WaitGroup
 }
+
+// Streaming analytics-hook worker pool sizing.
+const (
+	streamHookQueueSize = 256
+	streamHookWorkers   = 2
+)
 
 // SetSessionHooks installs callbacks invoked when a stream session starts
 // or ends. Pass nil for either hook to leave it unset. Calling this on a
@@ -104,6 +119,8 @@ func NewModule(cfg *config.Manager) *Module {
 				return make([]byte, bufSize)
 			},
 		},
+		hookCh:   make(chan func(), streamHookQueueSize),
+		hookStop: make(chan struct{}),
 	}
 }
 
@@ -143,8 +160,56 @@ func (m *Module) Start(_ context.Context) error {
 	// The module no longer owns its own ticker, so admins can re-schedule
 	// or disable eviction from the System Ops panel.
 
+	// Start the bounded analytics-hook worker pool.
+	for range streamHookWorkers {
+		m.hookWG.Add(1)
+		go m.hookWorker()
+	}
+
 	m.log.Info("Streaming module started")
 	return nil
+}
+
+// hookWorker drains queued session-lifecycle hooks. On stop it drains any already
+// queued hooks before exiting so a graceful shutdown doesn't drop accepted events.
+func (m *Module) hookWorker() {
+	defer m.hookWG.Done()
+	for {
+		select {
+		case fn := <-m.hookCh:
+			fn()
+		case <-m.hookStop:
+			for {
+				select {
+				case fn := <-m.hookCh:
+					fn()
+				default:
+					return
+				}
+			}
+		}
+	}
+}
+
+// stopHookWorkers signals the hook workers to drain and exit, then waits. Safe to
+// call multiple times (Stop may be invoked more than once).
+func (m *Module) stopHookWorkers() {
+	m.hookStopOnce.Do(func() {
+		close(m.hookStop)
+		m.hookWG.Wait()
+	})
+}
+
+// enqueueHook queues a session-lifecycle analytics hook for the worker pool. If the
+// queue is full it drops the event (with a warning) rather than blocking the hot
+// streaming path or spawning an unbounded goroutine — analytics hooks are best-effort.
+func (m *Module) enqueueHook(name string, hook func(*models.StreamSession), snap *models.StreamSession) {
+	job := func() { m.runSessionHook(name, hook, snap) }
+	select {
+	case m.hookCh <- job:
+	default:
+		m.log.Warn("Streaming %s hook queue full; dropping analytics event", name)
+	}
 }
 
 // Stop gracefully stops the module. Active stream sessions are not waited on;
@@ -155,6 +220,10 @@ func (m *Module) Stop(_ context.Context) error {
 	m.healthy = false
 	m.healthMsg = "Stopped"
 	m.healthMu.Unlock()
+
+	// Stop the analytics-hook workers, draining any queued hooks first.
+	m.stopHookWorkers()
+
 	m.sessionMu.Lock()
 	activeCount := len(m.activeSessions)
 	m.sessionMu.Unlock()
@@ -703,7 +772,7 @@ func (m *Module) startSession(req StreamRequest, position int64) *models.StreamS
 	if hook := m.onSessionStart; hook != nil {
 		// Pass a copy so the analytics layer can't accidentally mutate the
 		// session struct that the streaming module is still tracking.
-		go m.runSessionHook("onSessionStart", hook, new(*session))
+		m.enqueueHook("onSessionStart", hook, new(*session))
 	}
 	return session
 }
@@ -730,7 +799,7 @@ func (m *Module) endSession(sessionID string) {
 	m.sessionMu.Unlock()
 	if exists {
 		if hook := m.onSessionEnd; hook != nil {
-			go m.runSessionHook("onSessionEnd", hook, new(*session))
+			m.enqueueHook("onSessionEnd", hook, new(*session))
 		}
 	}
 }

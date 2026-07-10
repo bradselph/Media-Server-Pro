@@ -116,6 +116,34 @@ func (h *Handler) mergedMediaList(filter media.Filter) []*models.MediaItem {
 	return items
 }
 
+// mergedMediaTopN returns up to limit items matching filter, drawn from local media
+// (bounded via ListMediaPage so the full matched catalog is not deep-copied and
+// sorted) plus matching federated (receiver/extractor) items, then re-sorted and
+// truncated to limit. Taking only the local top-`limit` is correct for a global
+// top-N across pre-sorted sources: a local item past position `limit` cannot outrank
+// the `limit` items already ahead of it under the same sort. Use this for bounded
+// top-N views (e.g. the RSS feed) instead of mergedMediaList, which materializes the
+// entire matched catalog only to discard all but the first page.
+func (h *Handler) mergedMediaTopN(filter media.Filter, limit int) []*models.MediaItem {
+	if limit <= 0 {
+		return h.mergedMediaList(filter)
+	}
+	items, _, _ := h.media.ListMediaPage(filter, limit, 0)
+	seenIDs := make(map[string]bool, len(items))
+	for _, it := range items {
+		seenIDs[it.ID] = true
+	}
+	items, addedR := h.appendReceiverItems(items, seenIDs, filter)
+	items, addedE := h.appendExtractorItems(items, seenIDs, filter)
+	if addedR || addedE {
+		filter.SortItems(items)
+	}
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	return items
+}
+
 // isFederatedMedia reports whether id refers to a federated (slave) item rather
 // than a local one. Used to gracefully degrade features that need a local source
 // file (HLS transcode, hover-frame previews) or that don't apply to federated

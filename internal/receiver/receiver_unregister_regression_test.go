@@ -44,6 +44,9 @@ func (f *fakeUnregMediaRepo) ReplaceSlaveMedia(context.Context, string, []*repos
 func (f *fakeUnregMediaRepo) ListAll(context.Context) ([]*repositories.ReceiverMediaRecord, error) {
 	return nil, nil
 }
+func (f *fakeUnregMediaRepo) ListByFingerprints(context.Context, string, []string) ([]*repositories.ReceiverMediaRecord, error) {
+	return nil, nil
+}
 func (f *fakeUnregMediaRepo) DeleteBySlave(context.Context, string) error {
 	f.deleteBySlaveCalls++
 	return f.deleteBySlaveErr

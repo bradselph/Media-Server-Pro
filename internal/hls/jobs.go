@@ -189,10 +189,10 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 // Transitioning to HLSStatusFailed automatically increments the job's FailCount.
 func (m *Module) updateJobStatus(params *updateJobStatusParams) {
 	m.jobsMu.Lock()
-	defer m.jobsMu.Unlock()
 
 	job, ok := m.jobs[params.JobID]
 	if !ok {
+		m.jobsMu.Unlock()
 		return
 	}
 
@@ -207,10 +207,18 @@ func (m *Module) updateJobStatus(params *updateJobStatusParams) {
 
 	// Persist terminal failures so the incremented FailCount survives a restart.
 	// Otherwise a crash right after a failure reloads the old FailCount and the
-	// job is retried indefinitely instead of stopping at maxFailures. saveJob does
-	// not take jobsMu, so calling it while holding the lock is safe.
+	// job is retried indefinitely instead of stopping at maxFailures. Snapshot the
+	// job under the lock and write it AFTER releasing jobsMu so a slow DB round trip
+	// does not stall every other jobsMu holder (progress updates, ListJobs, handler
+	// status reads, RecordAccess).
+	var toPersist *models.HLSJob
 	if params.Status == models.HLSStatusFailed {
-		_ = m.saveJob(job)
+		toPersist = copyHLSJob(job)
+	}
+	m.jobsMu.Unlock()
+
+	if toPersist != nil {
+		_ = m.saveJob(toPersist)
 	}
 }
 
@@ -252,6 +260,27 @@ func (m *Module) HasHLS(mediaPath string) bool {
 	return statErr == nil
 }
 
+// HasHLSByID checks completed HLS content for a media item by its stable ID, which
+// is also the HLS job ID (see GenerateHLS: jobID := params.MediaID). This is an O(1)
+// map lookup, unlike HasHLS(path), which linearly scans every job to match MediaPath.
+// Callers with the media ID in hand (e.g. the HLS pre-generation sweep over the whole
+// catalog) should prefer this to avoid an O(items x jobs) scan every cycle.
+func (m *Module) HasHLSByID(mediaID string) bool {
+	m.jobsMu.RLock()
+	job, ok := m.jobs[mediaID]
+	if !ok || job.Status != models.HLSStatusCompleted {
+		m.jobsMu.RUnlock()
+		return false
+	}
+	outputDir := job.OutputDir
+	m.jobsMu.RUnlock()
+
+	// Verify on disk outside the lock (don't hold jobsMu across a stat syscall).
+	masterPath := filepath.Join(outputDir, masterPlaylistName)
+	_, statErr := os.Stat(masterPath)
+	return statErr == nil
+}
+
 // ListJobs returns copies of all HLS jobs to avoid data races with transcode goroutines.
 func (m *Module) ListJobs() []*models.HLSJob {
 	m.jobsMu.RLock()
@@ -267,23 +296,30 @@ func (m *Module) ListJobs() []*models.HLSJob {
 // CancelJob cancels a running job and kills the ffmpeg process.
 func (m *Module) CancelJob(jobID string) error {
 	m.jobsMu.Lock()
-	defer m.jobsMu.Unlock()
 
 	job, ok := m.jobs[jobID]
 	if !ok {
+		m.jobsMu.Unlock()
 		return fmt.Errorf(errJobNotFoundFmt, jobID)
 	}
 
+	var toPersist *models.HLSJob
 	if job.Status == models.HLSStatusRunning || job.Status == models.HLSStatusPending {
 		job.Status = models.HLSStatusCanceled
 		if cancel, ok := m.jobCancels[jobID]; ok {
 			cancel()
 			delete(m.jobCancels, jobID)
 		}
-		// If the Canceled status fails to persist, loadJobs() reloads the job as
-		// Running on restart and resetRunningToPending re-queues it — silently
-		// re-transcoding a job the user canceled. Surface the failure to the operator.
-		if err := m.saveJob(job); err != nil {
+		toPersist = copyHLSJob(job)
+	}
+	m.jobsMu.Unlock()
+
+	// If the Canceled status fails to persist, loadJobs() reloads the job as
+	// Running on restart and resetRunningToPending re-queues it — silently
+	// re-transcoding a job the user canceled. Surface the failure to the operator.
+	// Persist after releasing jobsMu so the DB write doesn't serialize other holders.
+	if toPersist != nil {
+		if err := m.saveJob(toPersist); err != nil {
 			m.log.Warn("CancelJob: failed to persist Canceled status for job %s; it may re-transcode on restart: %v", jobID, err)
 		}
 	}
@@ -359,6 +395,14 @@ func (m *Module) DeleteJob(jobID string) error {
 	m.jobsMu.Lock()
 	delete(m.jobs, jobID)
 	m.jobsMu.Unlock()
+
+	// Drop access-tracker entries for the deleted job so neither debounce map leaks
+	// for the life of the process (respects the accessTracker.mu < jobsMu ordering:
+	// jobsMu is already released here, so the two locks are never held together).
+	m.accessTracker.mu.Lock()
+	delete(m.accessTracker.lastAccess, jobID)
+	delete(m.accessTracker.lastSaved, jobID)
+	m.accessTracker.mu.Unlock()
 
 	m.cleanQualityLocks(jobID)
 	m.log.Info("Deleted HLS job %s", jobID)

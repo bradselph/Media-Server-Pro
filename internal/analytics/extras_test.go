@@ -110,7 +110,7 @@ func TestModuleInvalidatesCachesForEvent(t *testing.T) {
 	// a search event.
 	m.cache.set("topsearches|||20", []SearchQueryEntry{{Query: "stale"}}, time.Minute)
 	m.cache.set("errorpaths|||25", []ErrorPathEntry{{Path: "stale"}}, time.Minute)
-	m.invalidateCachesFor(EventSearch)
+	m.invalidateCachesFor(models.AnalyticsEvent{Type: EventSearch})
 	if _, ok := m.cache.get("topsearches|||20"); ok {
 		t.Errorf("search event should invalidate topsearches entries")
 	}

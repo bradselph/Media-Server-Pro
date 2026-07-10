@@ -100,6 +100,12 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 		SortBy:   "date_added",
 		SortDesc: true,
 	}
+	// Push mature exclusion into the filter (rather than post-filtering the full
+	// result) so the bounded top-N fetch below returns `limit` non-mature items
+	// directly instead of dropping some after the fact.
+	if !canViewMature {
+		filter.IsMature = new(false)
+	}
 	// ?category=<MediaCategory.id> restricts the feed to a curated category.
 	categoryName := ""
 	if catID := c.Query("category"); catID != "" && catID != "all" {
@@ -117,20 +123,10 @@ func (h *Handler) GetRSSFeed(c *gin.Context) {
 		}
 	}
 
-	allItems := h.mergedMediaList(filter) // include federated media in the feed
-
-	// Filter out mature content for users who are not authorized to view it.
-	items := allItems[:0]
-	for _, item := range allItems {
-		if !item.IsMature || canViewMature {
-			items = append(items, item)
-		}
-	}
-
-	// Truncate to requested limit
-	if len(items) > limit {
-		items = items[:limit]
-	}
+	// Bounded top-N: only the top `limit` items are ever deep-copied/sorted, rather
+	// than materializing the entire matched catalog just to keep the first page.
+	// Mature exclusion is already applied via filter.IsMature above.
+	items := h.mergedMediaTopN(filter, limit) // include federated media in the feed
 
 	// Derive a canonical base URL for self-links.
 	// Only trust proxy headers (X-Forwarded-Proto, Cf-Visitor) from trusted proxies.

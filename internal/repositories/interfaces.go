@@ -106,6 +106,11 @@ type MediaFilter struct {
 type ScanResultRepository interface {
 	Save(ctx context.Context, result *ScanResult) error
 	Get(ctx context.Context, path string) (*ScanResult, error)
+	// GetByPaths batch-loads scan results for many paths at once (one query per
+	// chunk instead of one Get per path), returning a path->result map. Paths with
+	// no persisted row are simply absent from the map. Used by full directory scans
+	// to avoid an N+1 of per-file Get calls.
+	GetByPaths(ctx context.Context, paths []string) (map[string]*ScanResult, error)
 	GetPendingReview(ctx context.Context) ([]*ScanResult, error)
 	MarkReviewed(ctx context.Context, path, reviewedBy, decision string) error
 	Delete(ctx context.Context, path string) error
@@ -160,6 +165,10 @@ type ScanResult struct {
 // AnalyticsRepository provides analytics event storage
 type AnalyticsRepository interface {
 	Create(ctx context.Context, event *models.AnalyticsEvent) error
+	// CreateBatch inserts many events in one (chunked) multi-row INSERT. Used by the
+	// analytics module's event-buffer flush to avoid a synchronous per-event round
+	// trip on the hot tracking path.
+	CreateBatch(ctx context.Context, events []*models.AnalyticsEvent) error
 	List(ctx context.Context, filter AnalyticsFilter) ([]*models.AnalyticsEvent, error)
 	DeleteOlderThan(ctx context.Context, before string) error
 	DeleteByMediaID(ctx context.Context, mediaID string) error
@@ -392,6 +401,11 @@ type ReceiverMediaRepository interface {
 	// crashes between the two operations.
 	ReplaceSlaveMedia(ctx context.Context, slaveID string, items []*ReceiverMediaRecord) error
 	ListAll(ctx context.Context) ([]*ReceiverMediaRecord, error)
+	// ListByFingerprints returns receiver media rows whose content_fingerprint is in
+	// the given set and whose slave_id != excludeSlaveID. Used by duplicate detection
+	// to fetch only the rows relevant to a pushed batch instead of loading the entire
+	// receiver_media table on every push.
+	ListByFingerprints(ctx context.Context, excludeSlaveID string, fingerprints []string) ([]*ReceiverMediaRecord, error)
 	DeleteBySlave(ctx context.Context, slaveID string) error
 	DeleteByID(ctx context.Context, id string) error
 }

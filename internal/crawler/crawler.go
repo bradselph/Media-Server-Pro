@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"media-server-pro/internal/config"
@@ -311,67 +312,33 @@ func (m *Module) doCrawl(ctx context.Context, target *repositories.CrawlerTarget
 		contentLinks = contentLinks[:maxPages]
 	}
 
-	newCount := 0
+	// Each content link is an independent target (its own page fetch / headless
+	// browser probe), so probe them through a small bounded worker pool instead of
+	// strictly serially — cutting a crawl's wall-clock (dominated by per-page fixed
+	// settle sleeps) without spawning an unbounded number of concurrent browsers.
+	var newCount atomic.Int64
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, crawlProbeConcurrency)
 	for i, link := range contentLinks {
-		if err := ctx.Err(); err != nil {
-			return newCount, fmt.Errorf("crawl canceled: %w", err)
-		}
-		m.log.Debug("Probing [%d/%d]: %s", i+1, len(contentLinks), link)
-
-		streams, title := m.probeForStreams(ctx, link)
-		if len(streams) == 0 {
-			continue
-		}
-
-		if title == "" {
-			title = extractTitleFromURL(link)
-		}
-
-		for _, stream := range streams {
-			if stream.Type != "m3u8" {
-				continue
-			}
-
-			streamURL := stream.URL
-
-			exists, err := m.discoveryRepo.ExistsByStreamURL(ctx, streamURL)
-			if err != nil {
-				m.log.Warn("Failed to check discovery existence: %v", err)
-				continue
-			}
-			if exists {
-				continue
-			}
-
-			id := generateDiscoveryID(streamURL)
-			rec := &repositories.CrawlerDiscoveryRecord{
-				ID:              id,
-				TargetID:        target.ID,
-				PageURL:         link,
-				Title:           title,
-				StreamURL:       streamURL,
-				StreamType:      "hls",
-				Quality:         stream.Quality,
-				DetectionMethod: stream.DetectionMethod,
-				Status:          "pending",
-				DiscoveredAt:    time.Now(),
-			}
-
-			// Validate the discovered URL for SSRF before persisting so that
-			// a malicious page cannot inject internal-network URLs into the admin discoveries panel.
-			if err := helpers.ValidateURLForSSRF(streamURL); err != nil {
-				m.log.Warn("Skipping SSRF-unsafe discovery from %s: %v", link, err)
-				continue
-			}
-
-			if err := m.discoveryRepo.Create(ctx, rec); err != nil {
-				m.log.Warn("Failed to store discovery: %v", err)
-				continue
-			}
-			newCount++
-			m.log.Info("Discovered M3U8 [%s]: %s -> %s", stream.DetectionMethod, title, streamURL)
+		if ctx.Err() != nil {
 			break
 		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, link string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if ctx.Err() != nil {
+				return
+			}
+			m.log.Debug("Probing [%d/%d]: %s", i+1, len(contentLinks), link)
+			newCount.Add(int64(m.probeAndStoreLink(ctx, target, link)))
+		}(i, link)
+	}
+	wg.Wait()
+
+	if err := ctx.Err(); err != nil {
+		return int(newCount.Load()), fmt.Errorf("crawl canceled: %w", err)
 	}
 
 	now := time.Now()
@@ -379,8 +346,76 @@ func (m *Module) doCrawl(ctx context.Context, target *repositories.CrawlerTarget
 		m.log.Warn("Failed to update last crawled: %v", err)
 	}
 
-	m.log.Info("Crawl of %s complete: %d new M3U8 streams found", target.Name, newCount)
-	return newCount, nil
+	total := int(newCount.Load())
+	m.log.Info("Crawl of %s complete: %d new M3U8 streams found", target.Name, total)
+	return total, nil
+}
+
+// crawlProbeConcurrency bounds how many content links a single crawl probes at once.
+// Kept small (each probe may spawn a headless browser) so peak memory stays modest
+// while still overlapping the fixed per-page settle delays.
+const crawlProbeConcurrency = 3
+
+// probeAndStoreLink probes one content link for HLS streams and persists any new,
+// SSRF-safe discoveries, returning the number stored. Safe for concurrent use: the
+// discovery repo keys on a deterministic content hash, so a duplicate insert from a
+// concurrent probe is rejected by the primary key rather than corrupting state.
+func (m *Module) probeAndStoreLink(ctx context.Context, target *repositories.CrawlerTargetRecord, link string) int {
+	streams, title := m.probeForStreams(ctx, link)
+	if len(streams) == 0 {
+		return 0
+	}
+	if title == "" {
+		title = extractTitleFromURL(link)
+	}
+
+	newCount := 0
+	for _, stream := range streams {
+		if stream.Type != "m3u8" {
+			continue
+		}
+
+		streamURL := stream.URL
+
+		exists, err := m.discoveryRepo.ExistsByStreamURL(ctx, streamURL)
+		if err != nil {
+			m.log.Warn("Failed to check discovery existence: %v", err)
+			continue
+		}
+		if exists {
+			continue
+		}
+
+		id := generateDiscoveryID(streamURL)
+		rec := &repositories.CrawlerDiscoveryRecord{
+			ID:              id,
+			TargetID:        target.ID,
+			PageURL:         link,
+			Title:           title,
+			StreamURL:       streamURL,
+			StreamType:      "hls",
+			Quality:         stream.Quality,
+			DetectionMethod: stream.DetectionMethod,
+			Status:          "pending",
+			DiscoveredAt:    time.Now(),
+		}
+
+		// Validate the discovered URL for SSRF before persisting so that a malicious
+		// page cannot inject internal-network URLs into the admin discoveries panel.
+		if err := helpers.ValidateURLForSSRF(streamURL); err != nil {
+			m.log.Warn("Skipping SSRF-unsafe discovery from %s: %v", link, err)
+			continue
+		}
+
+		if err := m.discoveryRepo.Create(ctx, rec); err != nil {
+			m.log.Warn("Failed to store discovery: %v", err)
+			continue
+		}
+		newCount++
+		m.log.Info("Discovered M3U8 [%s]: %s -> %s", stream.DetectionMethod, title, streamURL)
+		break
+	}
+	return newCount
 }
 
 // fetchPage fetches a page's HTML body.

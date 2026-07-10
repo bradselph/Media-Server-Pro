@@ -128,6 +128,49 @@ func (r *ScanResultRepository) Get(ctx context.Context, path string) (*repositor
 	return result, nil
 }
 
+// GetByPaths batch-loads scan results for a set of paths, chunking the WHERE IN
+// query to stay well under driver placeholder limits. It issues at most two
+// queries per chunk (rows + reasons), mirroring GetPendingReview's batching,
+// instead of the 2-per-path round trips a per-file Get would incur. Paths with no
+// persisted row are simply absent from the returned map.
+func (r *ScanResultRepository) GetByPaths(ctx context.Context, paths []string) (map[string]*repositories.ScanResult, error) {
+	out := make(map[string]*repositories.ScanResult, len(paths))
+	if len(paths) == 0 {
+		return out, nil
+	}
+
+	const chunkSize = 1000
+	for start := 0; start < len(paths); start += chunkSize {
+		end := min(start+chunkSize, len(paths))
+		chunk := paths[start:end]
+
+		var rows []scanResultRow
+		if err := r.db.WithContext(ctx).Where("path IN ?", chunk).Find(&rows).Error; err != nil {
+			return nil, fmt.Errorf("failed to batch query scan results: %w", err)
+		}
+		if len(rows) == 0 {
+			continue
+		}
+		for i := range rows {
+			result := r.rowToResult(&rows[i])
+			result.Reasons = []string{}
+			out[rows[i].Path] = result
+		}
+
+		var reasons []scanReasonRow
+		if err := r.db.WithContext(ctx).Where("path IN ?", chunk).Find(&reasons).Error; err != nil {
+			return nil, fmt.Errorf("failed to batch query scan reasons: %w", err)
+		}
+		for _, rr := range reasons {
+			if result, ok := out[rr.Path]; ok {
+				result.Reasons = append(result.Reasons, rr.Reason)
+			}
+		}
+	}
+
+	return out, nil
+}
+
 // GetPendingReview retrieves all scan results that need review.
 // Uses a batch WHERE IN query for reasons to avoid N+1.
 func (r *ScanResultRepository) GetPendingReview(ctx context.Context) ([]*repositories.ScanResult, error) {

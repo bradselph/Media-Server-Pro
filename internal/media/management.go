@@ -519,7 +519,6 @@ func (m *Module) UpdateMetadata(mediaPath string, updates map[string]any) error 
 	return nil
 }
 
-
 // applyMetadataField applies a single metadata field update.
 func applyMetadataField(meta *Metadata, key string, value any) {
 	switch key {
@@ -870,7 +869,7 @@ func (m *Module) RegisterUploadedFile(mediaPath string) error {
 		mediaType = models.MediaTypeUnknown
 	}
 
-	item := m.createMediaItem(mediaPath, info, mediaType)
+	item := m.createMediaItem(mediaPath, info, mediaType, m.config.Get().Directories.Thumbnails)
 	if item == nil {
 		return fmt.Errorf(fmtCreateMediaFailed, mediaPath)
 	}

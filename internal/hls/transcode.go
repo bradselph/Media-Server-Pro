@@ -138,8 +138,16 @@ func (m *Module) finalizeJobCompleted(job *models.HLSJob) {
 	// os.RemoveAll against the goroutine's own deferred cleanup (e.g. removeLock).
 	// The entry is cleaned up by DeleteJob (when explicitly deleted) or by
 	// cleanInactiveJob (when evicted by the inactive-jobs cleanup pass).
+	//
+	// Snapshot the just-completed job under the lock and persist only that single
+	// row after releasing it. Previously this called saveJobs(), which re-persisted
+	// EVERY job in memory on every completion — O(N) DB writes per completion that
+	// grew to O(N^2) over a server's lifetime since jobs are never auto-pruned. The
+	// deep copy also keeps the DB write off the hot jobsMu path (a slow write no
+	// longer stalls other job readers/writers) while staying race-free.
+	jobCopy := copyHLSJob(job)
 	m.jobsMu.Unlock()
-	if err := m.saveJobs(); err != nil {
+	if err := m.saveJob(jobCopy); err != nil {
 		m.log.Warn("Failed to save job state after completion: %v", err)
 	}
 }

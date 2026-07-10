@@ -5,6 +5,63 @@ import (
 	"time"
 )
 
+// TestRateLimiter_EvictsIdleOneShotClient is a regression test for the unbounded
+// clients-map growth: a client that makes a single request and never returns must be
+// reclaimed by cleanup(). The previous eviction predicate required len(Requests)==0,
+// but CheckRequest always leaves >=1 timestamp and only trims on the same IP's next
+// call, so one-shot IPs were never collected. Eviction now keys off LastSeen age.
+func TestRateLimiter_EvictsIdleOneShotClient(t *testing.T) {
+	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
+
+	const ip = "203.0.113.7"
+	if allowed, _, _ := rl.CheckRequest(ip); !allowed {
+		t.Fatalf("first request should be allowed")
+	}
+
+	// The client exists and (under the old predicate) has a non-empty Requests slice.
+	rl.mu.Lock()
+	c, ok := rl.clients[ip]
+	if !ok {
+		rl.mu.Unlock()
+		t.Fatalf("client %s was not tracked", ip)
+	}
+	if len(c.Requests) == 0 {
+		rl.mu.Unlock()
+		t.Fatalf("precondition: a served request should leave >=1 timestamp")
+	}
+	// Simulate the IP going idle well past the stale window.
+	c.LastSeen = c.LastSeen.Add(-10 * time.Minute)
+	c.LastViolation = c.LastViolation.Add(-10 * time.Minute)
+	rl.mu.Unlock()
+
+	rl.cleanup()
+
+	rl.mu.Lock()
+	_, stillThere := rl.clients[ip]
+	rl.mu.Unlock()
+	if stillThere {
+		t.Fatalf("idle one-shot client %s should have been evicted by cleanup()", ip)
+	}
+}
+
+// TestRateLimiter_KeepsActiveClient verifies cleanup() does NOT evict a client seen
+// within the stale window (so active clients keep their rate-limit state).
+func TestRateLimiter_KeepsActiveClient(t *testing.T) {
+	rl := NewRateLimiter(RateLimitConfig{RequestsPerMinute: 60, BurstLimit: 10})
+
+	const ip = "203.0.113.8"
+	rl.CheckRequest(ip) // LastSeen = now
+
+	rl.cleanup()
+
+	rl.mu.Lock()
+	_, stillThere := rl.clients[ip]
+	rl.mu.Unlock()
+	if !stillThere {
+		t.Fatalf("recently-seen client %s should NOT be evicted", ip)
+	}
+}
+
 // FND-0016: Regression test for BanIP ensuring ExpiresAt is non-nil and non-zero
 // when duration > 0.
 func TestFND0016_BanIP_ExpiresAtNonNil(t *testing.T) {
