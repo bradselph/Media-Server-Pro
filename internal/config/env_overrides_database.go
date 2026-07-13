@@ -69,4 +69,3 @@ func (m *Manager) applyDatabaseRetryOverrides() {
 		m.config.Database.RetryInterval = val
 	}
 }
-

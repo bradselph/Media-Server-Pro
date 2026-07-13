@@ -86,11 +86,11 @@ func (m *Module) ensureAdminUserRecord() error {
 		// stored in ADMIN_PASSWORD_HASH is a standalone bcrypt hash (no prepended
 		// salt), so comparison is: bcrypt.CompareHashAndPassword(hash, password).
 		// If a salt policy is ever added, admin login must be migrated first.
-		Salt:      "",
-		Role:      models.RoleAdmin,
-		Type:      "admin",
-		Enabled:   true,
-		CreatedAt: time.Now(),
+		Salt:         "",
+		Role:         models.RoleAdmin,
+		Type:         "admin",
+		Enabled:      true,
+		CreatedAt:    time.Now(),
 		Permissions:  adminPermissions(),
 		Preferences:  defaultUserPreferences(),
 		WatchHistory: make([]models.WatchHistoryItem, 0),

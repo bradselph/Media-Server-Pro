@@ -179,16 +179,16 @@ type Handler struct {
 	deletionRequests    repositories.DataDeletionRequestRepository
 	deletionRequestsMu  sync.Mutex // guards lazy init of deletionRequests
 	mediaReports        repositories.MediaReportRepository
-	mediaReportsMu      sync.Mutex    // guards lazy init of mediaReports
-	viewCooldown        sync.Map      // key: "userID|mediaID" → value: time.Time of last counted view
-	viewCooldownStop    chan struct{} // closed to stop the background sweeper goroutine
-	regTokens           sync.Map      // key: token string → value: time.Time issued; single-use, 15-min TTL
-	classifyDirRunning  atomic.Bool   // true while a ClassifyDirectory background job is active
-	classifyAllRunning  atomic.Bool   // true while a ClassifyAllPending background job is active
-	receiverCopyBusy    sync.Map      // key: federated media ID → struct{} while a copy-to-library of it runs
-	receiverBulkMu      sync.Mutex    // guards receiverBulkJob
+	mediaReportsMu      sync.Mutex           // guards lazy init of mediaReports
+	viewCooldown        sync.Map             // key: "userID|mediaID" → value: time.Time of last counted view
+	viewCooldownStop    chan struct{}        // closed to stop the background sweeper goroutine
+	regTokens           sync.Map             // key: token string → value: time.Time issued; single-use, 15-min TTL
+	classifyDirRunning  atomic.Bool          // true while a ClassifyDirectory background job is active
+	classifyAllRunning  atomic.Bool          // true while a ClassifyAllPending background job is active
+	receiverCopyBusy    sync.Map             // key: federated media ID → struct{} while a copy-to-library of it runs
+	receiverBulkMu      sync.Mutex           // guards receiverBulkJob
 	receiverBulkJob     *receiverBulkCopyJob // latest bulk copy-to-library job; nil until the first run
-	lifecycleInProgress atomic.Bool   // true once a shutdown/restart has been initiated
+	lifecycleInProgress atomic.Bool          // true once a shutdown/restart has been initiated
 	feedCacheMu         sync.Mutex
 	feedCache           map[string]feedCacheEntry // key: "cacheKey" → cached XML + expiry
 	feedCacheStop       chan struct{}             // closed to stop the feed cache sweeper goroutine

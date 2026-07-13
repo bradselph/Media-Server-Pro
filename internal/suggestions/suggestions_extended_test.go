@@ -75,10 +75,10 @@ func TestRecentlyViewedCategorySet(t *testing.T) {
 	}
 	profile := &UserProfile{
 		ViewHistory: []ViewHistory{
-			{Category: "movies", LastViewed: time.Now().Add(-1 * time.Hour)},        // recent → included
-			{Category: "movies", LastViewed: time.Now().Add(-2 * time.Hour)},        // duplicate → dedup
-			{Category: "anime", LastViewed: time.Now().Add(-30 * 24 * time.Hour)},   // >7d → excluded
-			{Category: "", LastViewed: time.Now().Add(-1 * time.Hour)},              // empty cat → excluded
+			{Category: "movies", LastViewed: time.Now().Add(-1 * time.Hour)},      // recent → included
+			{Category: "movies", LastViewed: time.Now().Add(-2 * time.Hour)},      // duplicate → dedup
+			{Category: "anime", LastViewed: time.Now().Add(-30 * 24 * time.Hour)}, // >7d → excluded
+			{Category: "", LastViewed: time.Now().Add(-1 * time.Hour)},            // empty cat → excluded
 		},
 	}
 	set := recentlyViewedCategorySet(profile)
