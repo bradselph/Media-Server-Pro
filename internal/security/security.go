@@ -4,6 +4,7 @@ package security
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	pathpkg "path"
@@ -417,9 +418,7 @@ func (m *Module) UnbanIP(ip string) {
 // so the admin UI lists auth-path auto-bans (which live only in authRateLimiter).
 func (m *Module) GetBannedIPs() map[string]BanRecord {
 	merged := m.rateLimiter.GetBannedIPs() // fresh map, safe to mutate
-	for ip, rec := range m.authRateLimiter.GetBannedIPs() {
-		merged[ip] = rec
-	}
+	maps.Copy(merged, m.authRateLimiter.GetBannedIPs())
 	return merged
 }
 

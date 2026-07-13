@@ -17,6 +17,7 @@ var privateRanges []*net.IPNet
 
 func init() {
 	private := []string{
+		"0.0.0.0/8",       // "this" network / INADDR_ANY (0.0.0.0 routes to localhost on Linux)
 		"127.0.0.0/8",     // IPv4 loopback
 		"10.0.0.0/8",      // RFC-1918
 		"172.16.0.0/12",   // RFC-1918
@@ -39,11 +40,24 @@ func init() {
 }
 
 // isPrivateIP reports whether ip falls within any private/reserved range.
-// IPv4-mapped IPv6 addresses (e.g. ::ffff:10.0.0.1) are unwrapped to their
-// 4-byte form before checking so that they match IPv4 CIDR ranges.
+// IPv4-in-IPv6 addresses are unwrapped to their 4-byte form before checking so
+// that they match IPv4 CIDR ranges: To4() handles the IPv4-mapped form
+// (::ffff:a.b.c.d), and the deprecated IPv4-compatible form (::a.b.c.d) is
+// unwrapped manually since To4() does not recognise it — otherwise a literal
+// like ::127.0.0.1 would bypass the loopback block entirely.
 func isPrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	// 0.0.0.0 and :: (unspecified) are routed to localhost on connect, so treat
+	// them as private even though they belong to no CIDR block above.
+	if ip.IsUnspecified() {
+		return true
+	}
 	if v4 := ip.To4(); v4 != nil {
 		ip = v4
+	} else if len(ip) == net.IPv6len && isIPv4CompatibleV6(ip) {
+		ip = ip[12:16]
 	}
 	for _, block := range privateRanges {
 		if block.Contains(ip) {
@@ -51,6 +65,17 @@ func isPrivateIP(ip net.IP) bool {
 		}
 	}
 	return false
+}
+
+// isIPv4CompatibleV6 reports whether ip is a 16-byte address with an all-zero
+// 12-byte prefix (the deprecated ::a.b.c.d IPv4-compatible IPv6 form).
+func isIPv4CompatibleV6(ip net.IP) bool {
+	for _, b := range ip[:12] {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // ValidateURLForSSRF parses rawURL, enforces http/https scheme, and rejects URLs
