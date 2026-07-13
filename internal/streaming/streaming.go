@@ -48,6 +48,13 @@ const (
 // it is considered stale and evicted by the cleanup sweep.
 const staleSessionTimeout = 30 * time.Minute
 
+// keepaliveInterval refreshes an active session's LastUpdate well within
+// staleSessionTimeout so the stale-session sweep never evicts a stream that is
+// still being served. Long single transfers flush stats only once at the end,
+// and opaque proxied streams never touch LastUpdate at all, so without this a
+// stream longer than staleSessionTimeout would be wrongly evicted mid-transfer.
+const keepaliveInterval = staleSessionTimeout / 3
+
 // Module implements media streaming
 type Module struct {
 	config         *config.Manager
@@ -344,6 +351,9 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 		return ErrStreamLimitExceeded
 	}
 	defer m.endSession(session.ID)
+	// Keep the session fresh during long transfers (stats are otherwise flushed
+	// only once, after the whole range is written) so the sweep can't evict it.
+	defer m.startSessionKeepalive(session.ID)()
 
 	// Set response headers
 	isRangeRequest := req.RangeHeader != ""
@@ -818,6 +828,37 @@ func (m *Module) updateSessionStats(sessionID string, bytes int64) {
 	m.statsMu.Unlock()
 }
 
+// touchSession refreshes an active session's LastUpdate only (no stats flush),
+// so a long-running-but-active session doesn't look stale to the cleanup sweep.
+func (m *Module) touchSession(sessionID string) {
+	m.sessionMu.Lock()
+	if session, exists := m.activeSessions[sessionID]; exists {
+		session.LastUpdate = time.Now()
+	}
+	m.sessionMu.Unlock()
+}
+
+// startSessionKeepalive periodically touches the session until the returned stop
+// func is called (idempotent). Tie stop to the request lifetime with defer; the
+// ticker first fires after keepaliveInterval, so short streams pay ~nothing.
+func (m *Module) startSessionKeepalive(sessionID string) (stop func()) {
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(keepaliveInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				m.touchSession(sessionID)
+			}
+		}
+	}()
+	var once sync.Once
+	return func() { once.Do(func() { close(done) }) }
+}
+
 // GetActiveSessions returns snapshots of all active streaming sessions.
 // Copies each struct before returning so callers cannot race with
 // updateSessionStats, which mutates BytesSent/LastUpdate under sessionMu.Lock.
@@ -898,7 +939,14 @@ func (m *Module) TrackProxyStream(userID string, maxStreams int) (release func()
 	}
 	m.activeSessions[session.ID] = session
 	m.sessionMu.Unlock()
-	return func() { m.endSession(session.ID) }, true
+	// Proxied streams never touch LastUpdate (no updateSessionStats runs for them),
+	// so keep the session fresh until release() or the sweep would evict any relay
+	// longer than staleSessionTimeout mid-stream.
+	stopKeepalive := m.startSessionKeepalive(session.ID)
+	return func() {
+		stopKeepalive()
+		m.endSession(session.ID)
+	}, true
 }
 
 // Download handles a file download request with range support and chunked streaming
