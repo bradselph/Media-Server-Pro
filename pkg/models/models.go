@@ -113,13 +113,17 @@ func (UserPermissions) TableName() string {
 // keys, mapping them to the canonical fields AutoPlay and EqualizerPreset respectively.
 // Use Validate() to ensure all fields contain reasonable values before persistence.
 type UserPreferences struct {
-	UserID              string  `json:"user_id,omitempty" db:"user_id" gorm:"primaryKey;size:255"`
-	Theme               string  `json:"theme" db:"theme" gorm:"size:50;default:dark"`
-	ViewMode            string  `json:"view_mode" db:"view_mode" gorm:"size:50;default:grid"`
-	DefaultQuality      string  `json:"default_quality" db:"default_quality" gorm:"size:50;default:auto"`
-	AutoPlay            bool    `json:"auto_play" db:"auto_play" gorm:"default:false"`
-	PlaybackSpeed       float64 `json:"playback_speed" db:"playback_speed" gorm:"default:1.0"`
-	Volume              float64 `json:"volume" db:"volume" gorm:"default:1.0"`
+	UserID         string  `json:"user_id,omitempty" db:"user_id" gorm:"primaryKey;size:255"`
+	Theme          string  `json:"theme" db:"theme" gorm:"size:50;default:dark"`
+	ViewMode       string  `json:"view_mode" db:"view_mode" gorm:"size:50;default:grid"`
+	DefaultQuality string  `json:"default_quality" db:"default_quality" gorm:"size:50;default:auto"`
+	AutoPlay       bool    `json:"auto_play" db:"auto_play" gorm:"default:false"`
+	PlaybackSpeed  float64 `json:"playback_speed" db:"playback_speed" gorm:"default:1.0"`
+	// Volume: NO gorm `default:` tag on purpose — 0.0 (muted) is a legitimate
+	// user choice, and a default tag makes GORM's Create/OnConflict upsert silently
+	// substitute the default for the zero value, reverting mute on every save.
+	// The 1.0 default for new users is set in defaultUserPreferences().
+	Volume              float64 `json:"volume" db:"volume"`
 	ShowMature          bool    `json:"show_mature" db:"show_mature" gorm:"default:false"`
 	MaturePreferenceSet bool    `json:"mature_preference_set" db:"mature_preference_set" gorm:"default:false"`
 	EqualizerPreset     string  `json:"equalizer_preset" db:"equalizer_preset" gorm:"size:100"`
@@ -143,11 +147,15 @@ type UserPreferences struct {
 	// when the current item finishes. Defaults to true at the API level
 	// for logged-in users (set in defaultUserPreferences) so the session
 	// keeps rolling without explicit opt-in.
-	AutoplaySimilar bool `json:"autoplay_similar" db:"autoplay_similar" gorm:"not null;default:true"`
+	// NO gorm `default:` tag — false (opt-out) is a valid choice a default tag would
+	// silently revert on every save; the new-user true is set in defaultUserPreferences().
+	AutoplaySimilar bool `json:"autoplay_similar" db:"autoplay_similar" gorm:"not null"`
 	// AccentHue (design plan §6.5): user-chosen UI accent in degrees on the
 	// OKLCH wheel. Persisted server-side so the choice follows the user
 	// across devices; the frontend mirrors to localStorage for first-paint.
-	AccentHue int `json:"accent_hue" db:"accent_hue" gorm:"not null;default:220"`
+	// NO gorm `default:` tag — 0 is a valid hue (red) a default tag would silently
+	// revert; the new-user 220 default is set in defaultUserPreferences().
+	AccentHue int `json:"accent_hue" db:"accent_hue" gorm:"not null"`
 }
 
 // TableName specifies the table name for GORM
