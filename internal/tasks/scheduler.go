@@ -308,13 +308,20 @@ func (m *Module) runTaskLoop(ctx context.Context, task *Task) {
 		select {
 		case <-ctx.Done():
 			return
-		case newSchedule := <-task.reschedule:
+		case <-task.reschedule:
 			ticker.Stop()
 			select {
 			case <-ticker.C:
 			default:
 			}
-			ticker = time.NewTicker(newSchedule)
+			// Read the authoritative schedule rather than the value carried by the
+			// channel: UpdateSchedule always writes task.Schedule under m.mu, but its
+			// buffered (size-1) send is dropped when reschedules arrive in quick
+			// succession, which would otherwise leave the ticker on a stale interval.
+			m.mu.RLock()
+			sched := task.Schedule
+			m.mu.RUnlock()
+			ticker = time.NewTicker(sched)
 		case <-ticker.C:
 			if !m.tryRunScheduledTask(ctx, task) {
 				return
