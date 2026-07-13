@@ -497,6 +497,13 @@ func (m *Manager) getCopy() *Config {
 	if m.config.Storage.S3.Prefixes != nil {
 		cp.Storage.S3.Prefixes = maps.Clone(m.config.Storage.S3.Prefixes)
 	}
+	// Tasks.Overrides is a map and must be cloned too, or a Get() snapshot aliases
+	// the live map: callers holding the snapshot (e.g. cmd/server/main.go's
+	// cfg.Get().Tasks.Overrides[...] reads) both observe later mutations and race
+	// with a concurrent Update writer (concurrent map read/write -> panic).
+	if m.config.Tasks.Overrides != nil {
+		cp.Tasks.Overrides = maps.Clone(m.config.Tasks.Overrides)
+	}
 	return &cp
 }
 

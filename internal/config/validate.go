@@ -30,6 +30,7 @@ func (m *Manager) validateLocked() []error {
 	errors = append(errors, m.validateAuth()...)
 	errors = append(errors, m.validateThumbnails()...)
 	errors = append(errors, m.validateAnalytics()...)
+	errors = append(errors, m.validateMatureScanner()...)
 	m.validateReceiver()
 	errors = append(errors, m.validateUploads()...)
 	errors = append(errors, m.validateBackup()...)
@@ -267,6 +268,29 @@ func (m *Manager) validateAnalytics() []error {
 		return []error{fmt.Errorf("analytics retention_days cannot be negative")}
 	}
 	return nil
+}
+
+// validateMatureScanner bounds-checks the auto-flagging confidence thresholds.
+// Out-of-range values (set via MATURE_SCANNER_*_THRESHOLD env with no prior
+// range check) silently disable flagging (threshold > 1, never reached) or flag
+// everything (threshold <= 0), and a medium >= high threshold is contradictory.
+func (m *Manager) validateMatureScanner() []error {
+	if !m.config.MatureScanner.Enabled {
+		return nil
+	}
+	var errs []error
+	high := m.config.MatureScanner.HighConfidenceThreshold
+	med := m.config.MatureScanner.MediumConfidenceThreshold
+	if high <= 0 || high > 1 {
+		errs = append(errs, fmt.Errorf("mature_scanner high_confidence_threshold must be in (0, 1], got %g", high))
+	}
+	if med <= 0 || med > 1 {
+		errs = append(errs, fmt.Errorf("mature_scanner medium_confidence_threshold must be in (0, 1], got %g", med))
+	}
+	if med >= high {
+		errs = append(errs, fmt.Errorf("mature_scanner medium_confidence_threshold (%g) must be below high_confidence_threshold (%g)", med, high))
+	}
+	return errs
 }
 
 func (m *Manager) validateReceiver() {
