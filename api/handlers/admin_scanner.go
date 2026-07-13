@@ -136,20 +136,23 @@ func (h *Handler) applyReviewActionToItem(ctx context.Context, action, id string
 			confidence = result.Confidence
 			reasons = result.Reasons
 		}
+		// Verify review-queue membership FIRST: otherwise a clean/never-flagged
+		// item (or a stale request after ClearReviewQueue) would get is_mature=true
+		// committed permanently before this returns false.
+		if err := h.scanner.ApproveContent(ctx, path); err != nil {
+			return false
+		}
 		if setErr := h.media.SetMatureFlag(path, true, confidence, reasons); setErr != nil {
 			h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
 			return false
 		}
-		if err := h.scanner.ApproveContent(ctx, path); err != nil {
-			return false
-		}
 		return true
+	}
+	if err := h.scanner.RejectContent(ctx, path); err != nil {
+		return false
 	}
 	if setErr := h.media.SetMatureFlag(path, false, 0, nil); setErr != nil {
 		h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
-		return false
-	}
-	if err := h.scanner.RejectContent(ctx, path); err != nil {
 		return false
 	}
 	return true
@@ -219,14 +222,16 @@ func (h *Handler) ApproveContent(c *gin.Context) {
 		confidence = result.Confidence
 		reasons = result.Reasons
 	}
+	// Verify review-queue membership FIRST: otherwise a clean/never-flagged item
+	// (or a stale/duplicate request after ClearReviewQueue) would get is_mature=true
+	// committed permanently before the 404 below.
+	if err := h.scanner.ApproveContent(c.Request.Context(), path); err != nil {
+		writeError(c, http.StatusNotFound, "Item not found in review queue")
+		return
+	}
 	if err := h.media.SetMatureFlag(path, true, confidence, reasons); err != nil {
 		h.log.Error("Failed to update media library mature flag: %v", err)
 		writeError(c, http.StatusInternalServerError, "Failed to update media library")
-		return
-	}
-
-	if err := h.scanner.ApproveContent(c.Request.Context(), path); err != nil {
-		writeError(c, http.StatusNotFound, "Item not found in review queue")
 		return
 	}
 
@@ -248,14 +253,13 @@ func (h *Handler) RejectContent(c *gin.Context) {
 		return
 	}
 
+	if err := h.scanner.RejectContent(c.Request.Context(), path); err != nil {
+		writeError(c, http.StatusNotFound, "Item not found in review queue")
+		return
+	}
 	if err := h.media.SetMatureFlag(path, false, 0, nil); err != nil {
 		h.log.Error("Failed to update media library mature flag: %v", err)
 		writeError(c, http.StatusInternalServerError, "Failed to update media library")
-		return
-	}
-
-	if err := h.scanner.RejectContent(c.Request.Context(), path); err != nil {
-		writeError(c, http.StatusNotFound, "Item not found in review queue")
 		return
 	}
 
