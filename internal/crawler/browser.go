@@ -313,8 +313,14 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 		return false
 	}
 
-	// Background goroutine to process network events
+	// Background goroutine to process network events. Tracked by netWG so we can
+	// wait for it to fully drain before reading/returning result.Streams (it
+	// appends to that slice under streamsMu; returning while it is still running
+	// is a data race and can drop the final batch of detected streams).
+	var netWG sync.WaitGroup
+	netWG.Add(1)
 	go func() {
+		defer netWG.Done()
 		for evt := range events {
 			if evt.Method != "Network.responseReceived" {
 				continue
@@ -416,6 +422,14 @@ func (bd *browserDetector) probe(ctx context.Context, pageURL string) (*browserP
 
 	// Let any final network events settle
 	sleep(ctx, 1*time.Second)
+
+	// Stop the network-event goroutine before touching result.Streams: closing the
+	// conn makes the read pump exit and close `events`, ending the goroutine's
+	// range loop; netWG.Wait then guarantees it is done appending. All send() calls
+	// above have already completed, so closing here is safe; the deferred
+	// conn.Close() becomes a harmless second close.
+	_ = conn.Close()
+	netWG.Wait()
 
 	bd.log.Info("Browser probe complete: %d streams found on %s", len(result.Streams), pageURL)
 	return result, nil
