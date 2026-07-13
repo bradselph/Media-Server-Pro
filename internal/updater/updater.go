@@ -777,9 +777,13 @@ func computeFileSHA256(path string) (string, error) {
 func (m *Module) verifyBinaryChecksum(version, assetName, binaryPath string) error {
 	checksumURL2, err := m.fetchChecksumAssetURL(version)
 	if err != nil {
-		return nil //nolint:nilerr // already logged; treat as no checksum available
+		// Fail closed: an error here means we couldn't determine whether checksums
+		// exist, so we must not install an unverified binary.
+		return fmt.Errorf("checksum lookup failed, refusing to install unverified binary: %w", err)
 	}
 	if checksumURL2 == "" {
+		// Only reached when the release was fetched successfully but has no
+		// SHA256SUMS asset (predates checksum publishing) — the intended skip.
 		return nil
 	}
 	expectedHash, err := m.downloadAndParseChecksum(checksumURL2, assetName)
@@ -806,8 +810,10 @@ func (m *Module) fetchChecksumAssetURL(version string) (string, error) {
 		GitHubAPI, GitHubOwner, GitHubRepo, version)
 	req, err := http.NewRequest(http.MethodGet, checksumURL, http.NoBody)
 	if err != nil {
-		m.log.Warn("Could not build checksum request: %v — skipping", err)
-		return "", nil
+		// Fail closed: a transient/unexpected error is NOT proof the release has no
+		// checksums, so it must not silently skip integrity verification. Only a
+		// successful lookup that lists no SHA256SUMS asset (below) is a legit skip.
+		return "", fmt.Errorf("build checksum request: %w", err)
 	}
 	if token := m.config.Get().Updater.GitHubToken; token != "" {
 		req.Header.Set("Authorization", authBearerPrefix+token)
@@ -815,23 +821,21 @@ func (m *Module) fetchChecksumAssetURL(version string) (string, error) {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := m.httpClient.Do(req)
 	if err != nil {
-		m.log.Warn("Could not reach GitHub API for checksum lookup: %v — skipping integrity check", err)
-		return "", nil
+		return "", fmt.Errorf("reach GitHub API for checksum lookup: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		m.log.Warn("GitHub API returned %d for release lookup — skipping checksum check", resp.StatusCode)
-		return "", nil
+		return "", fmt.Errorf("GitHub API returned HTTP %d for release checksum lookup", resp.StatusCode)
 	}
 	var release struct {
 		Assets []releaseAsset `json:"assets"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		m.log.Warn("Failed to decode release JSON for checksum: %v — skipping", err)
-		return "", nil
+		return "", fmt.Errorf("decode release JSON for checksum: %w", err)
 	}
 	url := findChecksumAssetURL(release.Assets)
 	if url == "" {
+		// Legitimate skip: release fetched successfully but predates checksum publishing.
 		m.log.Warn("No SHA256SUMS asset found in release v%s — skipping integrity check (add SHA256SUMS to future releases)", version)
 	}
 	return url, nil
