@@ -49,11 +49,11 @@ func TestIsPrivateIP_LinkLocal(t *testing.T) {
 // IPv6 form (::a.b.c.d) previously bypassed the SSRF blocklist entirely.
 func TestIsPrivateIP_UnspecifiedAndV4CompatibleBypass(t *testing.T) {
 	blocked := []string{
-		"0.0.0.0",     // IPv4 unspecified / this-network (routes to localhost)
-		"::",          // IPv6 unspecified
-		"0.1.2.3",     // inside 0.0.0.0/8
-		"::127.0.0.1", // IPv4-compatible IPv6 -> loopback
-		"::10.0.0.1",  // IPv4-compatible IPv6 -> RFC-1918
+		"0.0.0.0",          // IPv4 unspecified / this-network (routes to localhost)
+		"::",               // IPv6 unspecified
+		"0.1.2.3",          // inside 0.0.0.0/8
+		"::127.0.0.1",      // IPv4-compatible IPv6 -> loopback
+		"::10.0.0.1",       // IPv4-compatible IPv6 -> RFC-1918
 		"::ffff:127.0.0.1", // IPv4-mapped IPv6 -> loopback (already handled by To4)
 	}
 	for _, ip := range blocked {
