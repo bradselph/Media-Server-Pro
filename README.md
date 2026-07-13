@@ -146,7 +146,7 @@ docker compose --env-file .env.docker up -d
 env files (`.env` vs `.env.docker`) so switching back and forth never loses values.
 
 The stack ships with MariaDB + the server in two containers. The published image lives at
-`ghcr.io/bradselph/media-server-pro` (tags: `:main`, `:development`, `:1.x.y`, `:latest`, `:sha-<short>`). Image
+`ghcr.io/bradselph/media-server-pro` (tags: `:latest` plus the released version, e.g. `:1.25.0` — there is no per-branch or per-sha tag). Image
 publishes are manual-only — kick off the "Docker Publish" workflow from the Actions tab when you want a fresh image. If
 `--docker` can't pull (no image published yet, private fork) it falls back to a local `docker compose build`.
 
@@ -292,7 +292,7 @@ setup.sh / install.sh  # Interactive native setup
 go build ./...
 go test ./...
 
-# Frontend (Node 22+, npm)
+# Frontend (Node 24+, npm)
 cd web/nuxt-ui
 npm install
 npm run dev          # standalone dev server (proxies /api + /media to the Go server on :8080)

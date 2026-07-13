@@ -7278,6 +7278,39 @@ paths:
         '200':
           description: Stream received
 
+  /ws/receiver:
+    get:
+      tags: [ receiver ]
+      summary: Receiver WebSocket channel (slave → master)
+      description: >-
+        WebSocket upgrade endpoint. A paired receiver ("slave") opens a
+        persistent bidirectional channel to the master for catalog delta sync
+        and control messages. Authentication is enforced *before* the upgrade by
+        the RequireReceiverWithAPIKey middleware — supply the receiver API key
+        via the `X-API-Key` header or the `api_key` query parameter. This is not
+        a normal REST call: clients must send the standard WebSocket
+        `Upgrade`/`Connection` handshake headers.
+      parameters:
+        - name: X-API-Key
+          in: header
+          required: false
+          description: Receiver API key (required unless supplied via the `api_key` query parameter).
+          schema:
+            type: string
+        - name: api_key
+          in: query
+          required: false
+          description: Receiver API key (alternative to the `X-API-Key` header).
+          schema:
+            type: string
+      responses:
+        '101':
+          description: Switching Protocols — WebSocket channel established.
+        '401':
+          description: Missing receiver API key (neither header nor query parameter supplied).
+        '403':
+          description: Invalid receiver API key, or the receiver feature is disabled.
+
   /api/receiver/media:
     get:
       tags: [ admin-receiver ]
@@ -7535,6 +7568,24 @@ paths:
       responses:
         '200':
           description: Destinations
+
+  /ws/admin/downloader:
+    get:
+      tags: [ admin-downloader ]
+      summary: Admin downloader progress WebSocket
+      description: >-
+        WebSocket upgrade endpoint that streams live downloader queue and
+        progress events to the admin UI. Admin session authentication is
+        enforced *before* the upgrade. This is not a normal REST call: clients
+        must send the standard WebSocket `Upgrade`/`Connection` handshake
+        headers.
+      security:
+        - sessionCookie: [ ]
+      responses:
+        '101':
+          description: Switching Protocols — WebSocket channel established.
+        '401':
+          description: Not authenticated as an admin.
 
   /api/admin/downloader/health:
     get:
