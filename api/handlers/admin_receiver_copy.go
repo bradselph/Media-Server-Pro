@@ -84,8 +84,12 @@ func (h *Handler) AdminReceiverCopyMedia(c *gin.Context) {
 	// Register the copied file like an upload: mints/reuses a stable ID, runs
 	// ffprobe, updates the in-memory index, and upserts the media_metadata row.
 	if err := h.media.RegisterUploadedFile(destPath); err != nil {
-		// Registration failed — remove the orphaned file so a later scan doesn't
-		// pick up an unindexed copy.
+		// Registration failed. RegisterUploadedFile inserts into the in-memory
+		// index BEFORE persisting the metadata row, so a failed DB save leaves a
+		// ghost entry pointing at a file we're about to delete. Roll the index
+		// back too, then remove the orphaned file so a later scan doesn't pick up
+		// an unindexed copy.
+		_ = h.media.RemoveMedia(destPath)
 		_ = os.Remove(destPath)
 		h.log.Error("copy federated media %s: register %s: %v", id, destPath, err)
 		writeError(c, http.StatusInternalServerError, "copied the file but failed to index it")

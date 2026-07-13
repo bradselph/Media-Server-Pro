@@ -102,8 +102,14 @@ func (m *Module) Start(_ context.Context) error {
 // Stop implements server.Module. Cancels the WS loop and waits up to ctx's
 // deadline for the goroutine to exit.
 func (m *Module) Stop(ctx context.Context) error {
-	m.stopLoop(ctx)
+	exited := m.stopLoop(ctx)
 	m.setHealth(false, "Stopped")
+	if !exited {
+		// stopLoop returns false when the loop didn't confirm exit within the
+		// shutdown deadline. Surface it instead of always reporting success, so the
+		// server's shutdown sequence can log/act on a follower that hung.
+		return fmt.Errorf("follower: WS loop did not exit within the shutdown deadline")
+	}
 	return nil
 }
 
