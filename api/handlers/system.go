@@ -499,17 +499,30 @@ func (h *Handler) AdminExecuteQuery(c *gin.Context) {
 		return
 	}
 
+	// Pin the SET SESSION cap and the query to a SINGLE pooled connection. On the
+	// shared *sql.DB pool, ExecContext and BeginTx are independent checkouts, so
+	// under concurrent load (every other handler borrows connections constantly)
+	// the SET SESSION very likely lands on a different physical connection than the
+	// query — and the 5s cap silently never applies. db.Conn guarantees one conn.
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		h.log.Error("Failed to acquire DB connection for query: %v", err)
+		writeError(c, http.StatusInternalServerError, msgQueryFailed)
+		return
+	}
+	defer func() { _ = conn.Close() }()
+
 	// Cap per-query execution time at the server level so SLEEP/BENCHMARK cannot
 	// stall the DB even if the keyword check is bypassed via comment injection.
 	// Silently ignore the error: MariaDB and older MySQL versions may not support
 	// MAX_EXECUTION_TIME; the context deadline provides a fallback cap.
-	if _, execErr := db.ExecContext(ctx, "SET SESSION MAX_EXECUTION_TIME=5000"); execErr != nil {
+	if _, execErr := conn.ExecContext(ctx, "SET SESSION MAX_EXECUTION_TIME=5000"); execErr != nil {
 		h.log.Debug("MAX_EXECUTION_TIME not supported by this DB server: %v", execErr)
 	}
 
 	// Use read-only transaction to prevent DML (INSERT/UPDATE/DELETE) and SELECT INTO OUTFILE.
 	// Note: LOAD_FILE() and INTO OUTFILE are also blocked by keyword check above.
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		h.log.Error("Failed to begin read-only transaction: %v", err)
 		writeError(c, http.StatusInternalServerError, msgQueryFailed)
