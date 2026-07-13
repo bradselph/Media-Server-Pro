@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -455,6 +456,13 @@ func (m *Module) ReorderItems(ctx context.Context, playlistID PlaylistID, userID
 				p.Items[i].Position = pos
 			}
 		}
+		// Re-sort the cached slice to match the new positions. Readers (GetPlaylist,
+		// GetPlaylistItems, ExportPlaylist) iterate Items in slice order and don't
+		// sort by .Position, so updating the field alone left the reorder invisible
+		// in the cache until a restart reloaded items with ORDER BY position.
+		sort.SliceStable(p.Items, func(i, j int) bool {
+			return p.Items[i].Position < p.Items[j].Position
+		})
 		p.ModifiedAt = time.Now()
 	}
 	m.mu.Unlock()
