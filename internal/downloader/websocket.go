@@ -158,6 +158,34 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer closeAll()
 
+	// Keepalive: nothing in this relay ever sends Ping frames, so the PongHandlers
+	// above would never fire and both read deadlines would expire ~60s after
+	// connect — killing every download's progress WS mid-transfer (a paused/quiet
+	// download sends no data to refresh the deadline on its own). Send periodic
+	// Pings well under wsRelayReadDeadline so the PongHandlers refresh the
+	// deadlines. WriteControl is safe to call concurrently with the relay writers.
+	const wsRelayPingInterval = wsRelayReadDeadline / 2
+	go func() {
+		ticker := time.NewTicker(wsRelayPingInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				deadline := time.Now().Add(wsRelayWriteDeadline)
+				if err := adminConn.WriteControl(websocket.PingMessage, nil, deadline); err != nil {
+					closeAll()
+					return
+				}
+				if err := dlConn.WriteControl(websocket.PingMessage, nil, deadline); err != nil {
+					closeAll()
+					return
+				}
+			}
+		}
+	}()
+
 	// Admin → Downloader
 	go func() {
 		defer closeAll()
@@ -166,6 +194,9 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return
 			}
+			// Belt-and-suspenders: any received frame is proof of life, so extend
+			// this side's read deadline directly (in addition to the ping/pong).
+			_ = adminConn.SetReadDeadline(time.Now().Add(wsRelayReadDeadline))
 			if err := writeMessageWithDeadline(dlConn, msgType, data); err != nil {
 				return
 			}
@@ -178,6 +209,7 @@ func (m *Module) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return
 		}
+		_ = dlConn.SetReadDeadline(time.Now().Add(wsRelayReadDeadline))
 		if err := writeMessageWithDeadline(adminConn, msgType, data); err != nil {
 			return
 		}
