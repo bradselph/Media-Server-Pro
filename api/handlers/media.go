@@ -294,7 +294,12 @@ func (h *Handler) ensurePageThumbnails(items []*models.MediaItem) {
 		if item.ThumbnailURL != "" || item.Path == "" {
 			continue
 		}
-		if !h.thumbnails.HasThumbnail(thumbnails.MediaID(item.ID)) {
+		// Federated (receiver) items carry a synthetic "receiver:<id>" path, not a
+		// real file — queuing local ffmpeg generation against it would fail on
+		// every listing request. Their thumbnail is proxied from the peer by the
+		// serve handler (tryServeReceiverThumbnail), so skip generation but still
+		// stamp the URL below, which resolves to that proxy.
+		if !isReceiverSyntheticPath(item.Path) && !h.thumbnails.HasThumbnail(thumbnails.MediaID(item.ID)) {
 			isAudio := item.Type == "audio"
 			_, err := h.thumbnails.GenerateThumbnailRequest(&thumbnails.ThumbnailRequest{MediaPath: item.Path, MediaID: item.ID, IsAudio: isAudio, HighPriority: true})
 			if err != nil && !errors.Is(err, thumbnails.ErrThumbnailPending) {

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/receiver"
 	"media-server-pro/pkg/models"
@@ -16,6 +18,12 @@ import (
 // exposed) — it exists so per-user state (ratings, playback positions, favorites)
 // keys consistently, matching resolveMediaPathOrReceiver which uses "receiver:"+id.
 func receiverSyntheticPath(id string) string { return "receiver:" + id }
+
+// isReceiverSyntheticPath reports whether path is the synthetic "receiver:<id>"
+// sentinel used for federated media, which has no local file on disk.
+func isReceiverSyntheticPath(path string) bool {
+	return strings.HasPrefix(path, "receiver:")
+}
 
 // receiverItemToModel converts a receiver (slave) MediaItem into the unified
 // models.MediaItem shape, combining the slave's own mature flag with the master's

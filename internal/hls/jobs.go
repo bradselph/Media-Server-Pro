@@ -142,6 +142,14 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 	if err := os.MkdirAll(p.OutputDir, 0o755); err != nil { //nolint:gosec // G301: HLS output dirs need world-read for serving
 		return nil, fmt.Errorf("failed to create output directory: %w", err)
 	}
+	// Carry the prior job's consecutive-failure count forward: pregen retry
+	// cycles re-create the job under the same ID, and resetting FailCount to 0
+	// here meant it never climbed past 1, so the maxFailures circuit breaker in
+	// existingJobOrRetryErrorLocked could never trip on an untranscodable file.
+	prevFailCount := 0
+	if prev, ok := m.jobs[p.JobID]; ok {
+		prevFailCount = prev.FailCount
+	}
 	job := &models.HLSJob{
 		ID:        p.JobID,
 		MediaPath: p.MediaPath,
@@ -150,6 +158,7 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 		Progress:  0,
 		Qualities: p.Qualities,
 		StartedAt: time.Now(),
+		FailCount: prevFailCount,
 	}
 	jobCtx, jobCancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.jobCancels for external cancellation
 	doneCh := make(chan struct{})
