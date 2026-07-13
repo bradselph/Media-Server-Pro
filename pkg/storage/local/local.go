@@ -55,14 +55,42 @@ func (b *Backend) resolve(rel string) (string, error) {
 	// Resolve symlinks to prevent a symlink inside root pointing outside it.
 	resolved, err := filepath.EvalSymlinks(full)
 	if err != nil {
-		// If the target doesn't exist yet (e.g. create), fall back to the logical path.
-		resolved = full
+		// The target doesn't exist yet (e.g. Create/MkdirAll/Rename dest). Falling
+		// back to the raw logical path here would let a WRITE through a symlinked
+		// directory that escapes root succeed silently (reads are caught because
+		// EvalSymlinks resolves the existing target). Instead resolve the deepest
+		// existing ancestor's symlinks and re-append the non-existent tail, so an
+		// escaping symlink is caught for new paths too.
+		resolved = resolveViaExistingAncestor(full)
 	}
 	// Verify the resolved path is still under root after cleaning and symlink resolution.
 	if resolved != b.root && !strings.HasPrefix(resolved, b.rootWithSep()) {
 		return "", fmt.Errorf("local storage: path traversal %q", rel)
 	}
 	return full, nil
+}
+
+// resolveViaExistingAncestor returns the symlink-resolved form of full when full
+// itself does not exist: it walks up to the deepest existing ancestor, resolves
+// that ancestor's symlinks, then re-appends the missing components literally. If
+// no ancestor exists it returns full unchanged.
+func resolveViaExistingAncestor(full string) string {
+	var missing []string
+	cur := full
+	for {
+		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
+			for i := len(missing) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, missing[i])
+			}
+			return resolved
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return full // reached filesystem root with no existing ancestor
+		}
+		missing = append(missing, filepath.Base(cur))
+		cur = parent
+	}
 }
 
 func toFileInfo(fi os.FileInfo) storage.FileInfo {
