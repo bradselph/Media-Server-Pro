@@ -18,7 +18,10 @@ func (m *Manager) applyAuthEnvOverrides() {
 	if val, ok := envGetBool("AUTH_ALLOW_REGISTRATION"); ok {
 		m.config.Auth.AllowRegistration = val
 	}
-	if val, ok := envGetDuration(time.Hour, "AUTH_SESSION_TIMEOUT_HOURS"); ok {
+	if val, ok := envGetDuration(time.Hour, "AUTH_SESSION_TIMEOUT_HOURS"); ok && val > 0 {
+		// Reject 0 (and negatives): a zero SessionTimeout makes every non-admin
+		// session expire immediately, silently breaking all logins. Guarded like
+		// MaxLoginAttempts/LockoutDuration below.
 		m.config.Auth.SessionTimeout = val
 	}
 	if val, ok := envGetInt("AUTH_MAX_LOGIN_ATTEMPTS"); ok && val > 0 {

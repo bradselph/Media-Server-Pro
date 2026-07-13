@@ -225,6 +225,26 @@ func (m *Module) GenerateThumbnailSyncRequest(req *ThumbnailSyncRequest) (string
 		m.log.Debug("Thumbnail already exists: %s", outputPath)
 		return outputPath, nil
 	}
+
+	// Claim the output via inFlight so a concurrent sync/async generation of the
+	// SAME file can't write it simultaneously (two ffmpeg writers → corrupt file).
+	// If another generation already holds the claim, wait for its result rather
+	// than racing it; only when we hold the claim do we generate + remove-corrupt.
+	if _, loaded := m.inFlight.LoadOrStore(outputPath, time.Now()); loaded {
+		deadline := time.Now().Add(30 * time.Second)
+		for time.Now().Before(deadline) {
+			if isValidThumbnailFile(outputPath) {
+				return outputPath, nil
+			}
+			if _, busy := m.inFlight.Load(outputPath); !busy {
+				return "", fmt.Errorf("concurrent thumbnail generation for %s did not produce a valid file", req.MediaID)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		return "", fmt.Errorf("timed out waiting for in-progress thumbnail generation for %s", req.MediaID)
+	}
+	defer m.inFlight.Delete(outputPath)
+
 	_ = os.Remove(outputPath) // remove 0-byte corrupt file if present
 
 	job := &ThumbnailJob{

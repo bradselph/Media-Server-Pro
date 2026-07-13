@@ -4,6 +4,7 @@ package security
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	pathpkg "path"
@@ -234,7 +235,10 @@ func (m *Module) Start(_ context.Context) error {
 
 	// Wire up auto-ban persistence callback so rate-limit bans survive restarts
 	persistBan := func(ip string, duration time.Duration, reason string) {
-		ctx := context.Background()
+		// Bound the DB write like the manual BanIP/UnbanIP paths so a slow MySQL
+		// can't leave this goroutine (and its banSem slot) hung indefinitely.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 		rec := &repositories.IPEntryRecord{
 			Value:     ip,
 			Comment:   reason,
@@ -340,9 +344,12 @@ func (m *Module) CheckAccess(ip string) (allowed bool, reason string) {
 		return false, "Invalid IP address"
 	}
 
-	// Check rate-limiter ban list regardless of whether rate limiting is enabled.
+	// Check both rate-limiter ban lists regardless of whether rate limiting is
+	// enabled. Auth-path violations record their auto-ban only in authRateLimiter
+	// (GinMiddleware routes auth paths there), so both limiters must be consulted
+	// or a credential-stuffing ban would never block the rest of the API.
 	// Auto-bans and manual BanIP bans must be enforced even when rate limiting is off.
-	if m.rateLimiter.IsBanned(ip) {
+	if m.rateLimiter.IsBanned(ip) || m.authRateLimiter.IsBanned(ip) {
 		return false, "IP is banned"
 	}
 
@@ -366,15 +373,19 @@ func (m *Module) CheckRateLimit(ip string) (allowed bool, remaining int, resetAt
 	return m.rateLimiter.CheckRequest(ip)
 }
 
-// IsBanned checks if an IP is currently banned
+// IsBanned checks if an IP is currently banned by either the general or the
+// stricter auth rate limiter (auth-path auto-bans live only in authRateLimiter).
 func (m *Module) IsBanned(ip string) bool {
-	return m.rateLimiter.IsBanned(ip)
+	return m.rateLimiter.IsBanned(ip) || m.authRateLimiter.IsBanned(ip)
 }
 
 // BanIP manually bans an IP with a reason. The ban is persisted to MySQL so it
 // survives server restarts.
 func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
+	// Ban on both limiters so a manual ban is enforced on auth paths too and so
+	// GetBannedIPs/IsBanned see it regardless of which limiter a request hits.
 	m.rateLimiter.BanIP(ip, duration, reason)
+	m.authRateLimiter.BanIP(ip, duration, reason)
 	// Persist to DB with a bounded deadline so a slow/unresponsive MySQL can't
 	// block the admin handler goroutine indefinitely (the in-memory ban is already applied).
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -393,7 +404,9 @@ func (m *Module) BanIP(ip string, duration time.Duration, reason string) {
 
 // UnbanIP removes a ban on an IP, from memory and from the database.
 func (m *Module) UnbanIP(ip string) {
+	// Remove from both limiters so an admin unban clears an auth-limiter auto-ban too.
 	m.rateLimiter.UnbanIP(ip)
+	m.authRateLimiter.UnbanIP(ip)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := m.repo.RemoveEntry(ctx, "ban", ip); err != nil {
@@ -401,9 +414,12 @@ func (m *Module) UnbanIP(ip string) {
 	}
 }
 
-// GetBannedIPs returns list of currently banned IPs with full metadata
+// GetBannedIPs returns the union of currently banned IPs across both limiters,
+// so the admin UI lists auth-path auto-bans (which live only in authRateLimiter).
 func (m *Module) GetBannedIPs() map[string]BanRecord {
-	return m.rateLimiter.GetBannedIPs()
+	merged := m.rateLimiter.GetBannedIPs() // fresh map, safe to mutate
+	maps.Copy(merged, m.authRateLimiter.GetBannedIPs())
+	return merged
 }
 
 // IPList methods
@@ -531,14 +547,19 @@ func (l *IPList) CleanExpired() int {
 
 // AddToWhitelist adds an IP to the whitelist
 func (m *Module) AddToWhitelist(value, comment, addedBy string, expiresAt *time.Time) error {
-	err := m.whitelist.Add(value, comment, addedBy, expiresAt)
-	if err == nil {
-		if saveErr := m.saveIPLists(); saveErr != nil {
-			m.log.Warn(errSaveIPListsFmt, saveErr)
-		}
-		m.log.Info("Added to whitelist: %s by %s", value, addedBy)
+	if err := m.whitelist.Add(value, comment, addedBy, expiresAt); err != nil {
+		return err
 	}
-	return err
+	if saveErr := m.saveIPLists(); saveErr != nil {
+		// Persistence failed — roll back the in-memory add so memory and DB stay
+		// consistent (otherwise the entry silently vanishes on the next restart
+		// while the caller was told it succeeded).
+		m.whitelist.Remove(value)
+		m.log.Warn(errSaveIPListsFmt, saveErr)
+		return fmt.Errorf("failed to persist whitelist entry: %w", saveErr)
+	}
+	m.log.Info("Added to whitelist: %s by %s", value, addedBy)
+	return nil
 }
 
 // RemoveFromWhitelist removes an IP from the whitelist
@@ -555,14 +576,18 @@ func (m *Module) RemoveFromWhitelist(value string) bool {
 
 // AddToBlacklist adds an IP to the blacklist
 func (m *Module) AddToBlacklist(value, comment, addedBy string, expiresAt *time.Time) error {
-	err := m.blacklist.Add(value, comment, addedBy, expiresAt)
-	if err == nil {
-		if saveErr := m.saveIPLists(); saveErr != nil {
-			m.log.Warn(errSaveIPListsFmt, saveErr)
-		}
-		m.log.Info("Added to blacklist: %s by %s", value, addedBy)
+	if err := m.blacklist.Add(value, comment, addedBy, expiresAt); err != nil {
+		return err
 	}
-	return err
+	if saveErr := m.saveIPLists(); saveErr != nil {
+		// Persistence failed — roll back the in-memory add so a blacklist entry
+		// the caller was told succeeded doesn't silently disappear on restart.
+		m.blacklist.Remove(value)
+		m.log.Warn(errSaveIPListsFmt, saveErr)
+		return fmt.Errorf("failed to persist blacklist entry: %w", saveErr)
+	}
+	m.log.Info("Added to blacklist: %s by %s", value, addedBy)
+	return nil
 }
 
 // RemoveFromBlacklist removes an IP from the blacklist
@@ -630,8 +655,11 @@ func (m *Module) GetStats() Stats {
 
 	m.rateLimiter.mu.RLock()
 	activeClients := len(m.rateLimiter.clients)
-	bannedIPs := len(m.rateLimiter.bannedIPs)
 	m.rateLimiter.mu.RUnlock()
+
+	// Union across both limiters (auth auto-bans live only in authRateLimiter);
+	// GetBannedIPs also filters out expired-but-uncleaned entries.
+	bannedIPs := len(m.GetBannedIPs())
 
 	return Stats{
 		WhitelistEnabled: whitelistEnabled,

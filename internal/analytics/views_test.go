@@ -71,13 +71,15 @@ func moduleWithEvents(t *testing.T, events []*models.AnalyticsEvent) *Module {
 func TestGetTopUsers(t *testing.T) {
 	now := time.Now()
 	events := []*models.AnalyticsEvent{
-		// Alice: 3 views, 2 playbacks (60s + 100s watched).
+		// Alice: 3 views, 2 playbacks in two distinct sessions (60s + 100s watched).
+		// Watch time is the sum of forward position deltas per (session, media), so
+		// the two sessions contribute 60 and 100 respectively for 160s total.
 		{Type: "view", UserID: "alice", Timestamp: now.Add(-1 * time.Hour)},
 		{Type: "view", UserID: "alice", Timestamp: now.Add(-2 * time.Hour)},
 		{Type: "view", UserID: "alice", Timestamp: now.Add(-3 * time.Hour)},
-		{Type: "playback", UserID: "alice", Timestamp: now.Add(-4 * time.Hour),
+		{Type: "playback", UserID: "alice", SessionID: "s1", MediaID: "m1", Timestamp: now.Add(-4 * time.Hour),
 			Data: map[string]any{"position": 60.0, "duration": 600.0}},
-		{Type: "playback", UserID: "alice", Timestamp: now.Add(-5 * time.Hour),
+		{Type: "playback", UserID: "alice", SessionID: "s2", MediaID: "m2", Timestamp: now.Add(-5 * time.Hour),
 			Data: map[string]any{"position": 100.0, "duration": 600.0}},
 		// Bob: 1 view, 1 upload.
 		{Type: "view", UserID: "bob", Timestamp: now.Add(-1 * time.Hour)},

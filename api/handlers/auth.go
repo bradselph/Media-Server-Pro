@@ -68,13 +68,8 @@ func (h *Handler) Login(c *gin.Context) {
 		}
 
 		setSessionCookie(c.Writer, c.Request, session)
-		if h.analytics != nil {
-			h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
-				Type: analytics.EventLogin, UserID: session.UserID, SessionID: session.ID,
-				IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-				Data: map[string]any{"username": session.Username, "role": string(session.Role)},
-			})
-		}
+		h.trackServerEventAs(c, analytics.EventLogin, session.UserID, session.Username, session.ID,
+			map[string]any{"username": session.Username, "role": string(session.Role)})
 		writeSuccess(c, map[string]any{
 			"session_id": session.ID,
 			"username":   session.Username,
@@ -87,17 +82,13 @@ func (h *Handler) Login(c *gin.Context) {
 
 	session, err := h.auth.Authenticate(c.Request.Context(), authReq)
 	if err != nil {
-		// Track failed login attempt
-		if h.analytics != nil {
-			reason := "invalid_credentials"
-			if errors.Is(err, auth.ErrAccountLocked) {
-				reason = "account_locked"
-			}
-			h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
-				Type: analytics.EventLoginFailed, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-				Data: map[string]any{"username": req.Username, "reason": reason},
-			})
+		// Track failed login attempt (also mirrored into audit_log).
+		reason := "invalid_credentials"
+		if errors.Is(err, auth.ErrAccountLocked) {
+			reason = "account_locked"
 		}
+		h.trackServerEventAs(c, analytics.EventLoginFailed, "", req.Username, "",
+			map[string]any{"username": req.Username, "reason": reason})
 		if errors.Is(err, auth.ErrAccountLocked) {
 			writeError(c, http.StatusTooManyRequests, "Too many failed login attempts. Please try again later.")
 			return
@@ -108,14 +99,9 @@ func (h *Handler) Login(c *gin.Context) {
 
 	setSessionCookie(c.Writer, c.Request, session)
 
-	// Track successful login for traffic analytics
-	if h.analytics != nil {
-		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
-			Type: analytics.EventLogin, UserID: session.UserID, SessionID: session.ID,
-			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-			Data: map[string]any{"username": session.Username, "role": string(session.Role)},
-		})
-	}
+	// Track successful login for traffic analytics (also mirrored into audit_log).
+	h.trackServerEventAs(c, analytics.EventLogin, session.UserID, session.Username, session.ID,
+		map[string]any{"username": session.Username, "role": string(session.Role)})
 
 	writeSuccess(c, map[string]any{
 		"session_id": session.ID,
@@ -138,19 +124,15 @@ func (h *Handler) Logout(c *gin.Context) {
 		}
 	}
 
-	// Track logout for traffic analytics
-	if h.analytics != nil {
-		sess := getSession(c)
-		var uid, sid string
-		if sess != nil {
-			uid = sess.UserID
-			sid = sess.ID
-		}
-		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
-			Type: analytics.EventLogout, UserID: uid, SessionID: sid,
-			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-		})
+	// Track logout for traffic analytics (also mirrored into audit_log).
+	sess := getSession(c)
+	var uid, sid, uname string
+	if sess != nil {
+		uid = sess.UserID
+		sid = sess.ID
+		uname = sess.Username
 	}
+	h.trackServerEventAs(c, analytics.EventLogout, uid, uname, sid, nil)
 
 	clearSessionCookie(c.Writer, c.Request)
 	writeSuccess(c, nil)
@@ -290,14 +272,9 @@ func (h *Handler) Register(c *gin.Context) {
 
 	setSessionCookie(c.Writer, c.Request, session)
 
-	// Track registration for traffic analytics
-	if h.analytics != nil {
-		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
-			Type: analytics.EventRegister, UserID: session.UserID, SessionID: session.ID,
-			IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-			Data: map[string]any{"username": req.Username},
-		})
-	}
+	// Track registration for traffic analytics (also mirrored into audit_log).
+	h.trackServerEventAs(c, analytics.EventRegister, session.UserID, req.Username, session.ID,
+		map[string]any{"username": req.Username})
 
 	writeSuccess(c, user)
 }
@@ -765,15 +742,8 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 		return
 	}
 
-	if h.analytics != nil {
-		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
-			Type:      "account_delete",
-			UserID:    deletedUserID,
-			IPAddress: c.ClientIP(),
-			UserAgent: c.Request.UserAgent(),
-			Data:      map[string]any{"username": deletedUsername},
-		})
-	}
+	h.trackServerEventAs(c, analytics.EventAccountDelete, deletedUserID, deletedUsername, "",
+		map[string]any{"username": deletedUsername})
 
 	// Clear the session cookie. DeleteUser already evicts all sessions from cache
 	// and DB via evictSessionsForUser, so an explicit Logout call is unnecessary

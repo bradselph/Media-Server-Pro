@@ -41,8 +41,18 @@ func (h *Handler) ListChapters(c *gin.Context) {
 	// Gate chapter metadata for mature media — local OR federated — the same way
 	// GetMedia does: an unauthorized caller must not enumerate chapter
 	// labels/timestamps for restricted content. checkMatureAccess writes the error
-	// and returns false when denied. Unknown IDs fall through unchanged.
-	if item, ok := h.resolveMediaItemOrReceiver(mediaID); ok && !h.checkMatureAccess(c, item.IsMature) {
+	// and returns false when denied.
+	if item, ok := h.resolveMediaItemOrReceiver(mediaID); ok {
+		if !h.checkMatureAccess(c, item.IsMature) {
+			return
+		}
+	} else if !h.media.IsReady() {
+		// Before the initial scan populates the index, a lookup miss does NOT
+		// prove the item is non-mature — fail closed with 503 (like
+		// resolveMediaByID) rather than falling through and serving chapter
+		// metadata for a possibly-restricted item.
+		c.Header(headerRetryAfter, "3")
+		writeError(c, http.StatusServiceUnavailable, msgInitializing)
 		return
 	}
 

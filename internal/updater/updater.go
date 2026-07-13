@@ -61,6 +61,14 @@ type Module struct {
 	applyMu      sync.RWMutex
 	applyRunning bool
 
+	// execUpdateMu guards execUpdateRunning — the single "an executable-modifying
+	// update is in progress" flag shared by ApplyUpdate (binary install) and
+	// SourceUpdate (source build). Both touch the same server executable and its
+	// ".old" backup path, so they must mutually exclude; applyMu and buildMu alone
+	// never cross-check, letting the two flows race and corrupt the binary.
+	execUpdateMu      sync.Mutex
+	execUpdateRunning bool
+
 	stopOnce    sync.Once
 	checkDone   chan struct{} // closed in Stop to signal checkLoop to exit
 	checkExited chan struct{} // closed by checkLoop when it exits
@@ -401,6 +409,13 @@ func (m *Module) GetLastCheck() *UpdateCheckResult {
 
 // ApplyUpdate downloads and installs an update
 func (m *Module) ApplyUpdate(_ context.Context) (*UpdateStatus, error) {
+	// Claim exclusive access to the executable so a concurrent SourceUpdate (which
+	// touches the same binary + ".old" backup) can't race and corrupt it.
+	if !m.beginExecUpdate() {
+		return nil, fmt.Errorf("an update is already in progress")
+	}
+	defer m.endExecUpdate()
+
 	// Prevent concurrent installs — two simultaneous calls would corrupt the binary.
 	m.applyMu.Lock()
 	if m.applyRunning {
@@ -762,9 +777,13 @@ func computeFileSHA256(path string) (string, error) {
 func (m *Module) verifyBinaryChecksum(version, assetName, binaryPath string) error {
 	checksumURL2, err := m.fetchChecksumAssetURL(version)
 	if err != nil {
-		return nil //nolint:nilerr // already logged; treat as no checksum available
+		// Fail closed: an error here means we couldn't determine whether checksums
+		// exist, so we must not install an unverified binary.
+		return fmt.Errorf("checksum lookup failed, refusing to install unverified binary: %w", err)
 	}
 	if checksumURL2 == "" {
+		// Only reached when the release was fetched successfully but has no
+		// SHA256SUMS asset (predates checksum publishing) — the intended skip.
 		return nil
 	}
 	expectedHash, err := m.downloadAndParseChecksum(checksumURL2, assetName)
@@ -791,8 +810,10 @@ func (m *Module) fetchChecksumAssetURL(version string) (string, error) {
 		GitHubAPI, GitHubOwner, GitHubRepo, version)
 	req, err := http.NewRequest(http.MethodGet, checksumURL, http.NoBody)
 	if err != nil {
-		m.log.Warn("Could not build checksum request: %v — skipping", err)
-		return "", nil
+		// Fail closed: a transient/unexpected error is NOT proof the release has no
+		// checksums, so it must not silently skip integrity verification. Only a
+		// successful lookup that lists no SHA256SUMS asset (below) is a legit skip.
+		return "", fmt.Errorf("build checksum request: %w", err)
 	}
 	if token := m.config.Get().Updater.GitHubToken; token != "" {
 		req.Header.Set("Authorization", authBearerPrefix+token)
@@ -800,23 +821,21 @@ func (m *Module) fetchChecksumAssetURL(version string) (string, error) {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	resp, err := m.httpClient.Do(req)
 	if err != nil {
-		m.log.Warn("Could not reach GitHub API for checksum lookup: %v — skipping integrity check", err)
-		return "", nil
+		return "", fmt.Errorf("reach GitHub API for checksum lookup: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		m.log.Warn("GitHub API returned %d for release lookup — skipping checksum check", resp.StatusCode)
-		return "", nil
+		return "", fmt.Errorf("GitHub API returned HTTP %d for release checksum lookup", resp.StatusCode)
 	}
 	var release struct {
 		Assets []releaseAsset `json:"assets"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		m.log.Warn("Failed to decode release JSON for checksum: %v — skipping", err)
-		return "", nil
+		return "", fmt.Errorf("decode release JSON for checksum: %w", err)
 	}
 	url := findChecksumAssetURL(release.Assets)
 	if url == "" {
+		// Legitimate skip: release fetched successfully but predates checksum publishing.
 		m.log.Warn("No SHA256SUMS asset found in release v%s — skipping integrity check (add SHA256SUMS to future releases)", version)
 	}
 	return url, nil
@@ -1160,6 +1179,27 @@ func (m *Module) IsUpdateRunning() bool {
 	return m.applyRunning
 }
 
+// beginExecUpdate atomically claims exclusive access to the server executable
+// for either a binary install or a source build. It returns false if the other
+// (or the same) flow already holds it, closing the check-then-set race between
+// ApplyUpdate and SourceUpdate. Callers must pair a true result with endExecUpdate.
+func (m *Module) beginExecUpdate() bool {
+	m.execUpdateMu.Lock()
+	defer m.execUpdateMu.Unlock()
+	if m.execUpdateRunning {
+		return false
+	}
+	m.execUpdateRunning = true
+	return true
+}
+
+// endExecUpdate releases the exclusive executable-update claim taken by beginExecUpdate.
+func (m *Module) endExecUpdate() {
+	m.execUpdateMu.Lock()
+	m.execUpdateRunning = false
+	m.execUpdateMu.Unlock()
+}
+
 // SourceUpdate performs a full source-based update:
 //  1. git pull (using the deploy key if configured)
 //  2. npm ci + npm run build  (rebuilds React frontend)
@@ -1169,6 +1209,16 @@ func (m *Module) IsUpdateRunning() bool {
 // The caller is responsible for restarting the service after this returns.
 // Only one SourceUpdate runs at a time; concurrent callers get "already in progress".
 func (m *Module) SourceUpdate(ctx context.Context) (*UpdateStatus, error) {
+	// Claim exclusive access to the executable so a concurrent binary ApplyUpdate
+	// (which touches the same binary + ".old" backup) can't race and corrupt it.
+	// SourceUpdate runs to completion before returning, so a deferred release is
+	// correct even though the handler invokes it inside a goroutine.
+	if !m.beginExecUpdate() {
+		return &UpdateStatus{Error: "an update is already in progress", InProgress: false},
+			fmt.Errorf("an update is already in progress")
+	}
+	defer m.endExecUpdate()
+
 	status := &UpdateStatus{
 		InProgress: true,
 		Stage:      "starting",

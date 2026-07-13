@@ -80,6 +80,15 @@ func (m *Module) handleStaleLock(jobID string, lock *LockFile) {
 	if job, ok := m.jobs[jobID]; ok && job.Status == models.HLSStatusRunning {
 		job.Status = models.HLSStatusFailed
 		job.Error = "Job timed out (stale lock)"
+		// Cancel the (possibly still-running) transcode's context so its goroutine
+		// unwinds and releases its activeJobs slot. Marking the job Failed without
+		// this leaks the goroutine and a concurrency slot when the transcode is
+		// genuinely hung. The goroutine's deferred cleanup is idempotent with this
+		// delete (mirrors CancelJob).
+		if cancel, ok := m.jobCancels[jobID]; ok {
+			cancel()
+			delete(m.jobCancels, jobID)
+		}
 	}
 }
 

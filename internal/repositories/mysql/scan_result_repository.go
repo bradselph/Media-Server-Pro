@@ -90,9 +90,17 @@ func (r *ScanResultRepository) Save(ctx context.Context, result *repositories.Sc
 		}
 
 		if len(result.Reasons) > 0 {
-			reasons := make([]scanReasonRow, len(result.Reasons))
-			for i, reason := range result.Reasons {
-				reasons[i] = scanReasonRow{Path: result.Path, Reason: reason}
+			// Dedupe: scan_reasons' primary key is (path, reason), so a repeated
+			// reason string in the batch would violate the PK and abort the whole
+			// transaction (losing the scan result too).
+			seen := make(map[string]struct{}, len(result.Reasons))
+			reasons := make([]scanReasonRow, 0, len(result.Reasons))
+			for _, reason := range result.Reasons {
+				if _, dup := seen[reason]; dup {
+					continue
+				}
+				seen[reason] = struct{}{}
+				reasons = append(reasons, scanReasonRow{Path: result.Path, Reason: reason})
 			}
 			if err := tx.Create(&reasons).Error; err != nil {
 				return fmt.Errorf("failed to insert reasons: %w", err)

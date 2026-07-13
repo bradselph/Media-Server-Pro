@@ -328,6 +328,15 @@ func (m *Module) doCrawl(ctx context.Context, target *repositories.CrawlerTarget
 		go func(i int, link string) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			// probeAndStoreLink drives a headless-Chrome CDP session over
+			// adversarial third-party pages; a panic anywhere in that chain must
+			// not take down the whole server (and skip every other worker's
+			// cleanup). Contain it to this one link.
+			defer func() {
+				if r := recover(); r != nil {
+					m.log.Error("Recovered from panic while probing %s: %v", link, r)
+				}
+			}()
 			if ctx.Err() != nil {
 				return
 			}

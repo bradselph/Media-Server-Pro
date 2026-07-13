@@ -2,11 +2,39 @@ package mysql
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"media-server-pro/internal/repositories"
 	"media-server-pro/pkg/models"
 )
+
+// TestUserPreferences_ZeroValueFieldsHaveNoGormDefaultTag guards the R5 fix and
+// runs in CI without a database (unlike the MySQL-only upsert test, which SKIPs).
+// Volume (0=mute), AutoplaySimilar (false=opt-out), and AccentHue (0=valid hue)
+// must NOT carry a gorm `default:` tag: GORM's Create/OnConflict upsert (both the
+// UserRepository.Update path and UserPreferencesRepository.Upsert) substitutes a
+// field's default tag for any zero value at INSERT, reverting the user's choice on
+// every save. New-user defaults are set in auth.defaultUserPreferences() instead.
+func TestUserPreferences_ZeroValueFieldsHaveNoGormDefaultTag(t *testing.T) {
+	mustNotHaveDefault := map[string]bool{"Volume": true, "AutoplaySimilar": true, "AccentHue": true}
+	seen := map[string]bool{}
+	for f := range reflect.TypeFor[models.UserPreferences]().Fields() {
+		if !mustNotHaveDefault[f.Name] {
+			continue
+		}
+		seen[f.Name] = true
+		if gormTag := f.Tag.Get("gorm"); strings.Contains(gormTag, "default:") {
+			t.Errorf("UserPreferences.%s must NOT have a gorm `default:` tag (got %q); it reverts "+
+				"the user's zero-value choice (mute/opt-out/hue-0) on every save", f.Name, gormTag)
+		}
+	}
+	for name := range mustNotHaveDefault {
+		if !seen[name] {
+			t.Errorf("field %q not found on UserPreferences — test out of date?", name)
+		}
+	}
+}
 
 // userPreferencesUpsertColumns must cover every persisted UserPreferences column
 // except the user_id conflict key. A column left out is silently not updated on

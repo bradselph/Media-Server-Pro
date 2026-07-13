@@ -146,7 +146,7 @@ func (m *Module) Name() string {
 }
 
 // Start initializes the remote media module
-func (m *Module) Start(_ context.Context) error {
+func (m *Module) Start(ctx context.Context) error {
 	m.log.Info("Starting remote media module...")
 
 	// Initialize module context so CacheMedia (and other background ops) can be
@@ -173,7 +173,7 @@ func (m *Module) Start(_ context.Context) error {
 	}
 
 	// Load cache index
-	m.loadCacheIndex()
+	m.loadCacheIndex(ctx)
 
 	// Initialize sources
 	for _, source := range cfg.RemoteMedia.Sources {
@@ -203,7 +203,7 @@ func (m *Module) Start(_ context.Context) error {
 }
 
 // Stop gracefully stops the module
-func (m *Module) Stop(_ context.Context) error {
+func (m *Module) Stop(ctx context.Context) error {
 	m.log.Info("Stopping remote media module...")
 	if m.cancel != nil {
 		m.cancel()
@@ -215,7 +215,7 @@ func (m *Module) Stop(_ context.Context) error {
 	m.syncDoneOnce.Do(func() { close(m.syncDone) })
 
 	// Save cache index (log but do not fail stop)
-	if err := m.saveCacheIndex(); err != nil {
+	if err := m.saveCacheIndex(ctx); err != nil {
 		m.log.Warn("Save cache index during stop: %v", err)
 	}
 
@@ -507,6 +507,12 @@ func (m *Module) StreamRemote(w http.ResponseWriter, r *http.Request, remoteURL,
 	if cfg.RemoteMedia.CacheEnabled {
 		if cached := m.getCachedMedia(remoteURL); cached != nil {
 			m.log.Debug("Serving from cache: %s", cached.LocalPath)
+			// Bump LRU metadata like ProxyRemoteWithCache, so a hit served via
+			// this path isn't treated as never-accessed by CleanCache's TTL/LRU.
+			m.mu.Lock()
+			cached.LastAccess = time.Now()
+			cached.Hits++
+			m.mu.Unlock()
 			http.ServeFile(w, r, cached.LocalPath)
 			return nil
 		}
@@ -873,8 +879,12 @@ type SourceStats struct {
 
 // Cache management
 
-func (m *Module) loadCacheIndex() {
-	records, err := m.repo.List(context.Background())
+func (m *Module) loadCacheIndex(ctx context.Context) {
+	// Bound the DB read so a slow/unresponsive MySQL can't hang module startup
+	// past the caller's budget (Start's ctx), capped at 8s.
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	records, err := m.repo.List(ctx)
 	if err != nil {
 		m.log.Warn("Failed to load cache index from DB: %v", err)
 		return
@@ -911,11 +921,14 @@ func cachedToRecord(c *CachedMedia) *repositories.RemoteCacheRecord {
 	}
 }
 
-func (m *Module) saveCacheIndex() error {
+func (m *Module) saveCacheIndex(ctx context.Context) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	ctx := context.Background()
+	// Bound the DB writes so a slow MySQL can't hang shutdown past the caller's
+	// budget (Stop's ctx), capped at 8s across all entries.
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
 	var lastErr error
 	for _, cached := range m.mediaCache {
 		if err := m.repo.Save(ctx, cachedToRecord(cached)); err != nil {
@@ -949,24 +962,35 @@ func (m *Module) CleanCache() int {
 
 	m.mu.Lock()
 
+	// Entries already slated for eviction in Phase 1, so Phase 2 doesn't count
+	// them toward currentSize or evict (and os.Remove) the same entry twice.
+	queued := make(map[string]bool)
+
 	// Phase 1: collect TTL-expired entries
 	if ttl > 0 {
 		now := time.Now()
 		for mediaURL, cached := range m.mediaCache {
 			if now.Sub(cached.LastAccess) > ttl {
 				toEvict = append(toEvict, evictTarget{url: mediaURL, localPath: cached.LocalPath, size: cached.Size})
+				queued[mediaURL] = true
 			}
 		}
 	}
 
-	// Phase 2: collect LRU candidates if over size limit
+	// Phase 2: collect LRU candidates if over size limit (excluding Phase-1 entries).
 	var currentSize int64
-	for _, cached := range m.mediaCache {
+	for mediaURL, cached := range m.mediaCache {
+		if queued[mediaURL] {
+			continue
+		}
 		currentSize += cached.Size
 	}
 	if maxSize > 0 && currentSize > maxSize {
 		entries := make([]cacheEntry, 0, len(m.mediaCache))
 		for mediaURL, cached := range m.mediaCache {
+			if queued[mediaURL] {
+				continue
+			}
 			entries = append(entries, cacheEntry{url: mediaURL, cached: cached})
 		}
 		sort.Slice(entries, func(i, j int) bool {

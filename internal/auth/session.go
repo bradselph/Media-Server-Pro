@@ -271,6 +271,14 @@ func (m *Module) createSession(ctx context.Context, user *models.User, req *sess
 	// Admin-role sessions use the (shorter) admin timeout when configured;
 	// everyone else gets the general auth timeout.
 	timeout := cfg.Auth.SessionTimeout
+	// Defend at point-of-use against a non-positive session timeout (from an env
+	// override OR a persisted config.json that predates/bypasses the ingestion
+	// guard): without this, ExpiresAt == now and every session expires the instant
+	// it is created, silently breaking all logins. Fall back to the 24h default.
+	// (The admin branch below already guards its own timeout with > 0.)
+	if timeout <= 0 {
+		timeout = 24 * time.Hour
+	}
 	if user.Role == models.RoleAdmin && cfg.Admin.SessionTimeout > 0 {
 		timeout = cfg.Admin.SessionTimeout
 	}

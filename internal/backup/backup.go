@@ -479,16 +479,23 @@ func pathWithinBase(args pathScopeArgs) bool {
 const maxExtractSize = 100 * 1024 * 1024 // 100MB limit to prevent zip bomb attacks
 
 // copyZipEntryToFile copies a zip entry to the destination, enforcing size limits.
+//
+// It extracts to a temp file in the same directory and only os.Renames it over
+// destPath once the full, size-checked content is on disk. Writing straight to
+// destPath (os.Create truncates it) meant any mid-extraction failure destroyed
+// the LIVE file — notably a zip CRC mismatch, which archive/zip only reports at
+// EOF after every byte has already been written — leaving nothing valid behind.
 func (m *Module) copyZipEntryToFile(file *zip.File, destPath string) error {
-	destFile, err := os.Create(destPath)
+	tmpPath := destPath + ".restore.tmp"
+	destFile, err := os.Create(tmpPath)
 	if err != nil {
 		return err
 	}
 
 	srcFile, err := file.Open()
 	if err != nil {
-		m.closeAndWarn(destFile.Close, "Failed to close dest file after src open error: %v")
-		m.removeFileQuietly(removeFileOpts{Path: destPath, Label: "failed zip entry"})
+		m.closeAndWarn(destFile.Close, "Failed to close temp file after src open error: %v")
+		m.removeFileQuietly(removeFileOpts{Path: tmpPath, Label: "failed zip entry temp"})
 		return err
 	}
 	defer m.closeAndWarn(srcFile.Close, "Failed to close source file: %v")
@@ -496,15 +503,21 @@ func (m *Module) copyZipEntryToFile(file *zip.File, destPath string) error {
 	limitedReader := io.LimitReader(srcFile, maxExtractSize+1)
 	n, copyErr := io.Copy(destFile, limitedReader)
 	if closeErr := destFile.Close(); closeErr != nil && copyErr == nil {
-		copyErr = fmt.Errorf("failed to close extracted file %s: %w", destPath, closeErr)
+		copyErr = fmt.Errorf("failed to close extracted file %s: %w", tmpPath, closeErr)
 	}
 	if copyErr != nil {
-		m.removeFileQuietly(removeFileOpts{Path: destPath, Label: "failed extracted file"})
+		m.removeFileQuietly(removeFileOpts{Path: tmpPath, Label: "failed extracted file"})
 		return copyErr
 	}
 	if n > maxExtractSize {
-		m.removeFileQuietly(removeFileOpts{Path: destPath, Label: "oversize extracted file"})
+		m.removeFileQuietly(removeFileOpts{Path: tmpPath, Label: "oversize extracted file"})
 		return fmt.Errorf("file %s exceeds maximum extract size of %d bytes", file.Name, maxExtractSize)
+	}
+	// Atomically replace the destination; the original is untouched until here.
+	// os.Rename replaces an existing file on both Unix and Windows (MoveFileEx).
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		m.removeFileQuietly(removeFileOpts{Path: tmpPath, Label: "failed rename temp"})
+		return fmt.Errorf("failed to move extracted file into place %s: %w", destPath, err)
 	}
 	return nil
 }

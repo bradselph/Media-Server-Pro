@@ -179,16 +179,16 @@ type Handler struct {
 	deletionRequests    repositories.DataDeletionRequestRepository
 	deletionRequestsMu  sync.Mutex // guards lazy init of deletionRequests
 	mediaReports        repositories.MediaReportRepository
-	mediaReportsMu      sync.Mutex    // guards lazy init of mediaReports
-	viewCooldown        sync.Map      // key: "userID|mediaID" → value: time.Time of last counted view
-	viewCooldownStop    chan struct{} // closed to stop the background sweeper goroutine
-	regTokens           sync.Map      // key: token string → value: time.Time issued; single-use, 15-min TTL
-	classifyDirRunning  atomic.Bool   // true while a ClassifyDirectory background job is active
-	classifyAllRunning  atomic.Bool   // true while a ClassifyAllPending background job is active
-	receiverCopyBusy    sync.Map      // key: federated media ID → struct{} while a copy-to-library of it runs
-	receiverBulkMu      sync.Mutex    // guards receiverBulkJob
+	mediaReportsMu      sync.Mutex           // guards lazy init of mediaReports
+	viewCooldown        sync.Map             // key: "userID|mediaID" → value: time.Time of last counted view
+	viewCooldownStop    chan struct{}        // closed to stop the background sweeper goroutine
+	regTokens           sync.Map             // key: token string → value: time.Time issued; single-use, 15-min TTL
+	classifyDirRunning  atomic.Bool          // true while a ClassifyDirectory background job is active
+	classifyAllRunning  atomic.Bool          // true while a ClassifyAllPending background job is active
+	receiverCopyBusy    sync.Map             // key: federated media ID → struct{} while a copy-to-library of it runs
+	receiverBulkMu      sync.Mutex           // guards receiverBulkJob
 	receiverBulkJob     *receiverBulkCopyJob // latest bulk copy-to-library job; nil until the first run
-	lifecycleInProgress atomic.Bool   // true once a shutdown/restart has been initiated
+	lifecycleInProgress atomic.Bool          // true once a shutdown/restart has been initiated
 	feedCacheMu         sync.Mutex
 	feedCache           map[string]feedCacheEntry // key: "cacheKey" → cached XML + expiry
 	feedCacheStop       chan struct{}             // closed to stop the feed cache sweeper goroutine
@@ -514,6 +514,16 @@ func (h *Handler) trackServerEvent(c *gin.Context, eventType string, data map[st
 		sessionID = sess.ID
 		username = sess.Username
 	}
+	h.trackServerEventAs(c, eventType, userID, username, sessionID, data)
+}
+
+// trackServerEventAs records a server event with an explicit identity instead of
+// deriving it from getSession(c). Auth flows need this: on login/register the
+// session is not in the request context yet, and on account-delete it has
+// already been evicted, so the default getSession(c) lookup would attribute the
+// event to nobody. It also routes these events through the audit_log mirror
+// below, which the historical direct TrackTrafficEvent calls skipped entirely.
+func (h *Handler) trackServerEventAs(c *gin.Context, eventType, userID, username, sessionID string, data map[string]any) {
 	if h.analytics != nil {
 		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
 			Type:      eventType,

@@ -250,8 +250,13 @@ func (m *Module) enqueueEvent(event models.AnalyticsEvent) {
 }
 
 // flushEvents drains the buffered events into the DB in one batched insert. Safe for
-// concurrent callers (each drains a disjoint batch). On error the batch is logged and
-// dropped, matching the pre-batching behavior where a failed Create dropped its event.
+// concurrent callers (each drains a disjoint batch). On error the whole batch is
+// re-queued (in front of anything buffered since the drain, since it is older) so the
+// next flush retries — mirroring flushDirtyDailyStats. A single CreateInBatches wraps
+// every chunk in one transaction, so one transient failure (lock wait, deadline, dropped
+// conn) rolls back the entire flush; dropping it would silently erase hundreds/thousands
+// of raw events at exactly the moment the DB is already struggling. The eventBufHardCap
+// still bounds memory by dropping the oldest events if retries pile up.
 func (m *Module) flushEvents(ctx context.Context) {
 	if m.eventRepo == nil {
 		return
@@ -266,7 +271,15 @@ func (m *Module) flushEvents(ctx context.Context) {
 	m.eventBufMu.Unlock()
 
 	if err := m.eventRepo.CreateBatch(ctx, batch); err != nil {
-		m.log.Warn("Failed to flush %d analytics events: %v", len(batch), err)
+		m.eventBufMu.Lock()
+		m.eventBuf = append(batch, m.eventBuf...)
+		if len(m.eventBuf) > eventBufHardCap {
+			drop := len(m.eventBuf) - eventBufHardCap
+			m.eventBuf = m.eventBuf[drop:]
+			m.log.Warn("analytics event buffer over hard cap after failed flush; dropped %d oldest events (DB slow?)", drop)
+		}
+		m.eventBufMu.Unlock()
+		m.log.Warn("Failed to flush %d analytics events (re-queued for retry): %v", len(batch), err)
 	}
 }
 

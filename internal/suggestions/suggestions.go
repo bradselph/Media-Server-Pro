@@ -187,7 +187,7 @@ func (m *Module) Start(_ context.Context) error {
 }
 
 // Stop gracefully stops the module
-func (m *Module) Stop(_ context.Context) error {
+func (m *Module) Stop(ctx context.Context) error {
 	m.log.Info("Stopping suggestions module...")
 
 	// Signal and wait for background goroutines.
@@ -196,8 +196,9 @@ func (m *Module) Stop(_ context.Context) error {
 	}
 	m.wg.Wait()
 
-	// Save profiles
-	if err := m.saveProfiles(); err != nil {
+	// Save profiles using the caller's shutdown budget (m.ctx is already canceled
+	// above, so passing it would fail every write).
+	if err := m.saveProfiles(ctx); err != nil {
 		m.log.Error("Failed to save user profiles: %v", err)
 	}
 
@@ -220,7 +221,7 @@ func (m *Module) periodicSave(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := m.saveProfiles(); err != nil {
+			if err := m.saveProfiles(ctx); err != nil {
 				m.log.Warn("Periodic profile save failed: %v", err)
 			} else {
 				m.log.Debug("Periodic profile save complete")
@@ -254,10 +255,11 @@ func (m *Module) evictStaleProfiles(ctx context.Context) {
 			}
 			m.mu.Unlock()
 
-			// Save each stale profile to MySQL before evicting from memory.
-			bgCtx := context.Background()
+			// Save each stale profile to MySQL before evicting from memory. Use the
+			// loop's ctx so a shutdown cancels an in-flight save instead of hanging
+			// m.wg.Wait().
 			for _, profile := range toEvict {
-				_ = m.saveOneProfile(bgCtx, profile)
+				_ = m.saveOneProfile(ctx, profile)
 			}
 
 			// Re-check LastUpdated under write lock before evicting (TOCTOU: profile may have been updated).
@@ -1306,7 +1308,7 @@ func (m *Module) loadProfiles() error {
 // (Lock). DB writes happen without the lock so that long saves do not block RecordView /
 // RecordRating callers. dirty is cleared only after a successful save so failed writes are
 // retried on the next periodic tick.
-func (m *Module) saveProfiles() error {
+func (m *Module) saveProfiles(ctx context.Context) error {
 	// Phase 1 — snapshot all dirty profiles under RLock (safe: read-only on fields).
 	type snapEntry struct {
 		userID string
@@ -1330,8 +1332,10 @@ func (m *Module) saveProfiles() error {
 	}
 	m.mu.RUnlock()
 
-	// Phase 2 — save each snapshot to DB without holding the lock.
-	ctx := context.Background()
+	// Phase 2 — save each snapshot to DB without holding the lock. Uses the
+	// caller's ctx (the module context for periodic saves, the shutdown budget
+	// for the final save) so an in-flight write is canceled when Stop cancels it,
+	// instead of hanging m.wg.Wait().
 	var lastErr error
 	saved := 0
 	for _, entry := range snaps {
@@ -1339,9 +1343,12 @@ func (m *Module) saveProfiles() error {
 			m.log.Warn("Failed to save suggestion profile for %s: %v", entry.userID, err)
 			lastErr = err
 		} else {
-			// Phase 3 — clear dirty flag under Lock now that the save succeeded.
+			// Phase 3 — clear dirty flag under Lock now that the save succeeded,
+			// but ONLY if no concurrent RecordView/RecordRating/RecordComplete
+			// mutated the profile after the snapshot was taken. Otherwise clearing
+			// dirty here would discard that newer state until the next mutation.
 			m.mu.Lock()
-			if p, ok := m.profiles[entry.userID]; ok {
+			if p, ok := m.profiles[entry.userID]; ok && !p.LastUpdated.After(entry.snap.LastUpdated) {
 				p.dirty = false
 			}
 			m.mu.Unlock()

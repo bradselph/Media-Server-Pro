@@ -20,18 +20,19 @@ const errDeletionRequestsUnavailable = "Data deletion request service unavailabl
 // Lazy-initializes on first call so that GORM() is not captured before the
 // database module's Start() runs (which would leave r.db nil and cause a panic).
 func (h *Handler) requireDeletionRepo(c *gin.Context) bool {
+	// Hold the lock for the whole check-and-init. The previous unlocked fast-path
+	// read of h.deletionRequests raced (data race) with the guarded write from a
+	// concurrent first call. The field is write-once, so once initialized every
+	// caller's later read happens-after this locked write via the mutex.
+	h.deletionRequestsMu.Lock()
+	defer h.deletionRequestsMu.Unlock()
 	if h.deletionRequests == nil {
-		h.deletionRequestsMu.Lock()
-		if h.deletionRequests == nil {
-			db := h.database.GORM()
-			if db == nil {
-				h.deletionRequestsMu.Unlock()
-				writeError(c, http.StatusServiceUnavailable, errDeletionRequestsUnavailable)
-				return false
-			}
-			h.deletionRequests = repoMysql.NewDataDeletionRequestRepository(db)
+		db := h.database.GORM()
+		if db == nil {
+			writeError(c, http.StatusServiceUnavailable, errDeletionRequestsUnavailable)
+			return false
 		}
-		h.deletionRequestsMu.Unlock()
+		h.deletionRequests = repoMysql.NewDataDeletionRequestRepository(db)
 	}
 	return true
 }

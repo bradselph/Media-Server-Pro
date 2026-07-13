@@ -91,13 +91,28 @@ func (m *Module) filterQualitiesBySourceHeight(ctx context.Context, p *resolveQu
 		return p.Qualities
 	}
 	filtered := make([]string, 0, len(p.Qualities))
+	known := make([]string, 0, len(p.Qualities))
 	for _, q := range p.Qualities {
 		profile := m.getQualityProfile(q)
-		if profile == nil || profile.Height <= sourceHeight {
+		if profile == nil {
+			// Unknown quality name: there is no profile to transcode with, and
+			// admitting it (the old `profile == nil || ...`) produced a variant
+			// that never completed, wedging the job permanently at "Running".
+			m.log.Warn("Skipping unknown HLS quality %q (no matching profile) for %s", q, filepath.Base(p.MediaPath))
+			continue
+		}
+		known = append(known, q)
+		if profile.Height <= sourceHeight {
 			filtered = append(filtered, q)
 		}
 	}
 	if len(filtered) == 0 {
+		// No known quality fits under the source height (e.g. a small source):
+		// generate the known set rather than upscale-skipping everything. Only
+		// fall back to the raw list if nothing was recognised at all.
+		if len(known) > 0 {
+			return known
+		}
 		return p.Qualities
 	}
 	if len(filtered) < len(p.Qualities) {

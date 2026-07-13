@@ -424,6 +424,10 @@ func (m *Module) GetUserStats(ctx context.Context, userID string, limit int) Use
 	stats.TotalEvents = len(events)
 	mediaSeen := make(map[string]struct{})
 	mediaViewCounts := make(map[string]int)
+	// Watch time is the sum of forward position DELTAS per (session, media): the
+	// player heartbeats cumulative position, so summing raw position ~120x-inflates
+	// a multi-heartbeat session. Mirror BackfillDailyStats/updateSession.
+	posBySessionMedia := make(map[string]float64)
 	for _, ev := range events {
 		if !ev.Timestamp.IsZero() {
 			if stats.FirstSeen.IsZero() || ev.Timestamp.Before(stats.FirstSeen) {
@@ -447,14 +451,17 @@ func (m *Module) GetUserStats(ctx context.Context, userID string, limit int) Use
 			dur, _ := ev.Data["duration"].(float64)
 			if dur > 0 {
 				stats.TotalPlaybacks++
-				watched := pos
-				if watched > dur {
-					watched = dur
+				if pos > dur {
+					pos = dur
 				}
-				if watched < 0 {
-					watched = 0
+				if pos < 0 {
+					pos = 0
 				}
-				stats.TotalWatchTime += watched
+				key := ev.SessionID + "\x00" + ev.MediaID
+				if prev := posBySessionMedia[key]; pos > prev {
+					stats.TotalWatchTime += pos - prev
+				}
+				posBySessionMedia[key] = pos
 				// Count completions inside the dur>0 guard (as computeFunnel does):
 				// a duration-less playback event must not inflate TotalCompletions
 				// above TotalPlaybacks (completion rate > 1.0).
@@ -555,6 +562,11 @@ func (m *Module) computeTopUsers(ctx context.Context, metric, since, until strin
 		watchTime                                  float64
 	}
 	rows := make(map[string]*bucket)
+	// Watch time = forward position DELTAS per (session, media): summing raw
+	// heartbeat positions ~120x-inflates the watch_time leaderboard. Mirror
+	// BackfillDailyStats/updateSession. Keyed by session+media (a session belongs
+	// to one user, so a single shared map is correct across buckets).
+	posBySessionMedia := make(map[string]float64)
 	for _, ev := range events {
 		if ev.UserID == "" {
 			continue
@@ -573,13 +585,17 @@ func (m *Module) computeTopUsers(ctx context.Context, metric, since, until strin
 			dur, _ := ev.Data["duration"].(float64)
 			if dur > 0 {
 				b.playbacks++
-				w := pos
-				if w > dur {
-					w = dur
+				if pos > dur {
+					pos = dur
 				}
-				if w > 0 {
-					b.watchTime += w
+				if pos < 0 {
+					pos = 0
 				}
+				key := ev.SessionID + "\x00" + ev.MediaID
+				if prev := posBySessionMedia[key]; pos > prev {
+					b.watchTime += pos - prev
+				}
+				posBySessionMedia[key] = pos
 			}
 		case EventDownload:
 			b.downloads++

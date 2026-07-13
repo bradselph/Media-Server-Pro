@@ -631,15 +631,18 @@ func (m *Module) ClearSuggestion(path FilePath) error {
 
 // ClearAllSuggestions removes all suggestions from memory and persists the deletion.
 func (m *Module) ClearAllSuggestions() {
-	m.mu.Lock()
-	m.suggestions = make(map[SuggestionKey]*models.AutoDiscoverySuggestion)
-	m.mu.Unlock()
-
+	// Persist the deletion FIRST, then clear the cache — mirroring ClearSuggestion.
+	// Clearing the cache before a failed DeleteAll would leave memory empty while
+	// the DB still holds every suggestion, so they all reappear on the next reload.
 	ctx := context.Background()
 	if err := m.repo.DeleteAll(ctx); err != nil {
 		m.log.Warn("Failed to delete suggestions from database: %v", err)
 		return
 	}
+
+	m.mu.Lock()
+	m.suggestions = make(map[SuggestionKey]*models.AutoDiscoverySuggestion)
+	m.mu.Unlock()
 }
 
 // Persistence — reads/writes via MySQL repository

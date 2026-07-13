@@ -36,18 +36,18 @@ const (
 // call so that GORM() is not captured before the database module's Start()
 // runs (which would leave r.db nil and cause a panic).
 func (h *Handler) requireMediaReportRepo(c *gin.Context) bool {
+	// Hold the lock for the whole check-and-init to avoid a data race: the prior
+	// unlocked fast-path read of h.mediaReports raced with the guarded write from
+	// a concurrent first call. Write-once field, so post-init reads are safe.
+	h.mediaReportsMu.Lock()
+	defer h.mediaReportsMu.Unlock()
 	if h.mediaReports == nil {
-		h.mediaReportsMu.Lock()
-		if h.mediaReports == nil {
-			db := h.database.GORM()
-			if db == nil {
-				h.mediaReportsMu.Unlock()
-				writeError(c, http.StatusServiceUnavailable, errMediaReportsUnavailable)
-				return false
-			}
-			h.mediaReports = repoMysql.NewMediaReportRepository(db)
+		db := h.database.GORM()
+		if db == nil {
+			writeError(c, http.StatusServiceUnavailable, errMediaReportsUnavailable)
+			return false
 		}
-		h.mediaReportsMu.Unlock()
+		h.mediaReports = repoMysql.NewMediaReportRepository(db)
 	}
 	return true
 }

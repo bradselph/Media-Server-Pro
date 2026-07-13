@@ -236,9 +236,16 @@ export function useHLS(
             enableWorker: true,
             lowLatencyMode: false,
             backBufferLength: 90,
-            maxBufferLength: 60,
-            maxMaxBufferLength: 120,
-            maxBufferSize: 60 * 1000 * 1000,
+            // Buffer generously so playback doesn't stall on marginal networks and
+            // so buffering keeps filling ahead while PAUSED (hls.js loads up to
+            // these caps regardless of play/pause — it never stops on pause).
+            // Previously maxMaxBufferLength=120 (well under hls.js's 600 default)
+            // and maxBufferSize=60MB capped high-bitrate streams to only ~20s of
+            // lookahead, causing repeated `waiting` underruns (stuck buffer spinner)
+            // and making the buffer appear to stop growing the moment you paused.
+            maxBufferLength: 90,            // target forward buffer (s)
+            maxMaxBufferLength: 600,        // hard cap (s) — hls.js default; allows deep buffering while paused
+            maxBufferSize: 200 * 1000 * 1000, // byte cap (~48s @25Mbps 4K, ~320s @5Mbps) — was 60MB
             maxBufferHole: 0.5,
             manifestLoadingTimeOut: 20000,
             manifestLoadingMaxRetry: 4,

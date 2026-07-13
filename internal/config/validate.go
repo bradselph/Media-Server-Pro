@@ -30,6 +30,7 @@ func (m *Manager) validateLocked() []error {
 	errors = append(errors, m.validateAuth()...)
 	errors = append(errors, m.validateThumbnails()...)
 	errors = append(errors, m.validateAnalytics()...)
+	errors = append(errors, m.validateMatureScanner()...)
 	m.validateReceiver()
 	errors = append(errors, m.validateUploads()...)
 	errors = append(errors, m.validateBackup()...)
@@ -265,6 +266,35 @@ func (m *Manager) validateAnalytics() []error {
 	}
 	if m.config.Analytics.RetentionDays < 0 {
 		return []error{fmt.Errorf("analytics retention_days cannot be negative")}
+	}
+	return nil
+}
+
+// validateMatureScanner surfaces mis-set auto-flagging confidence thresholds.
+// Out-of-range values (set via MATURE_SCANNER_*_THRESHOLD env with no prior range
+// check) silently disable flagging (threshold > 1, never reached) or flag
+// everything (threshold <= 0), and a medium >= high threshold is contradictory.
+//
+// It WARNS only and returns no blocking error, for two reasons: (1) validate()
+// aborts Load()/startup on any returned error, so hard-failing would brick an
+// existing deployment on upgrade if its previously-accepted thresholds violate
+// these rules (e.g. a value set on a 0-100 scale by mistake); (2) the public
+// Validate() path calls this under an RLock, so it must not mutate config. This
+// mirrors the warn-only handling of invalid CIDR / negative HLS limits above.
+func (m *Manager) validateMatureScanner() []error {
+	if !m.config.MatureScanner.Enabled {
+		return nil
+	}
+	high := m.config.MatureScanner.HighConfidenceThreshold
+	med := m.config.MatureScanner.MediumConfidenceThreshold
+	if high <= 0 || high > 1 {
+		m.log.Warn("mature_scanner high_confidence_threshold %g is outside (0,1]; auto-flagging may misbehave (expected e.g. 0.35)", high)
+	}
+	if med <= 0 || med > 1 {
+		m.log.Warn("mature_scanner medium_confidence_threshold %g is outside (0,1]; auto-flagging may misbehave (expected e.g. 0.15)", med)
+	}
+	if med >= high {
+		m.log.Warn("mature_scanner medium_confidence_threshold (%g) should be below high_confidence_threshold (%g)", med, high)
 	}
 	return nil
 }

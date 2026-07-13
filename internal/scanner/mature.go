@@ -559,10 +559,15 @@ func (s *MatureScanner) computeConfidence(filename, dirPath string, result *Scan
 // word-boundary regex patterns to avoid false positives from substring matches.
 func scanConfigKeywords(filename string, keywords []string, boost float64, label string, result *ScanResult) float64 {
 	var confidence float64
+	lower := strings.ToLower(filename)
 	for _, keyword := range keywords {
 		kw := strings.ToLower(keyword)
-		pattern, err := regexp.Compile(`(?i)\b` + regexp.QuoteMeta(kw) + `\b`)
-		if err != nil || !pattern.MatchString(filename) {
+		// Use the same filename-aware boundary as buildKeywordPatterns rather than
+		// \b: Go's regexp treats '_' as a word character, so `\bxxx\b` fails to
+		// match "xxx_video.mp4". Spaces in phrase keywords get a flexible separator.
+		flexible := strings.ReplaceAll(regexp.QuoteMeta(kw), " ", `[\s_\-]?`)
+		pattern, err := regexp.Compile(`(?i)(?:^|[^a-z0-9])` + flexible + `(?:[^a-z0-9]|$)`)
+		if err != nil || !pattern.MatchString(lower) {
 			continue
 		}
 		// Skip if already matched by hardcoded keywords (avoid double counting)

@@ -355,8 +355,11 @@ func (h *Handler) copyOneReceiverItem(ctx context.Context, job *receiverBulkCopy
 	}
 
 	if err := h.media.RegisterUploadedFile(destPath); err != nil {
-		// Same contract as the single-copy path: never leave an unindexed file
-		// behind for a later scan to pick up as a mystery item.
+		// Same contract as the single-copy path: roll back the in-memory index
+		// (RegisterUploadedFile inserts before persisting, so a failed DB save
+		// leaves a ghost entry) and never leave an unindexed file behind for a
+		// later scan to pick up as a mystery item.
+		_ = h.media.RemoveMedia(destPath)
 		_ = os.Remove(destPath)
 		h.log.Error("bulk copy federated media %s: register %s: %v", id, destPath, err)
 		res.Status = receiverCopyStatusFailed
