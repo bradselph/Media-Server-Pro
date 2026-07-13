@@ -514,6 +514,16 @@ func (h *Handler) trackServerEvent(c *gin.Context, eventType string, data map[st
 		sessionID = sess.ID
 		username = sess.Username
 	}
+	h.trackServerEventAs(c, eventType, userID, username, sessionID, data)
+}
+
+// trackServerEventAs records a server event with an explicit identity instead of
+// deriving it from getSession(c). Auth flows need this: on login/register the
+// session is not in the request context yet, and on account-delete it has
+// already been evicted, so the default getSession(c) lookup would attribute the
+// event to nobody. It also routes these events through the audit_log mirror
+// below, which the historical direct TrackTrafficEvent calls skipped entirely.
+func (h *Handler) trackServerEventAs(c *gin.Context, eventType, userID, username, sessionID string, data map[string]any) {
 	if h.analytics != nil {
 		h.analytics.TrackTrafficEvent(c.Request.Context(), analytics.TrafficEventParams{
 			Type:      eventType,
