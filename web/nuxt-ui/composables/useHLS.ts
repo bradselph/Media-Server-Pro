@@ -373,6 +373,11 @@ export function useHLS(
 
             hlsLoading.value = false
             hlsError.value = 'HLS playback failed'
+            // Reset hlsActivated: hls.js is being destroyed here, and the <video>
+            // :src is `hlsActivated ? undefined : directStreamUrl`. Leaving it true
+            // would strand the element with src=undefined (permanent blank playback
+            // with no in-page recovery); flipping it false falls back to direct play.
+            hlsActivated.value = false
             if (networkRetryTimer !== null) {
                 clearTimeout(networkRetryTimer)
                 networkRetryTimer = null

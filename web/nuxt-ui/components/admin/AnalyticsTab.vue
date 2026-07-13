@@ -1063,7 +1063,7 @@ const hasTrafficActivity = computed(() =>
          attention. Spikes in error metrics colour error; growth spikes
          in engagement colour primary. -->
     <UAlert
-        v-if="anomalies && anomalies.anomalies.length > 0"
+        v-if="anomalies?.anomalies?.length"
         :color="anomalies.anomalies.some(a => ['server_errors','hls_errors','logins_failed','mature_blocked','permission_denied'].includes(a.metric)) ? 'error' : 'warning'"
         variant="subtle"
         icon="i-lucide-zap"
@@ -1149,7 +1149,7 @@ const hasTrafficActivity = computed(() =>
          period-over-period deltas on the right. Quick-glance health pulse. -->
     <div v-if="(panelVisibility.cohort || panelVisibility.comparison) && (cohort || cmpViews)"
          class="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <UCard v-if="cohort && panelVisibility.cohort" :ui="{ body: 'p-3' }">
+      <UCard v-if="cohort && cohort.dau !== undefined && panelVisibility.cohort" :ui="{ body: 'p-3' }">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs uppercase tracking-wide font-semibold text-muted">User Cohorts (last 30 days)</span>
           <UIcon name="i-lucide-users-round" class="size-4 text-primary"/>
@@ -2194,7 +2194,7 @@ const hasTrafficActivity = computed(() =>
               <UIcon name="i-lucide-loader-2" class="animate-spin size-5 text-muted"/>
             </div>
             <div v-else-if="mediaDetail">
-              <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
+              <div v-if="mediaDetail.stats" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
                 <UCard :ui="{ body: 'p-2' }">
                   <p class="text-base font-bold text-highlighted">
                     {{ (mediaDetail.stats.total_views ?? 0).toLocaleString() }}</p>
@@ -2632,7 +2632,7 @@ const hasTrafficActivity = computed(() =>
          Helps debug "why is the dashboard slow / stale" without server
          log access. Hidden by default to keep the page tidy; admins
          re-enable it from the panels menu when investigating. -->
-    <UCard v-if="panelVisibility.diagnostics && diagnostics" :ui="{ body: 'p-3' }">
+    <UCard v-if="panelVisibility.diagnostics && diagnostics && diagnostics.available !== false" :ui="{ body: 'p-3' }">
       <template #header>
         <div class="font-semibold flex items-center gap-2 text-muted">
           <UIcon name="i-lucide-activity" class="size-4"/>
