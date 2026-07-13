@@ -104,3 +104,5 @@ go.work
 go.work.sum
 ugreen_update_docker_deployed-DO-NOT-COMMIT-EVER.md
 deploy-nas.sh
+/overnight-audit
+OVERNIGHT_REPORT.md
