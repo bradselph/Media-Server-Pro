@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -28,11 +29,19 @@ import (
 // shared or private networks.
 //
 // CIDR bypass ranges (e.g. LAN subnets, admin IPs) always skip the gate.
-type AgeGate struct {
+// ageGateState is the hot-swappable portion of the age-gate configuration
+// (the config struct plus the bypass networks derived from it). It is replaced
+// atomically by UpdateConfig so live config edits (wired through cfg.OnChange)
+// take effect without a restart, while request-path readers load it lock-free.
+type ageGateState struct {
 	cfg            config.AgeGateConfig
+	bypassNetworks []*net.IPNet
+}
+
+type AgeGate struct {
+	state          atomic.Pointer[ageGateState]
 	mu             sync.RWMutex
 	verifiedIPs    map[string]time.Time
-	bypassNetworks []*net.IPNet
 	log            *logger.Logger
 	evictMu        sync.Mutex
 	evicting       bool
@@ -71,19 +80,42 @@ func parseBypassCIDR(log *logger.Logger, raw string) (*net.IPNet, bool) {
 // Invalid CIDR entries in BypassIPs are logged and skipped.
 func NewAgeGate(cfg config.AgeGateConfig) *AgeGate {
 	ag := &AgeGate{
-		cfg:         cfg,
 		verifiedIPs: make(map[string]time.Time),
 		log:         logger.New("agegate"),
 	}
-	for _, raw := range cfg.BypassIPs {
-		if network, ok := parseBypassCIDR(ag.log, raw); ok {
-			ag.bypassNetworks = append(ag.bypassNetworks, network)
-		}
-	}
+	st := ag.buildState(cfg)
+	ag.state.Store(st)
 	if cfg.Enabled {
-		ag.log.Info("Age gate enabled (IP TTL: %v, bypass CIDRs: %d)", cfg.IPVerifyTTL, len(ag.bypassNetworks))
+		ag.log.Info("Age gate enabled (IP TTL: %v, bypass CIDRs: %d)", cfg.IPVerifyTTL, len(st.bypassNetworks))
 	}
 	return ag
+}
+
+// buildState parses the bypass CIDR list for the given config and returns a new
+// immutable state snapshot. Invalid CIDR entries are logged and skipped.
+func (ag *AgeGate) buildState(cfg config.AgeGateConfig) *ageGateState {
+	st := &ageGateState{cfg: cfg}
+	for _, raw := range cfg.BypassIPs {
+		if network, ok := parseBypassCIDR(ag.log, raw); ok {
+			st.bypassNetworks = append(st.bypassNetworks, network)
+		}
+	}
+	return st
+}
+
+// UpdateConfig atomically swaps the age-gate configuration. Safe to call
+// concurrently with request handling: readers load a whole snapshot, so they
+// see either the old or the new config in full, never a torn mix. Wired through
+// cfg.OnChange so admin edits (enable/disable, TTL, cookie name, bypass IPs)
+// apply live without a restart.
+func (ag *AgeGate) UpdateConfig(cfg config.AgeGateConfig) {
+	st := ag.buildState(cfg)
+	ag.state.Store(st)
+	if cfg.Enabled {
+		ag.log.Info("Age gate config reloaded (IP TTL: %v, bypass CIDRs: %d)", cfg.IPVerifyTTL, len(st.bypassNetworks))
+	} else {
+		ag.log.Info("Age gate config reloaded (disabled)")
+	}
 }
 
 // extractClientIP returns the real client IP, honoring X-Forwarded-For only
@@ -124,7 +156,7 @@ func (ag *AgeGate) isBypass(ip string) bool {
 	if parsed == nil {
 		return false
 	}
-	for _, network := range ag.bypassNetworks {
+	for _, network := range ag.state.Load().bypassNetworks {
 		if network.Contains(parsed) {
 			return true
 		}
@@ -134,24 +166,25 @@ func (ag *AgeGate) isBypass(ip string) bool {
 
 // isIPVerified returns true if this IP was verified within the configured TTL.
 func (ag *AgeGate) isIPVerified(ip string) bool {
-	if ag.cfg.IPVerifyTTL <= 0 {
+	ttl := ag.state.Load().cfg.IPVerifyTTL
+	if ttl <= 0 {
 		return false
 	}
 	ag.mu.RLock()
 	t, ok := ag.verifiedIPs[ip]
 	ag.mu.RUnlock()
-	return ok && time.Since(t) < ag.cfg.IPVerifyTTL
+	return ok && time.Since(t) < ttl
 }
 
 // hasCookie returns true if the request carries a valid age-verified cookie.
 func (ag *AgeGate) hasCookie(r *http.Request) bool {
-	cookie, err := r.Cookie(ag.cfg.CookieName)
+	cookie, err := r.Cookie(ag.state.Load().cfg.CookieName)
 	return err == nil && cookie.Value == "1"
 }
 
 // IsVerified returns true if this request should bypass the age gate.
 func (ag *AgeGate) IsVerified(r *http.Request) bool {
-	if !ag.cfg.Enabled {
+	if !ag.state.Load().cfg.Enabled {
 		return true
 	}
 	ip := extractClientIP(r)
@@ -180,12 +213,13 @@ func (ag *AgeGate) scheduleEvict() {
 
 // evictExpired removes stale IP entries from the verified map.
 func (ag *AgeGate) evictExpired() {
-	if ag.cfg.IPVerifyTTL <= 0 {
+	ttl := ag.state.Load().cfg.IPVerifyTTL
+	if ttl <= 0 {
 		return
 	}
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	cutoff := time.Now().Add(-ag.cfg.IPVerifyTTL)
+	cutoff := time.Now().Add(-ttl)
 	for ip, t := range ag.verifiedIPs {
 		if t.Before(cutoff) {
 			delete(ag.verifiedIPs, ip)
@@ -221,7 +255,7 @@ func (ag *AgeGate) GinStatusHandler() gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data": gin.H{
-				"enabled":  ag.cfg.Enabled,
+				"enabled":  ag.state.Load().cfg.Enabled,
 				"verified": ag.IsVerified(c.Request),
 			},
 		})
@@ -260,7 +294,8 @@ func (ag *AgeGate) GinVerifyHandler() gin.HandlerFunc {
 			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": "forbidden"})
 			return
 		}
-		if ag.cfg.Enabled {
+		cfg := ag.state.Load().cfg
+		if cfg.Enabled {
 			ip := extractClientIP(c.Request)
 			ag.mu.Lock()
 			// Cap map size to prevent unbounded memory growth under high traffic.
@@ -292,9 +327,9 @@ func (ag *AgeGate) GinVerifyHandler() gin.HandlerFunc {
 			}
 			ag.scheduleEvict()
 			http.SetCookie(c.Writer, &http.Cookie{
-				Name:     ag.cfg.CookieName,
+				Name:     cfg.CookieName,
 				Value:    "1",
-				MaxAge:   ag.cfg.CookieMaxAge,
+				MaxAge:   cfg.CookieMaxAge,
 				Path:     "/",
 				HttpOnly: true,
 				SameSite: http.SameSiteStrictMode,

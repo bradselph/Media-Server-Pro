@@ -119,6 +119,15 @@ func main() {
 	// ── Cookie consent middleware ──────────────────────────────────────────
 	cookieConsent := middleware.NewCookieConsent(cfg.Get().CookieConsent)
 
+	// Live-reload the age-gate and cookie-consent middleware when their config
+	// changes via the admin Settings panel, so edits (enable/disable, TTL,
+	// bypass IPs, cookie name/lifetime) take effect without a restart — mirroring
+	// how the security module and task schedulers already hot-reload on change.
+	cfg.OnChange(func(c *config.Config) {
+		ageGate.UpdateConfig(c.AgeGate)
+		cookieConsent.UpdateConfig(c.CookieConsent)
+	})
+
 	// ── Register background tasks ──────────────────────────────────────────
 	registerTasks(mods.tasks, mods.media, mods.scanner, mods.thumbnails,
 		mods.auth, mods.backup, mods.suggestions, mods.receiver, mods.duplicates, mods.admin, mods.hls,
@@ -953,6 +962,12 @@ func registerScannerTasks(registerWithOverride func(tasks.TaskRegistration), cfg
 		Description: "Scans media directories for mature content using configured detection models",
 		Schedule:    12 * time.Hour,
 		Func: func(_ context.Context) error {
+			// Honor the admin toggle at tick time (mirrors the duplicate-scan gate
+			// below): disabling the mature scanner must actually stop the periodic
+			// filesystem walk + auto-flagging, not just hide the API.
+			if !cfg.Get().MatureScanner.Enabled {
+				return nil
+			}
 			dirs := cfg.Get().Directories
 			var allResults []*scanner.ScanResult
 

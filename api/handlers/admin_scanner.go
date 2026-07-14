@@ -53,7 +53,7 @@ func (h *Handler) processScanResults(results []*scanner.ScanResult, autoApply bo
 
 // ScanContent scans media files for mature content
 func (h *Handler) ScanContent(c *gin.Context) {
-	if !h.requireScanner(c) {
+	if !h.requireMatureScanner(c) {
 		return
 	}
 	var req struct {

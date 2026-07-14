@@ -94,6 +94,18 @@ from that hunt already shipped.
   50k–100k-event aggregation. Wrap compute() in a `singleflight.Group` (adds
   `golang.org/x/sync`). Low sev. File: `internal/analytics/cache.go`.
 
+- **thumbnails & HLS ignore their injected S3 storage backend** (wiring finding RE-1,
+  deferred — "report only"). `main.go` calls `m.thumbnails.SetStore(stores.thumbnails)` /
+  `m.hls.SetStore(stores.hlsCache)`, but neither module ever reads `m.store` — all thumbnail
+  and HLS-cache I/O hard-codes local disk (`m.thumbnailDir`, hls cache dir), unlike
+  streaming/upload/media which branch on `!m.store.IsLocal()`. So with `storage.backend="s3"`
+  thumbnails/HLS still write to local disk: lost on ephemeral containers, and 404 across
+  multi-instance deployments. Fix is a product decision: either implement real S3 I/O
+  (mirror `internal/streaming/streaming.go`'s branching across generate/paths/cleanup/
+  preview/api + the serving path) OR drop the dead `SetStore` wiring + the misleading
+  "storage backend for I/O" doc comments so the code stops implying S3 support it lacks.
+  Files: `internal/thumbnails/*.go`, `internal/hls/module.go`, `cmd/server/main.go:338,350`.
+
 ## Launch prerequisites (not optional before public launch)
 
 - **Real brand / compliance values** — the 2257 and DMCA pages fall back to `@example.com`

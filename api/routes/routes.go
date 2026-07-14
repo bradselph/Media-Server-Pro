@@ -586,10 +586,11 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.DELETE("/preferences/saved_searches/:id", requireAuth(), h.DeleteSavedSearch)
 	api.POST("/preferences/saved_searches/:id/seen", requireAuth(), h.TouchSavedSearch)
 
-	// Media moderation report submission (design plan §5.3). Authenticated
-	// users attach their userID; guests are recorded by IP only. The admin
-	// moderation list lives under /api/admin/media/reports.
-	api.POST("/media/:id/report", requireAuth(), h.SubmitMediaReport)
+	// Media moderation report submission (design plan §5.3). Auth is optional:
+	// logged-in users attach their userID, guests are recorded by IP only — the
+	// handler special-cases the no-session path, so the route must not force auth.
+	// The admin moderation list lives under /api/admin/media/reports.
+	api.POST("/media/:id/report", h.SubmitMediaReport)
 
 	// User password change (protected)
 	api.POST("/auth/change-password", requireAuth(), h.ChangePassword)

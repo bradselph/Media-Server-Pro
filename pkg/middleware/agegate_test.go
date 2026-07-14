@@ -38,8 +38,8 @@ func TestNewAgeGate(t *testing.T) {
 	if ag == nil {
 		t.Fatal("NewAgeGate returned nil")
 	}
-	if len(ag.bypassNetworks) != 1 {
-		t.Errorf("bypass networks = %d, want 1", len(ag.bypassNetworks))
+	if len(ag.state.Load().bypassNetworks) != 1 {
+		t.Errorf("bypass networks = %d, want 1", len(ag.state.Load().bypassNetworks))
 	}
 }
 
@@ -48,8 +48,8 @@ func TestNewAgeGate_InvalidCIDR(t *testing.T) {
 		Enabled:   true,
 		BypassIPs: []string{"invalid-cidr", testBypassCIDR},
 	})
-	if len(ag.bypassNetworks) != 1 {
-		t.Errorf("should skip invalid CIDR, got %d networks", len(ag.bypassNetworks))
+	if len(ag.state.Load().bypassNetworks) != 1 {
+		t.Errorf("should skip invalid CIDR, got %d networks", len(ag.state.Load().bypassNetworks))
 	}
 }
 
@@ -58,8 +58,8 @@ func TestNewAgeGate_PlainIP(t *testing.T) {
 		Enabled:   true,
 		BypassIPs: []string{"192.168.1.1"},
 	})
-	if len(ag.bypassNetworks) != 1 {
-		t.Errorf("plain IP should be parsed as /32, got %d networks", len(ag.bypassNetworks))
+	if len(ag.state.Load().bypassNetworks) != 1 {
+		t.Errorf("plain IP should be parsed as /32, got %d networks", len(ag.state.Load().bypassNetworks))
 	}
 }
 
@@ -68,8 +68,59 @@ func TestNewAgeGate_IPv6PlainIP(t *testing.T) {
 		Enabled:   true,
 		BypassIPs: []string{"::1"},
 	})
-	if len(ag.bypassNetworks) != 1 {
-		t.Errorf("IPv6 plain IP should be parsed as /128, got %d networks", len(ag.bypassNetworks))
+	if len(ag.state.Load().bypassNetworks) != 1 {
+		t.Errorf("IPv6 plain IP should be parsed as /128, got %d networks", len(ag.state.Load().bypassNetworks))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UpdateConfig — live hot-reload (regression for the CO-1 wiring fix: age-gate
+// config edits must apply to the running middleware without a restart).
+// ---------------------------------------------------------------------------
+
+func TestAgeGate_UpdateConfig_EnableDisableLive(t *testing.T) {
+	ag := newTestAgeGate(true)
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = testRemoteAddr // non-bypass, no cookie
+	if ag.IsVerified(req) {
+		t.Fatal("precondition: enabled gate should not verify a fresh non-bypass request")
+	}
+
+	// Disable the gate live — must take effect immediately (no restart).
+	ag.UpdateConfig(config.AgeGateConfig{Enabled: false, CookieName: "age_verified"})
+	if !ag.IsVerified(req) {
+		t.Error("after UpdateConfig(Enabled=false) the gate should verify all requests")
+	}
+
+	// Re-enable live — must gate again.
+	ag.UpdateConfig(config.AgeGateConfig{Enabled: true, CookieName: "age_verified"})
+	if ag.IsVerified(req) {
+		t.Error("after UpdateConfig(Enabled=true) the gate should re-gate non-bypass requests")
+	}
+}
+
+func TestAgeGate_UpdateConfig_BypassIPsLive(t *testing.T) {
+	ag := newTestAgeGate(true)
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "198.51.100.7:1234" // not in the original 10.0.0.0/8 bypass
+	if ag.IsVerified(req) {
+		t.Fatal("precondition: IP outside bypass should not verify")
+	}
+
+	ag.UpdateConfig(config.AgeGateConfig{
+		Enabled:    true,
+		BypassIPs:  []string{"198.51.100.0/24"},
+		CookieName: "age_verified",
+	})
+	if !ag.IsVerified(req) {
+		t.Error("after UpdateConfig with a new bypass CIDR the matching IP should verify live")
+	}
+
+	// The previously-configured bypass network must no longer apply.
+	oldReq := httptest.NewRequest("GET", "/", nil)
+	oldReq.RemoteAddr = "10.0.0.5:1234"
+	if ag.IsVerified(oldReq) {
+		t.Error("old bypass CIDR should no longer verify after UpdateConfig replaced it")
 	}
 }
 

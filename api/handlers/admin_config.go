@@ -103,12 +103,32 @@ func filterDeniedConfigKeys(updates map[string]any) []string {
 	return rejected
 }
 
-// hotReloadKeys lists the top-level config sections that are applied to
-// in-memory modules immediately after a config update. All other sections
-// are persisted but require a server restart to take effect.
+// hotReloadKeys lists the top-level config sections whose admin edits are
+// applied to running components immediately, so no restart is required. It is
+// kept in sync with the actual cfg.OnChange consumers / per-request reads:
+//   - security       → internal/security/security.go (rate limits, CORS, CSP,
+//                       trusted proxies) + the whitelist/blacklist enable flags
+//                       applied in AdminUpdateConfig below
+//   - features        → feature gates are re-read per request / per task tick
+//   - server          → cmd/server/main.go re-tunes Server.MemoryLimitPercent live
+//   - hls, analytics  → cmd/server/main.go registerScheduleWatcher re-applies the
+//                       schedule intervals live
+//   - age_gate,
+//     cookie_consent  → cmd/server/main.go reloads the middleware live via
+//                       UpdateConfig on every config change
+//
+// Sections NOT listed here (storage, directories, database, auth, uploads, …)
+// are persisted but only take effect on restart. NOTE: this is section-level —
+// a few individual fields within a listed section (e.g. server.port) still need
+// a restart, so restart_required is a best-effort hint, not a guarantee.
 var hotReloadKeys = map[string]bool{
-	"security": true, // whitelist/blacklist enable flags
-	"features": true, // feature toggles enforced per-request; no restart needed
+	"security":       true,
+	"features":       true,
+	"server":         true,
+	"hls":            true,
+	"analytics":      true,
+	"age_gate":       true,
+	"cookie_consent": true,
 }
 
 // AdminUpdateConfig updates the configuration (raw updates passed to admin; some changes require restart).

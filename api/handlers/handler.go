@@ -713,6 +713,17 @@ func (h *Handler) requireSuggestions(c *gin.Context) bool {
 	})
 }
 func (h *Handler) requireScanner(c *gin.Context) bool { return requireModule(c, h.scanner, "Scanner") }
+
+// requireMatureScanner gates the ACTIVE mature-content scan paths on both the
+// module's presence AND the MatureScanner.Enabled toggle, so disabling the
+// scanner in the admin panel actually stops on-demand scans. The review-queue
+// read/approve/reject endpoints keep using requireScanner so a pending queue can
+// still be drained after the scanner is turned off.
+func (h *Handler) requireMatureScanner(c *gin.Context) bool {
+	return checkFeatureEnabled(c, h.scanner, "Mature content scanner", func() bool {
+		return h.config.Get().MatureScanner.Enabled
+	})
+}
 func (h *Handler) requireValidator(c *gin.Context) bool {
 	return requireModule(c, h.validator, "Validator")
 }

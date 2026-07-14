@@ -634,7 +634,8 @@ export function useAdminApi() {
 
         // Config
         getConfig: () => api.get<Record<string, unknown>>(`${base}/config`),
-        updateConfig: (data: Record<string, unknown>) => api.put<void>(`${base}/config`, data),
+        updateConfig: (data: Record<string, unknown>) =>
+            api.put<{config: Record<string, unknown>; restart_required: boolean; rejected_keys?: string[]}>(`${base}/config`, data),
 
         // Backups
         listBackups: () => api.get<BackupEntry[]>(`${base}/backups/v2`),

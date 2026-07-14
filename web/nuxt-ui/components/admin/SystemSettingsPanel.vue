@@ -2,7 +2,7 @@
 import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
-const {notifyError, notifySuccess} = useAdminFeedback()
+const {notifyError, notifySuccess, notifyWarning} = useAdminFeedback()
 
 // Known top-level config sections — matches the Go config struct sections.
 // Adding a new section here (and in Go) keeps both sides in sync.
@@ -20,6 +20,11 @@ const config = ref<Partial<Record<ConfigSection, Record<string, any>>>>({})
 const loading = ref(false)
 const saving = ref(false)
 const dirty = ref(false)
+// True after a save when some persisted sections only take effect on restart.
+// Surfaces the backend's restart_required signal (previously computed but never
+// shown), so admins aren't misled into thinking e.g. an age-gate/storage change
+// applied live when it needs a restart.
+const restartRequired = ref(false)
 
 let mounted = true
 onUnmounted(() => {
@@ -94,9 +99,18 @@ async function saveConfig() {
   saving.value = true
   try {
     const payload = showRawJson.value ? JSON.parse(rawJsonText.value) : config.value
-    await adminApi.updateConfig(payload)
+    const resp = await adminApi.updateConfig(payload)
     if (!mounted) return
-    notifySuccess('Configuration saved')
+    restartRequired.value = !!resp?.restart_required
+    if (resp?.rejected_keys?.length) {
+      // Protected sections (db creds, etc.) are stripped server-side; tell the
+      // admin instead of silently claiming a full save.
+      notifyWarning(`Ignored protected keys: ${resp.rejected_keys.join(', ')}`)
+    } else {
+      notifySuccess(restartRequired.value
+          ? 'Configuration saved — restart required for some changes'
+          : 'Configuration saved')
+    }
     dirty.value = false
     if (showRawJson.value) {
       // Reload structured view from saved data
@@ -171,6 +185,17 @@ onMounted(loadConfig)
             @click="() => { showRawJson = !showRawJson }"
         />
       </div>
+
+      <!-- Restart-required notice: shown when a saved section only takes effect
+           on restart (surfaces the backend restart_required signal). -->
+      <UAlert
+          v-if="restartRequired"
+          color="warning"
+          variant="soft"
+          icon="i-lucide-alert-triangle"
+          title="Restart required"
+          description="Some settings you just saved only take effect after a server restart. Restart the server from the Dashboard to apply them."
+      />
 
       <!-- Raw JSON mode -->
       <template v-if="showRawJson">
