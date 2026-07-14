@@ -517,6 +517,11 @@ export interface IPSummary {
 // Analytics module's internal counters — exposed so admins can debug
 // "why is the dashboard slow / stale" without server log access.
 export interface ModuleDiagnostics {
+    // available is false (and every other field absent) when the analytics module
+    // failed to init; the backend returns {available:false} in that case. Modeling
+    // it lets consumers gate on `diagnostics.available !== false` before reading
+    // the numeric fields, which are only present when the module is up.
+    available?: boolean
     cache_entries: number
     dirty_days: number
     active_subscribers: number
