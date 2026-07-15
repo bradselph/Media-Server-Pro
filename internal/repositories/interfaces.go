@@ -522,6 +522,52 @@ type ExtractorItemRecord struct {
 	UpdatedAt       time.Time
 }
 
+// HubEmbedRepository provides storage for the BETA Hub external-embed catalog,
+// imported from a large pipe-delimited CSV into the hub_embeds table. It is fully
+// decoupled from media/users — enabling, disabling, or clearing it never touches
+// other tables. Callers MUST only invoke it when the Hub feature is enabled.
+type HubEmbedRepository interface {
+	// BatchInsert idempotently inserts embeds (INSERT IGNORE on embed_id) and
+	// returns the number of rows actually inserted (0 for already-present rows).
+	BatchInsert(ctx context.Context, embeds []*HubEmbedRecord) (int64, error)
+	// List returns a page ordered by sort ("views"|"duration"|default newest) plus the total row count.
+	List(ctx context.Context, offset, limit int, sort string) ([]*HubEmbedRecord, int64, error)
+	// Search filters by full-text query and/or category/tag, returning a page + match count.
+	Search(ctx context.Context, query string, filter HubEmbedFilter, offset, limit int) ([]*HubEmbedRecord, int64, error)
+	// GetByEmbedID returns a single embed by its natural key (the provider embed id), or nil if absent.
+	GetByEmbedID(ctx context.Context, embedID string) (*HubEmbedRecord, error)
+	// CountAll returns the total number of imported rows.
+	CountAll(ctx context.Context) (int64, error)
+	// CategorySamples returns the raw ';'-joined category strings from the most-viewed
+	// rows (bounded by limit); the caller splits/dedupes them into a facet list.
+	CategorySamples(ctx context.Context, limit int) ([]string, error)
+	// DeleteAll truncates the catalog.
+	DeleteAll(ctx context.Context) error
+}
+
+// HubEmbedRecord represents one imported external embed catalog entry.
+type HubEmbedRecord struct {
+	ID           uint64
+	EmbedID      string
+	Title        string
+	Pornstar     string
+	DurationSecs int
+	Views        int64
+	RatingUp     int
+	RatingDown   int
+	Tags         string // ';'-separated, stored as-is from CSV
+	Categories   string // ';'-separated
+	ThumbURL     string
+	PreviewURLs  string // ';'-separated
+	CreatedAt    time.Time
+}
+
+// HubEmbedFilter narrows Search() results.
+type HubEmbedFilter struct {
+	Tag      string
+	Category string
+}
+
 // CrawlerTargetRepository provides crawler target storage
 type CrawlerTargetRepository interface {
 	Upsert(ctx context.Context, target *CrawlerTargetRecord) error

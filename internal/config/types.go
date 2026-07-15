@@ -22,6 +22,7 @@ type Config struct {
 	Crawler       CrawlerConfig       `json:"crawler"`
 	Backup        BackupConfig        `json:"backup"`
 	MatureScanner MatureScannerConfig `json:"mature_scanner"`
+	Hub           HubConfig           `json:"hub"`
 	HuggingFace   HuggingFaceConfig   `json:"huggingface"`
 	Logging       LoggingConfig       `json:"logging"`
 	Features      FeaturesConfig      `json:"features"`
@@ -464,6 +465,26 @@ type MatureScannerConfig struct {
 	RequireReview             bool     `json:"require_review"`
 }
 
+// HubConfig holds settings for the BETA "Hub" external embed-catalog feature.
+// The catalog is imported from a large pipe-delimited CSV into the hub_embeds
+// table and browsed through a dedicated, age-gated tab. Disabled by default.
+type HubConfig struct {
+	Enabled         bool   `json:"enabled"`
+	CSVPath         string `json:"csv_path"`
+	PageSize        int    `json:"page_size"`
+	ImportBatchSize int    `json:"import_batch_size"`
+	// SourceURL is a zipped-catalog URL. When set, both the admin "Start import"
+	// button and the CLI download it and stream-extract the CSV straight into the
+	// DB (the multi-GB CSV never lands on disk). Admin-settable.
+	SourceURL string `json:"source_url"`
+	// WorkDir is the scratch dir for the downloaded archive. Config/env only.
+	WorkDir string `json:"work_dir"`
+	// AutoImport, when set, bootstraps the catalog automatically the first time
+	// the module starts with an empty table (from SourceURL, else CSVPath), so a
+	// fresh deployment needs no manual import step. Skipped once data is present.
+	AutoImport bool `json:"auto_import"`
+}
+
 // HuggingFaceConfig holds settings for Hugging Face Inference API (visual classification).
 type HuggingFaceConfig struct {
 	Enabled       bool   `json:"enabled"`
@@ -506,6 +527,7 @@ type FeaturesConfig struct {
 	EnableDuplicateDetection bool `json:"enable_duplicate_detection"`
 	EnableHuggingFace        bool `json:"enable_huggingface"`
 	EnableDownloader         bool `json:"enable_downloader"`
+	EnableHub                bool `json:"enable_hub"` // BETA
 }
 
 // DatabaseConfig holds database connection settings

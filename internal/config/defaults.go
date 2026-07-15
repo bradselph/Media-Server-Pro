@@ -34,6 +34,7 @@ func DefaultConfig() *Config {
 		Extractor:     defaultExtractorConfig(),
 		Crawler:       defaultCrawlerConfig(),
 		MatureScanner: defaultMatureScannerConfig(),
+		Hub:           defaultHubConfig(),
 		HuggingFace:   defaultHuggingFaceConfig(),
 		Backup:        BackupConfig{RetentionCount: 10},
 		Logging:       defaultLoggingConfig(),
@@ -276,6 +277,21 @@ func defaultMatureScannerConfig() MatureScannerConfig {
 	}
 }
 
+// defaultHubConfig returns defaults for the BETA Hub embed-catalog feature.
+// Disabled by default (opt-in beta). CSVPath is left empty so it must be set
+// explicitly (config.json/env) before an import can run.
+func defaultHubConfig() HubConfig {
+	return HubConfig{
+		Enabled:         false,
+		CSVPath:         "",
+		PageSize:        60,
+		ImportBatchSize: 2000,
+		SourceURL:       "",
+		WorkDir:         "",
+		AutoImport:      false,
+	}
+}
+
 // defaultHuggingFaceConfig returns defaults for Hugging Face visual classification.
 // Model must be an image-classification or image-to-text model from the Hub (e.g.
 // Falconsai/nsfw_image_detection or Salesforce/blip-image-captioning-large).
@@ -322,6 +338,7 @@ func defaultFeaturesConfig() FeaturesConfig {
 		EnableDuplicateDetection: true,
 		EnableHuggingFace:        false,
 		EnableDownloader:         false,
+		EnableHub:                false, // BETA — opt-in only
 	}
 }
 

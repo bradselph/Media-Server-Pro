@@ -55,4 +55,26 @@ func (m *Manager) applyTunableEnvOverrides() {
 	m.applyAgeGateEnvOverrides()
 	m.applyDownloaderEnvOverrides()
 	m.applyUIEnvOverrides()
+	m.applyHubEnvOverrides()
+}
+
+// applyHubEnvOverrides applies environment overrides for the BETA Hub feature.
+// The enable flag is handled by applyFeatureEnvOverrides (FEATURE_HUB); this
+// covers the catalog CSV path and page size for easy Docker configuration.
+func (m *Manager) applyHubEnvOverrides() {
+	if val := envGetStr("HUB_CSV_PATH"); val != "" {
+		m.config.Hub.CSVPath = val
+	}
+	if val := envGetStr("HUB_SOURCE_URL"); val != "" {
+		m.config.Hub.SourceURL = val
+	}
+	if val := envGetStr("HUB_WORK_DIR"); val != "" {
+		m.config.Hub.WorkDir = val
+	}
+	if val, found := envGetBool("HUB_AUTO_IMPORT"); found {
+		m.config.Hub.AutoImport = val
+	}
+	if val, ok := envGetInt("HUB_PAGE_SIZE"); ok && val > 0 {
+		m.config.Hub.PageSize = val
+	}
 }

@@ -24,6 +24,7 @@ import (
 	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/follower"
 	"media-server-pro/internal/hls"
+	"media-server-pro/internal/hub"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/playlist"
@@ -56,7 +57,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.23.14"
+	Version = "1.23.14"
 
 	BuildDate = "dev"
 )
@@ -266,6 +267,7 @@ type modules struct {
 	validator     *validator.Module
 	backup        *backup.Module
 	autodiscovery *autodiscovery.Module
+	hub           *hub.Module
 	suggestions   *suggestions.Module
 	updater       *updater.Module
 	remote        *remote.Module
@@ -433,6 +435,14 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 		mustRegister(srv, m.autodiscovery)
 	}
 
+	// Hub (BETA, non-critical — external embed catalog. Gated by feature flag at
+	// construction so when disabled it is never constructed, registered, started,
+	// or given any DB access; the routes exist but short-circuit via requireHub.)
+	if cfg.Get().Features.EnableHub {
+		m.hub = hub.NewModule(cfg, m.database)
+		mustRegister(srv, m.hub)
+	}
+
 	// Suggestions (non-critical — requires database for user profiles)
 	m.suggestions = suggestions.NewModule(cfg, m.database)
 	mustRegister(srv, m.suggestions)
@@ -554,6 +564,7 @@ func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate 
 			Validator:     mods.validator,
 			Backup:        mods.backup,
 			Autodiscovery: mods.autodiscovery,
+			Hub:           mods.hub,
 			Suggestions:   mods.suggestions,
 			Security:      mods.security,
 			Updater:       mods.updater,

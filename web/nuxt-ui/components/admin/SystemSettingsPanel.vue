@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import {useAdminFeedback} from '~/composables/useAdminFeedback'
+import {useHubApi} from '~/composables/useApiEndpoints'
+import type {HubImportStatus} from '~/types/api'
 
 const adminApi = useAdminApi()
 const {notifyError, notifySuccess, notifyWarning} = useAdminFeedback()
@@ -10,7 +12,7 @@ type ConfigSection =
     | 'admin' | 'age_gate' | 'analytics' | 'auth' | 'backup'
     | 'cookie_consent' | 'crawler' | 'database' | 'directories'
     | 'download' | 'downloader' | 'extractor' | 'features' | 'hls'
-    | 'huggingface' | 'logging' | 'mature_scanner' | 'receiver'
+    | 'hub' | 'huggingface' | 'logging' | 'mature_scanner' | 'receiver'
     | 'remote_media' | 'security' | 'server' | 'storage' | 'streaming'
     | 'thumbnails' | 'ui' | 'updater' | 'uploads'
 
@@ -29,7 +31,46 @@ const restartRequired = ref(false)
 let mounted = true
 onUnmounted(() => {
   mounted = false
+  if (hubPoll) clearInterval(hubPoll)
 })
+
+// ── Hub (BETA) catalog import management ─────────────────────────────────────
+const hubApi = useHubApi()
+const hubStatus = ref<HubImportStatus | null>(null)
+const hubBusy = ref(false)
+let hubPoll: ReturnType<typeof setInterval> | null = null
+
+async function refreshHubStatus() {
+  if (!get('features', 'enable_hub')) return
+  try {
+    hubStatus.value = await hubApi.importStatus()
+  } catch {
+    // non-fatal: card just shows stale/empty state
+  }
+}
+
+async function startHubImport() {
+  hubBusy.value = true
+  try {
+    await hubApi.triggerImport()
+    notifySuccess('Hub import started')
+    await refreshHubStatus()
+  } catch (e: unknown) {
+    notifyError(e, 'Import failed to start')
+  } finally {
+    if (mounted) hubBusy.value = false
+  }
+}
+
+async function clearHub() {
+  try {
+    await hubApi.clear()
+    notifySuccess('Hub catalog cleared')
+    await refreshHubStatus()
+  } catch (e: unknown) {
+    notifyError(e, 'Clear failed')
+  }
+}
 
 // Password change
 const pwCurrent = ref('')
@@ -158,7 +199,14 @@ watch(showRawJson, (v) => {
   if (v) rawJsonText.value = JSON.stringify(config.value, null, 2)
 })
 
-onMounted(loadConfig)
+onMounted(async () => {
+  await loadConfig()
+  await refreshHubStatus()
+  // Auto-refresh while an import is running so progress updates live.
+  hubPoll = setInterval(() => {
+    if (hubStatus.value?.running) refreshHubStatus()
+  }, 4000)
+})
 </script>
 
 <template>
@@ -266,6 +314,13 @@ onMounted(loadConfig)
                        @update:model-value="set('features', 'enable_mature_scanner', $event)"/>
             </div>
             <div class="flex items-center justify-between">
+              <span class="text-sm inline-flex items-center gap-1.5">
+                Hub <UBadge color="warning" variant="subtle" size="xs">BETA</UBadge>
+              </span>
+              <USwitch :model-value="get('features', 'enable_hub')"
+                       @update:model-value="set('features', 'enable_hub', $event)"/>
+            </div>
+            <div class="flex items-center justify-between">
               <span class="text-sm">Remote Media</span>
               <USwitch :model-value="get('features', 'enable_remote_media')"
                        @update:model-value="set('features', 'enable_remote_media', $event)"/>
@@ -297,6 +352,65 @@ onMounted(loadConfig)
             </div>
           </div>
           <p class="text-xs text-muted mt-3">Some toggles require a server restart to take effect.</p>
+        </UCard>
+
+        <!-- ── Hub (BETA) catalog import ───────────────────────────── -->
+        <UCard v-if="get('features', 'enable_hub')">
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-clapperboard" class="text-primary"/>
+              <span class="font-semibold text-sm">Hub Catalog</span>
+              <UBadge color="warning" variant="subtle" size="xs">BETA</UBadge>
+            </div>
+          </template>
+          <div class="space-y-4 max-w-2xl">
+            <p class="text-xs text-muted">
+              Loads the external embed catalog into the DB. Set a zipped-catalog URL
+              below (the server downloads it and streams the CSV straight in — the
+              multi-GB file never lands on disk), or leave it blank to use a local
+              <code>hub.csv_path</code>. Importing streams in the background and is
+              idempotent (existing rows are skipped). <strong>Save changes before
+              starting an import</strong> — the import uses the saved config.
+            </p>
+
+            <UFormField label="Catalog source URL" help="Zipped catalog (.zip). Blank = use hub.csv_path.">
+              <UInput :model-value="get('hub', 'source_url')"
+                      placeholder="https://example.com/catalog.zip"
+                      @update:model-value="set('hub', 'source_url', $event)"/>
+            </UFormField>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm">Auto-import on startup</p>
+                <p class="text-xs text-muted">Bootstrap the catalog once when empty, from the source above.</p>
+              </div>
+              <USwitch :model-value="get('hub', 'auto_import')"
+                       @update:model-value="set('hub', 'auto_import', $event)"/>
+            </div>
+
+            <div v-if="get('hub', 'csv_path')" class="text-xs text-muted">
+              Local CSV: <code>{{ get('hub', 'csv_path') }}</code> (set via config/env)
+            </div>
+
+            <div class="flex flex-wrap items-center gap-4 text-sm border-t border-default pt-3">
+              <span><span class="text-muted">Rows:</span> {{ (hubStatus?.total_rows ?? 0).toLocaleString() }}</span>
+              <span v-if="hubStatus?.running" class="inline-flex items-center gap-1.5 text-primary">
+                <UIcon name="i-lucide-loader-2" class="animate-spin size-4"/>
+                <template v-if="hubStatus?.phase === 'downloading'">Downloading archive…</template>
+                <template v-else>Importing… {{ (hubStatus?.rows_read ?? 0).toLocaleString() }} read,
+                  {{ (hubStatus?.inserted ?? 0).toLocaleString() }} inserted</template>
+              </span>
+              <span v-else-if="hubStatus?.error" class="text-error text-xs">Last error: {{ hubStatus.error }}</span>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <UButton size="sm" icon="i-lucide-download" label="Start import" :loading="hubBusy"
+                       :disabled="hubStatus?.running" @click="startHubImport"/>
+              <UButton size="sm" variant="soft" color="neutral" icon="i-lucide-refresh-cw" label="Refresh"
+                       @click="refreshHubStatus"/>
+              <UButton size="sm" variant="soft" color="error" icon="i-lucide-trash-2" label="Clear catalog"
+                       :disabled="hubStatus?.running" @click="clearHub"/>
+            </div>
+          </div>
         </UCard>
 
         <!-- ── Server ──────────────────────────────────────────────── -->

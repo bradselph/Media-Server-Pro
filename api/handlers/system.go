@@ -251,6 +251,7 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 			"enableAutoDiscovery":      cfg.Features.EnableAutoDiscovery,
 			"enableDuplicateDetection": cfg.Features.EnableDuplicateDetection,
 			"enableDownloader":         cfg.Features.EnableDownloader,
+			"enableHub":                cfg.Features.EnableHub,
 		},
 		"uploads": map[string]any{
 			"enabled":     cfg.Uploads.Enabled,
@@ -269,6 +270,10 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 		},
 		"age_gate": map[string]any{
 			"enabled": cfg.AgeGate.Enabled,
+		},
+		// Hub (BETA) — dedicated block so the nav can gate on it like uploads.
+		"hub": map[string]any{
+			"enabled": cfg.Hub.Enabled,
 		},
 		"auth": map[string]any{
 			"allow_registration": cfg.Auth.AllowRegistration,

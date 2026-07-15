@@ -570,6 +570,30 @@ var tableDefs = []struct {
 				INDEX idx_category_items_media (media_id),
 				INDEX idx_category_items_position (category_id, position)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
+	// hub_embeds: BETA external embed catalog imported from a large pipe-delimited
+	// CSV. Standalone (no FKs to media/users) so enabling/disabling or clearing it
+	// never touches other tables. embed_id is UNIQUE so re-imports are idempotent
+	// (BatchInsert uses INSERT IGNORE). FULLTEXT index powers title/tag search.
+	{"hub_embeds", `
+			CREATE TABLE IF NOT EXISTS hub_embeds (
+				id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+				embed_id      VARCHAR(64)   NOT NULL,
+				title         VARCHAR(500)  NOT NULL DEFAULT '',
+				pornstar      VARCHAR(500)  NOT NULL DEFAULT '',
+				duration_secs INT           NOT NULL DEFAULT 0,
+				views         BIGINT        NOT NULL DEFAULT 0,
+				rating_up     INT           NOT NULL DEFAULT 0,
+				rating_down   INT           NOT NULL DEFAULT 0,
+				tags          TEXT,
+				categories    TEXT,
+				thumb_url     TEXT,
+				preview_urls  MEDIUMTEXT,
+				created_at    TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE KEY uniq_hub_embed_id (embed_id),
+				INDEX idx_hub_embeds_views (views),
+				INDEX idx_hub_embeds_title (title(191)),
+				FULLTEXT INDEX ft_hub_embeds_title_tags (title, tags)
+			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 }
 
 // ensureSchema idempotently creates all required tables and columns.

@@ -1125,6 +1125,7 @@ export interface ServerSettings {
         enableAutoDiscovery: boolean
         enableDuplicateDetection: boolean
         enableDownloader: boolean
+        enableHub?: boolean
     }
     uploads: {
         enabled: boolean
@@ -1148,6 +1149,47 @@ export interface ServerSettings {
         allow_registration: boolean
         allow_guests: boolean
     }
+    hub?: {
+        enabled: boolean
+    }
+}
+
+// ── Hub (BETA external embed catalog) ────────────────────────────────────────
+
+export interface HubEmbed {
+    embed_id: string
+    embed_url: string
+    title: string
+    pornstar: string
+    duration_secs: number
+    views: number
+    rating_up: number
+    rating_down: number
+    tags: string[]
+    categories: string[]
+    thumb_url: string
+    preview_urls: string[]
+    is_mature: boolean
+}
+
+export interface HubListResponse {
+    items: HubEmbed[]
+    total: number
+    limit: number
+    offset: number
+}
+
+export interface HubImportStatus {
+    running: boolean
+    phase?: 'downloading' | 'importing' | ''
+    source?: string
+    rows_read: number
+    inserted: number
+    total_rows: number
+    path?: string
+    error?: string
+    started_at?: string
+    finished_at?: string
 }
 
 // ── Age Gate ──────────────────────────────────────────────────────────────────

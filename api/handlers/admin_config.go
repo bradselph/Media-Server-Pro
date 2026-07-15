@@ -65,6 +65,8 @@ var configDenyList = map[string]bool{
 var configFieldDenyList = map[string]bool{
 	"admin.username":      true, // use admin credential endpoints instead
 	"admin.password_hash": true, // change password via /api/admin/change-password
+	"hub.csv_path":        true, // server-local filesystem path — runtime redirect is a security risk (mirrors directories)
+	"hub.work_dir":        true, // server-local scratch path — config/env only
 }
 
 // filterDeniedConfigKeys removes denied sections/fields from the update map
@@ -107,15 +109,15 @@ func filterDeniedConfigKeys(updates map[string]any) []string {
 // applied to running components immediately, so no restart is required. It is
 // kept in sync with the actual cfg.OnChange consumers / per-request reads:
 //   - security       → internal/security/security.go (rate limits, CORS, CSP,
-//                       trusted proxies) + the whitelist/blacklist enable flags
-//                       applied in AdminUpdateConfig below
+//     trusted proxies) + the whitelist/blacklist enable flags
+//     applied in AdminUpdateConfig below
 //   - features        → feature gates are re-read per request / per task tick
 //   - server          → cmd/server/main.go re-tunes Server.MemoryLimitPercent live
 //   - hls, analytics  → cmd/server/main.go registerScheduleWatcher re-applies the
-//                       schedule intervals live
+//     schedule intervals live
 //   - age_gate,
 //     cookie_consent  → cmd/server/main.go reloads the middleware live via
-//                       UpdateConfig on every config change
+//     UpdateConfig on every config change
 //
 // Sections NOT listed here (storage, directories, database, auth, uploads, …)
 // are persisted but only take effect on restart. NOTE: this is section-level —
@@ -129,6 +131,7 @@ var hotReloadKeys = map[string]bool{
 	"analytics":      true,
 	"age_gate":       true,
 	"cookie_consent": true,
+	"hub":            true, // hub.page_size / csv_path are read live per request / per import
 }
 
 // AdminUpdateConfig updates the configuration (raw updates passed to admin; some changes require restart).

@@ -527,6 +527,14 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// callers without the mature-view permission. Powers /browse.
 	api.GET("/tags", h.GetTagCounts)
 
+	// Hub (BETA) — external embed catalog. Gating lives inside each handler:
+	// requireHub (feature flag + module presence) then checkMatureAccess (the whole
+	// catalog is 18+). Disabled feature => requireHub short-circuits, so these are
+	// inert when off. Register /embeds/:id after the literal /categories/embeds.
+	api.GET("/hub/embeds", h.ListHubEmbeds)
+	api.GET("/hub/categories", h.ListHubCategories)
+	api.GET("/hub/embeds/:id", h.GetHubEmbed)
+
 	// Playback
 	api.GET("/playback", requireAuth(), h.GetPlaybackPosition)
 	api.GET("/playback/batch", requireAuth(), h.GetBatchPlaybackPositions)
@@ -816,6 +824,11 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.DELETE(pathScannerQueue, h.ClearReviewQueue)
 	adminGrp.POST("/scanner/approve/:id", h.ApproveContent)
 	adminGrp.POST("/scanner/reject/:id", h.RejectContent)
+
+	// Hub (BETA) import management — inherits adminAuth from adminGrp.
+	adminGrp.POST("/hub/import", h.AdminTriggerHubImport)
+	adminGrp.GET("/hub/status", h.AdminHubStatus)
+	adminGrp.POST("/hub/clear", h.AdminClearHub)
 
 	// Hugging Face visual classification (admin)
 	adminGrp.GET("/classify/status", h.ClassifyStatus)

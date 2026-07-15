@@ -26,6 +26,7 @@ func (m *Manager) applyFeatureEnvOverrides() {
 	setFeatureBool(&f.EnableDuplicateDetection, "FEATURE_DUPLICATE_DETECTION", "FEATURES_DUPLICATE_DETECTION")
 	setFeatureBool(&f.EnableHuggingFace, "FEATURE_HUGGINGFACE", "FEATURES_ENABLE_HUGGINGFACE", "FEATURES_HUGGINGFACE")
 	setFeatureBool(&f.EnableDownloader, "FEATURE_DOWNLOADER", "FEATURES_DOWNLOADER")
+	setFeatureBool(&f.EnableHub, "FEATURE_HUB", "FEATURES_HUB")
 }
 
 func (m *Manager) applyBackupEnvOverrides() {

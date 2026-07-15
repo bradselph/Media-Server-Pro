@@ -196,6 +196,7 @@ func (m *Manager) syncFeatureToggles() {
 	cfg.Extractor.Enabled = f.EnableExtractor
 	cfg.Crawler.Enabled = f.EnableCrawler
 	cfg.MatureScanner.Enabled = f.EnableMatureScanner
+	cfg.Hub.Enabled = f.EnableHub
 	cfg.HuggingFace.Enabled = f.EnableHuggingFace
 	cfg.Thumbnails.Enabled = f.EnableThumbnails
 	cfg.Uploads.Enabled = f.EnableUploads

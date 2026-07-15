@@ -32,6 +32,7 @@ import (
 	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/follower"
 	"media-server-pro/internal/hls"
+	"media-server-pro/internal/hub"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/playlist"
@@ -117,6 +118,7 @@ type HandlerOptionalDeps struct {
 	Validator     *validator.Module
 	Backup        *backup.Module
 	Autodiscovery *autodiscovery.Module
+	Hub           *hub.Module
 	Suggestions   *suggestions.Module
 	Security      *security.Module
 	Updater       *updater.Module
@@ -164,6 +166,7 @@ type Handler struct {
 	validator           *validator.Module
 	backup              *backup.Module
 	autodiscovery       *autodiscovery.Module
+	hub                 *hub.Module
 	suggestions         *suggestions.Module
 	security            *security.Module
 	updater             *updater.Module
@@ -335,6 +338,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		validator:     o.Validator,
 		backup:        o.Backup,
 		autodiscovery: o.Autodiscovery,
+		hub:           o.Hub,
 		suggestions:   o.Suggestions,
 		security:      o.Security,
 		updater:       o.Updater,
@@ -733,6 +737,14 @@ func (h *Handler) requireBackup(c *gin.Context) bool {
 func (h *Handler) requireAutodiscovery(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.autodiscovery, "Auto-discovery", func() bool {
 		return h.config.Get().Features.EnableAutoDiscovery
+	})
+}
+
+// requireHub gates every Hub endpoint on both the module's presence and the
+// feature flag, so a disabled Hub never serves or touches its table.
+func (h *Handler) requireHub(c *gin.Context) bool {
+	return checkFeatureEnabled(c, h.hub, "Hub", func() bool {
+		return h.config.Get().Features.EnableHub
 	})
 }
 func (h *Handler) requireUpdater(c *gin.Context) bool { return requireModule(c, h.updater, "Updater") }

@@ -123,6 +123,9 @@ import type {
     ValidationResult,
     ValidatorStats,
     WatchHistoryItem,
+    HubEmbed,
+    HubListResponse,
+    HubImportStatus,
 } from '~/types/api'
 import {normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch} from '~/utils/apiCompat'
 // Explicit import — bypasses Nuxt's #imports virtual module so this file does
@@ -1151,5 +1154,30 @@ export function useCategoriesApi() {
             }),
         removeItem: (categoryId: string, mediaId: string) =>
             api.delete<void>(`${adminBase}/categories/${encodeURIComponent(categoryId)}/items/${encodeURIComponent(mediaId)}`),
+    }
+}
+
+// ── Hub (BETA external embed catalog) ────────────────────────────────────────
+export function useHubApi() {
+    const base = '/api/hub'
+    const adminBase = '/api/admin/hub'
+    return {
+        list: (params: { limit?: number; offset?: number; search?: string; category?: string; tag?: string; sort?: string } = {}) => {
+            const q = new URLSearchParams()
+            if (params.limit != null) q.set('limit', String(params.limit))
+            if (params.offset != null) q.set('offset', String(params.offset))
+            if (params.search) q.set('search', params.search)
+            if (params.category) q.set('category', params.category)
+            if (params.tag) q.set('tag', params.tag)
+            if (params.sort) q.set('sort', params.sort)
+            const qs = q.toString()
+            return api.get<HubListResponse>(`${base}/embeds${qs ? `?${qs}` : ''}`)
+        },
+        get: (id: string) => api.get<HubEmbed>(`${base}/embeds/${encodeURIComponent(id)}`),
+        categories: () => api.get<string[]>(`${base}/categories`),
+        // Admin — import runs from the server-configured hub.csv_path (config/env only).
+        triggerImport: () => api.post<{ status: string }>(`${adminBase}/import`, {}),
+        importStatus: () => api.get<HubImportStatus>(`${adminBase}/status`),
+        clear: () => api.post<{ status: string }>(`${adminBase}/clear`, {}),
     }
 }
