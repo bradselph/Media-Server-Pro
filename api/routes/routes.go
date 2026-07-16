@@ -338,6 +338,15 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 		sc := cfg.Get().Security
 		if sc.CSPEnabled {
 			csp = sc.CSPPolicy
+			// The Hub (BETA) tab embeds third-party iframes and loads their CDN
+			// thumbnails. The base policy has no frame-src (so iframes fall back to
+			// default-src 'self' and the browser blocks them: "This content is
+			// blocked. Contact the site owner…") and an img-src without the CDN.
+			// Add the needed sources ONLY when Hub is enabled, so a disabled Hub
+			// leaves the CSP untouched.
+			if cfg.Get().Hub.Enabled {
+				csp = hubAugmentCSP(csp)
+			}
 		}
 		if sc.HSTSEnabled {
 			hstsMaxAge = sc.HSTSMaxAge
@@ -993,4 +1002,41 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	web.RegisterStaticRoutes(r, h.EnrichSPAShell)
 
 	log.Info("Routes configured")
+}
+
+// hubEmbedFrameSrc / hubEmbedImgSrc are the extra CSP sources the Hub (BETA) tab
+// needs so the browser will render the external embed iframes and their CDN
+// thumbnails/preview frames. The catalog is entirely pornhub.com embeds served
+// from the phncdn.com image CDN.
+const (
+	hubEmbedFrameSrc = "https://*.pornhub.com"
+	hubEmbedImgSrc   = "https://*.phncdn.com https://*.pornhub.com"
+)
+
+// hubAugmentCSP adds the frame-src / img-src sources the Hub embed tab needs to
+// an existing Content-Security-Policy string. Safe no-op on an empty policy.
+func hubAugmentCSP(csp string) string {
+	if csp == "" {
+		return csp
+	}
+	csp = cspAddSources(csp, "frame-src", hubEmbedFrameSrc)
+	csp = cspAddSources(csp, "img-src", hubEmbedImgSrc)
+	return csp
+}
+
+// cspAddSources appends space-separated sources to a CSP directive. If the
+// directive is absent it is added, seeded with 'self'. Directives are separated
+// by ';'; this handles the common policy shapes this project ships.
+func cspAddSources(csp, directive, sources string) string {
+	parts := strings.Split(csp, ";")
+	for i, p := range parts {
+		fields := strings.Fields(p)
+		if len(fields) > 0 && fields[0] == directive {
+			parts[i] = strings.TrimRight(p, " ") + " " + sources
+			return strings.TrimSpace(strings.Join(parts, ";"))
+		}
+	}
+	// Directive not present — add it.
+	parts = append(parts, " "+directive+" 'self' "+sources)
+	return strings.TrimSpace(strings.Join(parts, ";"))
 }
