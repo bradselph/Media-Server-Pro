@@ -126,6 +126,7 @@ import type {
     HubEmbed,
     HubListResponse,
     HubImportStatus,
+    PlaylistImportStatus,
 } from '~/types/api'
 import {normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch} from '~/utils/apiCompat'
 // Explicit import — bypasses Nuxt's #imports virtual module so this file does
@@ -1179,5 +1180,16 @@ export function useHubApi() {
         triggerImport: () => api.post<{ status: string }>(`${adminBase}/import`, {}),
         importStatus: () => api.get<HubImportStatus>(`${adminBase}/status`),
         clear: () => api.post<{ status: string }>(`${adminBase}/clear`, {}),
+        // Admin — download every hub:<embed_id> item in a playlist via the downloader
+        // and import each into the library (mirrors the manual download-then-move flow).
+        startPlaylistImport: (playlistId: string, destination: string, opts: { subfolder?: string; relayId?: string } = {}) =>
+            api.post<PlaylistImportStatus>(`${adminBase}/playlist-import`, {
+                playlist_id: playlistId,
+                destination,
+                subfolder: opts.subfolder ?? '',
+                relay_id: opts.relayId ?? '',
+            }),
+        playlistImportStatus: () => api.get<PlaylistImportStatus>(`${adminBase}/playlist-import/status`),
+        cancelPlaylistImport: () => api.delete<PlaylistImportStatus>(`${adminBase}/playlist-import`),
     }
 }

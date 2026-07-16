@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {useAdminFeedback} from '~/composables/useAdminFeedback'
 import {useHubApi} from '~/composables/useApiEndpoints'
-import type {HubImportStatus} from '~/types/api'
+import type {HubImportStatus, ImportDestination, PlaylistImportStatus, Playlist} from '~/types/api'
 
 const adminApi = useAdminApi()
 const {notifyError, notifySuccess, notifyWarning} = useAdminFeedback()
@@ -32,6 +32,7 @@ let mounted = true
 onUnmounted(() => {
   mounted = false
   if (hubPoll) clearInterval(hubPoll)
+  if (playlistImportPoll) clearInterval(playlistImportPoll)
 })
 
 // ── Hub (BETA) catalog import management ─────────────────────────────────────
@@ -69,6 +70,79 @@ async function clearHub() {
     await refreshHubStatus()
   } catch (e: unknown) {
     notifyError(e, 'Clear failed')
+  }
+}
+
+// ── Hub playlist → downloader → library ──────────────────────────────────────
+// Admin picks any user's playlist; every hub:<embed_id> item is downloaded via
+// the downloader and imported into the library. Needs both hub + downloader on.
+const playlistImportStatus = ref<PlaylistImportStatus | null>(null)
+const importPlaylists = ref<Playlist[]>([])
+const importDestinations = ref<ImportDestination[]>([])
+const selectedImportPlaylist = ref('')
+const selectedImportDestination = ref('')
+const importRelayId = ref('')
+const playlistImportBusy = ref(false)
+let playlistImportPoll: ReturnType<typeof setInterval> | null = null
+let importPrereqsLoaded = false
+
+const playlistImportEnabled = computed(() => !!get('features', 'enable_hub') && !!get('features', 'enable_downloader'))
+const playlistImportRunning = computed(() => playlistImportStatus.value?.running === true)
+
+async function refreshPlaylistImportStatus() {
+  if (!playlistImportEnabled.value) return
+  try {
+    playlistImportStatus.value = await hubApi.playlistImportStatus()
+  } catch {
+    // non-fatal
+  }
+}
+
+async function loadPlaylistImportPrereqs() {
+  if (importPrereqsLoaded) return
+  importPrereqsLoaded = true
+  try {
+    const res = await adminApi.listAllPlaylists({limit: 500})
+    importPlaylists.value = res?.items ?? []
+  } catch { /* leave empty */ }
+  try {
+    importDestinations.value = (await adminApi.listImportDestinations()) ?? []
+    const def = importDestinations.value.find(d => d.isDefault) ?? importDestinations.value[0]
+    if (def && !selectedImportDestination.value) selectedImportDestination.value = def.key
+  } catch { /* leave empty */ }
+}
+
+const importPlaylistItems = computed(() =>
+    importPlaylists.value.map(p => ({label: `${p.name} (${p.items?.length ?? 0})`, value: p.id})))
+const importDestinationItems = computed(() =>
+    importDestinations.value.map(d => ({label: d.writable ? d.label : `${d.label} (read-only)`, value: d.key})))
+
+async function startPlaylistImport() {
+  if (!selectedImportPlaylist.value) {
+    notifyWarning('Select a playlist first')
+    return
+  }
+  playlistImportBusy.value = true
+  try {
+    playlistImportStatus.value = await hubApi.startPlaylistImport(
+        selectedImportPlaylist.value,
+        selectedImportDestination.value,
+        {relayId: importRelayId.value || undefined},
+    )
+    notifySuccess('Playlist import started')
+  } catch (e: unknown) {
+    notifyError(e, 'Could not start playlist import')
+  } finally {
+    if (mounted) playlistImportBusy.value = false
+  }
+}
+
+async function cancelPlaylistImport() {
+  try {
+    playlistImportStatus.value = await hubApi.cancelPlaylistImport()
+    notifyWarning('Playlist import canceled')
+  } catch (e: unknown) {
+    notifyError(e, 'Cancel failed')
   }
 }
 
@@ -206,6 +280,14 @@ onMounted(async () => {
   hubPoll = setInterval(() => {
     if (hubStatus.value?.running) refreshHubStatus()
   }, 4000)
+  // Playlist → library import (only when both hub + downloader are enabled).
+  if (playlistImportEnabled.value) {
+    await refreshPlaylistImportStatus()
+    await loadPlaylistImportPrereqs()
+  }
+  playlistImportPoll = setInterval(() => {
+    if (playlistImportStatus.value?.running) refreshPlaylistImportStatus()
+  }, 3000)
 })
 </script>
 
@@ -409,6 +491,71 @@ onMounted(async () => {
                        @click="refreshHubStatus"/>
               <UButton size="sm" variant="soft" color="error" icon="i-lucide-trash-2" label="Clear catalog"
                        :disabled="hubStatus?.running" @click="clearHub"/>
+            </div>
+          </div>
+        </UCard>
+
+        <!-- ── Hub playlist → library import ──────────────────────────── -->
+        <UCard v-if="playlistImportEnabled">
+          <template #header>
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-download-cloud" class="text-primary"/>
+              <span class="font-semibold text-sm">Playlist → Library Import</span>
+              <UBadge color="warning" variant="subtle" size="xs">BETA</UBadge>
+            </div>
+          </template>
+          <div class="space-y-4 max-w-2xl">
+            <p class="text-xs text-muted">
+              Download every Hub item in a user's playlist through the downloader and
+              import each into the library — the same as manually downloading each URL
+              then moving it in, but automated over the whole playlist. Non-Hub items
+              are ignored. Runs one at a time in the background.
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <UFormField label="Playlist">
+                <USelectMenu v-model="selectedImportPlaylist" :items="importPlaylistItems" value-key="value"
+                             placeholder="Select a playlist"/>
+              </UFormField>
+              <UFormField label="Destination">
+                <USelectMenu v-model="selectedImportDestination" :items="importDestinationItems" value-key="value"
+                             placeholder="Default (videos)"/>
+              </UFormField>
+            </div>
+            <UFormField label="Relay / proxy (optional)" help="Leave blank to use the downloader's own proxy pool.">
+              <UInput v-model="importRelayId" placeholder="relay id"/>
+            </UFormField>
+
+            <div v-if="playlistImportStatus && (playlistImportStatus.running || playlistImportStatus.total > 0)"
+                 class="text-sm border-t border-default pt-3 space-y-1">
+              <div class="flex flex-wrap items-center gap-3">
+                <span v-if="playlistImportRunning" class="inline-flex items-center gap-1.5 text-primary">
+                  <UIcon name="i-lucide-loader-2" class="animate-spin size-4"/>
+                  {{ playlistImportStatus.done }}/{{ playlistImportStatus.total }} · {{ playlistImportStatus.current || '…' }}
+                </span>
+                <span v-else class="text-muted">Last run: {{ playlistImportStatus.playlist_name }}</span>
+                <span class="text-success">{{ playlistImportStatus.imported }} imported</span>
+                <span v-if="playlistImportStatus.failed" class="text-error">{{ playlistImportStatus.failed }} failed</span>
+                <span v-if="playlistImportStatus.canceled" class="text-warning">canceled</span>
+              </div>
+              <details v-if="playlistImportStatus.results.length" class="text-xs text-muted">
+                <summary class="cursor-pointer">Details</summary>
+                <ul class="mt-1 space-y-0.5 max-h-40 overflow-y-auto">
+                  <li v-for="(r, i) in playlistImportStatus.results" :key="i">
+                    <span :class="r.status === 'imported' ? 'text-success' : r.status === 'failed' ? 'text-error' : 'text-muted'">{{ r.status }}</span>
+                    · {{ r.title }}<span v-if="r.detail"> — {{ r.detail }}</span>
+                  </li>
+                </ul>
+              </details>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <UButton size="sm" icon="i-lucide-download-cloud" label="Start import" :loading="playlistImportBusy"
+                       :disabled="playlistImportRunning || !selectedImportPlaylist" @click="startPlaylistImport"/>
+              <UButton v-if="playlistImportRunning" size="sm" variant="soft" color="error" icon="i-lucide-x"
+                       label="Cancel" @click="cancelPlaylistImport"/>
+              <UButton size="sm" variant="soft" color="neutral" icon="i-lucide-refresh-cw" label="Refresh"
+                       @click="refreshPlaylistImportStatus"/>
             </div>
           </div>
         </UCard>

@@ -838,6 +838,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.POST("/hub/import", h.AdminTriggerHubImport)
 	adminGrp.GET("/hub/status", h.AdminHubStatus)
 	adminGrp.POST("/hub/clear", h.AdminClearHub)
+	// Hub (BETA) playlist → downloader → library: auto-download a playlist's hub items.
+	adminGrp.POST("/hub/playlist-import", h.AdminHubPlaylistImportStart)
+	adminGrp.GET("/hub/playlist-import/status", h.AdminHubPlaylistImportStatus)
+	adminGrp.DELETE("/hub/playlist-import", h.AdminHubPlaylistImportCancel)
 
 	// Hugging Face visual classification (admin)
 	adminGrp.GET("/classify/status", h.ClassifyStatus)

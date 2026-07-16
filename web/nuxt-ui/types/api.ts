@@ -1196,6 +1196,30 @@ export interface HubImportStatus {
     finished_at?: string
 }
 
+// Admin: download a playlist's Hub items via the downloader and import to library.
+export interface PlaylistImportResult {
+    embed_id: string
+    title: string
+    status: 'imported' | 'skipped' | 'failed'
+    detail?: string
+}
+
+export interface PlaylistImportStatus {
+    running: boolean
+    canceled: boolean
+    playlist_id?: string
+    playlist_name?: string
+    total: number
+    done: number
+    imported: number
+    skipped: number
+    failed: number
+    current?: string
+    started_at?: string
+    finished_at?: string
+    results: PlaylistImportResult[]
+}
+
 // ── Age Gate ──────────────────────────────────────────────────────────────────
 
 export interface AgeGateStatus {
