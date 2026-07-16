@@ -38,6 +38,9 @@ const (
 	// Once a download leaves the queue, wait this long for its output file to
 	// appear (ListImportable skips files <30s old) before declaring it failed.
 	hubImportPostQueueGrace = 40 * time.Second
+	// How long to wait for a just-started download to appear in the queue before
+	// assuming it processed instantly (so a never-seen download isn't stuck).
+	hubImportQueueAppearGrace = 15 * time.Second
 )
 
 // hubPlaylistImportResult is one item's terminal outcome.
@@ -308,9 +311,11 @@ func (h *Handler) runHubPlaylistImport(ctx context.Context, job *hubPlaylistImpo
 	}
 
 	// Trigger exactly one media rescan at the end (per-item triggerScan is off) so
-	// the freshly imported files enter the catalog, matching the manual flow's
-	// single post-import scan.
-	if importedAny && ctx.Err() == nil && h.media != nil {
+	// the freshly imported files enter the catalog. Run it even when the job was
+	// CANCELED: Import() already physically moved those files into the library and
+	// deleted their sources, so skipping the scan would orphan them (on disk but
+	// uncataloged) — contradicting the cancel contract that imported items stay.
+	if importedAny && h.media != nil {
 		if err := h.media.Scan(); err != nil {
 			h.log.Warn("Hub playlist import: post-import rescan failed: %v", err)
 		}
@@ -394,10 +399,19 @@ func (h *Handler) hubImportableNames() map[string]bool {
 
 // waitForHubDownload waits for a started download to produce a new importable
 // file. Returns (newFileName, "") on success or ("", reason) on failure/timeout/
-// cancel. Success = a name not in beforeNames appears. Fast-fail = the download
-// leaves the queue and no new file appears within hubImportPostQueueGrace.
+// cancel.
+//
+// Correlation: the downloader API exposes no DownloadID->filename mapping, so we
+// identify the produced file by diffing the importable dir against a pre-download
+// snapshot (beforeNames). To avoid mistaking an unrelated concurrent server
+// download's output for THIS item's file, we only start claiming a new file
+// AFTER our own DownloadID has left the queue (i.e. our download finished).
+// (Residual: two downloads completing in the same post-exit window can't be told
+// apart via names alone — the downloader would need to surface per-ID filenames.)
 func (h *Handler) waitForHubDownload(ctx context.Context, downloadID string, beforeNames map[string]bool) (string, string) {
 	deadline := time.Now().Add(hubImportPerItemTimeout)
+	appearDeadline := time.Now().Add(hubImportQueueAppearGrace)
+	appeared := false
 	var leftQueueAt time.Time
 	for {
 		if ctx.Err() != nil {
@@ -407,23 +421,28 @@ func (h *Handler) waitForHubDownload(ctx context.Context, downloadID string, bef
 			return "", "timed out waiting for the download to finish"
 		}
 
-		// Success: a new importable file appeared.
-		if files, err := h.downloader.ListImportable(); err == nil {
-			for i := range files {
-				if !beforeNames[files[i].Name] {
-					return files[i].Name, ""
-				}
+		// Track whether OUR download has left the queue (finished, success or fail).
+		if q, err := h.downloader.GetClient().Queue(); err == nil {
+			if hubDownloadInQueue(q, downloadID) {
+				appeared = true
+				leftQueueAt = time.Time{}
+			} else if (appeared || time.Now().After(appearDeadline)) && leftQueueAt.IsZero() {
+				// Gone from the queue after being seen, or never seen within the
+				// grace (processed instantly) — treat our download as finished.
+				leftQueueAt = time.Now()
 			}
 		}
 
-		// Fast-fail: once the job has left the downloader queue (Active+Queued)
-		// and stayed gone past the settle grace with no output file, it failed.
-		if q, err := h.downloader.GetClient().Queue(); err == nil {
-			if hubDownloadInQueue(q, downloadID) {
-				leftQueueAt = time.Time{}
-			} else if leftQueueAt.IsZero() {
-				leftQueueAt = time.Now()
-			} else if time.Since(leftQueueAt) > hubImportPostQueueGrace {
+		// Only look for the produced file once our own download has finished.
+		if !leftQueueAt.IsZero() {
+			if files, err := h.downloader.ListImportable(); err == nil {
+				for i := range files {
+					if !beforeNames[files[i].Name] {
+						return files[i].Name, ""
+					}
+				}
+			}
+			if time.Since(leftQueueAt) > hubImportPostQueueGrace {
 				return "", "download produced no file (source may be geo-blocked, removed, or unsupported)"
 			}
 		}

@@ -117,6 +117,17 @@ const importPlaylistItems = computed(() =>
 const importDestinationItems = computed(() =>
     importDestinations.value.map(d => ({label: d.writable ? d.label : `${d.label} (read-only)`, value: d.key})))
 
+// Load the playlist/destination pickers + status as soon as the card becomes
+// enabled — this covers config loading in late (the flag flips false->true after
+// loadConfig) and the admin toggling Hub/Downloader on in-session, both of which
+// the previous onMounted-only load missed (leaving the picker empty).
+watch(playlistImportEnabled, (on) => {
+  if (on) {
+    refreshPlaylistImportStatus()
+    loadPlaylistImportPrereqs()
+  }
+}, {immediate: true})
+
 async function startPlaylistImport() {
   if (!selectedImportPlaylist.value) {
     notifyWarning('Select a playlist first')
@@ -280,11 +291,8 @@ onMounted(async () => {
   hubPoll = setInterval(() => {
     if (hubStatus.value?.running) refreshHubStatus()
   }, 4000)
-  // Playlist → library import (only when both hub + downloader are enabled).
-  if (playlistImportEnabled.value) {
-    await refreshPlaylistImportStatus()
-    await loadPlaylistImportPrereqs()
-  }
+  // Playlist → library import prereqs/status are loaded reactively by the
+  // watch(playlistImportEnabled) above (covers late config + in-session toggles).
   playlistImportPoll = setInterval(() => {
     if (playlistImportStatus.value?.running) refreshPlaylistImportStatus()
   }, 3000)
