@@ -159,18 +159,3 @@ func (m *Manager) applyExtractorEnvOverrides() {
 		m.config.Extractor.MaxItems = val
 	}
 }
-
-func (m *Manager) applyCrawlerEnvOverrides() {
-	if val, ok := envGetBool("CRAWLER_ENABLED"); ok {
-		m.config.Crawler.Enabled = val
-	}
-	if val, ok := envGetBool("CRAWLER_BROWSER_ENABLED"); ok {
-		m.config.Crawler.BrowserEnabled = val
-	}
-	if val, ok := envGetInt("CRAWLER_MAX_PAGES"); ok {
-		m.config.Crawler.MaxPages = val
-	}
-	if val, ok := envGetDuration(time.Second, "CRAWLER_TIMEOUT_SECONDS"); ok {
-		m.config.Crawler.CrawlTimeout = val
-	}
-}

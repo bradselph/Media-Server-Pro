@@ -17,7 +17,6 @@ import (
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
 	"media-server-pro/internal/config"
-	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
 	"media-server-pro/internal/downloader"
 	"media-server-pro/internal/duplicates"
@@ -57,7 +56,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.23.17"
+	Version = "1.23.17"
 
 	BuildDate = "dev"
 )
@@ -276,7 +275,6 @@ type modules struct {
 	follower      *follower.Module
 	downloader    *downloader.Module
 	extractor     *extractor.Module
-	crawler       *crawler.Module
 }
 
 func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, stores storageBackends) modules {
@@ -485,9 +483,6 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	m.extractor = extractor.NewModule(cfg, m.database)
 	mustRegister(srv, m.extractor)
 
-	m.crawler = crawler.NewModule(cfg, m.database, m.extractor)
-	mustRegister(srv, m.crawler)
-
 	return m
 }
 
@@ -572,7 +567,6 @@ func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate 
 			Receiver:      mods.receiver,
 			Follower:      mods.follower,
 			Extractor:     mods.extractor,
-			Crawler:       mods.crawler,
 			Duplicates:    mods.duplicates,
 			Analytics:     mods.analytics,
 			Playlist:      mods.playlist,

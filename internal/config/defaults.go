@@ -32,7 +32,6 @@ func DefaultConfig() *Config {
 		Receiver:      defaultReceiverConfig(),
 		Follower:      defaultFollowerConfig(),
 		Extractor:     defaultExtractorConfig(),
-		Crawler:       defaultCrawlerConfig(),
 		MatureScanner: defaultMatureScannerConfig(),
 		Hub:           defaultHubConfig(),
 		HuggingFace:   defaultHuggingFaceConfig(),
@@ -256,15 +255,6 @@ func defaultExtractorConfig() ExtractorConfig {
 	}
 }
 
-func defaultCrawlerConfig() CrawlerConfig {
-	return CrawlerConfig{
-		Enabled:        false,
-		BrowserEnabled: true,
-		MaxPages:       20,
-		CrawlTimeout:   5 * time.Minute,
-	}
-}
-
 func defaultMatureScannerConfig() MatureScannerConfig {
 	return MatureScannerConfig{
 		Enabled:                   true,
@@ -334,7 +324,6 @@ func defaultFeaturesConfig() FeaturesConfig {
 		EnableAutoDiscovery:      true,
 		EnableReceiver:           false,
 		EnableExtractor:          false,
-		EnableCrawler:            false,
 		EnableDuplicateDetection: true,
 		EnableHuggingFace:        false,
 		EnableDownloader:         false,

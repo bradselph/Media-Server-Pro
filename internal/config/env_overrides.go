@@ -51,7 +51,6 @@ func (m *Manager) applyTunableEnvOverrides() {
 	m.applyReceiverEnvOverrides()
 	m.applyFollowerEnvOverrides()
 	m.applyExtractorEnvOverrides()
-	m.applyCrawlerEnvOverrides()
 	m.applyAgeGateEnvOverrides()
 	m.applyDownloaderEnvOverrides()
 	m.applyUIEnvOverrides()

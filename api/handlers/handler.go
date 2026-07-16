@@ -25,7 +25,6 @@ import (
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
 	"media-server-pro/internal/config"
-	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
 	"media-server-pro/internal/downloader"
 	"media-server-pro/internal/duplicates"
@@ -126,7 +125,6 @@ type HandlerOptionalDeps struct {
 	Receiver      *receiver.Module
 	Follower      *follower.Module
 	Extractor     *extractor.Module
-	Crawler       *crawler.Module
 	Duplicates    *duplicates.Module
 	Analytics     *analytics.Module
 	Playlist      *playlist.Module
@@ -174,7 +172,6 @@ type Handler struct {
 	receiver            *receiver.Module
 	follower            *follower.Module
 	extractor           *extractor.Module
-	crawler             *crawler.Module
 	duplicates          *duplicates.Module
 	downloader          *downloader.Module
 	config              *config.Manager
@@ -348,7 +345,6 @@ func NewHandler(deps HandlerDeps) *Handler {
 		receiver:      o.Receiver,
 		follower:      o.Follower,
 		extractor:     o.Extractor,
-		crawler:       o.Crawler,
 		duplicates:    o.Duplicates,
 		downloader:    o.Downloader,
 	}
@@ -495,7 +491,6 @@ var auditableEventTypes = map[string]bool{
 	analytics.EventDiscoveryRun:             true,
 	analytics.EventDownloaderJobCreate:      true,
 	analytics.EventDownloaderJobCancel:      true,
-	analytics.EventCrawlerRun:               true,
 	analytics.EventExtractorRun:             true,
 	analytics.EventSecurityIPListMutate:     true,
 	analytics.EventReceiverPair:             true,
@@ -1189,12 +1184,6 @@ func checkFeatureEnabled(c *gin.Context, module any, name string, enabled func()
 func (h *Handler) checkExtractorEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.extractor, "Extractor", func() bool {
 		return h.config.Get().Extractor.Enabled
-	})
-}
-
-func (h *Handler) checkCrawlerEnabled(c *gin.Context) bool {
-	return checkFeatureEnabled(c, h.crawler, "Crawler", func() bool {
-		return h.config.Get().Crawler.Enabled
 	})
 }
 

@@ -1009,30 +1009,6 @@ export interface ReceiverBulkCopyStatus {
     results: ReceiverBulkCopyResult[]
 }
 
-export interface CrawlerTarget {
-    id: string
-    url: string
-    name: string
-    site: string
-    last_crawled?: string
-    created_at: string
-    enabled: boolean
-}
-
-export interface CrawlerDiscovery {
-    id: string
-    target_id: string
-    page_url: string
-    title: string
-    stream_url: string
-    stream_type: string
-    quality: number
-    status: string
-    reviewed_by?: string
-    reviewed_at?: string | null
-    discovered_at: string
-}
-
 export interface ExtractorItem {
     id: string
     stream_url: string
@@ -1486,17 +1462,6 @@ export interface ExtractorStats {
     error_items: number
 }
 
-// ── Crawler ───────────────────────────────────────────────────────────────────
-
-export interface CrawlerStats {
-    total_targets: number
-    enabled_targets: number
-    total_discoveries: number
-    pending_discoveries: number
-    crawling: boolean
-    browser_enabled?: boolean
-    browser_available?: boolean
-}
 
 // ── Downloader ────────────────────────────────────────────────────────────────
 

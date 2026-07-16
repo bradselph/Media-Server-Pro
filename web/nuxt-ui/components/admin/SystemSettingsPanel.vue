@@ -10,7 +10,7 @@ const {notifyError, notifySuccess, notifyWarning} = useAdminFeedback()
 // Adding a new section here (and in Go) keeps both sides in sync.
 type ConfigSection =
     | 'admin' | 'age_gate' | 'analytics' | 'auth' | 'backup'
-    | 'cookie_consent' | 'crawler' | 'database' | 'directories'
+    | 'cookie_consent' | 'database' | 'directories'
     | 'download' | 'downloader' | 'extractor' | 'features' | 'hls'
     | 'hub' | 'huggingface' | 'logging' | 'mature_scanner' | 'receiver'
     | 'remote_media' | 'security' | 'server' | 'storage' | 'streaming'
@@ -416,11 +416,6 @@ onMounted(async () => {
               <span class="text-sm">Extractor</span>
               <USwitch :model-value="get('features', 'enable_extractor')"
                        @update:model-value="set('features', 'enable_extractor', $event)"/>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Crawler</span>
-              <USwitch :model-value="get('features', 'enable_crawler')"
-                       @update:model-value="set('features', 'enable_crawler', $event)"/>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm">Duplicate Detection</span>
@@ -1276,32 +1271,6 @@ onMounted(async () => {
           </div>
           <p class="text-xs text-muted mt-3">Sync interval, cache TTL and HTTP timeout are durations (ns) — edit
             via raw JSON if needed.</p>
-        </UCard>
-
-        <!-- ── Crawler ────────────────────────────────────────────── -->
-        <UCard v-if="get('features', 'enable_crawler')">
-          <template #header>
-            <div class="flex items-center gap-2">
-              <UIcon name="i-lucide-bug" class="text-primary"/>
-              <span class="font-semibold text-sm">Crawler</span>
-            </div>
-          </template>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Enabled</span>
-              <USwitch :model-value="get('crawler', 'enabled')"
-                       @update:model-value="set('crawler', 'enabled', $event)"/>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Browser Enabled</span>
-              <USwitch :model-value="get('crawler', 'browser_enabled')"
-                       @update:model-value="set('crawler', 'browser_enabled', $event)"/>
-            </div>
-            <UFormField label="Max Pages">
-              <UInput type="number" :model-value="get('crawler', 'max_pages')"
-                      @update:model-value="set('crawler', 'max_pages', Number($event))"/>
-            </UFormField>
-          </div>
         </UCard>
 
         <!-- ── Extractor ──────────────────────────────────────────── -->

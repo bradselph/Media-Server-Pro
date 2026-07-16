@@ -938,17 +938,6 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.DELETE("/extractor/items/:id", h.RemoveExtractorItem)
 	adminGrp.GET("/extractor/stats", h.GetExtractorStats)
 
-	// Crawler routes (admin)
-	adminGrp.GET("/crawler/targets", h.ListCrawlerTargets)
-	adminGrp.POST("/crawler/targets", h.AddCrawlerTarget)
-	adminGrp.DELETE("/crawler/targets/:id", h.RemoveCrawlerTarget)
-	adminGrp.POST("/crawler/targets/:id/crawl", h.CrawlTarget)
-	adminGrp.GET("/crawler/discoveries", h.ListCrawlerDiscoveries)
-	adminGrp.POST("/crawler/discoveries/:id/approve", h.ApproveCrawlerDiscovery)
-	adminGrp.POST("/crawler/discoveries/:id/ignore", h.IgnoreCrawlerDiscovery)
-	adminGrp.DELETE("/crawler/discoveries/:id", h.DeleteCrawlerDiscovery)
-	adminGrp.GET("/crawler/stats", h.GetCrawlerStats)
-
 	// Receiver (master-slave proxy) routes (admin)
 	adminGrp.GET("/receiver/settings", h.AdminReceiverGetSettings)
 	adminGrp.GET("/receiver/slaves", h.AdminReceiverListSlaves)

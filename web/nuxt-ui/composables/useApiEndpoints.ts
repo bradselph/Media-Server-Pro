@@ -21,9 +21,6 @@ import type {
     CohortMetrics,
     ContentPerformanceItem,
     CookieConsentStatus,
-    CrawlerDiscovery,
-    CrawlerStats,
-    CrawlerTarget,
     DailyStats,
     DatabaseStatus,
     DataDeletionRequest,
@@ -778,26 +775,6 @@ export function useAdminApi() {
         getFollowerStatus: () => api.get<FollowerStatus>(`${base}/follower/status`),
         testFollowerPairing: (master_url: string, api_key: string) =>
             api.post<FollowerTestResult>(`${base}/follower/test`, {master_url, api_key}),
-
-        // Crawler
-        listCrawlerTargets: () => api.get<CrawlerTarget[]>(`${base}/crawler/targets`),
-        addCrawlerTarget: (url: string, name?: string) =>
-            api.post<CrawlerTarget>(`${base}/crawler/targets`, {url, name}),
-        deleteCrawlerTarget: (id: string) =>
-            api.delete<void>(`${base}/crawler/targets/${encodeURIComponent(id)}`),
-        startCrawl: (targetId: string) =>
-            api.post<void>(`${base}/crawler/targets/${encodeURIComponent(targetId)}/crawl`),
-        getCrawlerDiscoveries: (targetId?: string) => {
-            const qs = targetId ? `?target_id=${encodeURIComponent(targetId)}` : ''
-            return api.get<CrawlerDiscovery[]>(`${base}/crawler/discoveries${qs}`)
-        },
-        approveCrawlerDiscovery: (id: string) =>
-            api.post<CrawlerDiscovery>(`${base}/crawler/discoveries/${encodeURIComponent(id)}/approve`),
-        ignoreCrawlerDiscovery: (id: string) =>
-            api.post<void>(`${base}/crawler/discoveries/${encodeURIComponent(id)}/ignore`),
-        deleteCrawlerDiscovery: (id: string) =>
-            api.delete<void>(`${base}/crawler/discoveries/${encodeURIComponent(id)}`),
-        getCrawlerStats: () => api.get<CrawlerStats>(`${base}/crawler/stats`),
 
         // Extractor
         listExtractorItems: () => api.get<ExtractorItem[]>(`${base}/extractor/items`),

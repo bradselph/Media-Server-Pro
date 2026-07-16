@@ -1,12 +1,12 @@
 <script setup lang="ts">
 // Shell tab: every way media enters the library. The downloader fetches from
-// URLs; the three remote panels (synced HTTP sources, crawler/extractor,
-// receiver/follower) were previously the Sources tab — flattened in here so the
-// whole ingestion surface is one tab with a single sub-tab bar (no nesting).
+// URLs; the remote panels (synced HTTP sources, extractor, receiver/follower)
+// were previously the Sources tab — flattened in here so the whole ingestion
+// surface is one tab with a single sub-tab bar (no nesting).
 const subTabs = [
   {label: 'Downloader', value: 'downloader', icon: 'i-lucide-cloud-download'},
   {label: 'Remote Sources', value: 'remote', icon: 'i-lucide-server'},
-  {label: 'Crawler & Extractor', value: 'crawler', icon: 'i-lucide-globe'},
+  {label: 'Extractor', value: 'extractor', icon: 'i-lucide-download-cloud'},
   {label: 'Receiver', value: 'receiver', icon: 'i-lucide-radio-tower'},
 ]
 // Legacy deep-links: ?tab=downloader and ?tab=sources land on the right sub-tab.
@@ -20,7 +20,7 @@ const subTab = useSubTabRoute({downloader: 'downloader', sources: 'remote'}, 'do
         <div class="pt-3">
           <AdminDownloaderTab v-if="item.value === 'downloader'"/>
           <AdminSourcesRemotePanel v-else-if="item.value === 'remote'"/>
-          <AdminSourcesCrawlerPanel v-else-if="item.value === 'crawler'"/>
+          <AdminSourcesExtractorPanel v-else-if="item.value === 'extractor'"/>
           <AdminSourcesReceiverPanel v-else-if="item.value === 'receiver'"/>
         </div>
       </template>

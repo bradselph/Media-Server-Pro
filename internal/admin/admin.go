@@ -404,7 +404,6 @@ func buildConfigFeaturesMap(cfg *config.Config) map[string]any {
 		"enable_remote_media":        cfg.Features.EnableRemoteMedia,
 		"enable_receiver":            cfg.Features.EnableReceiver,
 		"enable_extractor":           cfg.Features.EnableExtractor,
-		"enable_crawler":             cfg.Features.EnableCrawler,
 		"enable_duplicate_detection": cfg.Features.EnableDuplicateDetection,
 		"enable_downloader":          cfg.Features.EnableDownloader,
 		"enable_user_auth":           cfg.Features.EnableUserAuth,
@@ -703,15 +702,6 @@ func buildConfigRemoteMediaMap(cfg *config.Config) map[string]any {
 	}
 }
 
-func buildConfigCrawlerMap(cfg *config.Config) map[string]any {
-	return map[string]any{
-		"enabled":         cfg.Crawler.Enabled,
-		"browser_enabled": cfg.Crawler.BrowserEnabled,
-		"max_pages":       cfg.Crawler.MaxPages,
-		"crawl_timeout":   cfg.Crawler.CrawlTimeout,
-	}
-}
-
 func buildConfigExtractorMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":       cfg.Extractor.Enabled,
@@ -756,7 +746,6 @@ func (m *Module) GetConfigMap() map[string]any {
 		{"backup", buildConfigBackupMap},
 		{"updater", buildConfigUpdaterMap},
 		{"remote_media", buildConfigRemoteMediaMap},
-		{"crawler", buildConfigCrawlerMap},
 		{"extractor", buildConfigExtractorMap},
 		{"directories", buildConfigDirectoriesMap},
 	}

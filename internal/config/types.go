@@ -19,7 +19,6 @@ type Config struct {
 	Receiver      ReceiverConfig      `json:"receiver"`
 	Follower      FollowerConfig      `json:"follower"`
 	Extractor     ExtractorConfig     `json:"extractor"`
-	Crawler       CrawlerConfig       `json:"crawler"`
 	Backup        BackupConfig        `json:"backup"`
 	MatureScanner MatureScannerConfig `json:"mature_scanner"`
 	Hub           HubConfig           `json:"hub"`
@@ -441,14 +440,6 @@ type ExtractorConfig struct {
 	MaxItems     int           `json:"max_items"`
 }
 
-// CrawlerConfig holds settings for the stream crawler.
-type CrawlerConfig struct {
-	Enabled        bool          `json:"enabled"`
-	BrowserEnabled bool          `json:"browser_enabled"`
-	MaxPages       int           `json:"max_pages"`
-	CrawlTimeout   time.Duration `json:"crawl_timeout"`
-}
-
 // BackupConfig holds backup retention settings
 type BackupConfig struct {
 	RetentionCount int `json:"retention_count"`
@@ -523,7 +514,6 @@ type FeaturesConfig struct {
 	EnableAutoDiscovery      bool `json:"enable_auto_discovery"`
 	EnableReceiver           bool `json:"enable_receiver"`
 	EnableExtractor          bool `json:"enable_extractor"`
-	EnableCrawler            bool `json:"enable_crawler"`
 	EnableDuplicateDetection bool `json:"enable_duplicate_detection"`
 	EnableHuggingFace        bool `json:"enable_huggingface"`
 	EnableDownloader         bool `json:"enable_downloader"`

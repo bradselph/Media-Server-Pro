@@ -194,7 +194,6 @@ func (m *Manager) syncFeatureToggles() {
 	cfg.RemoteMedia.Enabled = f.EnableRemoteMedia
 	cfg.Receiver.Enabled = f.EnableReceiver
 	cfg.Extractor.Enabled = f.EnableExtractor
-	cfg.Crawler.Enabled = f.EnableCrawler
 	cfg.MatureScanner.Enabled = f.EnableMatureScanner
 	cfg.Hub.Enabled = f.EnableHub
 	cfg.HuggingFace.Enabled = f.EnableHuggingFace

@@ -249,20 +249,6 @@ func TestBuildConfigRemoteMediaMap(t *testing.T) {
 	}
 }
 
-func TestBuildConfigCrawlerMap(t *testing.T) {
-	cfg := &config.Config{}
-	cfg.Crawler.Enabled = true
-	cfg.Crawler.BrowserEnabled = true
-	cfg.Crawler.MaxPages = 50
-	m := buildConfigCrawlerMap(cfg)
-	if m["enabled"] != true {
-		t.Errorf(errFmtEnabled, m["enabled"])
-	}
-	if m["max_pages"] != 50 {
-		t.Errorf("max_pages = %v", m["max_pages"])
-	}
-}
-
 func TestBuildConfigExtractorMap(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Extractor.Enabled = true
