@@ -1091,6 +1091,20 @@ func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, id string) (path, i
 			return "extractor:" + string(mid), ei.Title, true
 		}
 	}
+	// Fallback: check Hub embeds (BETA external catalog). Accepts the canonical
+	// "hub:<embed_id>" playlist-item form or a bare embed id. h.hub is nil unless
+	// Features.EnableHub is set, so the nil-check is a complete feature gate
+	// (mirroring h.receiver/h.extractor). Every Hub embed is mature content, so
+	// require the same age-gate the read endpoints enforce before it can be added.
+	if h.hub != nil {
+		embedID := strings.TrimPrefix(string(mid), "hub:")
+		if hi, herr := h.hub.GetEmbedByID(c.Request.Context(), embedID); herr == nil && hi != nil {
+			if !h.checkMatureAccess(c, true) {
+				return "", "", false // checkMatureAccess already wrote the 401/403
+			}
+			return "hub:" + embedID, hi.Title, true
+		}
+	}
 	if !h.media.IsReady() {
 		writeError(c, http.StatusServiceUnavailable, msgInitializing)
 		return "", "", false

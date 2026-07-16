@@ -214,6 +214,25 @@ func (m *Module) GetEmbedByID(ctx context.Context, embedID string) (*Embed, erro
 	return toEmbed(rec), nil
 }
 
+// GetEmbedsByIDs returns the embeds for the given ids in one query, skipping ids
+// with no match (order not guaranteed — callers key by embed_id). Returns empty
+// when the feature is disabled or ids is empty.
+func (m *Module) GetEmbedsByIDs(ctx context.Context, embedIDs []string) ([]*Embed, error) {
+	repo := m.ready()
+	if repo == nil || len(embedIDs) == 0 {
+		return []*Embed{}, nil
+	}
+	recs, err := repo.GetByEmbedIDs(ctx, embedIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*Embed, len(recs))
+	for i, r := range recs {
+		out[i] = toEmbed(r)
+	}
+	return out, nil
+}
+
 // ListCategories returns a de-duplicated facet list built from a bounded sample
 // of the most-viewed rows, ordered by frequency. Cached for 10 minutes.
 func (m *Module) ListCategories(ctx context.Context) ([]string, error) {

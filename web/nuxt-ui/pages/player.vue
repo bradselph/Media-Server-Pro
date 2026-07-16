@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type {MediaCategory, MediaChapter, MediaItem, Playlist, PlaylistItem, Suggestion} from '~/types/api'
+import type {HubEmbed, MediaCategory, MediaChapter, MediaItem, Playlist, PlaylistItem, Suggestion} from '~/types/api'
 import {getDisplayTitle} from '~/utils/mediaTitle'
 import {formatBitrate, formatBytes, formatDuration, formatRelativeDate} from '~/utils/format'
 import {safeJsonLD} from '~/utils/jsonld'
 import {getMediaGradient} from '~/utils/gradient'
 import {hlsQualityName} from '~/utils/hlsQuality'
 import {useQueueStore} from '~/stores/queue'
-import {useCategoriesApi} from '~/composables/useApiEndpoints'
+import {useCategoriesApi, useHubApi} from '~/composables/useApiEndpoints'
 
 definePageMeta({layout: 'default', title: 'Player'})
 
@@ -67,6 +67,14 @@ const mediaId = computed(() => route.query.id as string | undefined)
 const media = ref<MediaItem | null>(null)
 const loading = ref(true)
 const error = ref('')
+
+// Hub (BETA) items are stored/navigated as media_id "hub:<embed_id>". They play
+// as a sandboxed <iframe> embed instead of the <video>/HLS stack, so the player
+// branches on this before touching the local-media resolver.
+const hubApi = useHubApi()
+const isHubId = (id: string | undefined): boolean => !!id?.startsWith('hub:')
+const isHubItem = computed(() => isHubId(mediaId.value))
+const hubEmbed = ref<HubEmbed | null>(null)
 
 // Chapters
 const chapters = ref<MediaChapter[]>([])
@@ -564,7 +572,9 @@ const showEqualizer = ref(false)
 const showQueuePanel = ref(false)
 
 // HLS — delegate to composable
-const mediaIdRef = computed(() => mediaId.value ?? '')
+// Hub items never have HLS — feed useHLS an empty id so it skips the availability
+// check (which would 404 against the local HLS endpoint for a "hub:" id).
+const mediaIdRef = computed(() => (isHubItem.value ? '' : (mediaId.value ?? '')))
 const {
   hlsAvailable,
   hlsActivated,
@@ -658,6 +668,42 @@ async function loadMedia(id: string) {
   // alive in the DOM so PiP continues working across auto-next transitions.
   const gen = ++loadGeneration
   positionRestored = false
+
+  // Hub (BETA) embed branch: fetch the embed and render an <iframe>; never touch
+  // the local-media resolver (it can't resolve a "hub:" id and would 404) or the
+  // <video>/HLS stack. media.value stays null so the video branch never renders.
+  if (isHubId(id)) {
+    const switching = !!media.value || !!hubEmbed.value
+    if (!switching) loading.value = true
+    media.value = null
+    error.value = ''
+    similar.value = []
+    personalized.value = []
+    mediaCategories.value = []
+    thumbnailPreviews.value = []
+    chapters.value = []
+    try {
+      const embed = await hubApi.get(id.slice(4)) // strip "hub:" — the endpoint takes the raw embed id
+      if (!playerMounted || gen !== loadGeneration) return
+      hubEmbed.value = embed
+      playbackStore.setMedia(id, {
+        id,
+        name: embed?.title ?? id,
+        type: 'video',
+        thumbnail_url: embed?.thumb_url,
+        duration: embed?.duration_secs ?? 0,
+      })
+    } catch (e: unknown) {
+      if (!playerMounted || gen !== loadGeneration) return
+      hubEmbed.value = null
+      error.value = e instanceof Error ? e.message : 'Failed to load embed'
+    } finally {
+      if (playerMounted && gen === loadGeneration) loading.value = false
+    }
+    return
+  }
+  hubEmbed.value = null // switching to a local item clears any prior embed
+
   const isSwitch = !!media.value
   if (!isSwitch) loading.value = true
   // Tear down the Web Audio graph on every media switch so ensureAudioGraph() can
@@ -1580,6 +1626,45 @@ watch(mediaId, (id, oldId) => {
         <UButton v-if="!authStore.isLoggedIn" to="/signup" label="Sign Up" color="primary"/>
         <UButton v-else to="/profile" label="Profile Settings" color="primary"/>
         <UButton to="/" variant="outline" color="neutral" label="Back to Library"/>
+      </div>
+    </div>
+
+    <!-- Hub embed (BETA external iframe) — plays a "hub:<embed_id>" item as a
+         sandboxed embed instead of the <video>/HLS stack. Reuses the sandbox/allow
+         attrs from pages/hub.vue. Playlist next/prev keep mixed-playlist Play All
+         working (autoplay-next can't fire — no 'ended' event across a cross-origin
+         iframe — so advancing between hub items is manual). -->
+    <div v-else-if="isHubItem && hubEmbed" class="grid grid-cols-1 md:gap-6" :class="isTheater ? '' : 'xl:grid-cols-3'">
+      <div class="xl:col-span-2 flex flex-col gap-3 md:gap-4">
+        <div class="relative bg-black overflow-hidden max-md:rounded-none md:rounded-xl aspect-video">
+          <iframe
+              :src="hubEmbed.embed_url"
+              class="w-full h-full"
+              frameborder="0"
+              scrolling="no"
+              referrerpolicy="no-referrer"
+              allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+              sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"
+              allowfullscreen
+          />
+        </div>
+        <div class="max-md:px-4 flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h1 class="text-lg font-semibold truncate">{{ hubEmbed.title }}</h1>
+            <p class="text-sm text-muted mt-1 flex items-center flex-wrap gap-x-1">
+              <span v-if="hubEmbed.pornstar">{{ hubEmbed.pornstar }} · </span>
+              <span>{{ hubEmbed.views.toLocaleString() }} views</span>
+              <span v-if="hubEmbed.duration_secs > 0"> · {{ formatDuration(hubEmbed.duration_secs) }}</span>
+              <UBadge color="warning" variant="subtle" size="xs" class="ml-1">Hub · BETA</UBadge>
+            </p>
+          </div>
+          <div v-if="playlistIdParam" class="flex items-center gap-2 shrink-0">
+            <UButton :disabled="!hasPrevItem" icon="i-lucide-skip-back" color="neutral" variant="soft"
+                     aria-label="Previous" @click="navigateToPrevItem"/>
+            <UButton :disabled="!hasNextItem" icon="i-lucide-skip-forward" color="neutral" variant="soft"
+                     aria-label="Next" @click="navigateToNextItem"/>
+          </div>
+        </div>
       </div>
     </div>
 

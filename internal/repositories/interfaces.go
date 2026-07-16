@@ -536,6 +536,9 @@ type HubEmbedRepository interface {
 	Search(ctx context.Context, query string, filter HubEmbedFilter, offset, limit int) ([]*HubEmbedRecord, int64, error)
 	// GetByEmbedID returns a single embed by its natural key (the provider embed id), or nil if absent.
 	GetByEmbedID(ctx context.Context, embedID string) (*HubEmbedRecord, error)
+	// GetByEmbedIDs returns all embeds whose embed_id is in the given set (order
+	// not guaranteed; ids with no match are omitted, not an error).
+	GetByEmbedIDs(ctx context.Context, embedIDs []string) ([]*HubEmbedRecord, error)
 	// CountAll returns the total number of imported rows.
 	CountAll(ctx context.Context) (int64, error)
 	// CategorySamples returns the raw ';'-joined category strings from the most-viewed

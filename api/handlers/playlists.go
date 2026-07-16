@@ -1,14 +1,22 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"media-server-pro/internal/hub"
 	"media-server-pro/internal/playlist"
 	"media-server-pro/pkg/models"
 )
+
+// hubItemPrefix marks a playlist item that references a BETA Hub external embed
+// (media_id "hub:<embed_id>") rather than a local media UUID.
+const hubItemPrefix = "hub:"
 
 const (
 	msgPlaylistNotFound = "Playlist not found"
@@ -96,6 +104,55 @@ func (h *Handler) hydratePlaylistTitles(playlists ...*models.Playlist) {
 	}
 }
 
+// hydrateHubPlaylistItems fills the transient ThumbnailURL/EmbedURL (and Title
+// when empty) for Hub items (media_id "hub:<embed_id>") using a single batch
+// lookup, so the frontend can render external embeds without a second request.
+// No-op when the Hub feature is disabled (h.hub == nil).
+func (h *Handler) hydrateHubPlaylistItems(playlists ...*models.Playlist) {
+	if h.hub == nil {
+		return
+	}
+	seen := make(map[string]bool)
+	var ids []string
+	for _, pl := range playlists {
+		for i := range pl.Items {
+			if embedID, ok := strings.CutPrefix(pl.Items[i].MediaID, hubItemPrefix); ok && embedID != "" && !seen[embedID] {
+				seen[embedID] = true
+				ids = append(ids, embedID)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	embeds, err := h.hub.GetEmbedsByIDs(ctx, ids)
+	if err != nil {
+		h.log.Warn("Failed to hydrate hub playlist items: %v", err)
+		return
+	}
+	byID := make(map[string]*hub.Embed, len(embeds))
+	for _, e := range embeds {
+		byID[e.EmbedID] = e
+	}
+	for _, pl := range playlists {
+		for i := range pl.Items {
+			embedID, ok := strings.CutPrefix(pl.Items[i].MediaID, hubItemPrefix)
+			if !ok {
+				continue
+			}
+			if e, ok := byID[embedID]; ok {
+				pl.Items[i].ThumbnailURL = e.ThumbURL
+				pl.Items[i].EmbedURL = e.EmbedURL
+				if pl.Items[i].Title == "" {
+					pl.Items[i].Title = e.Title
+				}
+			}
+		}
+	}
+}
+
 // ListPlaylists returns user's playlists
 func (h *Handler) ListPlaylists(c *gin.Context) {
 	if !h.requirePlaylist(c) {
@@ -110,6 +167,7 @@ func (h *Handler) ListPlaylists(c *gin.Context) {
 		playlists = []*models.Playlist{}
 	}
 	h.hydratePlaylistTitles(playlists...)
+	h.hydrateHubPlaylistItems(playlists...)
 	writeSuccess(c, playlists)
 }
 
@@ -135,6 +193,12 @@ func (h *Handler) ListPublicPlaylists(c *gin.Context) {
 			// subsequent callers (including admin users who can view mature content).
 			kept := make([]models.PlaylistItem, 0, len(pl.Items))
 			for _, item := range pl.Items {
+				// Hub items are always mature — never surface them (title/thumb)
+				// to callers who cannot view mature content. h.media has no record
+				// of them, so the lookup below would fail-open and keep them.
+				if strings.HasPrefix(item.MediaID, hubItemPrefix) {
+					continue
+				}
 				media, err := h.media.GetMediaByID(item.MediaID)
 				if err != nil || media == nil || !media.IsMature {
 					kept = append(kept, item)
@@ -143,6 +207,7 @@ func (h *Handler) ListPublicPlaylists(c *gin.Context) {
 			pl.Items = kept
 		}
 	}
+	h.hydrateHubPlaylistItems(playlists...)
 	writeSuccess(c, playlists)
 }
 
@@ -204,6 +269,7 @@ func (h *Handler) GetPlaylist(c *gin.Context) {
 	}
 
 	h.hydratePlaylistTitles(pl)
+	h.hydrateHubPlaylistItems(pl)
 	writeSuccess(c, pl)
 }
 

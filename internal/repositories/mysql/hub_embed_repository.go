@@ -122,6 +122,18 @@ func (r *HubEmbedRepository) GetByEmbedID(ctx context.Context, embedID string) (
 	return &rec, nil
 }
 
+// GetByEmbedIDs returns all embeds whose embed_id is in the given set.
+func (r *HubEmbedRepository) GetByEmbedIDs(ctx context.Context, embedIDs []string) ([]*repositories.HubEmbedRecord, error) {
+	if len(embedIDs) == 0 {
+		return nil, nil
+	}
+	var rows []hubEmbedRow
+	if err := r.db.WithContext(ctx).Where("embed_id IN ?", embedIDs).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("get hub embeds batch: %w", err)
+	}
+	return hubRowsToRecords(rows), nil
+}
+
 // CountAll returns the total number of imported rows.
 func (r *HubEmbedRepository) CountAll(ctx context.Context) (int64, error) {
 	var count int64

@@ -1,8 +1,16 @@
 <script setup lang="ts">
-import type {MediaItem, Playlist, SmartCondition, SmartPlaylist, SmartPlaylistRules} from '~/types/api'
+import type {MediaItem, Playlist, PlaylistItem, SmartCondition, SmartPlaylist, SmartPlaylistRules} from '~/types/api'
 import {getDisplayTitle} from '~/utils/mediaTitle'
 
 definePageMeta({layout: 'default', title: 'Playlists', middleware: 'auth'})
+
+// Hub items (media_id "hub:<embed_id>") carry an external thumbnail_url hydrated
+// server-side; local items derive their thumb from the media thumbnail proxy.
+// Never pass a "hub:"-prefixed id to getThumbnailUrl (it can't resolve it).
+function itemThumbnailUrl(item: PlaylistItem): string {
+  if (item.media_id.startsWith('hub:')) return item.thumbnail_url ?? ''
+  return mediaApi.getThumbnailUrl(item.media_id)
+}
 
 const playlistApi = usePlaylistApi()
 const smartPlaylistsApi = useSmartPlaylistsApi()
@@ -689,10 +697,12 @@ onMounted(() => {
               <span class="text-sm text-muted w-6 text-right shrink-0">{{ idx + 1 }}</span>
               <div class="w-16 h-9 rounded overflow-hidden bg-muted shrink-0">
                 <img
-                    :src="mediaApi.getThumbnailUrl(item.media_id)"
+                    :src="itemThumbnailUrl(item)"
                     :alt="item.title"
                     class="w-full h-full object-cover"
                     loading="lazy"
+                    referrerpolicy="no-referrer"
+                    @error="(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden' }"
                 />
               </div>
               <NuxtLink

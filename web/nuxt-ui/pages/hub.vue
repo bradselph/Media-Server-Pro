@@ -9,12 +9,15 @@
  * only renders thumbnails, and a single sandboxed <iframe> is mounted inside a
  * modal on demand, never mass-mounted on page load.
  */
-import type {HubEmbed} from '~/types/api'
-import {useHubApi} from '~/composables/useApiEndpoints'
+import type {HubEmbed, Playlist} from '~/types/api'
+import {useHubApi, usePlaylistApi} from '~/composables/useApiEndpoints'
 
 definePageMeta({title: 'Hub'})
 
 const hubApi = useHubApi()
+const playlistApi = usePlaylistApi()
+const authStore = useAuthStore()
+const toast = useToast()
 const {settings: serverSettings, load: loadServerSettings} = useServerSettings()
 const canViewMature = useCanViewMature()
 
@@ -133,6 +136,38 @@ watch(modalOpen, (open) => {
   if (!open) active.value = null
 })
 
+// ── Add to playlist ──────────────────────────────────────────────────────────
+// Hub items are stored in playlists as media_id = "hub:<embed_id>" so the rest
+// of the app (playlist render, player) can recognize + play them as embeds.
+const playlists = ref<Playlist[]>([])
+const playlistOpen = ref(false)
+const addingToPlaylist = ref(false)
+const playlistTarget = ref<HubEmbed | null>(null)
+
+async function openAddToPlaylist(item: HubEmbed) {
+  playlistTarget.value = item
+  playlistOpen.value = true
+  try {
+    playlists.value = (await playlistApi.list()) ?? []
+  } catch (e: unknown) {
+    toast.add({title: e instanceof Error ? e.message : 'Failed to load playlists', color: 'error', icon: 'i-lucide-alert-circle'})
+  }
+}
+
+async function addToPlaylist(playlistId: string) {
+  if (!playlistTarget.value) return
+  addingToPlaylist.value = true
+  try {
+    await playlistApi.addItem(playlistId, `hub:${playlistTarget.value.embed_id}`)
+    toast.add({title: 'Added to playlist', color: 'success', icon: 'i-lucide-check'})
+    playlistOpen.value = false
+  } catch (e: unknown) {
+    toast.add({title: e instanceof Error ? e.message : 'Failed', color: 'error', icon: 'i-lucide-x'})
+  } finally {
+    addingToPlaylist.value = false
+  }
+}
+
 // ── Formatting ───────────────────────────────────────────────────────────────
 function formatViews(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
@@ -221,31 +256,42 @@ onBeforeUnmount(() => {
 
       <!-- Grid -->
       <div v-else class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-        <button
+        <div
             v-for="item in items"
             :key="item.embed_id"
-            type="button"
             class="group text-left rounded-lg overflow-hidden bg-muted/40 hover:ring-2 hover:ring-primary transition"
-            @click="openEmbed(item)"
             @mouseenter="startHover(item)"
             @mouseleave="stopHover"
         >
           <div class="relative aspect-video bg-black/40 overflow-hidden">
-            <img
-                :src="cardThumb(item)"
-                :alt="item.title"
-                loading="lazy"
-                referrerpolicy="no-referrer"
-                class="w-full h-full object-cover"
-                @error="onThumbError"
-            >
+            <!-- Play button covers the thumbnail (kept separate from the add-to-
+                 playlist button so we never nest interactive elements). -->
+            <button type="button" class="absolute inset-0 w-full h-full" aria-label="Play" @click="openEmbed(item)">
+              <img
+                  :src="cardThumb(item)"
+                  :alt="item.title"
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                  class="w-full h-full object-cover"
+                  @error="onThumbError"
+              >
+              <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                <UIcon name="i-lucide-play" class="size-10 text-white drop-shadow"/>
+              </div>
+            </button>
             <span
                 v-if="item.duration_secs > 0"
-                class="absolute bottom-1 right-1 text-[11px] font-medium bg-black/70 text-white rounded px-1.5 py-0.5"
+                class="absolute bottom-1 right-1 text-[11px] font-medium bg-black/70 text-white rounded px-1.5 py-0.5 pointer-events-none"
             >{{ formatDuration(item.duration_secs) }}</span>
-            <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-              <UIcon name="i-lucide-play" class="size-10 text-white drop-shadow"/>
-            </div>
+            <button
+                v-if="authStore.isLoggedIn"
+                type="button"
+                class="absolute top-1 right-1 rounded-full bg-black/70 text-white p-1.5 opacity-0 group-hover:opacity-100 transition hover:bg-primary"
+                aria-label="Add to playlist"
+                @click.stop="openAddToPlaylist(item)"
+            >
+              <UIcon name="i-lucide-list-plus" class="size-4"/>
+            </button>
           </div>
           <div class="p-2">
             <p class="text-sm font-medium line-clamp-2 leading-snug">{{ item.title }}</p>
@@ -253,7 +299,7 @@ onBeforeUnmount(() => {
               <span v-if="item.pornstar">{{ item.pornstar }} · </span>{{ formatViews(item.views) }} views
             </p>
           </div>
-        </button>
+        </div>
       </div>
 
       <!-- Load more -->
@@ -288,7 +334,18 @@ onBeforeUnmount(() => {
               />
             </div>
             <div class="mt-3">
-              <p class="text-sm font-medium">{{ active.title }}</p>
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm font-medium">{{ active.title }}</p>
+                <UButton
+                    v-if="authStore.isLoggedIn"
+                    icon="i-lucide-list-plus"
+                    label="Add to Playlist"
+                    variant="outline"
+                    color="neutral"
+                    size="xs"
+                    @click="openAddToPlaylist(active)"
+                />
+              </div>
               <p class="text-xs text-muted mt-1">
                 <span v-if="active.pornstar">{{ active.pornstar }} · </span>
                 {{ formatViews(active.views) }} views
@@ -303,6 +360,33 @@ onBeforeUnmount(() => {
                     size="sm"
                 >{{ c }}</UBadge>
               </div>
+            </div>
+          </div>
+        </template>
+      </UModal>
+
+      <!-- Add-to-playlist picker -->
+      <UModal v-model:open="playlistOpen" title="Add to Playlist" :ui="{ content: 'max-w-sm' }">
+        <template #body>
+          <div class="space-y-2">
+            <p v-if="playlistTarget" class="text-xs text-muted truncate">{{ playlistTarget.title }}</p>
+            <div v-if="playlists.length === 0" class="py-6 text-center text-sm text-muted">
+              No playlists yet. Create one from the Playlists tab.
+            </div>
+            <div v-else class="flex flex-col gap-1 max-h-72 overflow-y-auto">
+              <UButton
+                  v-for="pl in playlists"
+                  :key="pl.id"
+                  :label="pl.name"
+                  icon="i-lucide-list-music"
+                  variant="ghost"
+                  color="neutral"
+                  block
+                  class="justify-start"
+                  :loading="addingToPlaylist"
+                  :disabled="addingToPlaylist"
+                  @click="addToPlaylist(pl.id)"
+              />
             </div>
           </div>
         </template>

@@ -306,6 +306,10 @@ export interface PlaylistItem {
     title: string
     position: number
     added_at: string
+    // Present for Hub items (media_id "hub:<embed_id>"): external thumbnail + embed
+    // URL, hydrated server-side so the frontend needn't do a second lookup.
+    thumbnail_url?: string
+    embed_url?: string
 }
 
 // ── Analytics ─────────────────────────────────────────────────────────────────

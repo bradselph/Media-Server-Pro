@@ -31,6 +31,9 @@ func (f *fakeHubRepo) Search(context.Context, string, repositories.HubEmbedFilte
 func (f *fakeHubRepo) GetByEmbedID(context.Context, string) (*repositories.HubEmbedRecord, error) {
 	return nil, nil
 }
+func (f *fakeHubRepo) GetByEmbedIDs(context.Context, []string) ([]*repositories.HubEmbedRecord, error) {
+	return nil, nil
+}
 func (f *fakeHubRepo) CountAll(context.Context) (int64, error)                { return int64(len(f.records)), nil }
 func (f *fakeHubRepo) CategorySamples(context.Context, int) ([]string, error) { return nil, nil }
 func (f *fakeHubRepo) DeleteAll(context.Context) error                        { return nil }
