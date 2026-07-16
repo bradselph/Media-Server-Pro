@@ -44,6 +44,16 @@ type Config struct {
 	// Infrastructure/secret env vars (paths, bind, DB/storage creds, log level,
 	// updater branch, admin bootstrap) continue to apply on every load.
 	EnvSeedMigrated bool `json:"env_seed_migrated"`
+
+	// InfraOwnershipMigrated guards a second one-shot transition: the UI-editable
+	// infra sections (server, logging, updater) become config.json-owned so admin
+	// edits (e.g. the updater branch) actually persist across restarts instead of
+	// being re-clobbered by their env vars every load. On the first load after the
+	// upgrade (flag false) their current env-driven values are baked into
+	// config.json so effective behavior is unchanged; thereafter their env vars
+	// seed only. Data paths + credentials (directories, database, storage, admin)
+	// stay env-authoritative on every load.
+	InfraOwnershipMigrated bool `json:"infra_ownership_migrated"`
 }
 
 // TasksConfig holds per-task admin overrides for the background scheduler.

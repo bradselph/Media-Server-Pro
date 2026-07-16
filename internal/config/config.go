@@ -93,7 +93,7 @@ func (m *Manager) Load() error {
 			return fmt.Errorf("failed to parse config file: %w", err)
 		}
 
-		// Infrastructure/secret env vars always win; tunables stay as saved.
+		// Data-path/credential env vars always win; tunables stay as saved.
 		m.applyInfraEnvOverrides()
 
 		// One-shot upgrade: bake the current env-driven tunable values into
@@ -105,12 +105,24 @@ func (m *Manager) Load() error {
 			needsSave = true
 			m.log.Info("Config migration: tunable settings are now owned by config.json / the admin UI (environment variables seed only)")
 		}
+
+		// Second one-shot upgrade: bake server/logging/updater env values into
+		// config.json once so effective behavior is unchanged, then let the admin
+		// UI own them (so e.g. changing the updater branch actually persists across
+		// restarts instead of reverting to UPDATER_BRANCH every load).
+		if !m.config.InfraOwnershipMigrated {
+			m.applySeededInfraEnvOverrides()
+			m.config.InfraOwnershipMigrated = true
+			needsSave = true
+			m.log.Info("Config migration: server/logging/updater settings are now owned by config.json / the admin UI (their environment variables seed only)")
+		}
 	} else {
 		// Fresh install: seed the whole config from environment + defaults and
 		// persist it. config.json is authoritative for tunables from here on.
 		m.log.Info("Configuration file not found, seeding from environment and defaults")
 		m.applyEnvOverrides()
 		m.config.EnvSeedMigrated = true
+		m.config.InfraOwnershipMigrated = true
 		needsSave = true
 	}
 
