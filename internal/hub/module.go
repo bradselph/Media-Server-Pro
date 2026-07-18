@@ -187,6 +187,7 @@ func (m *Module) GetEmbeds(ctx context.Context, filter Filter, limit, offset int
 		recs, total, err = repo.Search(ctx, filter.Search, repositories.HubEmbedFilter{
 			Category: filter.Category,
 			Tag:      filter.Tag,
+			SortBy:   filter.SortBy,
 		}, offset, limit)
 	} else {
 		recs, total, err = repo.List(ctx, offset, limit, filter.SortBy)

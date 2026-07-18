@@ -25,18 +25,41 @@ const hubEnabled = computed(() => serverSettings.value?.hub?.enabled === true)
 const allowed = computed(() => hubEnabled.value && canViewMature.value)
 
 // ── Query state ──────────────────────────────────────────────────────────────
-const search = ref('')
-const category = ref('')
-const sort = ref<'views' | 'duration' | 'title' | 'newest'>('views')
+// Filters, sort and the current page all live in the URL query so a refresh (or
+// a shared/bookmarked link) restores the exact view the user was on instead of
+// dropping them back at page 1 — the core "hold my position" fix. We use the
+// short keys q/cat/sort/page to keep URLs tidy and avoid clashing with the
+// global nav search (?search=).
+const route = useRoute()
+const router = useRouter()
+
+const SORTS = ['views', 'duration', 'title', 'newest'] as const
+type SortKey = typeof SORTS[number]
+
+function initialSort(): SortKey {
+  const s = route.query.sort
+  return typeof s === 'string' && (SORTS as readonly string[]).includes(s) ? (s as SortKey) : 'views'
+}
+
+function initialPage(): number {
+  const p = route.query.page
+  const n = typeof p === 'string' ? Number.parseInt(p, 10) : NaN
+  return Number.isFinite(n) && n > 0 ? n : 1
+}
+
+const search = ref(typeof route.query.q === 'string' ? route.query.q : '')
+const category = ref(typeof route.query.cat === 'string' ? route.query.cat : '')
+const sort = ref<SortKey>(initialSort())
+const page = ref(initialPage())
 const categories = ref<string[]>([])
 
 const items = ref<HubEmbed[]>([])
 const total = ref(0)
 const limit = 60
-const offset = ref(0)
 const loading = ref(false)
-const loadingMore = ref(false)
 const error = ref('')
+
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit)))
 
 const sortItems = [
   {label: 'Most viewed', value: 'views'},
@@ -49,48 +72,105 @@ const categoryItems = computed(() => [
   ...categories.value.map(c => ({label: c, value: c})),
 ])
 
-async function fetchPage(reset: boolean) {
+// Discard a stale response if the user changed filters/page before it landed.
+let fetchSeq = 0
+
+async function fetchPage() {
   if (!allowed.value) return
-  if (reset) {
-    offset.value = 0
-    loading.value = true
-  } else {
-    loadingMore.value = true
-  }
+  const seq = ++fetchSeq
+  loading.value = true
   error.value = ''
   try {
     const res = await hubApi.list({
       limit,
-      offset: offset.value,
+      offset: (page.value - 1) * limit,
       search: search.value.trim() || undefined,
       category: category.value || undefined,
       sort: sort.value,
     })
-    const batch = res?.items ?? []
+    if (seq !== fetchSeq) return
+    items.value = res?.items ?? []
     total.value = res?.total ?? 0
-    items.value = reset ? batch : [...items.value, ...batch]
   } catch (e: unknown) {
+    if (seq !== fetchSeq) return
     error.value = e instanceof Error ? e.message : 'Failed to load Hub'
   } finally {
-    loading.value = false
-    loadingMore.value = false
+    if (seq === fetchSeq) loading.value = false
   }
 }
 
-function loadMore() {
-  offset.value += limit
-  fetchPage(false)
-}
-
-const hasMore = computed(() => items.value.length < total.value)
-
-// Debounced search + immediate filter/sort changes.
+// A filter or sort change resets to page 1; the page number itself is driven by
+// the pagination control (onPageChange). Search is debounced.
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 watch(search, () => {
   if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => fetchPage(true), 350)
+  searchTimer = setTimeout(() => {
+    page.value = 1
+    fetchPage()
+  }, 350)
 })
-watch([category, sort], () => fetchPage(true))
+watch([category, sort], () => {
+  page.value = 1
+  fetchPage()
+})
+
+function onPageChange() {
+  // v-model:page has already updated `page`; fetch that page and return to the
+  // top of the grid so the user isn't dropped into the middle of a fresh page.
+  fetchPage()
+  scrollToTop()
+}
+
+// Keep the URL in sync (debounced, router.replace so Back isn't polluted).
+let urlSyncTimer: ReturnType<typeof setTimeout> | null = null
+watch([search, category, sort, page], () => {
+  if (urlSyncTimer) clearTimeout(urlSyncTimer)
+  urlSyncTimer = setTimeout(() => {
+    const query: Record<string, string> = {}
+    const q = search.value.trim()
+    if (q) query.q = q
+    if (category.value) query.cat = category.value
+    if (sort.value !== 'views') query.sort = sort.value
+    if (page.value > 1) query.page = String(page.value)
+    router.replace({query})
+  }, 300)
+})
+
+// ── Scroll position persistence ───────────────────────────────────────────────
+// The page number in the URL already restores the right page across a refresh;
+// this restores the exact scroll offset within it. Keyed to a signature of the
+// active view so it only re-applies when the same page+filters are shown.
+function viewSignature(): string {
+  return `${page.value}|${sort.value}|${category.value}|${search.value.trim()}`
+}
+
+let scrollSaveRaf = 0
+
+function onScroll() {
+  if (scrollSaveRaf) return
+  scrollSaveRaf = requestAnimationFrame(() => {
+    scrollSaveRaf = 0
+    try {
+      sessionStorage.setItem('hub:scroll', JSON.stringify({sig: viewSignature(), y: window.scrollY}))
+    } catch { /* storage unavailable — degrade to no restore */ }
+  })
+}
+
+function restoreScrollIfMatch() {
+  try {
+    const raw = sessionStorage.getItem('hub:scroll')
+    if (!raw) return
+    const saved = JSON.parse(raw) as { sig?: string; y?: number }
+    if (saved?.sig === viewSignature() && typeof saved.y === 'number') {
+      window.scrollTo(0, saved.y)
+    }
+  } catch { /* ignore malformed entry */ }
+}
+
+function scrollToTop() {
+  if (typeof window === 'undefined') return
+  window.scrollTo({top: 0, behavior: 'smooth'})
+}
 
 // ── Hover preview (single shared interval; grid mounts thumbnails only) ───────
 const hoverId = ref('')
@@ -189,12 +269,20 @@ onMounted(async () => {
   } catch {
     // non-fatal: filter dropdown just stays minimal
   }
-  fetchPage(true)
+  await fetchPage()
+  // Wait for the grid to lay out (card aspect ratios give a deterministic height
+  // even before images load) before restoring the saved scroll offset.
+  await nextTick()
+  restoreScrollIfMatch()
+  window.addEventListener('scroll', onScroll, {passive: true})
 })
 
 onBeforeUnmount(() => {
   if (searchTimer) clearTimeout(searchTimer)
+  if (urlSyncTimer) clearTimeout(urlSyncTimer)
   if (hoverTimer) clearInterval(hoverTimer)
+  if (scrollSaveRaf) cancelAnimationFrame(scrollSaveRaf)
+  if (typeof window !== 'undefined') window.removeEventListener('scroll', onScroll)
 })
 </script>
 
@@ -254,8 +342,14 @@ onBeforeUnmount(() => {
         </p>
       </div>
 
+      <!-- Result summary -->
+      <p v-else-if="total > 0" class="text-xs text-muted mb-3">
+        {{ total.toLocaleString() }} result<span v-if="total !== 1">s</span>
+        · page {{ page.toLocaleString() }} of {{ totalPages.toLocaleString() }}
+      </p>
+
       <!-- Grid -->
-      <div v-else class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+      <div v-if="!loading && items.length > 0" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
         <div
             v-for="item in items"
             :key="item.embed_id"
@@ -302,14 +396,15 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- Load more -->
-      <div v-if="!loading && hasMore" class="flex justify-center mt-6">
-        <UButton
-            :loading="loadingMore"
-            variant="soft"
-            color="neutral"
-            label="Load more"
-            @click="loadMore"
+      <!-- Pagination -->
+      <div v-if="!loading && totalPages > 1" class="flex justify-center mt-8">
+        <UPagination
+            v-model:page="page"
+            :total="total"
+            :items-per-page="limit"
+            :sibling-count="1"
+            show-edges
+            @update:page="onPageChange"
         />
       </div>
 

@@ -569,6 +569,11 @@ type HubEmbedRecord struct {
 type HubEmbedFilter struct {
 	Tag      string
 	Category string
+	// SortBy selects the result ordering, matching the List() sort keys
+	// ("views" | "duration" | "title" | "" / "newest"). Empty falls back to
+	// newest-first so a filtered view honors the same sort control as the
+	// unfiltered listing instead of being pinned to most-viewed.
+	SortBy string
 }
 
 // FavoriteRepository provides user favorites (Watch Later) storage.

@@ -91,18 +91,26 @@ func (r *HubEmbedRepository) Search(ctx context.Context, query string, filter re
 			q = q.Where("title LIKE ?", query+"%")
 		}
 	}
+	// Categories and tags are stored as ';'-joined lists, so wrap the column in
+	// sentinel delimiters and match the exact facet value between them. This
+	// avoids the substring over-match a bare LIKE '%val%' would cause (e.g. the
+	// facet "Teen" matching a stored "Teenager"). The leading-wildcard pattern
+	// is already a scan either way, so there is no added index cost.
 	if filter.Category != "" {
-		q = q.Where("categories LIKE ?", "%"+filter.Category+"%")
+		q = q.Where("CONCAT(';', categories, ';') LIKE ? ESCAPE '\\\\'", "%;"+escapeLike(filter.Category)+";%")
 	}
 	if filter.Tag != "" {
-		q = q.Where("tags LIKE ?", "%"+filter.Tag+"%")
+		q = q.Where("CONCAT(';', tags, ';') LIKE ? ESCAPE '\\\\'", "%;"+escapeLike(filter.Tag)+";%")
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("count hub embed search: %w", err)
 	}
 	var rows []hubEmbedRow
-	if err := q.Order("views DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+	// Honor the caller's sort in the filtered path too — previously this was
+	// pinned to views DESC, so picking Longest/Title/Newest while a search or
+	// category filter was active silently reverted to most-viewed.
+	if err := q.Order(hubSortOrder(filter.SortBy)).Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
 		return nil, 0, fmt.Errorf("search hub embeds: %w", err)
 	}
 	return hubRowsToRecords(rows), total, nil

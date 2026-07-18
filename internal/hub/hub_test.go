@@ -13,19 +13,30 @@ import (
 	"media-server-pro/internal/repositories"
 )
 
-// fakeHubRepo captures BatchInsert calls for importer tests.
+// fakeHubRepo captures BatchInsert calls for importer tests and the
+// query/filter passed to List/Search for GetEmbeds routing tests.
 type fakeHubRepo struct {
 	records []*repositories.HubEmbedRecord
+
+	listCalled   bool
+	lastListSort string
+
+	searchCalled     bool
+	lastSearchFilter repositories.HubEmbedFilter
 }
 
 func (f *fakeHubRepo) BatchInsert(_ context.Context, embeds []*repositories.HubEmbedRecord) (int64, error) {
 	f.records = append(f.records, embeds...)
 	return int64(len(embeds)), nil
 }
-func (f *fakeHubRepo) List(context.Context, int, int, string) ([]*repositories.HubEmbedRecord, int64, error) {
+func (f *fakeHubRepo) List(_ context.Context, _, _ int, sort string) ([]*repositories.HubEmbedRecord, int64, error) {
+	f.listCalled = true
+	f.lastListSort = sort
 	return nil, 0, nil
 }
-func (f *fakeHubRepo) Search(context.Context, string, repositories.HubEmbedFilter, int, int) ([]*repositories.HubEmbedRecord, int64, error) {
+func (f *fakeHubRepo) Search(_ context.Context, _ string, filter repositories.HubEmbedFilter, _, _ int) ([]*repositories.HubEmbedRecord, int64, error) {
+	f.searchCalled = true
+	f.lastSearchFilter = filter
 	return nil, 0, nil
 }
 func (f *fakeHubRepo) GetByEmbedID(context.Context, string) (*repositories.HubEmbedRecord, error) {
@@ -64,6 +75,55 @@ func TestImportCSV_StreamsAndParses(t *testing.T) {
 }
 
 const sampleRow = `<iframe src="https://www.pornhub.com/embed/c3dbc9a5d726288d8a4b" frameborder="0" height="481" width="608" scrolling="no"></iframe>|https://cdn/thumb5.jpg|https://cdn/p1.jpg;https://cdn/p2.jpg;https://cdn/p3.jpg|Gen Padova - Cum Bot|cumbots.com;machine;toys|Brunette;Toys;Solo Female|Gen Padova|185|2392561|3154|432|https://cdn/alt5.jpg|https://cdn/alt1.jpg`
+
+// hubTestModule builds a Module wired to the fake repo with the Hub feature
+// enabled, so GetEmbeds passes the ready() gate without a database.
+func hubTestModule(t *testing.T, repo repositories.HubEmbedRepository) *Module {
+	t.Helper()
+	cfg := config.NewManager(filepath.Join(t.TempDir(), "config.json"))
+	if err := cfg.Update(func(c *config.Config) { c.Features.EnableHub = true }); err != nil {
+		t.Fatalf("enable hub feature: %v", err)
+	}
+	return &Module{config: cfg, repo: repo}
+}
+
+// TestGetEmbeds_SortIsHonoredOnFilteredPath guards the fix for the filtered
+// listing dropping the caller's sort. Previously any active filter routed to
+// Search, which pinned results to views DESC and ignored SortBy; sorting only
+// worked on the unfiltered List path. GetEmbeds must forward SortBy to Search.
+func TestGetEmbeds_SortIsHonoredOnFilteredPath(t *testing.T) {
+	// Filtered path: a category filter must still carry the requested sort.
+	fake := &fakeHubRepo{}
+	m := hubTestModule(t, fake)
+	if _, _, err := m.GetEmbeds(context.Background(), Filter{Category: "Toys", SortBy: "duration"}, 60, 0); err != nil {
+		t.Fatalf("GetEmbeds (filtered): %v", err)
+	}
+	if !fake.searchCalled {
+		t.Fatal("expected the Search path when a category filter is set")
+	}
+	if fake.lastSearchFilter.SortBy != "duration" {
+		t.Errorf("Search filter SortBy = %q, want %q (sort dropped on filtered path)", fake.lastSearchFilter.SortBy, "duration")
+	}
+	if fake.lastSearchFilter.Category != "Toys" {
+		t.Errorf("Search filter Category = %q, want %q", fake.lastSearchFilter.Category, "Toys")
+	}
+
+	// Unfiltered path: still routes to List, carrying the same sort key.
+	fakeList := &fakeHubRepo{}
+	mList := hubTestModule(t, fakeList)
+	if _, _, err := mList.GetEmbeds(context.Background(), Filter{SortBy: "title"}, 60, 0); err != nil {
+		t.Fatalf("GetEmbeds (unfiltered): %v", err)
+	}
+	if !fakeList.listCalled {
+		t.Fatal("expected the List path when no filters are set")
+	}
+	if fakeList.searchCalled {
+		t.Error("Search should not be called without a search/category/tag filter")
+	}
+	if fakeList.lastListSort != "title" {
+		t.Errorf("List sort = %q, want %q", fakeList.lastListSort, "title")
+	}
+}
 
 func TestOpenZippedCSV_StreamsEntry(t *testing.T) {
 	zipPath := filepath.Join(t.TempDir(), "cat.zip")
