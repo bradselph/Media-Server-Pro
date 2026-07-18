@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"net/http"
+	"sync/atomic"
 
 	"github.com/gin-gonic/gin"
 
@@ -23,21 +24,30 @@ const (
 //
 // No server-side state is kept; the cookie is the sole source of truth.
 type CookieConsent struct {
-	cfg config.CookieConsentConfig
+	cfg atomic.Pointer[config.CookieConsentConfig]
 	log *logger.Logger
 }
 
 // NewCookieConsent creates a CookieConsent handler from the provided config.
 func NewCookieConsent(cfg config.CookieConsentConfig) *CookieConsent {
-	return &CookieConsent{
-		cfg: cfg,
+	cc := &CookieConsent{
 		log: logger.New("cookieconsent"),
 	}
+	cc.cfg.Store(&cfg)
+	return cc
+}
+
+// UpdateConfig atomically swaps the cookie-consent configuration so admin edits
+// (enable/disable the banner, cookie name/lifetime) apply live without a
+// restart. Wired through cfg.OnChange; safe to call concurrently with request
+// handling (readers load a whole snapshot, never a torn mix).
+func (cc *CookieConsent) UpdateConfig(cfg config.CookieConsentConfig) {
+	cc.cfg.Store(&cfg)
 }
 
 // consentStatus returns whether consent has been given and whether analytics was accepted.
 func (cc *CookieConsent) consentStatus(r *http.Request) (given, analyticsAccepted bool) {
-	cookie, err := r.Cookie(cc.cfg.CookieName)
+	cookie, err := r.Cookie(cc.cfg.Load().CookieName)
 	if err != nil || cookie.Value == "" {
 		return false, false
 	}
@@ -55,7 +65,7 @@ func (cc *CookieConsent) GinStatusHandler() gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data": gin.H{
-				"required":           cc.cfg.Enabled,
+				"required":           cc.cfg.Load().Enabled,
 				"given":              given,
 				"analytics_accepted": analyticsAccepted,
 			},
@@ -86,10 +96,11 @@ func (cc *CookieConsent) GinAcceptHandler() gin.HandlerFunc {
 			value = consentValueAll
 		}
 
+		ccCfg := cc.cfg.Load()
 		http.SetCookie(c.Writer, &http.Cookie{
-			Name:     cc.cfg.CookieName,
+			Name:     ccCfg.CookieName,
 			Value:    value,
-			MaxAge:   cc.cfg.CookieMaxAge,
+			MaxAge:   ccCfg.CookieMaxAge,
 			Path:     "/",
 			HttpOnly: false, // must be readable by JS so the banner can check it client-side
 			SameSite: http.SameSiteStrictMode,

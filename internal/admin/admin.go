@@ -404,11 +404,23 @@ func buildConfigFeaturesMap(cfg *config.Config) map[string]any {
 		"enable_remote_media":        cfg.Features.EnableRemoteMedia,
 		"enable_receiver":            cfg.Features.EnableReceiver,
 		"enable_extractor":           cfg.Features.EnableExtractor,
-		"enable_crawler":             cfg.Features.EnableCrawler,
 		"enable_duplicate_detection": cfg.Features.EnableDuplicateDetection,
 		"enable_downloader":          cfg.Features.EnableDownloader,
+		"enable_hub":                 cfg.Features.EnableHub,
 		"enable_user_auth":           cfg.Features.EnableUserAuth,
 		"enable_admin_panel":         cfg.Features.EnableAdminPanel,
+	}
+}
+
+func buildConfigHubMap(cfg *config.Config) map[string]any {
+	return map[string]any{
+		"enabled":           cfg.Hub.Enabled,
+		"csv_path":          cfg.Hub.CSVPath,
+		"source_url":        cfg.Hub.SourceURL,
+		"work_dir":          cfg.Hub.WorkDir,
+		"auto_import":       cfg.Hub.AutoImport,
+		"page_size":         cfg.Hub.PageSize,
+		"import_batch_size": cfg.Hub.ImportBatchSize,
 	}
 }
 
@@ -703,15 +715,6 @@ func buildConfigRemoteMediaMap(cfg *config.Config) map[string]any {
 	}
 }
 
-func buildConfigCrawlerMap(cfg *config.Config) map[string]any {
-	return map[string]any{
-		"enabled":         cfg.Crawler.Enabled,
-		"browser_enabled": cfg.Crawler.BrowserEnabled,
-		"max_pages":       cfg.Crawler.MaxPages,
-		"crawl_timeout":   cfg.Crawler.CrawlTimeout,
-	}
-}
-
 func buildConfigExtractorMap(cfg *config.Config) map[string]any {
 	return map[string]any{
 		"enabled":       cfg.Extractor.Enabled,
@@ -756,8 +759,8 @@ func (m *Module) GetConfigMap() map[string]any {
 		{"backup", buildConfigBackupMap},
 		{"updater", buildConfigUpdaterMap},
 		{"remote_media", buildConfigRemoteMediaMap},
-		{"crawler", buildConfigCrawlerMap},
 		{"extractor", buildConfigExtractorMap},
+		{"hub", buildConfigHubMap},
 		{"directories", buildConfigDirectoriesMap},
 	}
 	out := make(map[string]any, len(sections))

@@ -306,6 +306,10 @@ export interface PlaylistItem {
     title: string
     position: number
     added_at: string
+    // Present for Hub items (media_id "hub:<embed_id>"): external thumbnail + embed
+    // URL, hydrated server-side so the frontend needn't do a second lookup.
+    thumbnail_url?: string
+    embed_url?: string
 }
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
@@ -1005,30 +1009,6 @@ export interface ReceiverBulkCopyStatus {
     results: ReceiverBulkCopyResult[]
 }
 
-export interface CrawlerTarget {
-    id: string
-    url: string
-    name: string
-    site: string
-    last_crawled?: string
-    created_at: string
-    enabled: boolean
-}
-
-export interface CrawlerDiscovery {
-    id: string
-    target_id: string
-    page_url: string
-    title: string
-    stream_url: string
-    stream_type: string
-    quality: number
-    status: string
-    reviewed_by?: string
-    reviewed_at?: string | null
-    discovered_at: string
-}
-
 export interface ExtractorItem {
     id: string
     stream_url: string
@@ -1125,6 +1105,7 @@ export interface ServerSettings {
         enableAutoDiscovery: boolean
         enableDuplicateDetection: boolean
         enableDownloader: boolean
+        enableHub?: boolean
     }
     uploads: {
         enabled: boolean
@@ -1148,6 +1129,71 @@ export interface ServerSettings {
         allow_registration: boolean
         allow_guests: boolean
     }
+    hub?: {
+        enabled: boolean
+    }
+}
+
+// ── Hub (BETA external embed catalog) ────────────────────────────────────────
+
+export interface HubEmbed {
+    embed_id: string
+    embed_url: string
+    title: string
+    pornstar: string
+    duration_secs: number
+    views: number
+    rating_up: number
+    rating_down: number
+    tags: string[]
+    categories: string[]
+    thumb_url: string
+    preview_urls: string[]
+    is_mature: boolean
+}
+
+export interface HubListResponse {
+    items: HubEmbed[]
+    total: number
+    limit: number
+    offset: number
+}
+
+export interface HubImportStatus {
+    running: boolean
+    phase?: 'downloading' | 'importing' | ''
+    source?: string
+    rows_read: number
+    inserted: number
+    total_rows: number
+    path?: string
+    error?: string
+    started_at?: string
+    finished_at?: string
+}
+
+// Admin: download a playlist's Hub items via the downloader and import to library.
+export interface PlaylistImportResult {
+    embed_id: string
+    title: string
+    status: 'imported' | 'skipped' | 'failed'
+    detail?: string
+}
+
+export interface PlaylistImportStatus {
+    running: boolean
+    canceled: boolean
+    playlist_id?: string
+    playlist_name?: string
+    total: number
+    done: number
+    imported: number
+    skipped: number
+    failed: number
+    current?: string
+    started_at?: string
+    finished_at?: string
+    results: PlaylistImportResult[]
 }
 
 // ── Age Gate ──────────────────────────────────────────────────────────────────
@@ -1416,17 +1462,6 @@ export interface ExtractorStats {
     error_items: number
 }
 
-// ── Crawler ───────────────────────────────────────────────────────────────────
-
-export interface CrawlerStats {
-    total_targets: number
-    enabled_targets: number
-    total_discoveries: number
-    pending_discoveries: number
-    crawling: boolean
-    browser_enabled?: boolean
-    browser_available?: boolean
-}
 
 // ── Downloader ────────────────────────────────────────────────────────────────
 

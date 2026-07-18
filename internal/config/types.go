@@ -19,9 +19,9 @@ type Config struct {
 	Receiver      ReceiverConfig      `json:"receiver"`
 	Follower      FollowerConfig      `json:"follower"`
 	Extractor     ExtractorConfig     `json:"extractor"`
-	Crawler       CrawlerConfig       `json:"crawler"`
 	Backup        BackupConfig        `json:"backup"`
 	MatureScanner MatureScannerConfig `json:"mature_scanner"`
+	Hub           HubConfig           `json:"hub"`
 	HuggingFace   HuggingFaceConfig   `json:"huggingface"`
 	Logging       LoggingConfig       `json:"logging"`
 	Features      FeaturesConfig      `json:"features"`
@@ -44,6 +44,16 @@ type Config struct {
 	// Infrastructure/secret env vars (paths, bind, DB/storage creds, log level,
 	// updater branch, admin bootstrap) continue to apply on every load.
 	EnvSeedMigrated bool `json:"env_seed_migrated"`
+
+	// InfraOwnershipMigrated guards a second one-shot transition: the UI-editable
+	// infra sections (server, logging, updater) become config.json-owned so admin
+	// edits (e.g. the updater branch) actually persist across restarts instead of
+	// being re-clobbered by their env vars every load. On the first load after the
+	// upgrade (flag false) their current env-driven values are baked into
+	// config.json so effective behavior is unchanged; thereafter their env vars
+	// seed only. Data paths + credentials (directories, database, storage, admin)
+	// stay env-authoritative on every load.
+	InfraOwnershipMigrated bool `json:"infra_ownership_migrated"`
 }
 
 // TasksConfig holds per-task admin overrides for the background scheduler.
@@ -440,14 +450,6 @@ type ExtractorConfig struct {
 	MaxItems     int           `json:"max_items"`
 }
 
-// CrawlerConfig holds settings for the stream crawler.
-type CrawlerConfig struct {
-	Enabled        bool          `json:"enabled"`
-	BrowserEnabled bool          `json:"browser_enabled"`
-	MaxPages       int           `json:"max_pages"`
-	CrawlTimeout   time.Duration `json:"crawl_timeout"`
-}
-
 // BackupConfig holds backup retention settings
 type BackupConfig struct {
 	RetentionCount int `json:"retention_count"`
@@ -462,6 +464,26 @@ type MatureScannerConfig struct {
 	HighConfidenceKeywords    []string `json:"high_confidence_keywords"`
 	MediumConfidenceKeywords  []string `json:"medium_confidence_keywords"`
 	RequireReview             bool     `json:"require_review"`
+}
+
+// HubConfig holds settings for the BETA "Hub" external embed-catalog feature.
+// The catalog is imported from a large pipe-delimited CSV into the hub_embeds
+// table and browsed through a dedicated, age-gated tab. Disabled by default.
+type HubConfig struct {
+	Enabled         bool   `json:"enabled"`
+	CSVPath         string `json:"csv_path"`
+	PageSize        int    `json:"page_size"`
+	ImportBatchSize int    `json:"import_batch_size"`
+	// SourceURL is a zipped-catalog URL. When set, both the admin "Start import"
+	// button and the CLI download it and stream-extract the CSV straight into the
+	// DB (the multi-GB CSV never lands on disk). Admin-settable.
+	SourceURL string `json:"source_url"`
+	// WorkDir is the scratch dir for the downloaded archive. Config/env only.
+	WorkDir string `json:"work_dir"`
+	// AutoImport, when set, bootstraps the catalog automatically the first time
+	// the module starts with an empty table (from SourceURL, else CSVPath), so a
+	// fresh deployment needs no manual import step. Skipped once data is present.
+	AutoImport bool `json:"auto_import"`
 }
 
 // HuggingFaceConfig holds settings for Hugging Face Inference API (visual classification).
@@ -502,10 +524,10 @@ type FeaturesConfig struct {
 	EnableAutoDiscovery      bool `json:"enable_auto_discovery"`
 	EnableReceiver           bool `json:"enable_receiver"`
 	EnableExtractor          bool `json:"enable_extractor"`
-	EnableCrawler            bool `json:"enable_crawler"`
 	EnableDuplicateDetection bool `json:"enable_duplicate_detection"`
 	EnableHuggingFace        bool `json:"enable_huggingface"`
 	EnableDownloader         bool `json:"enable_downloader"`
+	EnableHub                bool `json:"enable_hub"` // BETA
 }
 
 // DatabaseConfig holds database connection settings

@@ -38,11 +38,14 @@ appear as one to users, with the master proxying byte streams from the slave on 
 - Personalized recommendation rows — Continue Watching, Trending, Recommended For You — scored from each user's view
   history and curated-category affinity.
 - Rule-based smart playlists (live-previewed) and saved searches that resurface new matches on the home page.
+- **Hub (BETA)** — an opt-in, age-gated tab of external video embeds imported from a large catalog CSV. Off by default
+  (`FEATURE_HUB=false`) and fully inert when disabled. Embeds can be added to playlists, and an admin flow can feed a
+  user playlist's Hub items through the downloader to copy them into the local library.
 
 **Admin surface**
 
 - Full admin UI: users, media library, categories, scanner, mature-content classifier, HLS jobs, thumbnails, validator,
-  suggestions, playlists, sources, downloader, crawler, security, audit log, backups, updates, system config, and
+  suggestions, playlists, sources, downloader, hub, security, audit log, backups, updates, system config, and
   analytics.
 - Live config reload — most security and feature settings flip without a server restart.
 - Hot-reloadable rate limits, CORS origins, security headers, trusted-proxy CIDRs.
@@ -175,10 +178,18 @@ source makes only outbound connections; no inbound port needs opening on it.
 
 ## Configuration
 
-Configuration comes from three layers, in order of precedence:
+Configuration resolves across three layers. The key rule: **`config.json` (and the admin UI that writes it) is
+authoritative for tunables — environment variables _seed_ it, they do not perpetually override it.** A setting changed
+in the admin panel persists across restarts and is not silently reverted by an env var.
 
-1. **Environment variables** (highest) — full matrix in `internal/config/env_overrides_*.go`.
-2. **`config.json`** — written on first start, hot-reloaded on most field changes.
+1. **`config.json`** — the source of truth once written (on first start), hot-reloaded on most field changes. Owns all
+   tunables (features, HLS, security, UI, streaming, …) **and** the UI-editable infra sections (server, logging,
+   updater).
+2. **Environment variables** — _seed_ `config.json` on a fresh install and once per one-shot config migration
+   (`EnvSeedMigrated` for tunables, `InfraOwnershipMigrated` for server/logging/updater), after which they're ignored
+   for the settings above. **Exception:** data paths and credentials — **directories, database, storage, admin
+   bootstrap** — always override on every load, because the orchestration layer (Docker/systemd/`deploy.sh`) owns them.
+   Full matrix in `internal/config/env_overrides_*.go`.
 3. **Built-in defaults** — see `internal/config/defaults.go`.
 
 For VPS deploys the `.env` file in the deploy directory is loaded at startup. **Always single-quote secrets** — unquoted
@@ -202,6 +213,7 @@ the most common cause of "admin login fails" reports. `setup.sh` quotes automati
 | `RECEIVER_ENABLED` / `RECEIVER_API_KEYS`                                                                     | off           | Accept federated peers (slave catalog ingest)                            |
 | `FOLLOWER_MASTER_URL` / `FOLLOWER_API_KEY`                                                                   | off           | This server pushes its catalog to a peer                                 |
 | `FEATURE_HUGGINGFACE` / `HUGGINGFACE_API_KEY`                                                                | off           | Visual mature-content classifier                                         |
+| `FEATURE_HUB` / `HUB_SOURCE_URL` / `HUB_AUTO_IMPORT`                                                          | off           | BETA external-embed catalog; auto-fetch + import a zipped CSV on boot     |
 | `STORAGE_BACKEND` (`local`/`s3`) + `S3_ENDPOINT` / `S3_BUCKET` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | `local`       | Object-storage backend                                                   |
 | `HSTS_ENABLED`, `CSP_ENABLED`                                                                                | mixed         | HTTP security headers                                                    |
 | `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`                                     | on, 300/60s   | Per-IP rate limit                                                        |
@@ -229,7 +241,7 @@ The API surface covers:
 - All `admin-*` modules: `admin-users`, `admin-media`, `admin-dashboard`, `admin-config`, `admin-tasks`, `admin-audit`, `admin-backups`,
   `admin-scanner`, `admin-hls`, `admin-thumbnails`, `admin-validator`, `admin-playlists`, `admin-security`,
   `admin-discovery`, `admin-suggestions`, `admin-remote`, `admin-updates`, `admin-database`,
-  `admin-analytics`, `admin-classify`, `admin-extractor`, `admin-crawler`, `admin-downloader`, `admin-duplicates`,
+  `admin-analytics`, `admin-classify`, `admin-extractor`, `admin-downloader`, `admin-duplicates`,
   `admin-streams`
 
 WebSocket endpoints are intentionally outside the OpenAPI spec — see `api/routes/routes.go` for `/ws/receiver` and
@@ -258,7 +270,7 @@ internal/
   duplicates/          # cross-slave dedup
   remote/              # remote media proxy / cache
   extractor/           # external URL HLS proxy
-  crawler/             # external library discovery
+  hub/                 # BETA external embed catalog (CSV-imported)
   scanner/             # mature-content classifier (ffmpeg image/video scoring)
   suggestions/         # personalized recommendations + curated-category scoring
   repositories/        # GORM-backed persistence (media metadata, categories, profiles)

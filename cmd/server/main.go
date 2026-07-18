@@ -17,13 +17,13 @@ import (
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
 	"media-server-pro/internal/config"
-	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
 	"media-server-pro/internal/downloader"
 	"media-server-pro/internal/duplicates"
 	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/follower"
 	"media-server-pro/internal/hls"
+	"media-server-pro/internal/hub"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/playlist"
@@ -56,7 +56,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.23.13"
+	Version   = "1.23.20"
 
 	BuildDate = "dev"
 )
@@ -118,6 +118,15 @@ func main() {
 
 	// ── Cookie consent middleware ──────────────────────────────────────────
 	cookieConsent := middleware.NewCookieConsent(cfg.Get().CookieConsent)
+
+	// Live-reload the age-gate and cookie-consent middleware when their config
+	// changes via the admin Settings panel, so edits (enable/disable, TTL,
+	// bypass IPs, cookie name/lifetime) take effect without a restart — mirroring
+	// how the security module and task schedulers already hot-reload on change.
+	cfg.OnChange(func(c *config.Config) {
+		ageGate.UpdateConfig(c.AgeGate)
+		cookieConsent.UpdateConfig(c.CookieConsent)
+	})
 
 	// ── Register background tasks ──────────────────────────────────────────
 	registerTasks(mods.tasks, mods.media, mods.scanner, mods.thumbnails,
@@ -257,6 +266,7 @@ type modules struct {
 	validator     *validator.Module
 	backup        *backup.Module
 	autodiscovery *autodiscovery.Module
+	hub           *hub.Module
 	suggestions   *suggestions.Module
 	updater       *updater.Module
 	remote        *remote.Module
@@ -265,7 +275,6 @@ type modules struct {
 	follower      *follower.Module
 	downloader    *downloader.Module
 	extractor     *extractor.Module
-	crawler       *crawler.Module
 }
 
 func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, stores storageBackends) modules {
@@ -424,6 +433,14 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 		mustRegister(srv, m.autodiscovery)
 	}
 
+	// Hub (BETA, non-critical — external embed catalog. Gated by feature flag at
+	// construction so when disabled it is never constructed, registered, started,
+	// or given any DB access; the routes exist but short-circuit via requireHub.)
+	if cfg.Get().Features.EnableHub {
+		m.hub = hub.NewModule(cfg, m.database)
+		mustRegister(srv, m.hub)
+	}
+
 	// Suggestions (non-critical — requires database for user profiles)
 	m.suggestions = suggestions.NewModule(cfg, m.database)
 	mustRegister(srv, m.suggestions)
@@ -465,9 +482,6 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	// Extractor (non-critical — requires database for item persistence)
 	m.extractor = extractor.NewModule(cfg, m.database)
 	mustRegister(srv, m.extractor)
-
-	m.crawler = crawler.NewModule(cfg, m.database, m.extractor)
-	mustRegister(srv, m.crawler)
 
 	return m
 }
@@ -545,6 +559,7 @@ func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate 
 			Validator:     mods.validator,
 			Backup:        mods.backup,
 			Autodiscovery: mods.autodiscovery,
+			Hub:           mods.hub,
 			Suggestions:   mods.suggestions,
 			Security:      mods.security,
 			Updater:       mods.updater,
@@ -552,7 +567,6 @@ func setupRoutes(srv *server.Server, cfg *config.Manager, mods modules, ageGate 
 			Receiver:      mods.receiver,
 			Follower:      mods.follower,
 			Extractor:     mods.extractor,
-			Crawler:       mods.crawler,
 			Duplicates:    mods.duplicates,
 			Analytics:     mods.analytics,
 			Playlist:      mods.playlist,
@@ -953,6 +967,12 @@ func registerScannerTasks(registerWithOverride func(tasks.TaskRegistration), cfg
 		Description: "Scans media directories for mature content using configured detection models",
 		Schedule:    12 * time.Hour,
 		Func: func(_ context.Context) error {
+			// Honor the admin toggle at tick time (mirrors the duplicate-scan gate
+			// below): disabling the mature scanner must actually stop the periodic
+			// filesystem walk + auto-flagging, not just hide the API.
+			if !cfg.Get().MatureScanner.Enabled {
+				return nil
+			}
 			dirs := cfg.Get().Directories
 			var allResults []*scanner.ScanResult
 

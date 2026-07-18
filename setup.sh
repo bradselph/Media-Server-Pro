@@ -405,7 +405,7 @@ FEATURE_HUGGINGFACE=$FEAT_HUGGINGFACE
 FEATURE_AUTO_DISCOVERY=true
 FEATURE_DUPLICATE_DETECTION=true
 FEATURE_EXTRACTOR=false
-FEATURE_CRAWLER=false
+FEATURE_HUB=false
 FEATURE_DOWNLOADER=$FEAT_DOWNLOADER
 
 # ── Downloader ────────────────────────────────────────────────

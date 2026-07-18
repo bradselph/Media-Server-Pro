@@ -522,53 +522,58 @@ type ExtractorItemRecord struct {
 	UpdatedAt       time.Time
 }
 
-// CrawlerTargetRepository provides crawler target storage
-type CrawlerTargetRepository interface {
-	Upsert(ctx context.Context, target *CrawlerTargetRecord) error
-	Get(ctx context.Context, id string) (*CrawlerTargetRecord, error)
-	Delete(ctx context.Context, id string) error
-	List(ctx context.Context) ([]*CrawlerTargetRecord, error)
-	UpdateLastCrawled(ctx context.Context, id string, crawledAt time.Time) error
+// HubEmbedRepository provides storage for the BETA Hub external-embed catalog,
+// imported from a large pipe-delimited CSV into the hub_embeds table. It is fully
+// decoupled from media/users — enabling, disabling, or clearing it never touches
+// other tables. Callers MUST only invoke it when the Hub feature is enabled.
+type HubEmbedRepository interface {
+	// BatchInsert idempotently inserts embeds (INSERT IGNORE on embed_id) and
+	// returns the number of rows actually inserted (0 for already-present rows).
+	BatchInsert(ctx context.Context, embeds []*HubEmbedRecord) (int64, error)
+	// List returns a page ordered by sort ("views"|"duration"|default newest) plus the total row count.
+	List(ctx context.Context, offset, limit int, sort string) ([]*HubEmbedRecord, int64, error)
+	// Search filters by full-text query and/or category/tag, returning a page + match count.
+	Search(ctx context.Context, query string, filter HubEmbedFilter, offset, limit int) ([]*HubEmbedRecord, int64, error)
+	// GetByEmbedID returns a single embed by its natural key (the provider embed id), or nil if absent.
+	GetByEmbedID(ctx context.Context, embedID string) (*HubEmbedRecord, error)
+	// GetByEmbedIDs returns all embeds whose embed_id is in the given set (order
+	// not guaranteed; ids with no match are omitted, not an error).
+	GetByEmbedIDs(ctx context.Context, embedIDs []string) ([]*HubEmbedRecord, error)
+	// CountAll returns the total number of imported rows.
+	CountAll(ctx context.Context) (int64, error)
+	// CategorySamples returns the raw ';'-joined category strings from the most-viewed
+	// rows (bounded by limit); the caller splits/dedupes them into a facet list.
+	CategorySamples(ctx context.Context, limit int) ([]string, error)
+	// DeleteAll truncates the catalog.
+	DeleteAll(ctx context.Context) error
 }
 
-// CrawlerTargetRecord represents a site target for crawling
-type CrawlerTargetRecord struct {
-	ID          string
-	Name        string
-	URL         string
-	Site        string
-	Enabled     bool
-	LastCrawled *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+// HubEmbedRecord represents one imported external embed catalog entry.
+type HubEmbedRecord struct {
+	ID           uint64
+	EmbedID      string
+	Title        string
+	Pornstar     string
+	DurationSecs int
+	Views        int64
+	RatingUp     int
+	RatingDown   int
+	Tags         string // ';'-separated, stored as-is from CSV
+	Categories   string // ';'-separated
+	ThumbURL     string
+	PreviewURLs  string // ';'-separated
+	CreatedAt    time.Time
 }
 
-// CrawlerDiscoveryRepository provides crawler discovery storage
-type CrawlerDiscoveryRepository interface {
-	Create(ctx context.Context, disc *CrawlerDiscoveryRecord) error
-	Get(ctx context.Context, id string) (*CrawlerDiscoveryRecord, error)
-	Delete(ctx context.Context, id string) error
-	List(ctx context.Context) ([]*CrawlerDiscoveryRecord, error)
-	ListByTarget(ctx context.Context, targetID string) ([]*CrawlerDiscoveryRecord, error)
-	ListPending(ctx context.Context) ([]*CrawlerDiscoveryRecord, error)
-	UpdateStatus(ctx context.Context, id, status, reviewedBy string) error
-	ExistsByStreamURL(ctx context.Context, streamURL string) (bool, error)
-}
-
-// CrawlerDiscoveryRecord represents a discovered stream from crawling
-type CrawlerDiscoveryRecord struct {
-	ID              string
-	TargetID        string
-	PageURL         string
-	Title           string
-	StreamURL       string
-	StreamType      string
-	Quality         int
-	DetectionMethod string
-	Status          string // "pending", "added", "ignored"
-	ReviewedBy      string
-	ReviewedAt      *time.Time
-	DiscoveredAt    time.Time
+// HubEmbedFilter narrows Search() results.
+type HubEmbedFilter struct {
+	Tag      string
+	Category string
+	// SortBy selects the result ordering, matching the List() sort keys
+	// ("views" | "duration" | "title" | "" / "newest"). Empty falls back to
+	// newest-first so a filtered view honors the same sort control as the
+	// unfiltered listing instead of being pinned to most-viewed.
+	SortBy string
 }
 
 // FavoriteRepository provides user favorites (Watch Later) storage.

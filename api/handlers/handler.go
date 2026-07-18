@@ -25,13 +25,13 @@ import (
 	"media-server-pro/internal/autodiscovery"
 	"media-server-pro/internal/backup"
 	"media-server-pro/internal/config"
-	"media-server-pro/internal/crawler"
 	"media-server-pro/internal/database"
 	"media-server-pro/internal/downloader"
 	"media-server-pro/internal/duplicates"
 	"media-server-pro/internal/extractor"
 	"media-server-pro/internal/follower"
 	"media-server-pro/internal/hls"
+	"media-server-pro/internal/hub"
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/playlist"
@@ -117,6 +117,7 @@ type HandlerOptionalDeps struct {
 	Validator     *validator.Module
 	Backup        *backup.Module
 	Autodiscovery *autodiscovery.Module
+	Hub           *hub.Module
 	Suggestions   *suggestions.Module
 	Security      *security.Module
 	Updater       *updater.Module
@@ -124,7 +125,6 @@ type HandlerOptionalDeps struct {
 	Receiver      *receiver.Module
 	Follower      *follower.Module
 	Extractor     *extractor.Module
-	Crawler       *crawler.Module
 	Duplicates    *duplicates.Module
 	Analytics     *analytics.Module
 	Playlist      *playlist.Module
@@ -164,6 +164,7 @@ type Handler struct {
 	validator           *validator.Module
 	backup              *backup.Module
 	autodiscovery       *autodiscovery.Module
+	hub                 *hub.Module
 	suggestions         *suggestions.Module
 	security            *security.Module
 	updater             *updater.Module
@@ -171,7 +172,6 @@ type Handler struct {
 	receiver            *receiver.Module
 	follower            *follower.Module
 	extractor           *extractor.Module
-	crawler             *crawler.Module
 	duplicates          *duplicates.Module
 	downloader          *downloader.Module
 	config              *config.Manager
@@ -179,16 +179,18 @@ type Handler struct {
 	deletionRequests    repositories.DataDeletionRequestRepository
 	deletionRequestsMu  sync.Mutex // guards lazy init of deletionRequests
 	mediaReports        repositories.MediaReportRepository
-	mediaReportsMu      sync.Mutex           // guards lazy init of mediaReports
-	viewCooldown        sync.Map             // key: "userID|mediaID" → value: time.Time of last counted view
-	viewCooldownStop    chan struct{}        // closed to stop the background sweeper goroutine
-	regTokens           sync.Map             // key: token string → value: time.Time issued; single-use, 15-min TTL
-	classifyDirRunning  atomic.Bool          // true while a ClassifyDirectory background job is active
-	classifyAllRunning  atomic.Bool          // true while a ClassifyAllPending background job is active
-	receiverCopyBusy    sync.Map             // key: federated media ID → struct{} while a copy-to-library of it runs
-	receiverBulkMu      sync.Mutex           // guards receiverBulkJob
-	receiverBulkJob     *receiverBulkCopyJob // latest bulk copy-to-library job; nil until the first run
-	lifecycleInProgress atomic.Bool          // true once a shutdown/restart has been initiated
+	mediaReportsMu      sync.Mutex            // guards lazy init of mediaReports
+	viewCooldown        sync.Map              // key: "userID|mediaID" → value: time.Time of last counted view
+	viewCooldownStop    chan struct{}         // closed to stop the background sweeper goroutine
+	regTokens           sync.Map              // key: token string → value: time.Time issued; single-use, 15-min TTL
+	classifyDirRunning  atomic.Bool           // true while a ClassifyDirectory background job is active
+	classifyAllRunning  atomic.Bool           // true while a ClassifyAllPending background job is active
+	receiverCopyBusy    sync.Map              // key: federated media ID → struct{} while a copy-to-library of it runs
+	receiverBulkMu      sync.Mutex            // guards receiverBulkJob
+	receiverBulkJob     *receiverBulkCopyJob  // latest bulk copy-to-library job; nil until the first run
+	hubPlaylistMu       sync.Mutex            // guards hubPlaylistJob
+	hubPlaylistJob      *hubPlaylistImportJob // latest hub-playlist download+import job; nil until the first run
+	lifecycleInProgress atomic.Bool           // true once a shutdown/restart has been initiated
 	feedCacheMu         sync.Mutex
 	feedCache           map[string]feedCacheEntry // key: "cacheKey" → cached XML + expiry
 	feedCacheStop       chan struct{}             // closed to stop the feed cache sweeper goroutine
@@ -335,6 +337,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		validator:     o.Validator,
 		backup:        o.Backup,
 		autodiscovery: o.Autodiscovery,
+		hub:           o.Hub,
 		suggestions:   o.Suggestions,
 		security:      o.Security,
 		updater:       o.Updater,
@@ -342,7 +345,6 @@ func NewHandler(deps HandlerDeps) *Handler {
 		receiver:      o.Receiver,
 		follower:      o.Follower,
 		extractor:     o.Extractor,
-		crawler:       o.Crawler,
 		duplicates:    o.Duplicates,
 		downloader:    o.Downloader,
 	}
@@ -489,7 +491,6 @@ var auditableEventTypes = map[string]bool{
 	analytics.EventDiscoveryRun:             true,
 	analytics.EventDownloaderJobCreate:      true,
 	analytics.EventDownloaderJobCancel:      true,
-	analytics.EventCrawlerRun:               true,
 	analytics.EventExtractorRun:             true,
 	analytics.EventSecurityIPListMutate:     true,
 	analytics.EventReceiverPair:             true,
@@ -713,6 +714,17 @@ func (h *Handler) requireSuggestions(c *gin.Context) bool {
 	})
 }
 func (h *Handler) requireScanner(c *gin.Context) bool { return requireModule(c, h.scanner, "Scanner") }
+
+// requireMatureScanner gates the ACTIVE mature-content scan paths on both the
+// module's presence AND the MatureScanner.Enabled toggle, so disabling the
+// scanner in the admin panel actually stops on-demand scans. The review-queue
+// read/approve/reject endpoints keep using requireScanner so a pending queue can
+// still be drained after the scanner is turned off.
+func (h *Handler) requireMatureScanner(c *gin.Context) bool {
+	return checkFeatureEnabled(c, h.scanner, "Mature content scanner", func() bool {
+		return h.config.Get().MatureScanner.Enabled
+	})
+}
 func (h *Handler) requireValidator(c *gin.Context) bool {
 	return requireModule(c, h.validator, "Validator")
 }
@@ -722,6 +734,14 @@ func (h *Handler) requireBackup(c *gin.Context) bool {
 func (h *Handler) requireAutodiscovery(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.autodiscovery, "Auto-discovery", func() bool {
 		return h.config.Get().Features.EnableAutoDiscovery
+	})
+}
+
+// requireHub gates every Hub endpoint on both the module's presence and the
+// feature flag, so a disabled Hub never serves or touches its table.
+func (h *Handler) requireHub(c *gin.Context) bool {
+	return checkFeatureEnabled(c, h.hub, "Hub", func() bool {
+		return h.config.Get().Features.EnableHub
 	})
 }
 func (h *Handler) requireUpdater(c *gin.Context) bool { return requireModule(c, h.updater, "Updater") }
@@ -1068,6 +1088,20 @@ func (h *Handler) resolveMediaPathOrReceiver(c *gin.Context, id string) (path, i
 			return "extractor:" + string(mid), ei.Title, true
 		}
 	}
+	// Fallback: check Hub embeds (BETA external catalog). Accepts the canonical
+	// "hub:<embed_id>" playlist-item form or a bare embed id. h.hub is nil unless
+	// Features.EnableHub is set, so the nil-check is a complete feature gate
+	// (mirroring h.receiver/h.extractor). Every Hub embed is mature content, so
+	// require the same age-gate the read endpoints enforce before it can be added.
+	if h.hub != nil {
+		embedID := strings.TrimPrefix(string(mid), "hub:")
+		if hi, herr := h.hub.GetEmbedByID(c.Request.Context(), embedID); herr == nil && hi != nil {
+			if !h.checkMatureAccess(c, true) {
+				return "", "", false // checkMatureAccess already wrote the 401/403
+			}
+			return "hub:" + embedID, hi.Title, true
+		}
+	}
 	if !h.media.IsReady() {
 		writeError(c, http.StatusServiceUnavailable, msgInitializing)
 		return "", "", false
@@ -1150,12 +1184,6 @@ func checkFeatureEnabled(c *gin.Context, module any, name string, enabled func()
 func (h *Handler) checkExtractorEnabled(c *gin.Context) bool {
 	return checkFeatureEnabled(c, h.extractor, "Extractor", func() bool {
 		return h.config.Get().Extractor.Enabled
-	})
-}
-
-func (h *Handler) checkCrawlerEnabled(c *gin.Context) bool {
-	return checkFeatureEnabled(c, h.crawler, "Crawler", func() bool {
-		return h.config.Get().Crawler.Enabled
 	})
 }
 

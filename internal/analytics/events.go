@@ -158,7 +158,6 @@ const (
 	EventDiscoveryRun         = "discovery_run"
 	EventDownloaderJobCreate  = "downloader_job_create"
 	EventDownloaderJobCancel  = "downloader_job_cancel"
-	EventCrawlerRun           = "crawler_run"
 	EventExtractorRun         = "extractor_run"
 	EventSecurityIPListMutate = "security_ip_list_mutate"
 	EventReceiverPair         = "receiver_pair"

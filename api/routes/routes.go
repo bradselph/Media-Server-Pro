@@ -338,6 +338,15 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 		sc := cfg.Get().Security
 		if sc.CSPEnabled {
 			csp = sc.CSPPolicy
+			// The Hub (BETA) tab embeds third-party iframes and loads their CDN
+			// thumbnails. The base policy has no frame-src (so iframes fall back to
+			// default-src 'self' and the browser blocks them: "This content is
+			// blocked. Contact the site owner…") and an img-src without the CDN.
+			// Add the needed sources ONLY when Hub is enabled, so a disabled Hub
+			// leaves the CSP untouched.
+			if cfg.Get().Hub.Enabled {
+				csp = hubAugmentCSP(csp)
+			}
 		}
 		if sc.HSTSEnabled {
 			hstsMaxAge = sc.HSTSMaxAge
@@ -527,6 +536,14 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// callers without the mature-view permission. Powers /browse.
 	api.GET("/tags", h.GetTagCounts)
 
+	// Hub (BETA) — external embed catalog. Gating lives inside each handler:
+	// requireHub (feature flag + module presence) then checkMatureAccess (the whole
+	// catalog is 18+). Disabled feature => requireHub short-circuits, so these are
+	// inert when off. Register /embeds/:id after the literal /categories/embeds.
+	api.GET("/hub/embeds", h.ListHubEmbeds)
+	api.GET("/hub/categories", h.ListHubCategories)
+	api.GET("/hub/embeds/:id", h.GetHubEmbed)
+
 	// Playback
 	api.GET("/playback", requireAuth(), h.GetPlaybackPosition)
 	api.GET("/playback/batch", requireAuth(), h.GetBatchPlaybackPositions)
@@ -586,10 +603,11 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.DELETE("/preferences/saved_searches/:id", requireAuth(), h.DeleteSavedSearch)
 	api.POST("/preferences/saved_searches/:id/seen", requireAuth(), h.TouchSavedSearch)
 
-	// Media moderation report submission (design plan §5.3). Authenticated
-	// users attach their userID; guests are recorded by IP only. The admin
-	// moderation list lives under /api/admin/media/reports.
-	api.POST("/media/:id/report", requireAuth(), h.SubmitMediaReport)
+	// Media moderation report submission (design plan §5.3). Auth is optional:
+	// logged-in users attach their userID, guests are recorded by IP only — the
+	// handler special-cases the no-session path, so the route must not force auth.
+	// The admin moderation list lives under /api/admin/media/reports.
+	api.POST("/media/:id/report", h.SubmitMediaReport)
 
 	// User password change (protected)
 	api.POST("/auth/change-password", requireAuth(), h.ChangePassword)
@@ -816,6 +834,15 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.POST("/scanner/approve/:id", h.ApproveContent)
 	adminGrp.POST("/scanner/reject/:id", h.RejectContent)
 
+	// Hub (BETA) import management — inherits adminAuth from adminGrp.
+	adminGrp.POST("/hub/import", h.AdminTriggerHubImport)
+	adminGrp.GET("/hub/status", h.AdminHubStatus)
+	adminGrp.POST("/hub/clear", h.AdminClearHub)
+	// Hub (BETA) playlist → downloader → library: auto-download a playlist's hub items.
+	adminGrp.POST("/hub/playlist-import", h.AdminHubPlaylistImportStart)
+	adminGrp.GET("/hub/playlist-import/status", h.AdminHubPlaylistImportStatus)
+	adminGrp.DELETE("/hub/playlist-import", h.AdminHubPlaylistImportCancel)
+
 	// Hugging Face visual classification (admin)
 	adminGrp.GET("/classify/status", h.ClassifyStatus)
 	adminGrp.GET("/classify/stats", h.ClassifyStats)
@@ -911,17 +938,6 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	adminGrp.DELETE("/extractor/items/:id", h.RemoveExtractorItem)
 	adminGrp.GET("/extractor/stats", h.GetExtractorStats)
 
-	// Crawler routes (admin)
-	adminGrp.GET("/crawler/targets", h.ListCrawlerTargets)
-	adminGrp.POST("/crawler/targets", h.AddCrawlerTarget)
-	adminGrp.DELETE("/crawler/targets/:id", h.RemoveCrawlerTarget)
-	adminGrp.POST("/crawler/targets/:id/crawl", h.CrawlTarget)
-	adminGrp.GET("/crawler/discoveries", h.ListCrawlerDiscoveries)
-	adminGrp.POST("/crawler/discoveries/:id/approve", h.ApproveCrawlerDiscovery)
-	adminGrp.POST("/crawler/discoveries/:id/ignore", h.IgnoreCrawlerDiscovery)
-	adminGrp.DELETE("/crawler/discoveries/:id", h.DeleteCrawlerDiscovery)
-	adminGrp.GET("/crawler/stats", h.GetCrawlerStats)
-
 	// Receiver (master-slave proxy) routes (admin)
 	adminGrp.GET("/receiver/settings", h.AdminReceiverGetSettings)
 	adminGrp.GET("/receiver/slaves", h.AdminReceiverListSlaves)
@@ -979,4 +995,41 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	web.RegisterStaticRoutes(r, h.EnrichSPAShell)
 
 	log.Info("Routes configured")
+}
+
+// hubEmbedFrameSrc / hubEmbedImgSrc are the extra CSP sources the Hub (BETA) tab
+// needs so the browser will render the external embed iframes and their CDN
+// thumbnails/preview frames. The catalog is entirely pornhub.com embeds served
+// from the phncdn.com image CDN.
+const (
+	hubEmbedFrameSrc = "https://*.pornhub.com"
+	hubEmbedImgSrc   = "https://*.phncdn.com https://*.pornhub.com"
+)
+
+// hubAugmentCSP adds the frame-src / img-src sources the Hub embed tab needs to
+// an existing Content-Security-Policy string. Safe no-op on an empty policy.
+func hubAugmentCSP(csp string) string {
+	if csp == "" {
+		return csp
+	}
+	csp = cspAddSources(csp, "frame-src", hubEmbedFrameSrc)
+	csp = cspAddSources(csp, "img-src", hubEmbedImgSrc)
+	return csp
+}
+
+// cspAddSources appends space-separated sources to a CSP directive. If the
+// directive is absent it is added, seeded with 'self'. Directives are separated
+// by ';'; this handles the common policy shapes this project ships.
+func cspAddSources(csp, directive, sources string) string {
+	parts := strings.Split(csp, ";")
+	for i, p := range parts {
+		fields := strings.Fields(p)
+		if len(fields) > 0 && fields[0] == directive {
+			parts[i] = strings.TrimRight(p, " ") + " " + sources
+			return strings.TrimSpace(strings.Join(parts, ";"))
+		}
+	}
+	// Directive not present — add it.
+	parts = append(parts, " "+directive+" 'self' "+sources)
+	return strings.TrimSpace(strings.Join(parts, ";"))
 }

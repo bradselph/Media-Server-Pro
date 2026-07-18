@@ -21,9 +21,6 @@ import type {
     CohortMetrics,
     ContentPerformanceItem,
     CookieConsentStatus,
-    CrawlerDiscovery,
-    CrawlerStats,
-    CrawlerTarget,
     DailyStats,
     DatabaseStatus,
     DataDeletionRequest,
@@ -123,6 +120,10 @@ import type {
     ValidationResult,
     ValidatorStats,
     WatchHistoryItem,
+    HubEmbed,
+    HubListResponse,
+    HubImportStatus,
+    PlaylistImportStatus,
 } from '~/types/api'
 import {normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch} from '~/utils/apiCompat'
 // Explicit import — bypasses Nuxt's #imports virtual module so this file does
@@ -634,7 +635,8 @@ export function useAdminApi() {
 
         // Config
         getConfig: () => api.get<Record<string, unknown>>(`${base}/config`),
-        updateConfig: (data: Record<string, unknown>) => api.put<void>(`${base}/config`, data),
+        updateConfig: (data: Record<string, unknown>) =>
+            api.put<{config: Record<string, unknown>; restart_required: boolean; rejected_keys?: string[]}>(`${base}/config`, data),
 
         // Backups
         listBackups: () => api.get<BackupEntry[]>(`${base}/backups/v2`),
@@ -773,26 +775,6 @@ export function useAdminApi() {
         getFollowerStatus: () => api.get<FollowerStatus>(`${base}/follower/status`),
         testFollowerPairing: (master_url: string, api_key: string) =>
             api.post<FollowerTestResult>(`${base}/follower/test`, {master_url, api_key}),
-
-        // Crawler
-        listCrawlerTargets: () => api.get<CrawlerTarget[]>(`${base}/crawler/targets`),
-        addCrawlerTarget: (url: string, name?: string) =>
-            api.post<CrawlerTarget>(`${base}/crawler/targets`, {url, name}),
-        deleteCrawlerTarget: (id: string) =>
-            api.delete<void>(`${base}/crawler/targets/${encodeURIComponent(id)}`),
-        startCrawl: (targetId: string) =>
-            api.post<void>(`${base}/crawler/targets/${encodeURIComponent(targetId)}/crawl`),
-        getCrawlerDiscoveries: (targetId?: string) => {
-            const qs = targetId ? `?target_id=${encodeURIComponent(targetId)}` : ''
-            return api.get<CrawlerDiscovery[]>(`${base}/crawler/discoveries${qs}`)
-        },
-        approveCrawlerDiscovery: (id: string) =>
-            api.post<CrawlerDiscovery>(`${base}/crawler/discoveries/${encodeURIComponent(id)}/approve`),
-        ignoreCrawlerDiscovery: (id: string) =>
-            api.post<void>(`${base}/crawler/discoveries/${encodeURIComponent(id)}/ignore`),
-        deleteCrawlerDiscovery: (id: string) =>
-            api.delete<void>(`${base}/crawler/discoveries/${encodeURIComponent(id)}`),
-        getCrawlerStats: () => api.get<CrawlerStats>(`${base}/crawler/stats`),
 
         // Extractor
         listExtractorItems: () => api.get<ExtractorItem[]>(`${base}/extractor/items`),
@@ -1150,5 +1132,41 @@ export function useCategoriesApi() {
             }),
         removeItem: (categoryId: string, mediaId: string) =>
             api.delete<void>(`${adminBase}/categories/${encodeURIComponent(categoryId)}/items/${encodeURIComponent(mediaId)}`),
+    }
+}
+
+// ── Hub (BETA external embed catalog) ────────────────────────────────────────
+export function useHubApi() {
+    const base = '/api/hub'
+    const adminBase = '/api/admin/hub'
+    return {
+        list: (params: { limit?: number; offset?: number; search?: string; category?: string; tag?: string; sort?: string } = {}) => {
+            const q = new URLSearchParams()
+            if (params.limit != null) q.set('limit', String(params.limit))
+            if (params.offset != null) q.set('offset', String(params.offset))
+            if (params.search) q.set('search', params.search)
+            if (params.category) q.set('category', params.category)
+            if (params.tag) q.set('tag', params.tag)
+            if (params.sort) q.set('sort', params.sort)
+            const qs = q.toString()
+            return api.get<HubListResponse>(`${base}/embeds${qs ? `?${qs}` : ''}`)
+        },
+        get: (id: string) => api.get<HubEmbed>(`${base}/embeds/${encodeURIComponent(id)}`),
+        categories: () => api.get<string[]>(`${base}/categories`),
+        // Admin — import runs from the server-configured hub.csv_path (config/env only).
+        triggerImport: () => api.post<{ status: string }>(`${adminBase}/import`, {}),
+        importStatus: () => api.get<HubImportStatus>(`${adminBase}/status`),
+        clear: () => api.post<{ status: string }>(`${adminBase}/clear`, {}),
+        // Admin — download every hub:<embed_id> item in a playlist via the downloader
+        // and import each into the library (mirrors the manual download-then-move flow).
+        startPlaylistImport: (playlistId: string, destination: string, opts: { subfolder?: string; relayId?: string } = {}) =>
+            api.post<PlaylistImportStatus>(`${adminBase}/playlist-import`, {
+                playlist_id: playlistId,
+                destination,
+                subfolder: opts.subfolder ?? '',
+                relay_id: opts.relayId ?? '',
+            }),
+        playlistImportStatus: () => api.get<PlaylistImportStatus>(`${adminBase}/playlist-import/status`),
+        cancelPlaylistImport: () => api.delete<PlaylistImportStatus>(`${adminBase}/playlist-import`),
     }
 }

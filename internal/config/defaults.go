@@ -32,8 +32,8 @@ func DefaultConfig() *Config {
 		Receiver:      defaultReceiverConfig(),
 		Follower:      defaultFollowerConfig(),
 		Extractor:     defaultExtractorConfig(),
-		Crawler:       defaultCrawlerConfig(),
 		MatureScanner: defaultMatureScannerConfig(),
+		Hub:           defaultHubConfig(),
 		HuggingFace:   defaultHuggingFaceConfig(),
 		Backup:        BackupConfig{RetentionCount: 10},
 		Logging:       defaultLoggingConfig(),
@@ -255,15 +255,6 @@ func defaultExtractorConfig() ExtractorConfig {
 	}
 }
 
-func defaultCrawlerConfig() CrawlerConfig {
-	return CrawlerConfig{
-		Enabled:        false,
-		BrowserEnabled: true,
-		MaxPages:       20,
-		CrawlTimeout:   5 * time.Minute,
-	}
-}
-
 func defaultMatureScannerConfig() MatureScannerConfig {
 	return MatureScannerConfig{
 		Enabled:                   true,
@@ -273,6 +264,21 @@ func defaultMatureScannerConfig() MatureScannerConfig {
 		HighConfidenceKeywords:    []string{"xxx", "porn", "adult", "nsfw"},
 		MediumConfidenceKeywords:  []string{"mature", "explicit", "18+"},
 		RequireReview:             true,
+	}
+}
+
+// defaultHubConfig returns defaults for the BETA Hub embed-catalog feature.
+// Disabled by default (opt-in beta). CSVPath is left empty so it must be set
+// explicitly (config.json/env) before an import can run.
+func defaultHubConfig() HubConfig {
+	return HubConfig{
+		Enabled:         false,
+		CSVPath:         "",
+		PageSize:        60,
+		ImportBatchSize: 2000,
+		SourceURL:       "",
+		WorkDir:         "",
+		AutoImport:      false,
 	}
 }
 
@@ -318,10 +324,10 @@ func defaultFeaturesConfig() FeaturesConfig {
 		EnableAutoDiscovery:      true,
 		EnableReceiver:           false,
 		EnableExtractor:          false,
-		EnableCrawler:            false,
 		EnableDuplicateDetection: true,
 		EnableHuggingFace:        false,
 		EnableDownloader:         false,
+		EnableHub:                false, // BETA — opt-in only
 	}
 }
 

@@ -142,7 +142,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
  && BUILD_DATE="$(date -u +%Y-%m-%d)" \
  && go build -trimpath \
       -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}" \
-      -o /out/server ./cmd/server
+      -o /out/server ./cmd/server \
+ && go build -trimpath \
+      -ldflags="-s -w" \
+      -o /out/hub-import ./cmd/hub-import
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3: runtime image
@@ -199,9 +202,12 @@ RUN apt-get update \
 WORKDIR ${APP_HOME}
 
 COPY --from=backend /out/server /app/server
+# hub-import: standalone BETA Hub catalog importer, run via `docker exec`
+# (e.g. `docker exec <ctr> /app/hub-import -truncate`). Shares the server's config/env.
+COPY --from=backend /out/hub-import /app/hub-import
 COPY --chown=mediaserver:mediaserver docker/entrypoint.sh /app/entrypoint.sh
 
-RUN chmod +x /app/server /app/entrypoint.sh
+RUN chmod +x /app/server /app/hub-import /app/entrypoint.sh
 
 # NOTE: PID 1 starts as root so the entrypoint can chown /data subdirs to
 # the mediaserver user — named Docker volumes mount as root by default and

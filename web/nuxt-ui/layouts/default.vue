@@ -11,6 +11,10 @@ const serverVersion = ref('')
 const suggestionsApi = useSuggestionsApi()
 const newCount = ref(0)
 const {settings: serverSettings, load: loadServerSettings} = useServerSettings()
+// Hub (BETA) is 18+ only: show the tab only when the server has it enabled AND
+// the user may view mature content (logged in + permission + preference).
+const canViewMature = useCanViewMature()
+const hubVisible = computed(() => serverSettings.value?.hub?.enabled === true && canViewMature.value)
 // Resolves brand config at runtime — prefers window.APP_CONFIG (deploy-time
 // injection), falls back to Nuxt app.config, then hard-coded defaults.
 const brand = useBrandConfig()
@@ -195,6 +199,9 @@ const navLinks = computed(() => {
     // so the curated taxonomy is discoverable before they sign up.
     {label: 'Categories', to: '/categories', icon: 'i-lucide-library'},
   ]
+  if (hubVisible.value) {
+    links.push({label: 'Hub', to: '/hub', icon: 'i-lucide-clapperboard'})
+  }
   if (authStore.isLoggedIn) {
     links.push(
         {label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music'},
@@ -213,6 +220,9 @@ const mobileNavLinks = computed(() => {
     {label: 'Browse', to: '/browse', icon: 'i-lucide-tags'},
     {label: 'Categories', to: '/categories', icon: 'i-lucide-library'},
   ]
+  if (hubVisible.value) {
+    links.push({label: 'Hub', to: '/hub', icon: 'i-lucide-clapperboard'})
+  }
   if (authStore.isLoggedIn) {
     links.push(
         {label: 'Playlists', to: '/playlists', icon: 'i-lucide-list-music'},

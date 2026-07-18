@@ -36,7 +36,6 @@ func (m *Manager) validateLocked() []error {
 	errors = append(errors, m.validateBackup()...)
 	m.validateHuggingFace()
 	errors = append(errors, m.validateExtractor()...)
-	errors = append(errors, m.validateCrawler()...)
 	errors = append(errors, m.validateStorage()...)
 	m.warnCORS()
 	return errors
@@ -347,20 +346,6 @@ func (m *Manager) validateExtractor() []error {
 	}
 	if m.config.Extractor.ProxyTimeout < 0 {
 		errs = append(errs, fmt.Errorf("extractor proxy_timeout cannot be negative"))
-	}
-	return errs
-}
-
-func (m *Manager) validateCrawler() []error {
-	if !m.config.Crawler.Enabled {
-		return nil
-	}
-	var errs []error
-	if m.config.Crawler.MaxPages < 0 {
-		errs = append(errs, fmt.Errorf("crawler max_pages cannot be negative"))
-	}
-	if m.config.Crawler.CrawlTimeout < 0 {
-		errs = append(errs, fmt.Errorf("crawler crawl_timeout cannot be negative"))
 	}
 	return errs
 }

@@ -446,6 +446,11 @@ type PlaylistItem struct {
 	Title      string    `json:"title" db:"title" gorm:"size:500"`
 	Position   int       `json:"position" db:"position" gorm:"default:0"`
 	AddedAt    time.Time `json:"added_at" db:"added_at" gorm:"autoCreateTime"`
+	// Transient, response-only enrichment (never persisted — gorm:"-"). Filled by
+	// the handler for Hub items (media_id "hub:<embed_id>") so the frontend can
+	// render the external thumbnail and embed without a second lookup.
+	ThumbnailURL string `json:"thumbnail_url,omitempty" gorm:"-"`
+	EmbedURL     string `json:"embed_url,omitempty" gorm:"-"`
 }
 
 // TableName specifies the table name for GORM

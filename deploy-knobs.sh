@@ -96,6 +96,13 @@ KNOB_ORDER=(
   DOWNLOADER_URL
   DOWNLOADER_DOWNLOADS_DIR
   DOWNLOADER_INTERNAL_TOKEN
+  # ── Hub (BETA external embed catalog) ────────────────────────────
+  FEATURE_HUB
+  HUB_SOURCE_URL
+  HUB_AUTO_IMPORT
+  HUB_CSV_PATH
+  HUB_WORK_DIR
+  HUB_PAGE_SIZE
   # ── HiDrive WebDAV cold-tier mount ───────────────────────────────
   HIDRIVE_ENABLED
   HIDRIVE_WEBDAV_URL
@@ -382,6 +389,44 @@ KNOB_DEFAULT[DOWNLOADER_INTERNAL_TOKEN]=""
 KNOB_SCOPE[DOWNLOADER_INTERNAL_TOKEN]="runtime"
 KNOB_SECTION[DOWNLOADER_INTERNAL_TOKEN]="Downloader"
 KNOB_SENSITIVE[DOWNLOADER_INTERNAL_TOKEN]="true"
+
+# ── Hub (BETA external embed catalog) ────────────────────────────────
+# The Hub tab lets users browse an age-gated catalog of external video embeds
+# imported from a pipe-delimited CSV into the hub_embeds table. BETA + off by
+# default; fully inert when FEATURE_HUB=false (no routes, no tab, no DB use).
+# With a source URL + auto-import the server fetches the zipped catalog, streams
+# the CSV straight into the DB, and bulk-imports it once (only when empty). All
+# of these are seed values — after the first load config.json / the admin UI
+# (System Settings → Hub Catalog) owns them, same as the other feature flags.
+KNOB_DESCRIPTION[FEATURE_HUB]="Enable the BETA Hub external-embed catalog tab (true | false). Off = fully inert."
+KNOB_DEFAULT[FEATURE_HUB]="false"
+KNOB_SCOPE[FEATURE_HUB]="runtime"
+KNOB_SECTION[FEATURE_HUB]="Hub (BETA)"
+
+KNOB_DESCRIPTION[HUB_SOURCE_URL]="URL of a zipped catalog CSV to fetch + stream-import for a one-time bootstrap (http(s) only). Empty = no auto-fetch."
+KNOB_DEFAULT[HUB_SOURCE_URL]=""
+KNOB_SCOPE[HUB_SOURCE_URL]="runtime"
+KNOB_SECTION[HUB_SOURCE_URL]="Hub (BETA)"
+
+KNOB_DESCRIPTION[HUB_AUTO_IMPORT]="Bootstrap-import the catalog once at startup when hub_embeds is empty (true | false). Uses HUB_SOURCE_URL or HUB_CSV_PATH."
+KNOB_DEFAULT[HUB_AUTO_IMPORT]="false"
+KNOB_SCOPE[HUB_AUTO_IMPORT]="runtime"
+KNOB_SECTION[HUB_AUTO_IMPORT]="Hub (BETA)"
+
+KNOB_DESCRIPTION[HUB_CSV_PATH]="Absolute path to a pre-placed pipe-delimited catalog CSV on the server (alternative to HUB_SOURCE_URL). Empty = none."
+KNOB_DEFAULT[HUB_CSV_PATH]=""
+KNOB_SCOPE[HUB_CSV_PATH]="runtime"
+KNOB_SECTION[HUB_CSV_PATH]="Hub (BETA)"
+
+KNOB_DESCRIPTION[HUB_WORK_DIR]="Scratch dir for the catalog zip download (needs room for the archive). Empty = OS temp dir."
+KNOB_DEFAULT[HUB_WORK_DIR]=""
+KNOB_SCOPE[HUB_WORK_DIR]="runtime"
+KNOB_SECTION[HUB_WORK_DIR]="Hub (BETA)"
+
+KNOB_DESCRIPTION[HUB_PAGE_SIZE]="Embeds per page in the Hub browse grid."
+KNOB_DEFAULT[HUB_PAGE_SIZE]="60"
+KNOB_SCOPE[HUB_PAGE_SIZE]="runtime"
+KNOB_SECTION[HUB_PAGE_SIZE]="Hub (BETA)"
 
 # ── HiDrive WebDAV cold-tier mount ───────────────────────────────────
 # These knobs drive `./deploy.sh --setup-hidrive`, which mounts an IONOS
