@@ -545,8 +545,11 @@ var tableDefs = []struct {
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	// hub_embeds: BETA external embed catalog imported from a large pipe-delimited
 	// CSV. Standalone (no FKs to media/users) so enabling/disabling or clearing it
-	// never touches other tables. embed_id is UNIQUE so re-imports are idempotent
-	// (BatchInsert uses INSERT IGNORE). FULLTEXT index powers title/tag search.
+	// never touches other tables. embed_id is UNIQUE so re-imports are idempotent:
+	// the first import INSERT IGNOREs (BatchInsert) and a re-import into a populated
+	// catalog upserts (BatchUpsert / ON DUPLICATE KEY UPDATE) to add new rows and
+	// refresh changed ones in place — no duplicates, no full-table rewrite.
+	// FULLTEXT index powers title/tag search.
 	{"hub_embeds", `
 			CREATE TABLE IF NOT EXISTS hub_embeds (
 				id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

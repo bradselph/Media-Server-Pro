@@ -1174,7 +1174,12 @@ export interface HubImportStatus {
     phase?: 'downloading' | 'importing' | ''
     source?: string
     rows_read: number
+    // For a first import this is the new-row count; for an upsert re-import it is
+    // the affected-row count (insert=1, refresh=2), so the UI labels it "written".
     inserted: number
+    // True when the run refreshed existing rows in place (re-import) rather than
+    // INSERT IGNORE — added new rows AND updated changed ones, no duplicates.
+    upsert?: boolean
     total_rows: number
     path?: string
     error?: string

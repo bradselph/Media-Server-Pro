@@ -529,7 +529,16 @@ type ExtractorItemRecord struct {
 type HubEmbedRepository interface {
 	// BatchInsert idempotently inserts embeds (INSERT IGNORE on embed_id) and
 	// returns the number of rows actually inserted (0 for already-present rows).
+	// Use for the first/append-only import where existing rows must never change.
 	BatchInsert(ctx context.Context, embeds []*HubEmbedRecord) (int64, error)
+	// BatchUpsert inserts new embeds and refreshes existing ones (matched on the
+	// embed_id unique key) via INSERT ... ON DUPLICATE KEY UPDATE of the mutable
+	// content columns, preserving id and created_at. Use for re-imports of an
+	// updated catalog: it adds new rows and updates changed ones without ever
+	// creating a duplicate and WITHOUT a destructive TRUNCATE+reinsert — rows
+	// whose columns are unchanged are not rewritten. Returns the driver's
+	// affected-row count (insert = 1, real update = 2, unchanged = 0).
+	BatchUpsert(ctx context.Context, embeds []*HubEmbedRecord) (int64, error)
 	// List returns a page ordered by sort ("views"|"duration"|default newest) plus the total row count.
 	List(ctx context.Context, offset, limit int, sort string) ([]*HubEmbedRecord, int64, error)
 	// Search filters by full-text query and/or category/tag, returning a page + match count.

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- feat(hub): incremental re-import — a re-import into a populated catalog now
+  upserts (INSERT ... ON DUPLICATE KEY UPDATE on embed_id) to add new rows and
+  refresh changed ones in place, instead of a destructive TRUNCATE + full
+  reinsert. Never creates duplicates; unchanged rows are not rewritten. First
+  import (empty table) still INSERT IGNOREs. `hub-import` gains `-upsert`; the
+  admin import status labels the upsert row count as "written" not "inserted"
 - feat(analytics): track the Hub (BETA) external-embed catalog — new
   `hub_browse` / `hub_view` / `hub_search` / `hub_playlist_add` engagement
   events plus `hub_import` / `hub_clear` admin events, all recorded server-side

@@ -59,11 +59,19 @@ type Filter struct {
 
 // ImportState is the observable state of the CSV import job.
 type ImportState struct {
-	Running    bool      `json:"running"`
-	Phase      string    `json:"phase,omitempty"` // "downloading" | "importing" | ""
-	Source     string    `json:"source,omitempty"`
-	RowsRead   int64     `json:"rows_read"`
-	Inserted   int64     `json:"inserted"`
+	Running bool   `json:"running"`
+	Phase   string `json:"phase,omitempty"` // "downloading" | "importing" | ""
+	Source  string `json:"source,omitempty"`
+	RowsRead int64 `json:"rows_read"`
+	// Inserted is the number of rows written. For a first (append-only) import it
+	// is the new-row count; for an upsert re-import (see Upsert) it is the driver's
+	// affected-row count (insert = 1, refresh = 2, no-op = 0) and so is NOT a
+	// pure new-row count — the UI labels it "written" rather than "inserted" then.
+	Inserted int64 `json:"inserted"`
+	// Upsert is true when this run refreshes existing rows in place (re-import into
+	// a populated catalog) rather than INSERT IGNORE. Lets the UI label Inserted
+	// correctly and signals that the run added new rows AND updated changed ones.
+	Upsert     bool      `json:"upsert"`
 	TotalRows  int64     `json:"total_rows"`
 	Path       string    `json:"path,omitempty"`
 	Error      string    `json:"error,omitempty"`

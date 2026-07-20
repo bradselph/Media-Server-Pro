@@ -26,8 +26,42 @@ type fakeHubRepo struct {
 }
 
 func (f *fakeHubRepo) BatchInsert(_ context.Context, embeds []*repositories.HubEmbedRecord) (int64, error) {
-	f.records = append(f.records, embeds...)
-	return int64(len(embeds)), nil
+	// INSERT IGNORE semantics: only add embed_ids not already present.
+	var inserted int64
+	for _, e := range embeds {
+		if f.indexOf(e.EmbedID) >= 0 {
+			continue
+		}
+		f.records = append(f.records, e)
+		inserted++
+	}
+	return inserted, nil
+}
+
+// BatchUpsert mirrors the MySQL ON DUPLICATE KEY UPDATE path: refresh existing
+// rows in place (matched on embed_id) and append new ones, never duplicating.
+func (f *fakeHubRepo) BatchUpsert(_ context.Context, embeds []*repositories.HubEmbedRecord) (int64, error) {
+	var affected int64
+	for _, e := range embeds {
+		if i := f.indexOf(e.EmbedID); i >= 0 {
+			f.records[i] = e // refresh mutable fields
+			affected += 2    // MySQL counts a real update as 2 affected rows
+			continue
+		}
+		f.records = append(f.records, e)
+		affected++
+	}
+	return affected, nil
+}
+
+// indexOf returns the position of the record with embedID, or -1.
+func (f *fakeHubRepo) indexOf(embedID string) int {
+	for i, r := range f.records {
+		if r.EmbedID == embedID {
+			return i
+		}
+	}
+	return -1
 }
 func (f *fakeHubRepo) List(_ context.Context, _, _ int, sort string) ([]*repositories.HubEmbedRecord, int64, error) {
 	f.listCalled = true
@@ -194,6 +228,79 @@ func TestImportCSVWithOptions_LimitAndDryRun(t *testing.T) {
 	}
 	if read != 3 || inserted != 0 || len(repo2.records) != 0 {
 		t.Errorf("dry-run: read=%d inserted=%d records=%d, want 3/0/0", read, inserted, len(repo2.records))
+	}
+}
+
+// TestImportReader_ReimportUpsertsWithoutDuplicates locks in the incremental
+// re-import contract: an updated catalog snapshot adds new rows and refreshes
+// changed ones in place, keyed on embed_id, so there is never a duplicate and no
+// destructive clear+reinsert is needed to "update a few new rows".
+func TestImportReader_ReimportUpsertsWithoutDuplicates(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeHubRepo{}
+
+	// First import (empty catalog → plain insert): two rows.
+	first := `<iframe src="https://www.pornhub.com/embed/aaa111"></iframe>|t|p|Old Title|x|C|Star|30|100|2|0` + "\n" +
+		`<iframe src="https://www.pornhub.com/embed/bbb222"></iframe>|t|p|Keep|x|C|Star|30|50|2|0` + "\n"
+	if _, inserted, err := ImportReader(ctx, strings.NewReader(first), repo, nil, ImportOptions{}); err != nil {
+		t.Fatalf("first import: %v", err)
+	} else if inserted != 2 || len(repo.records) != 2 {
+		t.Fatalf("first import inserted=%d records=%d, want 2/2", inserted, len(repo.records))
+	}
+
+	// Re-import (populated → upsert): aaa111 changed, ccc333 new, bbb222 unchanged.
+	second := `<iframe src="https://www.pornhub.com/embed/aaa111"></iframe>|t|p|New Title|x|C|Star|30|200|9|1` + "\n" +
+		`<iframe src="https://www.pornhub.com/embed/ccc333"></iframe>|t|p|Fresh|x|C|Star|30|5|1|0` + "\n" +
+		`<iframe src="https://www.pornhub.com/embed/bbb222"></iframe>|t|p|Keep|x|C|Star|30|50|2|0` + "\n"
+	if _, _, err := ImportReader(ctx, strings.NewReader(second), repo, nil, ImportOptions{Upsert: true}); err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+
+	// Three distinct rows total — no duplicate embed_ids.
+	if len(repo.records) != 3 {
+		t.Fatalf("after re-import records=%d, want 3 (no duplicates)", len(repo.records))
+	}
+	byID := map[string]*repositories.HubEmbedRecord{}
+	for _, r := range repo.records {
+		if _, dup := byID[r.EmbedID]; dup {
+			t.Fatalf("duplicate embed_id %q after re-import", r.EmbedID)
+		}
+		byID[r.EmbedID] = r
+	}
+	if got := byID["aaa111"]; got == nil || got.Title != "New Title" || got.Views != 200 {
+		t.Errorf("aaa111 not refreshed by upsert: %+v", got)
+	}
+	if byID["ccc333"] == nil {
+		t.Error("ccc333 (new row) not added on re-import")
+	}
+}
+
+// TestImportReader_InsertIgnoreLeavesExistingRows locks in that the default
+// (non-upsert) path never rewrites an existing embed_id: a re-import without
+// Upsert adds only genuinely new rows and leaves stored data untouched.
+func TestImportReader_InsertIgnoreLeavesExistingRows(t *testing.T) {
+	ctx := context.Background()
+	repo := &fakeHubRepo{}
+	first := `<iframe src="https://www.pornhub.com/embed/aaa111"></iframe>|t|p|Old Title|x|C|Star|30|100|2|0` + "\n"
+	if _, _, err := ImportReader(ctx, strings.NewReader(first), repo, nil, ImportOptions{}); err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+
+	// Same id with different data, plus a new id — default (INSERT IGNORE) path.
+	second := `<iframe src="https://www.pornhub.com/embed/aaa111"></iframe>|t|p|Changed|x|C|Star|30|999|9|9` + "\n" +
+		`<iframe src="https://www.pornhub.com/embed/ddd444"></iframe>|t|p|Newbie|x|C|Star|30|1|0|0` + "\n"
+	_, inserted, err := ImportReader(ctx, strings.NewReader(second), repo, nil, ImportOptions{})
+	if err != nil {
+		t.Fatalf("re-import: %v", err)
+	}
+	if inserted != 1 {
+		t.Errorf("insert-ignore inserted=%d, want 1 (only the new row)", inserted)
+	}
+	if len(repo.records) != 2 {
+		t.Fatalf("records=%d, want 2", len(repo.records))
+	}
+	if i := repo.indexOf("aaa111"); i < 0 || repo.records[i].Title != "Old Title" || repo.records[i].Views != 100 {
+		t.Errorf("aaa111 was modified by the INSERT IGNORE path: %+v", repo.records[i])
 	}
 }
 

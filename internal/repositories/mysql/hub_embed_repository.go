@@ -63,6 +63,52 @@ func (r *HubEmbedRepository) BatchInsert(ctx context.Context, embeds []*reposito
 	return result.RowsAffected, nil
 }
 
+// hubUpsertColumns are the mutable content columns refreshed by BatchUpsert on an
+// embed_id conflict. Deliberately excludes id (AUTO_INCREMENT primary key) and
+// created_at (the original import time) so a re-import preserves both — only the
+// catalog data that can change between snapshots is updated.
+var hubUpsertColumns = []string{
+	"title", "pornstar", "duration_secs", "views",
+	"rating_up", "rating_down", "tags", "categories",
+	"thumb_url", "preview_urls",
+}
+
+// BatchUpsert inserts new embeds and refreshes existing ones in one
+// INSERT ... ON DUPLICATE KEY UPDATE per batch. This is the re-import path: an
+// updated catalog snapshot adds its new rows and updates any changed rows in
+// place, so there is never a duplicate and never a destructive TRUNCATE+full
+// reinsert to "update a few new rows". Rows whose columns are identical to what's
+// stored are not rewritten (MySQL treats an ON DUPLICATE KEY UPDATE with no value
+// change as a no-op). Returns the driver's affected-row count (insert = 1, real
+// update = 2, unchanged = 0).
+//
+// On MySQL the UPDATE clause fires for ANY unique/PK collision — the statement has
+// no conflict-target syntax. hub_embeds has exactly one non-PK unique key
+// (embed_id) and BatchUpsert never sets id (AUTO_INCREMENT), so the only reachable
+// conflict today is on embed_id. The clause.OnConflict.Columns below is INERT on
+// MySQL (it only scopes the target on Postgres); it is kept for dialect
+// portability and to document intent. If a new unique index is ever added to
+// hub_embeds, revisit this — the update would fire for that collision too.
+func (r *HubEmbedRepository) BatchUpsert(ctx context.Context, embeds []*repositories.HubEmbedRecord) (int64, error) {
+	if len(embeds) == 0 {
+		return 0, nil
+	}
+	rows := make([]hubEmbedRow, len(embeds))
+	for i, e := range embeds {
+		rows[i] = hubRecordToRow(e)
+	}
+	const batchSize = 1000
+	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		// Inert on MySQL (Postgres-only conflict target); see the note above.
+		Columns:   []clause.Column{{Name: "embed_id"}},
+		DoUpdates: clause.AssignmentColumns(hubUpsertColumns),
+	}).CreateInBatches(rows, batchSize)
+	if result.Error != nil {
+		return 0, fmt.Errorf("failed to batch upsert hub embeds: %w", result.Error)
+	}
+	return result.RowsAffected, nil
+}
+
 // List returns a page ordered by sort plus the total row count.
 func (r *HubEmbedRepository) List(ctx context.Context, offset, limit int, sort string) ([]*repositories.HubEmbedRecord, int64, error) {
 	limit, offset = hubClampPage(limit, offset)

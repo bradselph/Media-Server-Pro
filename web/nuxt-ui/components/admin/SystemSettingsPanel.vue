@@ -482,8 +482,10 @@ onMounted(async () => {
               <span v-if="hubStatus?.running" class="inline-flex items-center gap-1.5 text-primary">
                 <UIcon name="i-lucide-loader-2" class="animate-spin size-4"/>
                 <template v-if="hubStatus?.phase === 'downloading'">Downloading archive…</template>
-                <template v-else>Importing… {{ (hubStatus?.rows_read ?? 0).toLocaleString() }} read,
-                  {{ (hubStatus?.inserted ?? 0).toLocaleString() }} inserted</template>
+                <template v-else>{{ hubStatus?.upsert ? 'Refreshing…' : 'Importing…' }}
+                  {{ (hubStatus?.rows_read ?? 0).toLocaleString() }} read,
+                  {{ (hubStatus?.inserted ?? 0).toLocaleString() }}
+                  {{ hubStatus?.upsert ? 'written' : 'inserted' }}</template>
               </span>
               <span v-else-if="hubStatus?.error" class="text-error text-xs">Last error: {{ hubStatus.error }}</span>
             </div>

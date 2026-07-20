@@ -1751,7 +1751,7 @@ const hasTrafficActivity = computed(() =>
         <div v-if="hubAnalytics.import" class="text-xs">
           <div v-if="hubAnalytics.import.running" class="flex items-center gap-2 text-warning">
             <UIcon name="i-lucide-loader-2" class="size-3.5 animate-spin"/>
-            <span>Import {{ hubAnalytics.import.phase || 'running' }} — {{ (hubAnalytics.import.inserted ?? 0).toLocaleString() }} inserted</span>
+            <span>{{ hubAnalytics.import.upsert ? 'Refresh' : 'Import' }} {{ hubAnalytics.import.phase || 'running' }} — {{ (hubAnalytics.import.inserted ?? 0).toLocaleString() }} {{ hubAnalytics.import.upsert ? 'written' : 'inserted' }}</span>
           </div>
           <div v-else-if="hubAnalytics.import.error" class="flex items-center gap-2 text-error">
             <UIcon name="i-lucide-alert-circle" class="size-3.5"/>

@@ -10,22 +10,26 @@
 //   - a local CSV file (-csv / hub.csv_path).
 //
 // It connects with the same config.json/env as the server, runs the schema
-// migration (so hub_embeds exists), and imports in idempotent batches
-// (INSERT IGNORE on embed_id) so re-running after an interruption is safe.
+// migration (so hub_embeds exists), and writes in idempotent batches keyed on
+// embed_id so re-running after an interruption is safe. A first import (empty
+// table) INSERT IGNOREs; a re-import into a populated catalog upserts (add new +
+// refresh changed rows) so an updated snapshot is applied incrementally without a
+// destructive clear+reinsert. Force upsert on any run with -upsert.
 //
 // Usage:
 //
 //	hub-import [-config config.json]
 //	           [-url URL | -csv PATH] [-work-dir DIR]
-//	           [-batch-size N] [-limit N] [-truncate] [-dry-run]
+//	           [-batch-size N] [-limit N] [-truncate] [-upsert] [-dry-run]
 //	           [-keep-zip] [-refresh]
 //
 // Examples:
 //
 //	hub-import                                  # source from config/env (URL or CSV)
 //	hub-import -url https://host/catalog.zip    # download, unzip-stream, import
-//	hub-import -csv /data/hub.csv               # local file
+//	hub-import -csv /data/hub.csv               # local file; upserts if non-empty
 //	hub-import -truncate                        # clear the table, then full re-import
+//	hub-import -upsert                          # force refresh of existing rows
 //	hub-import -limit 5000 -dry-run             # parse first 5k rows, write nothing
 package main
 
@@ -55,6 +59,7 @@ func main() {
 		batchSize  = flag.Int("batch-size", 0, "Rows per insert batch (0 = config/default)")
 		limit      = flag.Int64("limit", 0, "Import at most N rows (0 = all; useful for testing)")
 		truncate   = flag.Bool("truncate", false, "Clear the hub_embeds table before importing")
+		upsertFlag = flag.Bool("upsert", false, "Refresh existing rows (INSERT ... ON DUPLICATE KEY UPDATE) instead of INSERT IGNORE; auto-enabled when the catalog is non-empty")
 		dryRun     = flag.Bool("dry-run", false, "Parse and count only; do not write to the database")
 		keepZip    = flag.Bool("keep-zip", false, "Keep the downloaded archive after import (default: delete)")
 		refresh    = flag.Bool("refresh", false, "Re-download even if the archive already exists")
@@ -122,7 +127,16 @@ func main() {
 	if bs <= 0 {
 		bs = hubCfg.ImportBatchSize
 	}
-	opts := hub.ImportOptions{BatchSize: bs, Limit: *limit, DryRun: *dryRun}
+	// Upsert (refresh existing + add new, no duplicates, no full rewrite) when the
+	// operator asks for it OR when the catalog already has rows — a re-import of an
+	// updated snapshot. A -truncate above empties the table first, so that path
+	// falls back to a plain insert with an exact new-row count. Skipped for dry-run.
+	existing, _ := repo.CountAll(ctx)
+	upsert := (*upsertFlag || existing > 0) && !*dryRun
+	if upsert {
+		log.Info("Catalog has %d rows — importing with upsert (add new + refresh changed) instead of INSERT IGNORE", existing)
+	}
+	opts := hub.ImportOptions{BatchSize: bs, Limit: *limit, DryRun: *dryRun, Upsert: upsert}
 
 	var read, inserted int64
 	var importErr error
@@ -161,20 +175,28 @@ func main() {
 	}
 
 	total, _ := repo.CountAll(context.Background())
-	log.Info("Import finished in %s: %d rows read, %d newly inserted, %d total in catalog",
-		time.Since(start).Round(time.Second), read, inserted, total)
+	// With upsert, `inserted` is the driver's affected-row count (insert=1,
+	// update=2), not a pure new-row count — label it accordingly.
+	writeLabel := "newly inserted"
+	if upsert {
+		writeLabel = "rows written (new + refreshed)"
+	}
+	log.Info("Import finished in %s: %d rows read, %d %s, %d total in catalog",
+		time.Since(start).Round(time.Second), read, inserted, writeLabel, total)
 }
 
 // importFail handles a failed/cancelled import: a clean 130 on cancellation
 // (resumable), otherwise a fatal error.
 func importFail(log *logger.Logger, ctx context.Context, start time.Time, read, inserted int64, err error) {
 	elapsed := time.Since(start).Round(time.Second)
+	// "written" (not "inserted") because the upsert path reports affected rows, not
+	// a pure new-row count — same reason the success line is relabeled for upsert.
 	if ctx.Err() != nil {
-		log.Warn("Cancelled after %s: %d read, %d inserted (re-run to resume — safe/idempotent)", elapsed, read, inserted)
+		log.Warn("Cancelled after %s: %d read, %d written (re-run to resume — safe/idempotent)", elapsed, read, inserted)
 		logger.Shutdown()
 		os.Exit(130)
 	}
-	fatal(log, "import failed after %s (%d read, %d inserted): %v", elapsed, read, inserted, err)
+	fatal(log, "import failed after %s (%d read, %d written): %v", elapsed, read, inserted, err)
 }
 
 func firstNonEmpty(vals ...string) string {
