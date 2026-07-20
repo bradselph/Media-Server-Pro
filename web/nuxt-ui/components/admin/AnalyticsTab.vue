@@ -15,6 +15,7 @@ import type {
   FailedLoginEntry,
   Funnel,
   HourlyHeatmapCell,
+  HubAnalytics,
   IPSummary,
   MediaDetail,
   MetricForecast,
@@ -261,7 +262,7 @@ const PANEL_KEYS = [
   'gaps', 'devices', 'retention', 'topUsers', 'topSearches',
   'errorPaths', 'failedLogins', 'recent', 'drill', 'topMedia',
   'contentPerf', 'daily', 'ips', 'diagnostics', 'forecast', 'rangeCompare',
-  'alerts',
+  'alerts', 'hub',
 ] as const
 type PanelKey = typeof PANEL_KEYS[number]
 const panelVisibility = ref<Record<PanelKey, boolean>>(
@@ -297,14 +298,14 @@ const PRESETS: Record<string, PanelKey[] | 'all'> = {
   All: 'all',
   Engagement: ['cohort', 'comparison', 'timeline', 'bandwidth', 'traffic',
     'distribution', 'retention', 'topUsers', 'topMedia', 'topSearches',
-    'contentPerf', 'funnel', 'recent'],
+    'contentPerf', 'funnel', 'recent', 'hub'],
   Operations: ['comparison', 'timeline', 'bandwidth', 'errorsChart',
     'errorPaths', 'failedLogins', 'quality', 'devices',
     'ips', 'diagnostics', 'recent', 'drill'],
   Security: ['comparison', 'errorsChart', 'errorPaths', 'failedLogins',
     'ips', 'recent', 'drill'],
   Content: ['cohort', 'timeline', 'topMedia', 'contentPerf', 'topSearches',
-    'gaps', 'funnel', 'quality'],
+    'gaps', 'funnel', 'quality', 'hub'],
 }
 
 function applyPreset(name: string) {
@@ -387,6 +388,10 @@ async function openMediaDetail(mediaId: string, title: string) {
 }
 
 const summary = ref<AnalyticsSummary | null>(null)
+const hubAnalytics = ref<HubAnalytics | null>(null)
+// Hub (BETA) view sparkline series + its max, for the dedicated Hub panel.
+const hubViewsSeries = computed(() => hubAnalytics.value?.views_timeline ?? [])
+const hubViewsMax = computed(() => Math.max(1, ...hubViewsSeries.value.map(e => e.value ?? 0)))
 const daily = ref<DailyStats[]>([])
 const dailyMaxViews = computed(() => Math.max(1, ...daily.value.map(d => d.total_views ?? 0)))
 const dailyReversed = computed(() => [...daily.value].reverse())
@@ -553,6 +558,7 @@ async function load() {
       analyticsApi.getForecast('stream_starts', 14),                // 32
       analyticsApi.getForecast('bytes_served', 14),                 // 33
       analyticsApi.getForecast('server_errors', 14),                // 34
+      analyticsApi.getHubAnalytics(days4chart),                       // 35
     ])
     if (period.value !== capturedPeriod) return
     const r = (i: number) => results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<unknown>).value : null
@@ -595,6 +601,7 @@ async function load() {
     if (r(32) !== null) forecastStreams.value = r(32) as MetricForecast
     if (r(33) !== null) forecastBandwidth.value = r(33) as MetricForecast
     if (r(34) !== null) forecastErrors.value = r(34) as MetricForecast
+    if (r(35) !== null) hubAnalytics.value = r(35) as HubAnalytics
 
     const failed = results.filter(x => x.status === 'rejected')
     if (failed.length) notifyWarning(`${failed.length} analytics endpoint(s) failed`)
@@ -678,6 +685,8 @@ const EVENT_COLORS: Record<string, string> = {
   media_deleted: 'bg-red-300', api_token_create: 'bg-fuchsia-500',
   api_token_revoke: 'bg-fuchsia-300', admin_action: 'bg-slate-500',
   server_error: 'bg-red-600',
+  hub_browse: 'bg-amber-500', hub_view: 'bg-orange-500', hub_search: 'bg-yellow-500',
+  hub_playlist_add: 'bg-orange-400', hub_import: 'bg-amber-600', hub_clear: 'bg-amber-300',
 }
 
 // Today's traffic metrics — split into semantic groups so a busy day doesn't
@@ -745,6 +754,15 @@ const trafficGroups = computed<TrafficGroup[]>(() => {
         {label: 'Items Added', value: s.today_playlist_items_added ?? 0, icon: 'i-lucide-list', color: 'text-sky-400'},
         {label: 'HLS Starts', value: s.today_hls_starts ?? 0, icon: 'i-lucide-play-circle', color: 'text-teal-500'},
         {label: 'HLS Errors', value: s.today_hls_errors ?? 0, icon: 'i-lucide-x-circle', color: 'text-error'},
+      ],
+    },
+    {
+      title: 'Hub (BETA)',
+      items: [
+        {label: 'Hub Browses', value: s.today_hub_browses ?? 0, icon: 'i-lucide-layout-grid', color: 'text-warning'},
+        {label: 'Hub Plays', value: s.today_hub_views ?? 0, icon: 'i-lucide-play', color: 'text-teal-500'},
+        {label: 'Hub Searches', value: s.today_hub_searches ?? 0, icon: 'i-lucide-search', color: 'text-muted'},
+        {label: 'Hub Saves', value: s.today_hub_playlist_adds ?? 0, icon: 'i-lucide-list-plus', color: 'text-sky-400'},
       ],
     },
     {
@@ -1677,6 +1695,81 @@ const hasTrafficActivity = computed(() =>
               <UBadge color="primary" variant="subtle" size="xs">{{ formatBytes(ip.bytes_sent) }}</UBadge>
               <span class="text-muted shrink-0">{{ ip.events.toLocaleString() }}e</span>
             </div>
+          </div>
+        </div>
+      </div>
+    </UCard>
+
+    <!-- Hub (BETA) engagement — external-embed catalog. Only rendered when the
+         Hub feature is enabled (server returns enabled:false otherwise). Shows
+         catalog size, today's engagement, all-time totals, import state, and a
+         plays sparkline. -->
+    <UCard v-if="panelVisibility.hub && hubAnalytics?.enabled">
+      <template #header>
+        <div class="flex items-center gap-2 flex-wrap">
+          <UIcon name="i-lucide-clapperboard" class="size-4 text-warning"/>
+          <span class="font-semibold">Hub</span>
+          <UBadge color="warning" variant="subtle" size="xs">BETA</UBadge>
+          <div class="flex-1"/>
+          <UBadge color="neutral" variant="subtle" size="xs">
+            {{ (hubAnalytics.catalog_size ?? 0).toLocaleString() }} embeds
+          </UBadge>
+        </div>
+      </template>
+
+      <div class="space-y-4">
+        <!-- Today's engagement tiles -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div class="rounded-lg bg-muted/30 p-3">
+            <p class="text-[11px] uppercase tracking-wide text-muted">Browses today</p>
+            <p class="text-lg font-semibold">{{ (hubAnalytics.today?.browses ?? 0).toLocaleString() }}</p>
+          </div>
+          <div class="rounded-lg bg-muted/30 p-3">
+            <p class="text-[11px] uppercase tracking-wide text-muted">Plays today</p>
+            <p class="text-lg font-semibold text-teal-500">{{ (hubAnalytics.today?.views ?? 0).toLocaleString() }}</p>
+          </div>
+          <div class="rounded-lg bg-muted/30 p-3">
+            <p class="text-[11px] uppercase tracking-wide text-muted">Searches today</p>
+            <p class="text-lg font-semibold">{{ (hubAnalytics.today?.searches ?? 0).toLocaleString() }}</p>
+          </div>
+          <div class="rounded-lg bg-muted/30 p-3">
+            <p class="text-[11px] uppercase tracking-wide text-muted">Saves today</p>
+            <p class="text-lg font-semibold text-sky-400">{{ (hubAnalytics.today?.playlist_adds ?? 0).toLocaleString() }}</p>
+          </div>
+        </div>
+
+        <!-- All-time totals -->
+        <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+          <span>Total plays: <span class="font-medium text-default">{{ (hubAnalytics.totals?.views ?? 0).toLocaleString() }}</span></span>
+          <span>Browses: <span class="font-medium text-default">{{ (hubAnalytics.totals?.browses ?? 0).toLocaleString() }}</span></span>
+          <span>Searches: <span class="font-medium text-default">{{ (hubAnalytics.totals?.searches ?? 0).toLocaleString() }}</span></span>
+          <span>Saves: <span class="font-medium text-default">{{ (hubAnalytics.totals?.playlist_adds ?? 0).toLocaleString() }}</span></span>
+          <span>Imports: <span class="font-medium text-default">{{ (hubAnalytics.totals?.imports ?? 0).toLocaleString() }}</span></span>
+        </div>
+
+        <!-- Import status -->
+        <div v-if="hubAnalytics.import" class="text-xs">
+          <div v-if="hubAnalytics.import.running" class="flex items-center gap-2 text-warning">
+            <UIcon name="i-lucide-loader-2" class="size-3.5 animate-spin"/>
+            <span>Import {{ hubAnalytics.import.phase || 'running' }} — {{ (hubAnalytics.import.inserted ?? 0).toLocaleString() }} inserted</span>
+          </div>
+          <div v-else-if="hubAnalytics.import.error" class="flex items-center gap-2 text-error">
+            <UIcon name="i-lucide-alert-circle" class="size-3.5"/>
+            <span class="truncate">Last import failed: {{ hubAnalytics.import.error }}</span>
+          </div>
+        </div>
+
+        <!-- Plays sparkline -->
+        <div v-if="hubViewsSeries.length > 0">
+          <p class="text-[11px] uppercase tracking-wide text-muted mb-1">Plays over time</p>
+          <div class="flex items-end gap-0.5 h-16">
+            <div
+                v-for="(pt, i) in hubViewsSeries"
+                :key="i"
+                class="flex-1 bg-teal-500/70 rounded-sm min-h-px transition-all"
+                :style="{ height: `${Math.round((pt.value / hubViewsMax) * 100)}%` }"
+                :title="`${pt.date}: ${pt.value.toLocaleString()} plays`"
+            />
           </div>
         </div>
       </div>

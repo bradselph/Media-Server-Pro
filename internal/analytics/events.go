@@ -84,6 +84,20 @@ const (
 	EventBulkUpdate        = "bulk_update"
 	EventUserRoleChange    = "user_role_change"
 
+	// Hub (BETA) engagement events. The external-embed catalog was invisible to
+	// analytics until these were added. hub_browse / hub_view / hub_search /
+	// hub_playlist_add each map to a daily_stats column (see applySimpleCountToDaily)
+	// so the dashboard trends Hub usage exactly like it trends local media —
+	// tracked server-side (never client-submitted) so the counts can't be forged.
+	// hub_import / hub_clear are infrequent admin operations recorded as raw
+	// events only (no daily column), mirroring the library-curation events below.
+	EventHubBrowse      = "hub_browse"
+	EventHubView        = "hub_view"
+	EventHubSearch      = "hub_search"
+	EventHubPlaylistAdd = "hub_playlist_add"
+	EventHubImport      = "hub_import"
+	EventHubClear       = "hub_clear"
+
 	// Library curation events — recorded as raw events so they appear in the
 	// admin actions panel and audit log, but intentionally NOT mapped to a
 	// daily_stats column. Adding a column for every micro-action would balloon
@@ -260,7 +274,7 @@ func (m *Module) invalidateCachesFor(event models.AnalyticsEvent) {
 		m.cache.invalidate("funnel")
 	}
 	switch event.Type {
-	case "view", "playback", EventHLSStart:
+	case "view", "playback", EventHLSStart, EventHubView, EventHubBrowse:
 		m.cache.invalidate("devices")
 	}
 	switch event.Type {

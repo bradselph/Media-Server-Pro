@@ -367,6 +367,11 @@ export interface AnalyticsSummary {
     today_bulk_deletes?: number
     today_bulk_updates?: number
     today_user_role_changes?: number
+    // Hub (BETA) engagement — external-embed catalog activity.
+    today_hub_browses?: number
+    today_hub_views?: number
+    today_hub_searches?: number
+    today_hub_playlist_adds?: number
     top_viewed: TopMediaItem[]
     // Recent activity carries optional user/IP context so non-media events
     // (login, register, admin_action, etc.) render with attribution rather
@@ -756,6 +761,11 @@ export interface DailyStats {
     bulk_deletes: number
     bulk_updates: number
     user_role_changes: number
+    // Hub (BETA) engagement columns.
+    hub_browses: number
+    hub_views: number
+    hub_searches: number
+    hub_playlist_adds: number
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
@@ -1170,6 +1180,30 @@ export interface HubImportStatus {
     error?: string
     started_at?: string
     finished_at?: string
+}
+
+// Rollup for the admin dashboard's Hub (BETA) analytics panel. `enabled` is
+// false (and the rest omitted) when the Hub feature is turned off.
+export interface HubAnalytics {
+    enabled: boolean
+    catalog_size?: number
+    import?: HubImportStatus
+    today?: {
+        browses: number
+        views: number
+        searches: number
+        playlist_adds: number
+    }
+    totals?: {
+        browses: number
+        views: number
+        searches: number
+        playlist_adds: number
+        imports: number
+        clears: number
+    }
+    views_timeline?: MetricTimelineEntry[]
+    browses_timeline?: MetricTimelineEntry[]
 }
 
 // Admin: download a playlist's Hub items via the downloader and import to library.

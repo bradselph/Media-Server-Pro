@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+- feat(analytics): track the Hub (BETA) external-embed catalog — new
+  `hub_browse` / `hub_view` / `hub_search` / `hub_playlist_add` engagement
+  events plus `hub_import` / `hub_clear` admin events, all recorded server-side
+  (forge-resistant) and honoring private sessions
+- feat(analytics): daily-stats columns + summary projections for Hub engagement,
+  wired through the live counter, backfill, and reconstruction paths so trends,
+  forecasts, alerts, and CSV export cover Hub usage like local media
+- feat(analytics): admin dashboard Hub (BETA) panel + `GET /api/admin/analytics/hub`
+  rollup (catalog size, import state, today/total counters, plays sparkline)
+- feat(analytics): GA4 custom-event helper; the Hub grid records a play on open
+
+
 ## [1.25.0] - 2026-07-10 (minor)
 
 - Batch operations and optimize hot paths with caching

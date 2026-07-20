@@ -123,6 +123,7 @@ import type {
     HubEmbed,
     HubListResponse,
     HubImportStatus,
+    HubAnalytics,
     PlaylistImportStatus,
 } from '~/types/api'
 import {normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch} from '~/utils/apiCompat'
@@ -993,6 +994,11 @@ export function useAnalyticsApi() {
         // Per-media analytics drill-down.
         getMediaAnalytics: (mediaId: string, days?: number) =>
             api.get<MediaDetail>(`/api/admin/analytics/media/${encodeURIComponent(mediaId)}${buildQS({days: days || undefined})}`),
+        // Hub (BETA) engagement rollup: catalog size, import state, today/total
+        // counters, and view/browse sparkline timelines. Returns {enabled:false}
+        // when the Hub feature is off so the panel can hide itself.
+        getHubAnalytics: (days?: number) =>
+            api.get<HubAnalytics>(`/api/admin/analytics/hub${buildQS({days: days || undefined})}`),
         // Cohort retention grid (rows = signup weeks, cells = % retained).
         getRetention: (weeks?: number) =>
             api.get<RetentionGrid>(`/api/admin/analytics/retention${buildQS({weeks: weeks || undefined})}`),

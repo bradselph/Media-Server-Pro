@@ -609,6 +609,14 @@ type DailyStats struct {
 	BulkDeletes        int   `json:"bulk_deletes" gorm:"column:bulk_deletes;not null;default:0"`
 	BulkUpdates        int   `json:"bulk_updates" gorm:"column:bulk_updates;not null;default:0"`
 	UserRoleChanges    int   `json:"user_role_changes" gorm:"column:user_role_changes;not null;default:0"`
+
+	// Hub (BETA) external-embed catalog engagement. Added when the Hub feature
+	// graduated to a tracked surface; ensureSchemaColumns back-fills existing DBs
+	// and the CREATE TABLE above carries them for fresh installs.
+	HubBrowses      int `json:"hub_browses" gorm:"column:hub_browses;not null;default:0"`
+	HubViews        int `json:"hub_views" gorm:"column:hub_views;not null;default:0"`
+	HubSearches     int `json:"hub_searches" gorm:"column:hub_searches;not null;default:0"`
+	HubPlaylistAdds int `json:"hub_playlist_adds" gorm:"column:hub_playlist_adds;not null;default:0"`
 }
 
 // TableName specifies the table name for GORM.

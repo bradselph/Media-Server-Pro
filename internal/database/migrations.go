@@ -203,7 +203,11 @@ var tableDefs = []struct {
 			preferences_changes   INT     NOT NULL DEFAULT 0,
 			bulk_deletes          INT     NOT NULL DEFAULT 0,
 			bulk_updates          INT     NOT NULL DEFAULT 0,
-			user_role_changes     INT     NOT NULL DEFAULT 0
+			user_role_changes     INT     NOT NULL DEFAULT 0,
+			hub_browses           INT     NOT NULL DEFAULT 0,
+			hub_views             INT     NOT NULL DEFAULT 0,
+			hub_searches          INT     NOT NULL DEFAULT 0,
+			hub_playlist_adds     INT     NOT NULL DEFAULT 0
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"audit_log", `
 		CREATE TABLE IF NOT EXISTS audit_log (
@@ -700,6 +704,12 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"daily_stats", "bulk_deletes", "INT NOT NULL DEFAULT 0"},
 		{"daily_stats", "bulk_updates", "INT NOT NULL DEFAULT 0"},
 		{"daily_stats", "user_role_changes", "INT NOT NULL DEFAULT 0"},
+		// Hub (BETA) engagement columns — added when the Hub feature became a
+		// tracked analytics surface; existing databases auto-upgrade on startup.
+		{"daily_stats", "hub_browses", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "hub_views", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "hub_searches", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "hub_playlist_adds", "INT NOT NULL DEFAULT 0"},
 		// Tag-backed ("smart") categories: media carrying this tag are auto-members.
 		{"media_categories", "tag", "VARCHAR(255) NOT NULL DEFAULT ''"},
 	}
