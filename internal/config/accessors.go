@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -72,9 +73,12 @@ func setReflectFieldViaJSON(field reflect.Value, value any, path string) error {
 	// Start from the current field value so that struct fields not present in
 	// the incoming JSON retain their existing values instead of being zeroed.
 	target := reflect.New(field.Type())
-	existing, marshalErr := json.Marshal(field.Interface())
-	if marshalErr == nil {
-		_ = json.Unmarshal(existing, target.Interface())
+	existing, err := json.Marshal(field.Interface())
+	if err != nil {
+		return fmt.Errorf("type mismatch for config value: %s (marshal existing: %w)", path, err)
+	}
+	if err := json.Unmarshal(existing, target.Interface()); err != nil {
+		return fmt.Errorf("type mismatch for config value: %s (rehydrate existing: %w)", path, err)
 	}
 	if err := json.Unmarshal(data, target.Interface()); err != nil {
 		return fmt.Errorf("type mismatch for config value: %s (unmarshal: %w)", path, err)
@@ -105,9 +109,22 @@ func (m *Manager) SetValuesBatch(updates map[string]any) error {
 		return fmt.Errorf("failed to snapshot config: %w", snapErr)
 	}
 
-	for path, value := range updates {
+	// Apply to a detached candidate. A bad path/type must not leave the live
+	// config partially mutated just because an earlier map entry was valid.
+	var candidate Config
+	if err := json.Unmarshal(originalJSON, &candidate); err != nil {
+		m.mu.Unlock()
+		return fmt.Errorf("failed to clone config snapshot: %w", err)
+	}
+	paths := make([]string, 0, len(updates))
+	for path := range updates {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		value := updates[path]
 		parts := strings.Split(path, ".")
-		field, err := navigateToField(reflect.ValueOf(m.config).Elem(), parts, path)
+		field, err := navigateToField(reflect.ValueOf(&candidate).Elem(), parts, path)
 		if err != nil {
 			m.mu.Unlock()
 			return err
@@ -117,6 +134,7 @@ func (m *Manager) SetValuesBatch(updates map[string]any) error {
 			return err
 		}
 	}
+	m.config = &candidate
 	// Sync feature toggles BEFORE validation so module-level Enabled fields
 	// reflect the new config. This matches the ordering in Load() and Update().
 	m.syncFeatureToggles()

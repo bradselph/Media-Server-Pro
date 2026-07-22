@@ -23,7 +23,6 @@ import (
 	"media-server-pro/internal/runtimeenv"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
-	"media-server-pro/pkg/storage"
 )
 
 const (
@@ -78,7 +77,6 @@ type Module struct {
 	qualityLocks       sync.Map           // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
 	lazyWg             sync.Map           // Per-job WaitGroup for in-flight lazy transcodes (key: jobID → *sync.WaitGroup)
 	lazyCancels        sync.Map           // Per-job cancel funcs for in-flight lazy transcodes (key: jobID → *sync.Map of unique-key → context.CancelFunc)
-	store              storage.Backend    // optional storage backend for HLS cache I/O
 	mediaInputResolver MediaInputResolver // resolves S3 media keys to ffmpeg-readable URLs
 }
 
@@ -86,11 +84,6 @@ type Module struct {
 // form that ffmpeg can read — an absolute local path or a presigned HTTPS URL.
 type MediaInputResolver interface {
 	ResolveForFFmpeg(ctx context.Context, mediaPath string) (string, error)
-}
-
-// SetStore sets the storage backend for HLS cache I/O.
-func (m *Module) SetStore(s storage.Backend) {
-	m.store = s
 }
 
 // SetMediaInputResolver sets the resolver used to convert S3 media keys to

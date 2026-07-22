@@ -56,7 +56,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.23.22"
+	Version = "1.23.22"
 
 	BuildDate = "dev"
 )
@@ -173,11 +173,9 @@ func mapLogLevel(levelStr string) logger.Level {
 }
 
 type storageBackends struct {
-	videos     storage.Backend
-	music      storage.Backend
-	thumbnails storage.Backend
-	uploads    storage.Backend
-	hlsCache   storage.Backend
+	videos  storage.Backend
+	music   storage.Backend
+	uploads storage.Backend
 }
 
 func initStorage(cfg *config.Manager, log *logger.Logger) storageBackends {
@@ -225,27 +223,17 @@ func initStorage(cfg *config.Manager, log *logger.Logger) storageBackends {
 	if err != nil {
 		fatalExit(log, "Failed to create music storage backend: %v", err)
 	}
-	thumbnailStore, err := storageFactory.NewBackend(initCtx, "thumbnails", dirs.Thumbnails)
-	if err != nil {
-		fatalExit(log, "Failed to create thumbnail storage backend: %v", err)
-	}
 	uploadStore, err := storageFactory.NewBackend(initCtx, "uploads", dirs.Uploads)
 	if err != nil {
 		fatalExit(log, "Failed to create upload storage backend: %v", err)
 	}
-	hlsStore, err := storageFactory.NewBackend(initCtx, "hls_cache", dirs.HLSCache)
-	if err != nil {
-		fatalExit(log, "Failed to create HLS storage backend: %v", err)
-	}
 
-	log.Info("Storage backend: %s", cfg.Get().Storage.Backend)
+	log.Info("Primary media storage backend: %s (thumbnail and HLS derived caches remain local)", cfg.Get().Storage.Backend)
 
 	return storageBackends{
-		videos:     videoStore,
-		music:      musicStore,
-		thumbnails: thumbnailStore,
-		uploads:    uploadStore,
-		hlsCache:   hlsStore,
+		videos:  videoStore,
+		music:   musicStore,
+		uploads: uploadStore,
 	}
 }
 
@@ -344,7 +332,6 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 		fatalExit(log, "Failed to create thumbnails module")
 	}
 	m.thumbnails.SetMediaIDProvider(m.media)
-	m.thumbnails.SetStore(stores.thumbnails)
 	m.thumbnails.SetMediaInputResolver(m.media)
 	// Route generated BlurHashes through the media module so they land in the
 	// in-memory catalog immediately, not just the DB (which only reloads on scan).
@@ -354,9 +341,9 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 
 	// ── Non-critical modules ───────────────────────────────────────────────
 
-	// HLS (non-critical — falls back gracefully if ffmpeg unavailable, uses storage backend)
+	// HLS (non-critical — falls back gracefully if ffmpeg unavailable; its
+	// regenerable transcode cache intentionally remains on local disk)
 	m.hls = hls.NewModule(cfg, m.database)
-	m.hls.SetStore(stores.hlsCache)
 	m.hls.SetMediaInputResolver(m.media)
 	mustRegister(srv, m.hls)
 

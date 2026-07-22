@@ -421,7 +421,9 @@ var tableDefs = []struct {
 			INDEX idx_dup_fingerprint (fingerprint),
 			INDEX idx_dup_status (status),
 			INDEX idx_dup_pair_ab (item_a_id, item_b_id),
-			INDEX idx_dup_pair_ba (item_b_id, item_a_id)
+			INDEX idx_dup_pair_ba (item_b_id, item_a_id),
+			INDEX idx_dup_removed_a (status, item_a_slave_id, item_a_id),
+			INDEX idx_dup_removed_b (status, item_b_slave_id, item_b_id)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"user_favorites", `
 		CREATE TABLE IF NOT EXISTS user_favorites (
@@ -756,6 +758,13 @@ func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 			"ALTER TABLE receiver_duplicates ADD INDEX idx_dup_pair_ab (item_a_id, item_b_id)"},
 		{"receiver_duplicates", "idx_dup_pair_ba",
 			"ALTER TABLE receiver_duplicates ADD INDEX idx_dup_pair_ba (item_b_id, item_a_id)"},
+		// Catalog ingestion consults resolved records as exact, durable item
+		// tombstones. These indexes keep both remove_a and remove_b side probes
+		// bounded as resolution history grows.
+		{"receiver_duplicates", "idx_dup_removed_a",
+			"ALTER TABLE receiver_duplicates ADD INDEX idx_dup_removed_a (status, item_a_slave_id, item_a_id)"},
+		{"receiver_duplicates", "idx_dup_removed_b",
+			"ALTER TABLE receiver_duplicates ADD INDEX idx_dup_removed_b (status, item_b_slave_id, item_b_id)"},
 		// Curated-category membership is keyed by (category_id, media_id) PK, which
 		// serves category->members lookups but NOT member->categories ones. The
 		// media_id index powers per-view category attribution (RecordView), the

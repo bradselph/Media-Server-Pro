@@ -37,6 +37,7 @@ const playlistCacheTTL = 5 * time.Minute
 
 const (
 	defaultHTTPClientTimeout = 30 * time.Second // used for both httpClient and per-request timeouts
+	persistenceTimeout       = 10 * time.Second // bounds synchronous extractor repository mutations
 	errItemNotFound          = "item not found: %s"
 	hlsMasterSuffix          = ":master"
 	mimeHLS                  = "application/vnd.apple.mpegurl"
@@ -54,8 +55,9 @@ type Module struct {
 	repo       repositories.ExtractorItemRepository
 	httpClient *http.Client
 
-	mu    sync.RWMutex
-	items map[string]*ExtractedItem // keyed by item ID
+	mu      sync.RWMutex
+	items   map[string]*ExtractedItem // keyed by item ID
+	writeMu sync.Mutex                // serializes DB-first item mutations
 
 	// HLS playlist cache: maps "itemID:qualityIdx" -> parsed playlist info
 	playlistCache sync.Map
@@ -210,14 +212,6 @@ func (m *Module) setHealth(healthy bool, msg string) {
 func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, error) {
 	cfg := m.config.Get()
 
-	// Check max items limit
-	m.mu.RLock()
-	count := len(m.items)
-	m.mu.RUnlock()
-	if cfg.Extractor.MaxItems > 0 && count >= cfg.Extractor.MaxItems {
-		return nil, fmt.Errorf("maximum extracted items limit reached (%d)", cfg.Extractor.MaxItems)
-	}
-
 	// Validate that the URL looks like an M3U8 playlist
 	u, err := url.Parse(streamURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
@@ -227,21 +221,23 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 	// Generate deterministic ID from stream URL
 	id := generateID(streamURL)
 
+	// Fail fast when the library is already full, but allow re-adding the same
+	// deterministic URL ID because that updates an existing row rather than
+	// consuming another slot. The authoritative capacity check is repeated under
+	// writeMu after the remote reachability check.
+	m.mu.RLock()
+	_, exists := m.items[id]
+	count := len(m.items)
+	m.mu.RUnlock()
+	if cfg.Extractor.MaxItems > 0 && count >= cfg.Extractor.MaxItems && !exists {
+		return nil, fmt.Errorf("maximum extracted items limit reached (%d)", cfg.Extractor.MaxItems)
+	}
+
 	if title == "" {
 		title = path.Base(u.Path)
 		if title == "" || title == "/" || title == "." {
 			title = u.Host
 		}
-	}
-
-	now := time.Now()
-	item := &ExtractedItem{
-		ID:        id,
-		Title:     title,
-		StreamURL: streamURL,
-		Status:    "active",
-		AddedBy:   addedBy,
-		CreatedAt: now,
 	}
 
 	// SSRF: validate URL before fetching (SafeHTTPTransport also blocks private IPs at connect time)
@@ -255,33 +251,49 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 		return nil, fmt.Errorf("URL unreachable: %w", err)
 	}
 
-	// Acquire the write lock to enforce the max-items limit and add the item
-	// atomically.  Checking the count under RLock and adding under Lock would
-	// be a TOCTOU race: two concurrent callers could both pass the check and
-	// both add, exceeding the configured limit.
+	// Remote I/O is complete. Serialize the authoritative capacity check,
+	// persistence, and cache publication so concurrent adds/removes cannot exceed
+	// the limit or diverge from the DB.
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+
+	m.mu.RLock()
+	existing, exists := m.items[id]
+	count = len(m.items)
+	m.mu.RUnlock()
+	if cfg.Extractor.MaxItems > 0 && count >= cfg.Extractor.MaxItems && !exists {
+		return nil, fmt.Errorf("maximum extracted items limit reached (%d)", cfg.Extractor.MaxItems)
+	}
+
+	item := &ExtractedItem{
+		ID:        id,
+		Title:     title,
+		StreamURL: streamURL,
+		Status:    "active",
+		AddedBy:   addedBy,
+		CreatedAt: time.Now(),
+	}
+	if exists {
+		// The repository intentionally excludes these immutable columns from its
+		// conflict update. Preserve the same values in the replacement cache item
+		// so runtime state matches what a restart will load from MySQL.
+		item.AddedBy = existing.AddedBy
+		item.CreatedAt = existing.CreatedAt
+	}
+
 	// Persist to DB before inserting into memory so a DB failure does not leave
 	// a ghost item in the in-memory index.
 	if m.repo != nil {
 		rec := itemToRecord(item)
-		if err := m.repo.Upsert(context.Background(), rec); err != nil {
+		dbCtx, cancel := context.WithTimeout(context.Background(), persistenceTimeout)
+		err := m.repo.Upsert(dbCtx, rec)
+		cancel()
+		if err != nil {
 			return nil, fmt.Errorf("failed to save extractor item to DB: %w", err)
 		}
 	}
 
 	m.mu.Lock()
-	if cfg.Extractor.MaxItems > 0 && len(m.items) >= cfg.Extractor.MaxItems {
-		// Don't count an update to an existing item against the limit.
-		if _, exists := m.items[id]; !exists {
-			m.mu.Unlock()
-			// Clean up the DB row that was already persisted to prevent orphan.
-			if m.repo != nil {
-				if delErr := m.repo.Delete(context.Background(), id); delErr != nil {
-					m.log.Warn("Failed to clean up orphan extractor DB row %s: %v", id, delErr)
-				}
-			}
-			return nil, fmt.Errorf("maximum extracted items limit reached (%d)", cfg.Extractor.MaxItems)
-		}
-	}
 	m.items[id] = item
 	m.mu.Unlock()
 
@@ -291,19 +303,27 @@ func (m *Module) AddItem(streamURL, title, addedBy string) (*ExtractedItem, erro
 
 // RemoveItem removes a proxied stream from the library.
 func (m *Module) RemoveItem(id string) error {
-	m.mu.Lock()
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+
+	m.mu.RLock()
 	_, existed := m.items[id]
-	delete(m.items, id)
-	m.mu.Unlock()
+	m.mu.RUnlock()
 	if !existed {
 		return ErrNotFound
 	}
 
 	if m.repo != nil {
-		if err := m.repo.Delete(context.Background(), id); err != nil {
-			m.log.Warn("Failed to delete extractor item from DB: %v", err)
+		dbCtx, cancel := context.WithTimeout(context.Background(), persistenceTimeout)
+		err := m.repo.Delete(dbCtx, id)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("failed to delete extractor item from DB: %w", err)
 		}
 	}
+	m.mu.Lock()
+	delete(m.items, id)
+	m.mu.Unlock()
 
 	// Clear any cached playlists for this item (master + all variant qualities)
 	prefix := id + ":"

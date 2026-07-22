@@ -14,7 +14,7 @@ import (
 // sensitiveConfigKeywords are substrings whose presence in a config key marks
 // its value for redaction in the audit log. Package-level so the recursive
 // redactor does not reallocate it per call.
-var sensitiveConfigKeywords = []string{"password", "token", "api_key", "secret", "deploy_key"}
+var sensitiveConfigKeywords = []string{"password", "token", "api_key", "access_key", "secret", "deploy_key"}
 
 // redactSensitiveConfigKeys returns a copy of m with sensitive values replaced by "[REDACTED]".
 // Prevents database credentials, API keys, tokens, etc. from being stored in the audit log.

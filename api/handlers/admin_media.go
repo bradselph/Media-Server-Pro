@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -242,14 +243,21 @@ func parseAdminUpdateBody(rawBody map[string]json.RawMessage) (req adminUpdateRe
 	// applyMetadataField to receive the wrong type (string instead of bool).
 	reservedMetadataKeys := map[string]bool{
 		"tags": true, "is_mature": true, "mature_content": true,
-		"mature_score": true, "category": true, "views": true,
+		"mature_score": true, "mature_reason": true, "mature_reasons": true,
+		"category": true, "views": true,
 		// System-derived fields with first-class Metadata struct columns: blocked
 		// here so a metadata-map key can't bleed into CustomMeta and leave the real
 		// field (Duration from ffprobe, BlurHash from the dedicated generator) stale.
+		"id": true, "path": true, "name": true, "type": true, "size": true,
+		"width": true, "height": true, "bitrate": true, "codec": true,
+		"container": true, "thumbnail_url": true, "date_added": true,
+		"date_modified": true, "last_played": true, "user_rating": true,
+		"metadata": true, "stable_id": true, "content_fingerprint": true,
+		"playback_positions": true, "custom_meta": true, "probe_mod_time": true,
 		"duration": true, "blur_hash": true,
 	}
 	for k, v := range reqMetadata {
-		if !reservedMetadataKeys[k] {
+		if !reservedMetadataKeys[strings.ToLower(k)] {
 			updates[k] = v
 		}
 	}
@@ -273,7 +281,13 @@ func (h *Handler) applyAdminRenameIfNeeded(path, reqName string) (string, error)
 	// Re-key path-keyed suggestion view history (ratings + watch history)
 	// so it follows the renamed file instead of being orphaned.
 	if h.suggestions != nil {
-		h.suggestions.RenameMediaPath(path, newPath)
+		if renameErr := h.suggestions.RenameMediaPath(path, newPath); renameErr != nil {
+			// The suggestion repository transaction failed after the filesystem/media
+			// rename. Restore the original media path so the API does not report
+			// success with durable watch history still keyed to a missing file.
+			_, rollbackErr := h.media.RenameMedia(newPath, currentName)
+			return "", errors.Join(renameErr, rollbackErr)
+		}
 	}
 	// Re-key the mature-scanner review queue too, or a pending review becomes
 	// unresolvable (approve/reject looks up by the current path).
@@ -423,7 +437,9 @@ func (h *Handler) cleanupDeletedMedia(ctx context.Context, mediaID, mediaPath st
 	}
 	// Purge suggestion view history rows keyed by media path (no FK cascade on that column).
 	if h.suggestions != nil {
-		h.suggestions.PurgeMediaPath(mediaPath)
+		if err := h.suggestions.PurgeMediaPath(mediaPath); err != nil {
+			h.log.Warn("Failed to cleanup suggestion history for deleted media %s: %v", mediaID, err)
+		}
 	}
 
 	// Remove path-keyed rows that have no FK cascade to media_metadata.

@@ -62,28 +62,31 @@ const errHashPasswordFmt = "failed to hash password: %w" //nolint:gosec // G101 
 
 // Module implements the authentication module
 type Module struct {
-	config           *config.Manager
-	log              *logger.Logger
-	dbModule         *database.Module
-	userRepo         repositories.UserRepository
-	sessionRepo      repositories.SessionRepository
-	favoriteRepo     repositories.FavoriteRepository
-	tokenRepo        repositories.APITokenRepository
-	savedSearchRepo  repositories.SavedSearchRepository
-	users            map[string]*models.User    // username → user
-	usersByID        map[string]*models.User    // id → user; secondary index to avoid O(N) GetUserByID scans
-	sessions         map[string]*models.Session // Kept for backward compatibility and caching
-	adminSessions    map[string]*models.AdminSession
-	loginAttempts    map[string]*loginAttempt
-	usersMu          sync.RWMutex
-	sessionsMu       sync.RWMutex
-	attemptsMu       sync.RWMutex
-	lastAdminMu      sync.Mutex    // serializes demote/disable admin to prevent TOCTOU
-	sessionUpdateSem chan struct{} // bounds concurrent background session-persist goroutines
-	dataDir          string
-	healthy          bool
-	healthMsg        string
-	healthMu         sync.RWMutex
+	config             *config.Manager
+	log                *logger.Logger
+	dbModule           *database.Module
+	userRepo           repositories.UserRepository
+	sessionRepo        repositories.SessionRepository
+	favoriteRepo       repositories.FavoriteRepository
+	tokenRepo          repositories.APITokenRepository
+	savedSearchRepo    repositories.SavedSearchRepository
+	users              map[string]*models.User    // username → user
+	usersByID          map[string]*models.User    // id → user; secondary index to avoid O(N) GetUserByID scans
+	sessions           map[string]*models.Session // Kept for backward compatibility and caching
+	adminSessions      map[string]*models.AdminSession
+	loginAttempts      map[string]*loginAttempt
+	usersMu            sync.RWMutex
+	userWriteMu        sync.Mutex   // serializes user/config credential DB+cache commits
+	authFlowMu         sync.RWMutex // blocks session admission across credential/role revocation
+	sessionsMu         sync.RWMutex
+	sessionLifecycleMu sync.Mutex // orders load/create/validate/delete with bulk revocation
+	attemptsMu         sync.RWMutex
+	lastAdminMu        sync.Mutex    // serializes demote/disable admin to prevent TOCTOU
+	sessionUpdateSem   chan struct{} // bounds concurrent background session-persist goroutines
+	dataDir            string
+	healthy            bool
+	healthMsg          string
+	healthMu           sync.RWMutex
 }
 
 type loginAttempt struct {

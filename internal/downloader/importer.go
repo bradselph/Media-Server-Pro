@@ -43,7 +43,10 @@ func probeWritable(dir string) bool {
 		return false
 	}
 	name := f.Name()
-	_ = f.Close()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(name)
+		return false
+	}
 	_ = os.Remove(name)
 	return true
 }
@@ -364,7 +367,10 @@ func claimDestPath(destDir, filename string) (string, error) {
 		}
 		f, err := os.OpenFile(candidate, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if err == nil {
-			_ = f.Close()
+			if closeErr := f.Close(); closeErr != nil {
+				_ = os.Remove(candidate)
+				return "", fmt.Errorf("close destination placeholder: %w", closeErr)
+			}
 			return candidate, nil
 		}
 		if !os.IsExist(err) {

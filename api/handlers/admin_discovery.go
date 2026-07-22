@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -96,11 +98,28 @@ func (h *Handler) ApplyDiscoverySuggestion(c *gin.Context) {
 	// item stays indexed under the old (now-missing) path until the next full
 	// scan. Mirrors the post-rename fix-ups in applyAdminRenameIfNeeded.
 	if newPath != "" && newPath != absPath {
+		if h.suggestions != nil {
+			if renameErr := h.suggestions.RenameMediaPath(absPath, newPath); renameErr != nil {
+				// ApplySuggestion already moved the local file. Roll it back while
+				// the media/scanner indexes are still keyed to absPath. If the OS
+				// rollback itself fails, reindex to the actual new location so the
+				// live catalog remains usable and report both failures.
+				rollbackErr := os.Rename(newPath, absPath)
+				if rollbackErr != nil {
+					if h.media != nil {
+						h.media.ReindexMovedFile(absPath, newPath)
+					}
+					if h.scanner != nil {
+						h.scanner.RenamePath(absPath, newPath)
+					}
+				}
+				h.log.Error("Failed to keep suggestion history wired after discovery move: %v", errors.Join(renameErr, rollbackErr))
+				writeError(c, http.StatusInternalServerError, errInternalServer)
+				return
+			}
+		}
 		if h.media != nil {
 			h.media.ReindexMovedFile(absPath, newPath)
-		}
-		if h.suggestions != nil {
-			h.suggestions.RenameMediaPath(absPath, newPath)
 		}
 		if h.scanner != nil {
 			h.scanner.RenamePath(absPath, newPath)

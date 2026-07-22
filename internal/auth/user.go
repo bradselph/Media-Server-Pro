@@ -5,6 +5,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -25,6 +26,8 @@ type CreateUserParams struct {
 
 // CreateUser creates a new user.
 func (m *Module) CreateUser(ctx context.Context, p CreateUserParams) (*models.User, error) {
+	m.userWriteMu.Lock()
+	defer m.userWriteMu.Unlock()
 	if len(p.Password) < 8 {
 		return nil, fmt.Errorf("password must be at least 8 characters")
 	}
@@ -200,6 +203,10 @@ func (m *Module) getUserFromCacheByID(id string) *models.User {
 // UpdateUser updates a user's information.
 // When demoting or disabling an admin, holds lastAdminMu to prevent TOCTOU (concurrent requests disabling all admins).
 func (m *Module) UpdateUser(ctx context.Context, username string, updates map[string]any) error {
+	m.authFlowMu.Lock()
+	defer m.authFlowMu.Unlock()
+	m.userWriteMu.Lock()
+	defer m.userWriteMu.Unlock()
 	user, err := m.GetUser(ctx, username)
 	if err != nil {
 		return err
@@ -246,6 +253,8 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 
 	wasEnabled := user.Enabled
 	oldRole := user.Role
+	oldPasswordHash := user.PasswordHash
+	oldSalt := user.Salt
 
 	user = new(*user)
 
@@ -256,27 +265,58 @@ func (m *Module) UpdateUser(ctx context.Context, username string, updates map[st
 	if err := m.userRepo.Update(ctx, user); err != nil {
 		return fmt.Errorf("failed to update user: %w", err)
 	}
+	passwordChanged := false
 	// Update() intentionally excludes password_hash/salt to prevent snapshot races.
 	// If the caller included a password update, persist it via the targeted method.
 	if pwStr, ok := updates["password"].(string); ok && pwStr != "" {
-		if err := m.userRepo.UpdatePasswordHash(ctx, username, user.PasswordHash, user.Salt); err != nil {
-			return fmt.Errorf("failed to update password: %w", err)
+		adminConfigHashBefore := ""
+		if m.config != nil {
+			adminConfigHashBefore = m.config.Get().Admin.PasswordHash
 		}
+		if err := m.syncAdminConfigPasswordIfNeeded(username, pwStr); err != nil {
+			user.PasswordHash = oldPasswordHash
+			user.Salt = oldSalt
+			m.cacheUser(user)
+			evictErr := m.evictSessionsAfterUpdate(ctx, evictSessionUpdateParams{
+				Username: username, WasEnabled: wasEnabled, OldRole: oldRole, User: user,
+			})
+			return errors.Join(fmt.Errorf("user fields updated but password credential sync failed: %w", err), evictErr)
+		}
+		adminConfigHashAfter := ""
+		if m.config != nil {
+			adminConfigHashAfter = m.config.Get().Admin.PasswordHash
+		}
+		if err := m.userRepo.UpdatePasswordHash(ctx, username, user.PasswordHash, user.Salt); err != nil {
+			rollbackErr := m.rollbackAdminConfigPassword(username, adminConfigHashAfter, adminConfigHashBefore)
+			user.PasswordHash = oldPasswordHash
+			user.Salt = oldSalt
+			m.cacheUser(user)
+			evictErr := m.evictSessionsAfterUpdate(ctx, evictSessionUpdateParams{
+				Username: username, WasEnabled: wasEnabled, OldRole: oldRole, User: user,
+			})
+			return errors.Join(fmt.Errorf("user fields updated but password update failed: %w", err), rollbackErr, evictErr)
+		}
+		passwordChanged = true
 	}
 
 	m.cacheUser(user)
-	m.evictSessionsAfterUpdate(ctx, evictSessionUpdateParams{
-		Username:   username,
-		WasEnabled: wasEnabled,
-		OldRole:    oldRole,
-		User:       user,
-	})
+	if err := m.evictSessionsAfterUpdate(ctx, evictSessionUpdateParams{
+		Username:        username,
+		WasEnabled:      wasEnabled,
+		OldRole:         oldRole,
+		PasswordChanged: passwordChanged,
+		User:            user,
+	}); err != nil {
+		return fmt.Errorf("user updated but session revocation failed: %w", err)
+	}
 	m.log.Info("Updated user: %s", username)
 	return nil
 }
 
 // AddStorageUsed atomically increments storage_used for a user (avoids read-then-write race).
 func (m *Module) AddStorageUsed(ctx context.Context, userID string, delta int64) error {
+	m.userWriteMu.Lock()
+	defer m.userWriteMu.Unlock()
 	if err := m.userRepo.IncrementStorageUsed(ctx, userID, delta); err != nil {
 		return err
 	}
@@ -298,21 +338,25 @@ func (m *Module) AddStorageUsed(ctx context.Context, userID string, delta int64)
 
 // evictSessionUpdateParams holds arguments for evictSessionsAfterUpdate (reduces function arity).
 type evictSessionUpdateParams struct {
-	Username   string
-	WasEnabled bool
-	OldRole    models.UserRole
-	User       *models.User
+	Username        string
+	WasEnabled      bool
+	OldRole         models.UserRole
+	PasswordChanged bool
+	User            *models.User
 }
 
 // evictSessionsAfterUpdate evicts sessions when the user was disabled or demoted from admin.
-func (m *Module) evictSessionsAfterUpdate(ctx context.Context, p evictSessionUpdateParams) {
+func (m *Module) evictSessionsAfterUpdate(ctx context.Context, p evictSessionUpdateParams) error {
+	if p.PasswordChanged {
+		return m.evictSessionsForUser(ctx, p.Username, "password changed by administrator")
+	}
 	if p.WasEnabled && !p.User.Enabled {
-		m.evictSessionsForUser(ctx, p.Username, "disabled")
-		return
+		return m.evictSessionsForUser(ctx, p.Username, "disabled")
 	}
 	if p.OldRole == models.RoleAdmin && p.User.Role != models.RoleAdmin {
-		m.evictSessionsForUser(ctx, p.Username, "role demoted from admin")
+		return m.evictSessionsForUser(ctx, p.Username, "role demoted from admin")
 	}
+	return nil
 }
 
 // maxUserMetadataSize is the maximum JSON-encoded size for User.Metadata (64 KB).
@@ -428,41 +472,72 @@ func (m *Module) applyPermissionsFromMap(user *models.User, perms any) {
 	}
 }
 
-func (m *Module) deleteSessionFromDB(ctx context.Context, sessionID string) {
-	if err := m.sessionRepo.Delete(ctx, sessionID); err != nil {
-		m.log.Warn("Failed to delete evicted session %s from DB: %v", sessionID, err)
-	}
-}
-
-func (m *Module) evictSessionsForUser(ctx context.Context, username, reason string) {
-	// Collect IDs under lock, then delete from DB outside the lock to avoid
-	// holding sessionsMu across synchronous DB round-trips.
-	m.sessionsMu.Lock()
-	var ids []string
+func (m *Module) evictSessionsForUser(ctx context.Context, username, reason string) error {
+	m.sessionLifecycleMu.Lock()
+	defer m.sessionLifecycleMu.Unlock()
+	// Persist revocation before evicting the cache. Failed rows stay cached so
+	// getOrLoadSession cannot immediately resurrect them from the repository.
+	ids := make(map[string]struct{})
+	m.sessionsMu.RLock()
 	for id, s := range m.sessions {
 		if s.Username == username {
-			delete(m.sessions, id)
-			ids = append(ids, id)
+			ids[id] = struct{}{}
 		}
 	}
 	for id, s := range m.adminSessions {
 		if s.Username == username {
-			delete(m.adminSessions, id)
-			ids = append(ids, id)
+			ids[id] = struct{}{}
 		}
 	}
-	m.sessionsMu.Unlock()
+	m.sessionsMu.RUnlock()
 
-	for _, id := range ids {
-		m.deleteSessionFromDB(ctx, id)
+	var errs []error
+	// Include sessions that exist only in the repository (for example after a
+	// restart or on another app instance), not just this process's cache.
+	m.usersMu.RLock()
+	user := m.users[username]
+	m.usersMu.RUnlock()
+	if m.sessionRepo != nil && user != nil && user.ID != "" {
+		persisted, err := m.sessionRepo.ListByUser(ctx, user.ID)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("list sessions for user: %w", err))
+		} else {
+			for _, session := range persisted {
+				if session != nil {
+					ids[session.ID] = struct{}{}
+				}
+			}
+		}
 	}
-	if len(ids) > 0 {
-		m.log.Info("Evicted %d sessions for user %s (%s)", len(ids), username, reason)
+
+	revoked := make([]string, 0, len(ids))
+	for id := range ids {
+		if m.sessionRepo != nil {
+			if err := m.sessionRepo.Delete(ctx, id); err != nil && !errors.Is(err, ErrSessionNotFound) {
+				errs = append(errs, fmt.Errorf("delete session %s: %w", id, err))
+				continue
+			}
+		}
+		revoked = append(revoked, id)
 	}
+	m.sessionsMu.Lock()
+	for _, id := range revoked {
+		delete(m.sessions, id)
+		delete(m.adminSessions, id)
+	}
+	m.sessionsMu.Unlock()
+	if len(revoked) > 0 {
+		m.log.Info("Evicted %d sessions for user %s (%s)", len(revoked), username, reason)
+	}
+	return errors.Join(errs...)
 }
 
 // DeleteUser removes a user and evicts all of their sessions (user + admin) from memory and DB.
 func (m *Module) DeleteUser(ctx context.Context, username string) error {
+	m.authFlowMu.Lock()
+	defer m.authFlowMu.Unlock()
+	m.userWriteMu.Lock()
+	defer m.userWriteMu.Unlock()
 	user, err := m.GetUser(ctx, username)
 	if err != nil {
 		return err
@@ -507,7 +582,9 @@ func (m *Module) DeleteUser(ctx context.Context, username string) error {
 	delete(m.users, username)
 	m.usersMu.Unlock()
 
-	m.evictSessionsForUser(ctx, username, "user deleted")
+	if err := m.evictSessionsForUser(ctx, username, "user deleted"); err != nil {
+		return fmt.Errorf("user deleted but session revocation failed: %w", err)
+	}
 
 	m.log.Info("Deleted user: %s", username)
 	return nil
@@ -539,6 +616,8 @@ func (m *Module) ListUsers(ctx context.Context) []*models.User {
 // UpdateUserPreferences updates and persists user preferences.
 // Works on a copy so a failed DB update does not leave the cache out of sync with the DB.
 func (m *Module) UpdateUserPreferences(ctx context.Context, username string, prefs models.UserPreferences) error {
+	m.userWriteMu.Lock()
+	defer m.userWriteMu.Unlock()
 	prefs.Validate()
 
 	m.usersMu.Lock()

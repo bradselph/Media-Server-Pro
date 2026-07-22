@@ -17,6 +17,10 @@ const errPasswordTooShort = "password must be at least 8 characters"
 // UpdatePassword updates a user's password. Works on a copy to avoid data races;
 // only updates the cache after successful DB persistence.
 func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newPassword string) error {
+	m.authFlowMu.Lock()
+	defer m.authFlowMu.Unlock()
+	m.userWriteMu.Lock()
+	defer m.userWriteMu.Unlock()
 	if len(newPassword) < 8 {
 		return errors.New(errPasswordTooShort)
 	}
@@ -42,6 +46,10 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 	}
 
 	newHash := string(hash)
+	adminConfigHashBefore := ""
+	if m.config != nil {
+		adminConfigHashBefore = m.config.Get().Admin.PasswordHash
+	}
 
 	// Hold write lock through CAS check + DB write + cache update to prevent
 	// concurrent password changes from racing on the DB write.
@@ -58,24 +66,30 @@ func (m *Module) UpdatePassword(ctx context.Context, username, oldPassword, newP
 
 	m.log.Info("Password updated for user: %s", username)
 
+	// For the built-in admin, update the config-backed login credential first.
+	// If the DB write then fails, roll the config hash back before returning.
+	if err := m.syncAdminConfigPasswordIfNeeded(username, newPassword); err != nil {
+		m.usersMu.Unlock()
+		return err
+	}
+	adminConfigHashAfter := ""
+	if m.config != nil {
+		adminConfigHashAfter = m.config.Get().Admin.PasswordHash
+	}
 	if err := m.userRepo.UpdatePasswordHash(ctx, username, newHash, salt); err != nil {
+		rollbackErr := m.rollbackAdminConfigPassword(username, adminConfigHashAfter, adminConfigHashBefore)
 		m.usersMu.Unlock()
 		m.log.Error("Failed to save user after password update: %v", err)
-		return fmt.Errorf("password update failed to persist: %w", err)
+		return errors.Join(fmt.Errorf("password update failed to persist: %w", err), rollbackErr)
 	}
 	user.PasswordHash = newHash
 	user.Salt = salt
 	m.usersMu.Unlock()
 
-	// Keep the built-in admin's login credential (cfg.Admin.PasswordHash) in sync,
-	// otherwise the change persists only to the unused DB record and login still
-	// requires the old password.
-	if err := m.syncAdminConfigPasswordIfNeeded(username, newPassword); err != nil {
-		return err
-	}
-
 	// Evict all sessions so the old password cannot be reused via an existing session.
-	m.evictSessionsForUser(ctx, username, "password changed by user")
+	if err := m.evictSessionsForUser(ctx, username, "password changed by user"); err != nil {
+		return fmt.Errorf("password updated but session revocation failed: %w", err)
+	}
 
 	return nil
 }
@@ -109,8 +123,38 @@ func (m *Module) syncAdminConfigPasswordIfNeeded(username, newPassword string) e
 	return nil
 }
 
+// rollbackAdminConfigPassword restores the config-backed built-in-admin hash
+// after a later DB password write fails. The compare-and-swap avoids clobbering
+// a concurrent successful password change.
+func (m *Module) rollbackAdminConfigPassword(username, expectedHash, oldHash string) error {
+	if m.config == nil || expectedHash == oldHash {
+		return nil
+	}
+	cfg := m.config.Get()
+	if cfg.Admin.Username == "" || username != cfg.Admin.Username {
+		return nil
+	}
+	restored := false
+	if err := m.config.Update(func(c *config.Config) {
+		if c.Admin.PasswordHash == expectedHash {
+			c.Admin.PasswordHash = oldHash
+			restored = true
+		}
+	}); err != nil {
+		return fmt.Errorf("failed to roll back admin login credential: %w", err)
+	}
+	if !restored && m.config.Get().Admin.PasswordHash != oldHash {
+		return fmt.Errorf("admin login credential changed concurrently; rollback skipped")
+	}
+	return nil
+}
+
 // SetPassword sets a user's password (admin action, no old password required)
 func (m *Module) SetPassword(ctx context.Context, username, newPassword string) error {
+	m.authFlowMu.Lock()
+	defer m.authFlowMu.Unlock()
+	m.userWriteMu.Lock()
+	defer m.userWriteMu.Unlock()
 	if len(newPassword) < 8 {
 		return errors.New(errPasswordTooShort)
 	}
@@ -130,6 +174,10 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 	}
 
 	newHash := string(hash)
+	adminConfigHashBefore := ""
+	if m.config != nil {
+		adminConfigHashBefore = m.config.Get().Admin.PasswordHash
+	}
 
 	// Hold write lock through DB write + cache update to prevent concurrent
 	// password changes from racing.
@@ -142,30 +190,38 @@ func (m *Module) SetPassword(ctx context.Context, username, newPassword string) 
 
 	m.log.Info("Password set for user: %s (admin action)", username)
 
+	if err := m.syncAdminConfigPasswordIfNeeded(username, newPassword); err != nil {
+		m.usersMu.Unlock()
+		return err
+	}
+	adminConfigHashAfter := ""
+	if m.config != nil {
+		adminConfigHashAfter = m.config.Get().Admin.PasswordHash
+	}
 	if err := m.userRepo.UpdatePasswordHash(ctx, username, newHash, salt); err != nil {
+		rollbackErr := m.rollbackAdminConfigPassword(username, adminConfigHashAfter, adminConfigHashBefore)
 		m.usersMu.Unlock()
 		m.log.Error("Failed to save user after password set: %v", err)
-		return fmt.Errorf("password set failed to persist: %w", err)
+		return errors.Join(fmt.Errorf("password set failed to persist: %w", err), rollbackErr)
 	}
 	user.PasswordHash = newHash
 	user.Salt = salt
 	m.usersMu.Unlock()
 
-	// Keep the built-in admin's login credential (cfg.Admin.PasswordHash) in sync
-	// (see UpdatePassword) so an admin-initiated reset of the admin account takes
-	// effect at login instead of only touching the unused DB record.
-	if err := m.syncAdminConfigPasswordIfNeeded(username, newPassword); err != nil {
-		return err
-	}
-
 	// Evict all sessions so the old password cannot be reused via an existing session.
-	m.evictSessionsForUser(ctx, username, "password reset by admin")
+	if err := m.evictSessionsForUser(ctx, username, "password reset by admin"); err != nil {
+		return fmt.Errorf("password updated but session revocation failed: %w", err)
+	}
 
 	return nil
 }
 
 // ChangeAdminPassword verifies the current admin password and replaces it with a new one.
 func (m *Module) ChangeAdminPassword(ctx context.Context, currentPassword, newPassword string) error {
+	m.authFlowMu.Lock()
+	defer m.authFlowMu.Unlock()
+	m.userWriteMu.Lock()
+	defer m.userWriteMu.Unlock()
 	cfg := m.config.Get()
 
 	if err := bcrypt.CompareHashAndPassword([]byte(cfg.Admin.PasswordHash), []byte(currentPassword)); err != nil {
@@ -176,9 +232,26 @@ func (m *Module) ChangeAdminPassword(ctx context.Context, currentPassword, newPa
 		return errors.New(errPasswordTooShort)
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	configHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("failed to hash new password: %w", err)
+	}
+	dbSalt := generateSalt()
+	dbHash, err := bcrypt.GenerateFromPassword([]byte(newPassword+dbSalt), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash new database password: %w", err)
+	}
+
+	// The built-in admin credential is intentionally represented twice: an
+	// unsalted bcrypt hash in config for the admin-login gate and a separately
+	// salted hash in the user row for the regular authentication path. Commit
+	// both while authFlowMu excludes new sessions, rolling config back if the
+	// targeted user-row write fails.
+	m.usersMu.RLock()
+	adminUser := m.users[cfg.Admin.Username]
+	m.usersMu.RUnlock()
+	if adminUser == nil {
+		return ErrUserNotFound
 	}
 
 	// Compare-and-swap under the config write lock (config.Update runs the
@@ -189,7 +262,7 @@ func (m *Module) ChangeAdminPassword(ctx context.Context, currentPassword, newPa
 	applied := false
 	if err := m.config.Update(func(c *config.Config) {
 		if c.Admin.PasswordHash == oldHash {
-			c.Admin.PasswordHash = string(hash)
+			c.Admin.PasswordHash = string(configHash)
 			applied = true
 		}
 	}); err != nil {
@@ -198,9 +271,21 @@ func (m *Module) ChangeAdminPassword(ctx context.Context, currentPassword, newPa
 	if !applied {
 		return ErrInvalidCredentials
 	}
+	if err := m.userRepo.UpdatePasswordHash(ctx, cfg.Admin.Username, string(dbHash), dbSalt); err != nil {
+		rollbackErr := m.rollbackAdminConfigPassword(cfg.Admin.Username, string(configHash), oldHash)
+		return errors.Join(fmt.Errorf("failed to persist admin user credential: %w", err), rollbackErr)
+	}
+	m.usersMu.Lock()
+	if current := m.users[cfg.Admin.Username]; current != nil {
+		current.PasswordHash = string(dbHash)
+		current.Salt = dbSalt
+	}
+	m.usersMu.Unlock()
 
 	// Evict all existing admin sessions so the old password can no longer be used.
-	m.evictSessionsForUser(ctx, cfg.Admin.Username, "admin password changed")
+	if err := m.evictSessionsForUser(ctx, cfg.Admin.Username, "admin password changed"); err != nil {
+		return fmt.Errorf("admin password changed but session revocation failed: %w", err)
+	}
 
 	m.log.Info("Admin password changed successfully")
 	return nil
