@@ -190,17 +190,26 @@ func (r *PlaylistRepository) AddItem(ctx context.Context, item *models.PlaylistI
 	return r.db.WithContext(ctx).Create(item).Error
 }
 
-// RemoveItem removes an item from a playlist by its ID.
-// Returns ErrPlaylistNotFound when no row matches itemID.
-func (r *PlaylistRepository) RemoveItem(ctx context.Context, itemID string) error {
-	result := r.db.WithContext(ctx).Delete(&models.PlaylistItem{}, sqlIDEq, itemID)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return repositories.ErrPlaylistNotFound
-	}
-	return nil
+// RemoveItem removes an item and normalizes every remaining position in the
+// same transaction. Rewriting the complete surviving snapshot also repairs
+// legacy rows created before AddItem persisted Position correctly.
+func (r *PlaylistRepository) RemoveItem(ctx context.Context, itemID string, remaining []models.PlaylistItem) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var item models.PlaylistItem
+		if err := tx.First(&item, sqlIDEq, itemID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return repositories.ErrPlaylistNotFound
+			}
+			return err
+		}
+		if err := tx.Delete(&models.PlaylistItem{}, sqlIDEq, itemID).Error; err != nil {
+			return err
+		}
+		if err := validatePlaylistItemSnapshot(tx, item.PlaylistID, remaining); err != nil {
+			return err
+		}
+		return updatePlaylistPositions(tx, remaining)
+	})
 }
 
 // UpdateItem updates an existing playlist item (e.g. its position after a reorder).
@@ -223,4 +232,78 @@ func (r *PlaylistRepository) UpdateItem(ctx context.Context, item *models.Playli
 		return repositories.ErrPlaylistNotFound
 	}
 	return nil
+}
+
+// ReorderItems updates every position in one transaction so a failed update
+// cannot leave the playlist half-reordered.
+func (r *PlaylistRepository) ReorderItems(ctx context.Context, items []models.PlaylistItem) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if len(items) == 0 {
+			return nil
+		}
+		if err := validatePlaylistItemSnapshot(tx, items[0].PlaylistID, items); err != nil {
+			return err
+		}
+		return updatePlaylistPositions(tx, items)
+	})
+}
+
+func validatePlaylistItemSnapshot(tx *gorm.DB, playlistID string, items []models.PlaylistItem) error {
+	for i := range items {
+		if items[i].PlaylistID != playlistID {
+			return fmt.Errorf("playlist item %s belongs to %s, not %s", items[i].ID, items[i].PlaylistID, playlistID)
+		}
+	}
+	var count int64
+	if err := tx.Model(&models.PlaylistItem{}).Where(sqlPlaylistIDEq, playlistID).Count(&count).Error; err != nil {
+		return err
+	}
+	if count != int64(len(items)) {
+		return repositories.ErrPlaylistNotFound
+	}
+	return nil
+}
+
+func updatePlaylistPositions(tx *gorm.DB, items []models.PlaylistItem) error {
+	for i := range items {
+		// MySQL reports changed rows (not matched rows) for this project's DSN,
+		// so RowsAffected==0 is valid when an item's position is unchanged. The
+		// snapshot count above is the authoritative existence check.
+		if err := tx.Model(&models.PlaylistItem{}).
+			Where("id = ? AND playlist_id = ?", items[i].ID, items[i].PlaylistID).
+			Update("position", items[i].Position).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ClearItems removes a playlist's items atomically.
+func (r *PlaylistRepository) ClearItems(ctx context.Context, playlistID string) error {
+	return r.db.WithContext(ctx).Where(sqlPlaylistIDEq, playlistID).Delete(&models.PlaylistItem{}).Error
+}
+
+// NormalizeItems makes the stored playlist exactly match items in one
+// transaction. It is used at startup to repair legacy duplicate/gapped
+// positions left by older cache-only position updates.
+func (r *PlaylistRepository) NormalizeItems(ctx context.Context, playlistID string, items []models.PlaylistItem) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if len(items) == 0 {
+			return tx.Where(sqlPlaylistIDEq, playlistID).Delete(&models.PlaylistItem{}).Error
+		}
+		ids := make([]string, len(items))
+		for i := range items {
+			if items[i].PlaylistID != playlistID {
+				return fmt.Errorf("playlist item %s belongs to %s, not %s", items[i].ID, items[i].PlaylistID, playlistID)
+			}
+			ids[i] = items[i].ID
+		}
+		if err := tx.Where(sqlPlaylistIDEq+" AND id NOT IN ?", playlistID, ids).Delete(&models.PlaylistItem{}).Error; err != nil {
+			return err
+		}
+		if err := validatePlaylistItemSnapshot(tx, playlistID, items); err != nil {
+			return err
+		}
+		return updatePlaylistPositions(tx, items)
+	})
 }

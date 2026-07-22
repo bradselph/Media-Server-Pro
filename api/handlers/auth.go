@@ -40,7 +40,7 @@ func (h *Handler) Login(c *gin.Context) {
 		IPAddress: c.ClientIP(),
 		UserAgent: c.Request.UserAgent(),
 	}
-	adminSession, adminErr := h.auth.AdminAuthenticate(c.Request.Context(), authReq)
+	adminSession, adminErr := h.auth.AuthenticateAdminSession(c.Request.Context(), authReq)
 
 	if adminErr != nil {
 		if errors.Is(adminErr, auth.ErrAccountLocked) {
@@ -56,26 +56,15 @@ func (h *Handler) Login(c *gin.Context) {
 			return
 		}
 	} else {
-		session, sessErr := h.auth.CreateSessionForUser(c.Request.Context(), &auth.CreateSessionParams{
-			Username:  adminSession.Username,
-			IPAddress: c.ClientIP(),
-			UserAgent: c.Request.UserAgent(),
-		})
-		if sessErr != nil {
-			h.log.Error("Failed to create admin session: %v", sessErr)
-			writeError(c, http.StatusInternalServerError, "Failed to create session")
-			return
-		}
-
-		setSessionCookie(c.Writer, c.Request, session)
-		h.trackServerEventAs(c, analytics.EventLogin, session.UserID, session.Username, session.ID,
-			map[string]any{"username": session.Username, "role": string(session.Role)})
+		setSessionCookie(c.Writer, c.Request, adminSession)
+		h.trackServerEventAs(c, analytics.EventLogin, adminSession.UserID, adminSession.Username, adminSession.ID,
+			map[string]any{"username": adminSession.Username, "role": string(adminSession.Role)})
 		writeSuccess(c, map[string]any{
-			"session_id": session.ID,
-			"username":   session.Username,
-			"role":       session.Role,
-			"is_admin":   session.Role == models.RoleAdmin,
-			"expires_at": session.ExpiresAt,
+			"session_id": adminSession.ID,
+			"username":   adminSession.Username,
+			"role":       adminSession.Role,
+			"is_admin":   adminSession.Role == models.RoleAdmin,
+			"expires_at": adminSession.ExpiresAt,
 		})
 		return
 	}
@@ -114,18 +103,22 @@ func (h *Handler) Login(c *gin.Context) {
 
 // Logout invalidates a session (both regular and admin)
 func (h *Handler) Logout(c *gin.Context) {
+	// Snapshot identity before revocation; successful Logout removes the cached
+	// session that middleware placed on the request context.
+	sess := getSession(c)
 	cookie, err := c.Request.Cookie("session_id")
 	if err == nil {
-		// Try regular session first; fall back to admin session
-		if logoutErr := h.auth.Logout(c.Request.Context(), cookie.Value); logoutErr != nil {
-			if adminErr := h.auth.LogoutAdmin(c.Request.Context(), cookie.Value); adminErr != nil {
-				h.log.Warn("Failed to logout session (regular: %v, admin: %v)", logoutErr, adminErr)
-			}
+		// Logout handles both regular and admin cache maps. On a repository outage,
+		// retain the cookie so the user can retry instead of claiming success while
+		// the server-side session remains valid.
+		if logoutErr := h.auth.Logout(c.Request.Context(), cookie.Value); logoutErr != nil && !errors.Is(logoutErr, auth.ErrSessionNotFound) {
+			h.log.Error("Failed to revoke session during logout: %v", logoutErr)
+			writeError(c, http.StatusServiceUnavailable, "Unable to log out right now; please retry")
+			return
 		}
 	}
 
 	// Track logout for traffic analytics (also mirrored into audit_log).
-	sess := getSession(c)
 	var uid, sid, uname string
 	if sess != nil {
 		uid = sess.UserID
@@ -577,26 +570,33 @@ func (h *Handler) ClearWatchHistory(c *gin.Context) {
 		} else {
 			mediaPath = item.Path
 		}
+		// Clear the position first. If persistence fails, keep the watch-history
+		// entry instead of claiming the item was fully removed while reads still
+		// return its resume position.
+		if err := h.media.ClearPlaybackPosition(c.Request.Context(), mediaPath, session.UserID); err != nil {
+			h.log.Error("%v", err)
+			writeError(c, http.StatusInternalServerError, errInternalServer)
+			return
+		}
 		if err := h.auth.RemoveWatchHistoryItem(c.Request.Context(), session.Username, mediaPath); err != nil {
 			h.log.Error("%v", err)
 			writeError(c, http.StatusInternalServerError, errInternalServer)
 			return
 		}
-		// Only clear local playback positions (receiver items have no server-side position store)
-		if item != nil {
-			h.media.ClearPlaybackPosition(c.Request.Context(), mediaPath, session.UserID)
-		}
 		writeSuccess(c, map[string]string{"status": "removed"})
 		return
 	}
 
+	if err := h.media.ClearAllPlaybackPositions(c.Request.Context(), session.UserID); err != nil {
+		h.log.Error("%v", err)
+		writeError(c, http.StatusInternalServerError, errInternalServer)
+		return
+	}
 	if err := h.auth.ClearWatchHistory(c.Request.Context(), session.Username); err != nil {
 		h.log.Error("%v", err)
 		writeError(c, http.StatusInternalServerError, errInternalServer)
 		return
 	}
-	h.media.ClearAllPlaybackPositions(session.UserID)
-
 	writeSuccess(c, map[string]string{"status": "cleared"})
 }
 

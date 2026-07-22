@@ -308,9 +308,8 @@ func (r *ReceiverMediaRepository) DeleteByID(ctx context.Context, id string) err
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete receiver media record: %w", result.Error)
 	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("receiver media record not found: %s", id)
-	}
+	// Deletion is idempotent: duplicate resolution may be retried after the item
+	// was removed but its status update failed.
 	return nil
 }
 

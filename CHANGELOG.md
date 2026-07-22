@@ -1,5 +1,32 @@
 # Changelog
 
+## [Unreleased]
+
+- fix(wiring): surface media reports under Moderation and analytics flush health
+  in the admin dashboard; make S3 credential edits explicit and redaction-aware
+- fix(storage): remove dead thumbnail/HLS S3 injection and document both as local,
+  regenerable derived caches while primary media and uploads retain S3 support
+- fix(consistency): make config batches, playlist reorders/clears, metadata edits,
+  session revocation, moderation, and extractor mutations failure-atomic
+- fix(frontend): prevent stale HLS, media-scan, and settings polls after unmount
+- feat(hub): incremental re-import — a re-import into a populated catalog now
+  upserts (INSERT ... ON DUPLICATE KEY UPDATE on embed_id) to add new rows and
+  refresh changed ones in place, instead of a destructive TRUNCATE + full
+  reinsert. Never creates duplicates; unchanged rows are not rewritten. First
+  import (empty table) still INSERT IGNOREs. `hub-import` gains `-upsert`; the
+  admin import status labels the upsert row count as "written" not "inserted"
+- feat(analytics): track the Hub (BETA) external-embed catalog — new
+  `hub_browse` / `hub_view` / `hub_search` / `hub_playlist_add` engagement
+  events plus `hub_import` / `hub_clear` admin events, all recorded server-side
+  (forge-resistant) and honoring private sessions
+- feat(analytics): daily-stats columns + summary projections for Hub engagement,
+  wired through the live counter, backfill, and reconstruction paths so trends,
+  forecasts, alerts, and CSV export cover Hub usage like local media
+- feat(analytics): admin dashboard Hub (BETA) panel + `GET /api/admin/analytics/hub`
+  rollup (catalog size, import state, today/total counters, plays sparkline)
+- feat(analytics): GA4 custom-event helper; the Hub grid records a play on open
+
+
 ## [1.25.0] - 2026-07-10 (minor)
 
 - Batch operations and optimize hot paths with caching

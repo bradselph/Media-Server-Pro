@@ -86,3 +86,13 @@ export function pageview(path?: string): void {
         page_title: document.title,
     })
 }
+
+// trackEvent emits a custom GA4 event (e.g. a Hub embed play, a downloader
+// start). No-op until gtag is loaded — which only happens in production after
+// the user grants analytics consent — so call sites never need to guard. The
+// authoritative, forge-resistant counts live in the server-side analytics
+// module; this is the client-side product-analytics mirror for GA4 funnels.
+export function trackEvent(name: string, params?: Record<string, unknown>): void {
+    if (typeof window === 'undefined' || !window.gtag) return
+    window.gtag('event', name, params ?? {})
+}

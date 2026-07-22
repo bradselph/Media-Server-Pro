@@ -5,11 +5,6 @@ and `ADOPTION-RECOMMENDATIONS.md` (both completed; most of their items shipped).
 items still requiring a decision, an asset, or an isolated larger change remain here. Numbers
 in parentheses are the original recommendation IDs.
 
-## Admin panel (Theme 5 — discoverability)
-
-- **Media Reports panel placement** — mounted under *Media ▸ All Media*; users expect it under
-  *Moderation*. Move it. *(awaiting product call)*
-
 ## Backend reliability (deferred)
 
 - **Deletion-request stuck-pending on partial failure** — in `AdminProcessDeletionRequest`
@@ -74,12 +69,6 @@ from that hunt already shipped.
   delete the dir mid-write. Add a per-job `lazyWg sync.Map` (Add/Done in
   lazyTranscodeQuality; Wait in DeleteJob before RemoveAll; delete in cleanup paths).
   Files: `internal/hls/{module,transcode,jobs,cleanup}.go`.
-- **UpdateMetadata commits in-memory before confirming the DB write** — a 500 is
-  returned to the client but the in-memory tags/is_mature/custom fields are already
-  mutated (and revert on restart). Restructure DB-first like UpdatePlaybackPosition:
-  snapshot under RLock, apply to a copy, Upsert, and only commit to the live maps +
-  syncMediaItem on success. Core function — needs careful test coverage.
-  File: `internal/media/management.go`.
 - **metadata-cleanup task is effectively a no-op** — the 24h task only calls Scan(),
   which replaces `m.media`/`m.mediaByID` but never prunes `m.metadata`/`fingerprintIndex`,
   so externally-deleted files' metadata (and DB rows via the post-scan save) accumulate
@@ -93,18 +82,6 @@ from that hunt already shipped.
 - **analytics memo thundering-herd** — concurrent cold-cache misses each run the full
   50k–100k-event aggregation. Wrap compute() in a `singleflight.Group` (adds
   `golang.org/x/sync`). Low sev. File: `internal/analytics/cache.go`.
-
-- **thumbnails & HLS ignore their injected S3 storage backend** (wiring finding RE-1,
-  deferred — "report only"). `main.go` calls `m.thumbnails.SetStore(stores.thumbnails)` /
-  `m.hls.SetStore(stores.hlsCache)`, but neither module ever reads `m.store` — all thumbnail
-  and HLS-cache I/O hard-codes local disk (`m.thumbnailDir`, hls cache dir), unlike
-  streaming/upload/media which branch on `!m.store.IsLocal()`. So with `storage.backend="s3"`
-  thumbnails/HLS still write to local disk: lost on ephemeral containers, and 404 across
-  multi-instance deployments. Fix is a product decision: either implement real S3 I/O
-  (mirror `internal/streaming/streaming.go`'s branching across generate/paths/cleanup/
-  preview/api + the serving path) OR drop the dead `SetStore` wiring + the misleading
-  "storage backend for I/O" doc comments so the code stops implying S3 support it lacks.
-  Files: `internal/thumbnails/*.go`, `internal/hls/module.go`, `cmd/server/main.go:338,350`.
 
 ## Launch prerequisites (not optional before public launch)
 

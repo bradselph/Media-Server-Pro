@@ -8,6 +8,7 @@ import type {
     AlertResult,
     AlertRule,
     AnalyticsEvent,
+    AnalyticsHealth,
     AnalyticsSummary,
     AnomalyReport,
     APIToken,
@@ -123,6 +124,7 @@ import type {
     HubEmbed,
     HubListResponse,
     HubImportStatus,
+    HubAnalytics,
     PlaylistImportStatus,
 } from '~/types/api'
 import {normalizeLogin, normalizePreferences, normalizeSession, toPreferencesPatch} from '~/utils/apiCompat'
@@ -255,11 +257,6 @@ export function useMediaApi() {
         getStats: () => api.get<MediaStats>('/api/media/stats'),
         getThumbnailUrl: (id: string) => `/thumbnail?id=${encodeURIComponent(id)}`,
         getThumbnailPreviews: (id: string) => api.get<ThumbnailPreviews>(`/api/thumbnails/previews?id=${encodeURIComponent(id)}`),
-        getThumbnailBatch: (ids: string[], width?: number) => {
-            const qs = new URLSearchParams({ids: ids.join(',')})
-            if (width) qs.set('w', String(width))
-            return api.get<{ thumbnails: Record<string, string> }>(`/api/thumbnails/batch?${qs}`)
-        },
         getStreamUrl: (id: string) => `/media?id=${encodeURIComponent(id)}`,
         getDownloadUrl: (id: string) => `/download?id=${encodeURIComponent(id)}`,
         getRemoteStreamUrl: (url: string, source?: string) => {
@@ -993,6 +990,11 @@ export function useAnalyticsApi() {
         // Per-media analytics drill-down.
         getMediaAnalytics: (mediaId: string, days?: number) =>
             api.get<MediaDetail>(`/api/admin/analytics/media/${encodeURIComponent(mediaId)}${buildQS({days: days || undefined})}`),
+        // Hub (BETA) engagement rollup: catalog size, import state, today/total
+        // counters, and view/browse sparkline timelines. Returns {enabled:false}
+        // when the Hub feature is off so the panel can hide itself.
+        getHubAnalytics: (days?: number) =>
+            api.get<HubAnalytics>(`/api/admin/analytics/hub${buildQS({days: days || undefined})}`),
         // Cohort retention grid (rows = signup weeks, cells = % retained).
         getRetention: (weeks?: number) =>
             api.get<RetentionGrid>(`/api/admin/analytics/retention${buildQS({weeks: weeks || undefined})}`),
@@ -1011,6 +1013,9 @@ export function useAnalyticsApi() {
         // Analytics module's internal diagnostics counters.
         getDiagnostics: () =>
             api.get<ModuleDiagnostics>('/api/admin/analytics/diagnostics'),
+        // Persistence-loop health (last flush and current lag).
+        getHealth: () =>
+            api.get<AnalyticsHealth>('/api/admin/analytics/health'),
         // Linear-trend projection of a single metric.
         getForecast: (metric: string, days?: number) =>
             api.get<MetricForecast>(`/api/admin/analytics/forecast${buildQS({metric, days: days || undefined})}`),

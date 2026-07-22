@@ -75,6 +75,8 @@ func (m *Module) cleanupExpiredSessionsCache() {
 
 // CleanupExpiredSessions removes expired sessions from storage and cache (called by the tasks-scheduler "session-cleanup" task).
 func (m *Module) CleanupExpiredSessions(ctx context.Context) error {
+	m.sessionLifecycleMu.Lock()
+	defer m.sessionLifecycleMu.Unlock()
 	if err := m.sessionRepo.DeleteExpired(ctx); err != nil {
 		return err
 	}
@@ -142,6 +144,8 @@ func (m *Module) removeExpiredSession(ctx context.Context, sessionID string) {
 
 // ValidateSession validates a session and returns the associated user
 func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models.Session, *models.User, error) {
+	m.sessionLifecycleMu.Lock()
+	defer m.sessionLifecycleMu.Unlock()
 	session, err := m.getOrLoadSession(ctx, sessionID)
 	if err != nil {
 		return nil, nil, err
@@ -188,28 +192,32 @@ func (m *Module) ValidateSession(ctx context.Context, sessionID string) (*models
 // Logout invalidates a session. Checks both m.sessions and m.adminSessions so
 // that admin sessions are always revocable regardless of which map they landed in.
 func (m *Module) Logout(ctx context.Context, sessionID string) error {
+	m.sessionLifecycleMu.Lock()
+	defer m.sessionLifecycleMu.Unlock()
 	var username string
 	var exists bool
 
-	m.sessionsMu.Lock()
+	m.sessionsMu.RLock()
 	if session, ok := m.sessions[sessionID]; ok {
 		username = session.Username
-		delete(m.sessions, sessionID)
 		exists = true
 	} else if adminSession, ok := m.adminSessions[sessionID]; ok {
 		username = adminSession.Username
-		delete(m.adminSessions, sessionID)
 		exists = true
 	}
-	m.sessionsMu.Unlock()
+	m.sessionsMu.RUnlock()
 
-	if err := m.sessionRepo.Delete(ctx, sessionID); err != nil {
-		m.log.Warn("Failed to delete session from repository: %v", err)
+	deleteErr := m.sessionRepo.Delete(ctx, sessionID)
+	if deleteErr != nil && !errors.Is(deleteErr, ErrSessionNotFound) {
+		return fmt.Errorf("failed to delete session from repository: %w", deleteErr)
 	}
-
-	if !exists {
+	if !exists && errors.Is(deleteErr, ErrSessionNotFound) {
 		return ErrSessionNotFound
 	}
+	m.sessionsMu.Lock()
+	delete(m.sessions, sessionID)
+	delete(m.adminSessions, sessionID)
+	m.sessionsMu.Unlock()
 	m.log.Info("User logged out: %s", username)
 	return nil
 }
@@ -217,32 +225,37 @@ func (m *Module) Logout(ctx context.Context, sessionID string) error {
 // LogoutAdmin invalidates an admin session. Checks both m.adminSessions and
 // m.sessions defensively so that sessions are always revocable.
 func (m *Module) LogoutAdmin(ctx context.Context, sessionID string) error {
+	m.sessionLifecycleMu.Lock()
+	defer m.sessionLifecycleMu.Unlock()
 	var username string
 	var exists bool
 
-	m.sessionsMu.Lock()
+	m.sessionsMu.RLock()
 	if session, ok := m.adminSessions[sessionID]; ok {
 		username = session.Username
-		delete(m.adminSessions, sessionID)
 		exists = true
 	} else if session, ok := m.sessions[sessionID]; ok {
 		username = session.Username
-		delete(m.sessions, sessionID)
 		exists = true
 	}
-	m.sessionsMu.Unlock()
+	m.sessionsMu.RUnlock()
 
 	// Always attempt DB delete before checking exists — mirrors Logout's pattern.
 	// Without this, a session present in DB but absent from the in-memory cache
 	// (e.g. after a server restart) would never be revoked and remain valid until
 	// natural expiry.
-	if err := m.sessionRepo.Delete(ctx, sessionID); err != nil {
-		m.log.Warn("Failed to delete admin session from repository: %v", err)
+	deleteErr := m.sessionRepo.Delete(ctx, sessionID)
+	if deleteErr != nil && !errors.Is(deleteErr, ErrSessionNotFound) {
+		return fmt.Errorf("failed to delete admin session from repository: %w", deleteErr)
 	}
 
-	if !exists {
+	if !exists && errors.Is(deleteErr, ErrSessionNotFound) {
 		return ErrSessionNotFound
 	}
+	m.sessionsMu.Lock()
+	delete(m.adminSessions, sessionID)
+	delete(m.sessions, sessionID)
+	m.sessionsMu.Unlock()
 
 	m.log.Info("Admin logged out: %s", username)
 	return nil
@@ -251,6 +264,8 @@ func (m *Module) LogoutAdmin(ctx context.Context, sessionID string) error {
 // CreateSessionForUser creates a new session for a user without password verification.
 // Uses getOrLoadUser to handle cache misses (e.g., during startup before full cache warm-up).
 func (m *Module) CreateSessionForUser(ctx context.Context, params *CreateSessionParams) (*models.Session, error) {
+	m.authFlowMu.RLock()
+	defer m.authFlowMu.RUnlock()
 	user, err := m.getOrLoadUser(ctx, params.Username)
 	if err != nil || user == nil {
 		return nil, ErrUserNotFound
@@ -266,6 +281,8 @@ func (m *Module) CreateSessionForUser(ctx context.Context, params *CreateSession
 // createSession creates a new session for a user.
 // Returns an error if the session cannot be persisted to the database.
 func (m *Module) createSession(ctx context.Context, user *models.User, req *sessionRequestContext) (*models.Session, error) {
+	m.sessionLifecycleMu.Lock()
+	defer m.sessionLifecycleMu.Unlock()
 	cfg := m.config.Get()
 
 	// Admin-role sessions use the (shorter) admin timeout when configured;

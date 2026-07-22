@@ -16,6 +16,7 @@ func TestRedactSensitiveConfigKeys(t *testing.T) {
 		in := map[string]any{
 			"DATABASE_PASSWORD": "hunter2", // "password"
 			"api_key":           "abc",     // "api_key"
+			"access_key_id":     "key-id",  // "access_key"
 			"Session_Token":     "t",       // "token"
 			"client_secret":     "s",       // "secret"
 			"deploy_key":        "dk",      // "deploy_key"

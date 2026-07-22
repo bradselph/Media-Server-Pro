@@ -4,6 +4,7 @@ package scanner
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -162,6 +163,10 @@ var (
 	compiledMedConf  []*compiledKeyword
 )
 
+// ErrReviewItemNotFound identifies a stale/invalid moderation decision without
+// conflating it with repository or cross-module commit failures.
+var ErrReviewItemNotFound = errors.New("item not found in review queue")
+
 type compiledKeyword struct {
 	raw     string
 	pattern *regexp.Regexp
@@ -245,6 +250,7 @@ type MatureScanner struct {
 	results     map[string]*ScanResult
 	reviewQueue map[string]*models.MatureReviewItem
 	mu          sync.RWMutex
+	mutationMu  sync.Mutex // serializes DB-first review/manual-flag commits
 	dataDir     string
 	tempDir     string                             // for HF frame extraction
 	hfClientPtr atomic.Pointer[huggingface.Client] // thread-safe; nil if HuggingFace not configured
@@ -270,6 +276,7 @@ type ScanResult struct {
 	ReviewDecision  string     `json:"review_decision,omitempty"`
 	HighConfMatches []string   `json:"high_conf_matches,omitempty"`
 	MedConfMatches  []string   `json:"med_conf_matches,omitempty"`
+	dirty           bool       // repository save failed/skipped; retry before treating this as a durable cache hit
 }
 
 // NewMatureScanner creates a new mature content scanner
@@ -384,12 +391,31 @@ func (s *MatureScanner) scanFileWithCache(path string, preloaded map[string]*rep
 	if result == nil {
 		return nil
 	}
+	if fromCache {
+		return cloneScanResult(result)
+	}
+
+	// Only serialize the persistence/publication phase, not expensive content
+	// analysis. Reviews, rekeys, deletes, and fresh scan commits for the same
+	// module can no longer overwrite one another between DB and cache updates.
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+	s.mu.RLock()
+	existing := cloneScanResult(s.results[path])
+	s.mu.RUnlock()
+	if existing != nil && (existing.ReviewedBy != "" || existing.ReviewDecision != "" || existing.ScannedAt.After(result.ScannedAt)) {
+		return existing
+	}
 
 	// Save to repository for persistent cache only on a fresh scan (skip if repo is
 	// down to avoid log spam). Cache hits are byte-identical to what is already stored.
-	if !fromCache && s.scanRepo != nil && !s.repoDown.Load() {
+	persisted := s.scanRepo == nil
+	if s.scanRepo != nil && !s.repoDown.Load() {
 		repoResult := s.convertScannerToRepo(result)
-		if err := s.scanRepo.Save(context.Background(), repoResult); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		err := s.scanRepo.Save(ctx, repoResult)
+		cancel()
+		if err != nil {
 			errCount := s.repoErrors.Add(1)
 			if errCount <= 1 {
 				s.log.Warn("Failed to save scan result to repository: %v", err)
@@ -400,10 +426,29 @@ func (s *MatureScanner) scanFileWithCache(path string, preloaded map[string]*rep
 			}
 		} else {
 			s.repoErrors.Store(0)
+			persisted = true
 		}
 	}
 
-	return result
+	stored := cloneScanResult(result)
+	stored.dirty = !persisted
+	s.mu.Lock()
+	s.results[path] = stored
+	if persisted && stored.NeedsReview && stored.ReviewedBy == "" {
+		s.reviewQueue[path] = &models.MatureReviewItem{
+			ID:         stableReviewID(stored.Path),
+			Name:       filepath.Base(stored.Path),
+			MediaPath:  stored.Path,
+			DetectedAt: stored.ScannedAt,
+			Confidence: stored.Confidence,
+			Reasons:    append([]string(nil), stored.Reasons...),
+		}
+	} else {
+		delete(s.reviewQueue, path)
+	}
+	s.mu.Unlock()
+
+	return cloneScanResult(stored)
 }
 
 // lookupRepoResult returns the persisted scan result for path, preferring a
@@ -414,7 +459,9 @@ func (s *MatureScanner) lookupRepoResult(path string, preloaded map[string]*repo
 		rr, ok := preloaded[path]
 		return rr, ok
 	}
-	rr, err := s.scanRepo.Get(context.Background(), path)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	rr, err := s.scanRepo.Get(ctx, path)
+	cancel()
 	if err != nil || rr == nil {
 		return nil, false
 	}
@@ -426,6 +473,17 @@ func (s *MatureScanner) lookupRepoResult(path string, preloaded map[string]*repo
 // entry) and therefore does not need to be re-saved.
 func (s *MatureScanner) scanFileInternal(path string, preloaded map[string]*repositories.ScanResult) (*ScanResult, bool) {
 	s.log.Debug("→ Scanning: %s", filepath.Base(path))
+
+	// A prior fresh scan whose repository write failed remains useful work, but
+	// it is not a durable cache hit. Retry publishing that exact result before
+	// consulting an older repository row or the normal 24-hour memory TTL.
+	s.mu.RLock()
+	if existing := s.results[path]; existing != nil && existing.dirty {
+		retry := cloneScanResult(existing)
+		s.mu.RUnlock()
+		return retry, false
+	}
+	s.mu.RUnlock()
 
 	// Check repository first for persistent cache (only if repo is ready)
 	if s.scanRepo != nil {
@@ -469,13 +527,13 @@ func (s *MatureScanner) scanFileInternal(path string, preloaded map[string]*repo
 				s.mu.RUnlock()
 				s.log.Debug("  Skipping scan - already processed (reviewed: %v, decision: %v, flagged: %v)",
 					existing.ReviewedBy != "", existing.ReviewDecision != "", existing.IsMature)
-				return existing, true
+				return cloneScanResult(existing), true
 			}
 			// For unreviewed content, use cache if less than 24 hours old
 			if time.Since(existing.ScannedAt) < 24*time.Hour {
 				s.mu.RUnlock()
 				s.log.Debug("  Using in-memory cached scan result (age: %v)", time.Since(existing.ScannedAt).Round(time.Minute))
-				return existing, true
+				return cloneScanResult(existing), true
 			}
 		}
 	}
@@ -496,23 +554,9 @@ func (s *MatureScanner) scanFileInternal(path string, preloaded map[string]*repo
 
 	s.applyThresholds(result)
 
-	// Store result
-	s.mu.Lock()
-	// A concurrent ReviewItem may have stored a reviewed result for this path
-	// while we were scanning (between the RUnlock above and here). Don't clobber
-	// an admin's review decision with a fresh auto-scan result.
-	if existing, ok := s.results[path]; ok && (existing.ReviewedBy != "" || existing.ReviewDecision != "") {
-		s.mu.Unlock()
-		// Already persisted by the concurrent ReviewItem's own Save; treat as a cache hit.
-		return existing, true
-	}
-	s.results[path] = result
-	s.mu.Unlock()
-
-	// Add to review queue if needed, but only if not already reviewed
-	// This prevents re-flagging content that has already been reviewed by an admin
+	// Publication to the cache/review queue happens in scanFileWithCache after
+	// persistence and under mutationMu. Log the computed classification here.
 	if result.NeedsReview && result.ReviewedBy == "" {
-		s.addToReviewQueue(result)
 		s.log.Info("  ⚠ NEEDS REVIEW: %s (confidence: %.2f)", filepath.Base(path), confidence)
 	} else if result.NeedsReview && result.ReviewedBy != "" {
 		s.log.Debug("  ○ Already reviewed by %s, skipping review queue", result.ReviewedBy)
@@ -876,24 +920,6 @@ func stableReviewID(path string) string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-// addToReviewQueue adds an item to the in-memory review queue.
-// The underlying scan result (with needs_review=true) is already persisted to MySQL
-// via scanRepo.Save() when ScanFile is called.
-func (s *MatureScanner) addToReviewQueue(result *ScanResult) {
-	item := &models.MatureReviewItem{
-		ID:         stableReviewID(result.Path),
-		Name:       filepath.Base(result.Path),
-		MediaPath:  result.Path,
-		DetectedAt: result.ScannedAt,
-		Confidence: result.Confidence,
-		Reasons:    result.Reasons,
-	}
-
-	s.mu.Lock()
-	s.reviewQueue[result.Path] = item
-	s.mu.Unlock()
-}
-
 // RenamePath re-keys any in-memory scan result and pending review-queue entry,
 // plus the persisted scan_results row, from oldPath to newPath. Without it a
 // moved/renamed file's pending mature review is orphaned: ReviewItem and the
@@ -904,41 +930,49 @@ func (s *MatureScanner) RenamePath(oldPath, newPath string) {
 	if oldPath == "" || newPath == "" || oldPath == newPath {
 		return
 	}
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
+	if s.scanRepo != nil && !s.repoDown.Load() {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		// Upsert the new-path row FIRST, then delete the old one (like
+		// persistPathChange) so a failure can't lose a pending review.
+		res, err := s.scanRepo.Get(ctx, oldPath)
+		if err != nil && !errors.Is(err, repositories.ErrScanResultNotFound) {
+			cancel()
+			s.log.Error("failed to load scan result for re-key %q -> %q: %v", oldPath, newPath, err)
+			return
+		}
+		if err == nil && res != nil {
+			res.Path = newPath
+			if err := s.scanRepo.Save(ctx, res); err != nil {
+				cancel()
+				s.log.Error("failed to persist scan-result re-key %q -> %q: %v", oldPath, newPath, err)
+				return
+			}
+			if err := s.scanRepo.Delete(ctx, oldPath); err != nil {
+				s.log.Warn("failed to delete old scan-result row %q after rename: %v", oldPath, err)
+			}
+		}
+		cancel()
+	}
 
 	s.mu.Lock()
-	if res, ok := s.results[oldPath]; ok {
+	if res := cloneScanResult(s.results[oldPath]); res != nil {
 		res.Path = newPath
 		delete(s.results, oldPath)
 		s.results[newPath] = res
 	}
 	if item, ok := s.reviewQueue[oldPath]; ok {
-		item.MediaPath = newPath
-		item.Name = filepath.Base(newPath)
-		item.ID = stableReviewID(newPath)
+		itemCopy := *item
+		itemCopy.Reasons = append([]string(nil), item.Reasons...)
+		itemCopy.MediaPath = newPath
+		itemCopy.Name = filepath.Base(newPath)
+		itemCopy.ID = stableReviewID(newPath)
 		delete(s.reviewQueue, oldPath)
-		s.reviewQueue[newPath] = item
+		s.reviewQueue[newPath] = &itemCopy
 	}
 	s.mu.Unlock()
-
-	if s.scanRepo == nil || s.repoDown.Load() {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	// Upsert the new-path row FIRST, then delete the old one (like persistPathChange)
-	// so a failure can't lose a pending review. No persisted row is a clean no-op.
-	res, err := s.scanRepo.Get(ctx, oldPath)
-	if err != nil || res == nil {
-		return
-	}
-	res.Path = newPath
-	if err := s.scanRepo.Save(ctx, res); err != nil {
-		s.log.Error("failed to persist scan-result re-key %q -> %q: %v", oldPath, newPath, err)
-		return
-	}
-	if err := s.scanRepo.Delete(ctx, oldPath); err != nil {
-		s.log.Warn("failed to delete old scan-result row %q after rename: %v", oldPath, err)
-	}
 }
 
 // GetReviewQueue returns items pending review
@@ -949,54 +983,81 @@ func (s *MatureScanner) GetReviewQueue() []*models.MatureReviewItem {
 	items := make([]*models.MatureReviewItem, 0, len(s.reviewQueue))
 	for _, item := range s.reviewQueue {
 		if item.ReviewedAt == nil {
-			items = append(items, item)
+			itemCopy := *item
+			itemCopy.Reasons = append([]string(nil), item.Reasons...)
+			items = append(items, &itemCopy)
 		}
 	}
 	return items
 }
 
-// ReviewItem processes a review decision
-func (s *MatureScanner) ReviewItem(ctx context.Context, path, reviewerID, decision string) error {
-	s.mu.Lock()
+// ReviewCommit durably applies the review's corresponding mutation in another
+// module. The returned rollback is invoked when scanner persistence fails after
+// that commit, keeping the two stores consistent.
+type ReviewCommit func(result *ScanResult) (rollback func() error, err error)
 
+// ReviewItem processes a review decision.
+func (s *MatureScanner) ReviewItem(ctx context.Context, path, reviewerID, decision string) error {
+	return s.ReviewItemWithCommit(ctx, path, reviewerID, decision, nil)
+}
+
+// ReviewItemWithCommit serializes queue validation, an optional external
+// durable commit, scanner persistence, and cache publication as one logical
+// review operation.
+func (s *MatureScanner) ReviewItemWithCommit(ctx context.Context, path, reviewerID, decision string, commit ReviewCommit) error {
+	if decision != "approve" && decision != "reject" {
+		return fmt.Errorf("invalid review decision %q", decision)
+	}
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
+	s.mu.RLock()
 	item, ok := s.reviewQueue[path]
 	if !ok {
-		s.mu.Unlock()
-		return fmt.Errorf("item not found in review queue: %s", path)
+		s.mu.RUnlock()
+		return fmt.Errorf("%w: %s", ErrReviewItemNotFound, path)
 	}
+	itemCopy := *item
+	itemCopy.Reasons = append([]string(nil), item.Reasons...)
+	result := cloneScanResult(s.results[path])
+	s.mu.RUnlock()
 
 	now := time.Now()
-	item.ReviewedBy = reviewerID
-	item.ReviewedAt = &now
-	item.Decision = decision
+	itemCopy.ReviewedBy = reviewerID
+	itemCopy.ReviewedAt = &now
+	itemCopy.Decision = decision
 
 	// Ensure the scan result is in memory so callers (e.g. BatchReviewAction) can
 	// retrieve it via GetScanResult after the review. Results are populated lazily
 	// from DB by GetScanResult; populate here if absent.
-	if _, inMem := s.results[path]; !inMem {
+	if result == nil {
 		if s.scanRepo != nil {
 			if repoResult, err := s.scanRepo.Get(ctx, path); err == nil && repoResult != nil {
-				s.results[path] = s.convertRepoToScanner(repoResult)
+				result = s.convertRepoToScanner(repoResult)
 			} else {
-				s.results[path] = &ScanResult{
-					Path:      path,
-					ScannedAt: time.Now(),
-					Reasons:   []string{},
+				result = &ScanResult{
+					Path:        path,
+					Confidence:  itemCopy.Confidence,
+					NeedsReview: true,
+					ScannedAt:   itemCopy.DetectedAt,
+					Reasons:     append([]string(nil), itemCopy.Reasons...),
 				}
 			}
 		} else {
-			s.results[path] = &ScanResult{
-				Path:      path,
-				ScannedAt: time.Now(),
-				Reasons:   []string{},
+			result = &ScanResult{
+				Path:        path,
+				Confidence:  itemCopy.Confidence,
+				NeedsReview: true,
+				ScannedAt:   itemCopy.DetectedAt,
+				Reasons:     append([]string(nil), itemCopy.Reasons...),
 			}
 		}
 	}
 
-	result := s.results[path]
 	result.ReviewedBy = reviewerID
 	result.ReviewedAt = &now
 	result.ReviewDecision = decision
+	result.NeedsReview = false
 
 	switch decision {
 	case "approve":
@@ -1005,15 +1066,34 @@ func (s *MatureScanner) ReviewItem(ctx context.Context, path, reviewerID, decisi
 		result.IsMature = false
 		result.AutoFlagged = false
 	}
-
-	s.log.Info("Review decision for %s: %s by %s", path, decision, reviewerID)
-	s.mu.Unlock()
+	var rollback func() error
+	if commit != nil {
+		var err error
+		rollback, err = commit(cloneScanResult(result))
+		if err != nil {
+			return fmt.Errorf("failed to commit review side effect: %w", err)
+		}
+	}
 
 	// Persist review decision to MySQL
-	if err := s.scanRepo.MarkReviewed(ctx, path, reviewerID, decision); err != nil {
-		s.log.Error("Failed to persist review decision: %v", err)
-		return fmt.Errorf("failed to persist review decision: %w", err)
+	if s.scanRepo != nil {
+		dbCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		err := s.scanRepo.MarkReviewed(dbCtx, path, reviewerID, decision)
+		cancel()
+		if err != nil {
+			var rollbackErr error
+			if rollback != nil {
+				rollbackErr = rollback()
+			}
+			s.log.Error("Failed to persist review decision: %v", err)
+			return errors.Join(fmt.Errorf("failed to persist review decision: %w", err), rollbackErr)
+		}
 	}
+	s.mu.Lock()
+	s.reviewQueue[path] = &itemCopy
+	s.results[path] = result
+	s.mu.Unlock()
+	s.log.Info("Review decision for %s: %s by %s", path, decision, reviewerID)
 
 	return nil
 }
@@ -1023,7 +1103,7 @@ func (s *MatureScanner) GetScanResult(path string) (*ScanResult, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	result, ok := s.results[path]
-	return result, ok
+	return cloneScanResult(result), ok
 }
 
 // IsMature checks if a file is flagged as mature
@@ -1039,16 +1119,18 @@ func (s *MatureScanner) IsMature(path string) bool {
 
 // SetMatureFlag manually sets the mature flag for a file
 func (s *MatureScanner) SetMatureFlag(ctx context.Context, path string, isMature bool, reason string) error {
-	s.mu.Lock()
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
 
-	result, ok := s.results[path]
-	if !ok {
+	s.mu.RLock()
+	result := cloneScanResult(s.results[path])
+	s.mu.RUnlock()
+	if result == nil {
 		result = &ScanResult{
 			Path:      path,
 			ScannedAt: time.Now(),
 			Reasons:   make([]string, 0),
 		}
-		s.results[path] = result
 	}
 
 	result.IsMature = isMature
@@ -1058,16 +1140,29 @@ func (s *MatureScanner) SetMatureFlag(ctx context.Context, path string, isMature
 	result.ReviewDecision = "manual"
 	result.ReviewedAt = new(time.Now())
 
-	s.log.Info("Manually set mature flag for %s: %v", path, isMature)
 	repoResult := s.convertScannerToRepo(result)
-	s.mu.Unlock()
 
 	if err := s.scanRepo.Save(ctx, repoResult); err != nil {
 		s.log.Error("Failed to persist mature flag to database: %v", err)
 		return fmt.Errorf("failed to persist mature flag: %w", err)
 	}
+	s.mu.Lock()
+	s.results[path] = result
+	s.mu.Unlock()
+	s.log.Info("Manually set mature flag for %s: %v", path, isMature)
 
 	return nil
+}
+
+func cloneScanResult(result *ScanResult) *ScanResult {
+	if result == nil {
+		return nil
+	}
+	clone := *result
+	clone.Reasons = append([]string(nil), result.Reasons...)
+	clone.HighConfMatches = append([]string(nil), result.HighConfMatches...)
+	clone.MedConfMatches = append([]string(nil), result.MedConfMatches...)
+	return &clone
 }
 
 // GetStats returns scanning statistics
@@ -1206,24 +1301,44 @@ func (s *MatureScanner) RejectContent(ctx context.Context, path string) error {
 // RemoveByPath deletes the scan result for a specific path from both the in-memory
 // cache and the database. Used by cleanupDeletedMedia when a media item is deleted.
 func (s *MatureScanner) RemoveByPath(path string) {
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+	if s.scanRepo != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		err := s.scanRepo.Delete(ctx, path)
+		cancel()
+		if err != nil && !errors.Is(err, repositories.ErrScanResultNotFound) {
+			s.log.Debug("RemoveByPath: no scan result to delete for %s: %v", path, err)
+			return
+		}
+	}
 	s.mu.Lock()
 	delete(s.reviewQueue, path)
 	delete(s.results, path)
 	s.mu.Unlock()
-
-	if s.scanRepo != nil {
-		if err := s.scanRepo.Delete(context.Background(), path); err != nil {
-			s.log.Debug("RemoveByPath: no scan result to delete for %s: %v", path, err)
-		}
-	}
 }
 
-// ClearReviewQueue removes all items from the in-memory review queue.
-// Individual MySQL records remain in scan_results with needs_review=true until reviewed.
-func (s *MatureScanner) ClearReviewQueue() {
+// ClearReviewQueue durably dismisses all pending reviews, then clears the
+// in-memory queue so the items do not reappear after restart.
+func (s *MatureScanner) ClearReviewQueue(ctx context.Context) error {
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+	if s.scanRepo != nil {
+		dbCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		err := s.scanRepo.ClearPendingReview(dbCtx)
+		cancel()
+		if err != nil {
+			s.log.Error("ClearReviewQueue: failed to persist queue clear: %v", err)
+			return fmt.Errorf("failed to clear pending reviews: %w", err)
+		}
+	}
 	s.mu.Lock()
 	s.reviewQueue = make(map[string]*models.MatureReviewItem)
+	for _, result := range s.results {
+		result.NeedsReview = false
+	}
 	s.mu.Unlock()
+	return nil
 }
 
 // SetHFClient sets the Hugging Face client for visual classification. Call with nil to disable.

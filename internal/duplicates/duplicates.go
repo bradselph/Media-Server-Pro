@@ -64,7 +64,10 @@ type mediaIndexRemover interface {
 // single item from its in-memory catalog when a receiver-side duplicate is
 // removed (the DB delete alone leaves the receiver's live m.media map stale).
 type receiverItemRemover interface {
-	RemoveMediaItem(id string)
+	// RemoveMediaItem owns receiver-side serialization, database deletion, cache
+	// eviction, and slave-count persistence. persistTombstone is invoked while
+	// that serialization is held, before the media row can be deleted.
+	RemoveMediaItem(ctx context.Context, itemID, slaveID string, persistTombstone func(context.Context) error) error
 }
 
 // Module manages detection and resolution of duplicate media items.
@@ -77,6 +80,7 @@ type Module struct {
 	receiverRepo   repositories.ReceiverMediaRepository
 	mediaModule    mediaIndexRemover
 	receiverModule receiverItemRemover
+	mutationMu     sync.Mutex // serializes duplicate clear/detect/resolve writes
 	healthMu       sync.RWMutex
 	healthy        bool
 	healthMsg      string
@@ -158,25 +162,54 @@ func (m *Module) enabled() bool {
 
 // ClearForSlave removes all duplicate records (any status) involving the given slave.
 // Call this when a slave is permanently unregistered so stale records are purged.
-func (m *Module) ClearForSlave(slaveID string) {
+func (m *Module) ClearForSlave(ctx context.Context, slaveID string) error {
 	if m.dupRepo == nil {
-		return
+		return nil
 	}
-	if err := m.dupRepo.DeleteBySlave(context.Background(), slaveID); err != nil {
+	m.mutationMu.Lock()
+	defer m.mutationMu.Unlock()
+	if err := m.dupRepo.DeleteBySlave(ctx, slaveID); err != nil {
 		m.log.Warn("ClearForSlave: failed to delete duplicate records for slave %s: %v", slaveID, err)
+		return err
 	}
+	return nil
 }
 
 // ClearPendingForSlave removes only pending duplicate records involving the given slave.
 // Call this on a full catalog replacement so the fresh catalog is re-evaluated while
 // preserving resolved admin decisions (keep_both / ignore / remove_a / remove_b).
-func (m *Module) ClearPendingForSlave(slaveID string) {
+func (m *Module) ClearPendingForSlave(ctx context.Context, slaveID string) error {
 	if m.dupRepo == nil {
-		return
+		return nil
 	}
-	if err := m.dupRepo.DeletePendingBySlave(context.Background(), slaveID); err != nil {
+	m.mutationMu.Lock()
+	defer m.mutationMu.Unlock()
+	if err := m.dupRepo.DeletePendingBySlave(ctx, slaveID); err != nil {
 		m.log.Warn("ClearPendingForSlave: failed to delete pending duplicates for slave %s: %v", slaveID, err)
+		return err
 	}
+	return nil
+}
+
+// RemovedReceiverItemIDs returns exact opaque receiver item IDs selected by a
+// prior remove_a/remove_b decision. These durable tombstones are consulted even
+// when duplicate detection is disabled; turning detection off must not undo an
+// administrator's deletion on the next catalog replay.
+func (m *Module) RemovedReceiverItemIDs(ctx context.Context, slaveID string) (map[string]struct{}, error) {
+	removed := make(map[string]struct{})
+	if m.dupRepo == nil {
+		return removed, nil
+	}
+	ids, err := m.dupRepo.ListResolvedRemovedReceiverItemIDs(ctx, slaveID)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		if id != "" {
+			removed[id] = struct{}{}
+		}
+	}
+	return removed, nil
 }
 
 // CountPending returns the number of unresolved duplicate pairs.
@@ -206,21 +239,17 @@ func buildReceiverFingerprintIndex(recs []*repositories.ReceiverMediaRecord, exc
 }
 
 // tryRecordReceiverPair checks if the item/existing pair should be recorded as a
-// duplicate (pair not already recorded, no resolved removal for this fingerprint),
-// and if so creates the record. Returns true if a record was created. resolvedFPs
-// caches the per-fingerprint resolved-removal check across the batch (mirroring the
-// local-scan path) so a repeated fingerprint doesn't re-query the DB per pair.
-func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item ReceiverItemRef, existing *repositories.ReceiverMediaRecord, resolvedFPs map[string]bool) bool {
+// duplicate and creates the record when the pair has not already been decided.
+// Resolved removals are enforced by exact item-ID tombstones during catalog
+// ingestion, not by fingerprint-wide suppression: distinct items can legitimately
+// share a fingerprint and still require their own admin decision.
+func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item ReceiverItemRef, existing *repositories.ReceiverMediaRecord) (bool, error) {
 	exists, err := m.dupRepo.ExistsByPair(ctx, item.OpaqueID, existing.ID)
 	if err != nil {
-		m.log.Warn("RecordDuplicatesFromSlave: pair check failed: %v", err)
-		return false
+		return false, fmt.Errorf("pair check failed: %w", err)
 	}
 	if exists {
-		return false
-	}
-	if m.isResolvedRemovalCached(ctx, item.ContentFingerprint, resolvedFPs) {
-		return false
+		return false, nil
 	}
 	rec := &repositories.ReceiverDuplicateRecord{
 		ID:           uuid.New().String(),
@@ -235,8 +264,7 @@ func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item
 		DetectedAt:   time.Now(),
 	}
 	if err := m.dupRepo.Create(ctx, rec); err != nil {
-		m.log.Warn("RecordDuplicatesFromSlave: failed to store record: %v", err)
-		return false
+		return false, fmt.Errorf("failed to store record: %w", err)
 	}
 	fpPreview := item.ContentFingerprint
 	if len(fpPreview) > 8 {
@@ -244,7 +272,7 @@ func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item
 	}
 	m.log.Info("Receiver duplicate detected: %q (slave %s) ↔ %q (slave %s) [fp=%s…]",
 		item.Name, slaveID, existing.Name, existing.SlaveID, fpPreview)
-	return true
+	return true, nil
 }
 
 // RecordDuplicatesFromSlave compares newly-pushed slave items against existing
@@ -252,11 +280,12 @@ func (m *Module) tryRecordReceiverPair(ctx context.Context, slaveID string, item
 // fingerprint-matching rows for other slaves (WHERE content_fingerprint IN (...)),
 // not the entire receiver_media table — so an incremental push of a handful of items
 // no longer re-reads and marshals every slave's whole catalog.
-func (m *Module) RecordDuplicatesFromSlave(slaveID string, items []ReceiverItemRef) {
+func (m *Module) RecordDuplicatesFromSlave(ctx context.Context, slaveID string, items []ReceiverItemRef) error {
 	if !m.enabled() || m.receiverRepo == nil {
-		return
+		return nil
 	}
-	ctx := context.Background()
+	m.mutationMu.Lock()
+	defer m.mutationMu.Unlock()
 
 	// Collect the distinct non-empty fingerprints present in this push.
 	fps := make([]string, 0, len(items))
@@ -266,27 +295,32 @@ func (m *Module) RecordDuplicatesFromSlave(slaveID string, items []ReceiverItemR
 		}
 	}
 	if len(fps) == 0 {
-		return
+		return nil
 	}
 
 	matchRecs, err := m.receiverRepo.ListByFingerprints(ctx, slaveID, fps)
 	if err != nil {
-		m.log.Warn("RecordDuplicatesFromSlave: failed to list receiver media by fingerprints: %v", err)
-		return
+		return fmt.Errorf("failed to list receiver media by fingerprints: %w", err)
 	}
 
 	fpIndex := buildReceiverFingerprintIndex(matchRecs, slaveID)
-	resolvedFPs := make(map[string]bool)
+	var detectionErrs []error
 
 	for _, item := range items {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if item.ContentFingerprint == "" {
 			continue
 		}
 		matches := fpIndex[item.ContentFingerprint]
 		for _, existing := range matches {
-			m.tryRecordReceiverPair(ctx, slaveID, item, existing, resolvedFPs)
+			if _, err := m.tryRecordReceiverPair(ctx, slaveID, item, existing); err != nil {
+			detectionErrs = append(detectionErrs, err)
+			}
 		}
 	}
+	return errors.Join(detectionErrs...)
 }
 
 // localFpEntry holds stableID and path for grouping local media by fingerprint.
@@ -383,6 +417,8 @@ func (m *Module) ScanLocalMedia(ctx context.Context) error {
 	if !m.enabled() || m.metaRepo == nil {
 		return nil
 	}
+	m.mutationMu.Lock()
+	defer m.mutationMu.Unlock()
 
 	all, err := m.metaRepo.ListDuplicateCandidates(ctx)
 	if err != nil {
@@ -468,26 +504,52 @@ func (m *Module) ResolveDuplicate(in ResolveDuplicateInput) error {
 	if m.dupRepo == nil {
 		return fmt.Errorf("duplicate detection is not available")
 	}
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
-	rec, err := m.dupRepo.Get(ctx, in.ID)
+	if in.Action != "remove_a" && in.Action != "remove_b" && in.Action != "keep_both" && in.Action != "ignore" {
+		return fmt.Errorf("unknown action %q — must be remove_a, remove_b, keep_both, or ignore", in.Action)
+	}
+
+	rec, err := m.getDuplicateForResolution(ctx, in.ID, in.Action)
 	if err != nil {
-		return fmt.Errorf("failed to fetch duplicate: %w", err)
+		return err
 	}
-	if rec == nil {
-		return fmt.Errorf("duplicate not found: %s", in.ID)
-	}
-
 	switch in.Action {
 	case "remove_a":
 		return m.applyRemoveResolution(ctx, removeResolutionParams{in.ID, in.Action, in.ResolvedBy, rec.ItemAID, rec.ItemASlaveID})
 	case "remove_b":
 		return m.applyRemoveResolution(ctx, removeResolutionParams{in.ID, in.Action, in.ResolvedBy, rec.ItemBID, rec.ItemBSlaveID})
 	case "keep_both", "ignore":
+		m.mutationMu.Lock()
+		defer m.mutationMu.Unlock()
+		current, err := m.getDuplicateForResolution(ctx, in.ID, in.Action)
+		if err != nil {
+			return err
+		}
+		if current.Status == in.Action {
+			return nil
+		}
 		return m.dupRepo.UpdateStatus(ctx, in.ID, in.Action, in.ResolvedBy)
-	default:
-		return fmt.Errorf("unknown action %q — must be remove_a, remove_b, keep_both, or ignore", in.Action)
 	}
+	return nil
+}
+
+// getDuplicateForResolution returns a record only when it is pending or already
+// has the requested terminal status. This makes retries idempotent while
+// preventing two concurrent, conflicting decisions from removing both sides.
+func (m *Module) getDuplicateForResolution(ctx context.Context, id, action string) (*repositories.ReceiverDuplicateRecord, error) {
+	rec, err := m.dupRepo.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch duplicate: %w", err)
+	}
+	if rec == nil {
+		return nil, fmt.Errorf("duplicate not found: %s", id)
+	}
+	if rec.Status != "pending" && rec.Status != action {
+		return nil, fmt.Errorf("duplicate %s is already resolved as %s", id, rec.Status)
+	}
+	return rec, nil
 }
 
 // removeResolutionParams holds parameters for applyRemoveResolution.
@@ -497,7 +559,38 @@ type removeResolutionParams struct {
 
 // applyRemoveResolution removes one item of a duplicate pair and updates status for the record and any cascade.
 func (m *Module) applyRemoveResolution(ctx context.Context, p removeResolutionParams) error {
-	if err := m.removeItem(ctx, p.itemID, p.slaveID); err != nil {
+	if p.slaveID != "" {
+		return m.removeReceiverItem(ctx, p, func(writeCtx context.Context) error {
+			m.mutationMu.Lock()
+			defer m.mutationMu.Unlock()
+			current, err := m.getDuplicateForResolution(writeCtx, p.id, p.action)
+			if err != nil {
+				return err
+			}
+			if current.Status != p.action {
+				if err := m.dupRepo.UpdateStatus(writeCtx, p.id, p.action, p.resolvedBy); err != nil {
+					return err
+				}
+			}
+			if err := m.dupRepo.UpdateStatusForItem(writeCtx, p.itemID, p.resolvedBy); err != nil {
+				m.log.Warn("ResolveDuplicate: cascade update failed for item %s: %v", p.itemID, err)
+			}
+			return nil
+		})
+	}
+
+	// Local removal cannot be made durable via a receiver catalog tombstone, so
+	// retain the recoverable file-first order while serializing the whole mutation.
+	m.mutationMu.Lock()
+	defer m.mutationMu.Unlock()
+	current, err := m.getDuplicateForResolution(ctx, p.id, p.action)
+	if err != nil {
+		return err
+	}
+	if current.Status == p.action {
+		return nil
+	}
+	if err := m.removeLocalItem(ctx, p.itemID); err != nil {
 		return fmt.Errorf("failed to remove item %s: %w", p.itemID, err)
 	}
 	if err := m.dupRepo.UpdateStatus(ctx, p.id, p.action, p.resolvedBy); err != nil {
@@ -512,13 +605,6 @@ func (m *Module) applyRemoveResolution(ctx context.Context, p removeResolutionPa
 // removeItem deletes the item from the appropriate backing store.
 // For receiver items it removes the row from receiver_media.
 // For local items it removes the metadata row and the file on disk.
-func (m *Module) removeItem(ctx context.Context, itemID, slaveID string) error {
-	if slaveID == "" {
-		return m.removeLocalItem(ctx, itemID)
-	}
-	return m.removeReceiverItem(ctx, itemID)
-}
-
 // removeLocalItem finds the local file by stable ID and deletes its metadata and file.
 func (m *Module) removeLocalItem(ctx context.Context, itemID string) error {
 	if m.metaRepo == nil {
@@ -529,7 +615,10 @@ func (m *Module) removeLocalItem(ctx context.Context, itemID string) error {
 		return err
 	}
 	if path == "" {
-		return fmt.Errorf("local item %s not found in metadata", itemID)
+		// A prior attempt may already have removed the item and then failed while
+		// updating duplicate status. Treat the desired end state as success so the
+		// pending resolution remains retryable.
+		return nil
 	}
 	return m.deleteLocalFileAndMetadata(ctx, path)
 }
@@ -576,15 +665,12 @@ func (m *Module) deleteLocalFileAndMetadata(ctx context.Context, path string) er
 // from the receiver's in-memory catalog. Without the eviction the DB row is gone
 // but the live m.media map still serves the item (unified listing, stream,
 // download) until the next restart or full catalog re-push.
-func (m *Module) removeReceiverItem(ctx context.Context, itemID string) error {
-	if m.receiverRepo == nil {
-		return fmt.Errorf("receiver repository not available")
+func (m *Module) removeReceiverItem(ctx context.Context, p removeResolutionParams, persistTombstone func(context.Context) error) error {
+	if m.receiverModule == nil {
+		return fmt.Errorf("receiver module not available")
 	}
-	if err := m.receiverRepo.DeleteByID(ctx, itemID); err != nil {
-		return err
-	}
-	if m.receiverModule != nil {
-		m.receiverModule.RemoveMediaItem(itemID)
+	if err := m.receiverModule.RemoveMediaItem(ctx, p.itemID, p.slaveID, persistTombstone); err != nil {
+		return fmt.Errorf("failed to remove item %s: %w", p.itemID, err)
 	}
 	return nil
 }

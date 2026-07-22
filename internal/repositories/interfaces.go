@@ -113,6 +113,7 @@ type ScanResultRepository interface {
 	GetByPaths(ctx context.Context, paths []string) (map[string]*ScanResult, error)
 	GetPendingReview(ctx context.Context) ([]*ScanResult, error)
 	MarkReviewed(ctx context.Context, path, reviewedBy, decision string) error
+	ClearPendingReview(ctx context.Context) error
 	Delete(ctx context.Context, path string) error
 }
 
@@ -207,8 +208,11 @@ type PlaylistRepository interface {
 	ListByUser(ctx context.Context, userID string) ([]*models.Playlist, error)
 	ListAll(ctx context.Context) ([]*models.Playlist, error)
 	AddItem(ctx context.Context, item *models.PlaylistItem) error
-	RemoveItem(ctx context.Context, itemID string) error
+	RemoveItem(ctx context.Context, itemID string, remaining []models.PlaylistItem) error
 	UpdateItem(ctx context.Context, item *models.PlaylistItem) error
+	ReorderItems(ctx context.Context, items []models.PlaylistItem) error
+	ClearItems(ctx context.Context, playlistID string) error
+	NormalizeItems(ctx context.Context, playlistID string, items []models.PlaylistItem) error
 }
 
 // UserPreferencesRepository provides user preferences storage
@@ -283,6 +287,7 @@ type SuggestionProfileRepository interface {
 	SaveProfile(ctx context.Context, profile *SuggestionProfileRecord) error
 	GetProfile(ctx context.Context, userID string) (*SuggestionProfileRecord, error)
 	DeleteProfile(ctx context.Context, userID string) error
+	ResetProfile(ctx context.Context, userID string) error
 	ListProfiles(ctx context.Context) ([]*SuggestionProfileRecord, error)
 	SaveViewHistory(ctx context.Context, userID string, entry *ViewHistoryRecord) error
 	BatchSaveViewHistory(ctx context.Context, userID string, entries []*ViewHistoryRecord) error
@@ -443,6 +448,10 @@ type ReceiverDuplicateRepository interface {
 	ListPending(ctx context.Context) ([]*ReceiverDuplicateRecord, error)
 	ExistsByPair(ctx context.Context, itemAID, itemBID string) (bool, error)
 	ExistsResolvedRemoval(ctx context.Context, fingerprint string) (bool, error)
+	// ListResolvedRemovedReceiverItemIDs returns the exact receiver item IDs
+	// selected for removal by prior admin resolutions. When slaveID is non-empty,
+	// only tombstones for that slave are returned.
+	ListResolvedRemovedReceiverItemIDs(ctx context.Context, slaveID string) ([]string, error)
 	UpdateStatus(ctx context.Context, id, status, resolvedBy string) error
 	UpdateStatusForItem(ctx context.Context, itemID, resolvedBy string) error
 	CountPending(ctx context.Context) (int64, error)
@@ -529,7 +538,16 @@ type ExtractorItemRecord struct {
 type HubEmbedRepository interface {
 	// BatchInsert idempotently inserts embeds (INSERT IGNORE on embed_id) and
 	// returns the number of rows actually inserted (0 for already-present rows).
+	// Use for the first/append-only import where existing rows must never change.
 	BatchInsert(ctx context.Context, embeds []*HubEmbedRecord) (int64, error)
+	// BatchUpsert inserts new embeds and refreshes existing ones (matched on the
+	// embed_id unique key) via INSERT ... ON DUPLICATE KEY UPDATE of the mutable
+	// content columns, preserving id and created_at. Use for re-imports of an
+	// updated catalog: it adds new rows and updates changed ones without ever
+	// creating a duplicate and WITHOUT a destructive TRUNCATE+reinsert — rows
+	// whose columns are unchanged are not rewritten. Returns the driver's
+	// affected-row count (insert = 1, real update = 2, unchanged = 0).
+	BatchUpsert(ctx context.Context, embeds []*HubEmbedRecord) (int64, error)
 	// List returns a page ordered by sort ("views"|"duration"|default newest) plus the total row count.
 	List(ctx context.Context, offset, limit int, sort string) ([]*HubEmbedRecord, int64, error)
 	// Search filters by full-text query and/or category/tag, returning a page + match count.

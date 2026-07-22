@@ -3,6 +3,7 @@ package media
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"media-server-pro/internal/config"
+	"media-server-pro/internal/repositories"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 	"media-server-pro/pkg/storage"
@@ -365,6 +367,47 @@ func (m *Module) persistPathChange(oldPath, newPath string) {
 	}
 }
 
+// deleteMediaFile removes the backing object idempotently. Treating an already
+// absent object as success lets callers safely retry an interrupted delete.
+func deleteMediaFile(ctx context.Context, sr storeResult, filePath string) error {
+	if sr.store != nil && !sr.store.IsLocal() {
+		if err := sr.store.Remove(ctx, sr.relPath); err != nil && !errors.Is(err, storage.ErrNotFound) {
+			return fmt.Errorf("failed to delete: %w", err)
+		}
+		return nil
+	}
+	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete: %w", err)
+	}
+	return nil
+}
+
+// removeCachedMediaIfUnchanged publishes a completed delete only when neither
+// the item nor metadata pointer was replaced while storage/DB work ran. This
+// prevents an upload that reuses the same path from being removed by an older
+// delete operation. Caller must hold saveMu.
+func (m *Module) removeCachedMediaIfUnchanged(mediaPath string, expectedItem *models.MediaItem, expectedMeta *Metadata) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.media[mediaPath] != expectedItem || m.metadata[mediaPath] != expectedMeta {
+		return false
+	}
+	if expectedItem == nil && expectedMeta == nil {
+		return false
+	}
+	if expectedMeta != nil && expectedMeta.ContentFingerprint != "" && m.fingerprintIndex[expectedMeta.ContentFingerprint] == mediaPath {
+		delete(m.fingerprintIndex, expectedMeta.ContentFingerprint)
+	}
+	if expectedItem != nil && m.mediaByID[expectedItem.ID] == expectedItem {
+		delete(m.mediaByID, expectedItem.ID)
+	}
+	delete(m.media, mediaPath)
+	delete(m.metadata, mediaPath)
+	m.version++
+	return true
+}
+
 // DeleteMedia removes a media file from the filesystem and from in-memory indexes
 // (including fingerprintIndex so the next scan does not treat a new file with the
 // same fingerprint as a move from the deleted path).
@@ -372,76 +415,51 @@ func (m *Module) DeleteMedia(ctx context.Context, filePath string) error {
 	if err := m.validatePath(filePath); err != nil {
 		return err
 	}
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
 
 	sr := m.storeFor(filePath)
-
-	// Remove from in-memory indexes BEFORE touching storage to prevent a
-	// concurrent upload at the same path from having its index entry deleted
-	// by this call after the file has been replaced on disk.
-	m.mu.Lock()
+	m.mu.RLock()
 	savedMeta := m.metadata[filePath]
+	savedMetaSnapshot := cloneMetadata(savedMeta)
 	savedItem := m.media[filePath]
-	if savedMeta != nil && savedMeta.ContentFingerprint != "" {
-		delete(m.fingerprintIndex, savedMeta.ContentFingerprint)
+	if savedMetaSnapshot == nil && savedItem != nil {
+		savedMetaSnapshot = metadataFromItem(savedItem)
 	}
-	if savedItem != nil {
-		delete(m.mediaByID, savedItem.ID)
-	}
-	delete(m.media, filePath)
-	delete(m.metadata, filePath)
-	m.version++
-	m.mu.Unlock()
+	m.mu.RUnlock()
 
-	var deleteErr error
-	if sr.store != nil && !sr.store.IsLocal() {
-		// Remote backend (S3/B2).
-		if _, err := sr.store.Stat(ctx, sr.relPath); err != nil {
-			deleteErr = fmt.Errorf("file not found: %w", err)
-		} else if err := sr.store.Remove(ctx, sr.relPath); err != nil {
-			deleteErr = fmt.Errorf("failed to delete: %w", err)
-		}
-	} else {
-		// Local filesystem (original behavior).
-		if _, err := os.Stat(filePath); err != nil {
-			deleteErr = fmt.Errorf("file not found: %w", err)
-		} else if err := os.Remove(filePath); err != nil {
-			deleteErr = fmt.Errorf("failed to delete: %w", err)
+	// Delete persistent metadata before the irreversible storage operation. A DB
+	// failure therefore leaves the file and both caches untouched and immediately
+	// retryable through the same media ID.
+	if m.metadataRepo != nil {
+		dbCtx, dbCancel := context.WithTimeout(ctx, 5*time.Second)
+		err := m.metadataRepo.Delete(dbCtx, filePath)
+		dbCancel()
+		if err != nil && !errors.Is(err, repositories.ErrMetadataNotFound) {
+			return fmt.Errorf("failed to delete metadata for %s: %w", filePath, err)
 		}
 	}
 
-	if deleteErr != nil {
-		// Roll back index to avoid leaving a ghost entry in the API while the
-		// file still exists on disk.
-		m.mu.Lock()
-		if savedItem != nil {
-			m.media[filePath] = savedItem
-			m.mediaByID[savedItem.ID] = savedItem
-		}
-		if savedMeta != nil {
-			m.metadata[filePath] = savedMeta
-			if savedMeta.ContentFingerprint != "" {
-				m.fingerprintIndex[savedMeta.ContentFingerprint] = filePath
+	if err := deleteMediaFile(ctx, sr, filePath); err != nil {
+		// Best-effort compensation keeps a storage failure from leaving a live
+		// file/cache with no metadata row. The cache remains authoritative even if
+		// compensation fails, so the next bulk metadata save can retry the upsert.
+		var restoreErr error
+		if m.metadataRepo != nil && savedMetaSnapshot != nil {
+			restoreCtx, restoreCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			restoreErr = m.metadataRepo.Upsert(restoreCtx, filePath, m.convertInternalToRepo(filePath, savedMetaSnapshot))
+			restoreCancel()
+			if restoreErr != nil {
+				m.log.Warn("Failed to restore metadata after storage delete failure for %s: %v", filePath, restoreErr)
 			}
 		}
-		m.version++
-		m.mu.Unlock()
-		return deleteErr
+		return errors.Join(err, restoreErr)
 	}
 
+	if !m.removeCachedMediaIfUnchanged(filePath, savedItem, savedMeta) {
+		m.log.Debug("DeleteMedia: cache entry for %s changed during delete; preserving replacement", filePath)
+	}
 	m.log.Info("Deleted media: %s", filePath)
-	// Item was deleted — remove from DB too (not just the in-memory map)
-	if m.metadataRepo != nil {
-		// Use explicit cancel (not defer) so the timer goroutine is released
-		// immediately after the DB call instead of at DeleteMedia's return.
-		// defer cancel() would leak one timer goroutine per item when called
-		// in a loop (e.g. the quota rollback in upload.go).
-		dbCtx, dbCancel := context.WithTimeout(ctx, 5*time.Second)
-		if err := m.metadataRepo.Delete(dbCtx, filePath); err != nil {
-			m.log.Warn("Failed to delete metadata from DB for %s: %v", filePath, err)
-		}
-		dbCancel()
-	}
-
 	return nil
 }
 
@@ -449,73 +467,49 @@ func (m *Module) DeleteMedia(ctx context.Context, filePath string) error {
 // This is used for cleanup when files have already been deleted externally.
 // fingerprintIndex is updated so the fingerprint is no longer associated with this path.
 func (m *Module) RemoveMedia(mediaPath string) error {
-	m.mu.Lock()
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
+	m.mu.RLock()
+	item := m.media[mediaPath]
 	meta := m.metadata[mediaPath]
-	if meta != nil && meta.ContentFingerprint != "" {
-		delete(m.fingerprintIndex, meta.ContentFingerprint)
-	}
-	delete(m.metadata, mediaPath)
-	item, exists := m.media[mediaPath]
-	if !exists {
-		m.mu.Unlock()
-		return fmt.Errorf("media not found in index: %s", mediaPath)
-	}
-	delete(m.mediaByID, item.ID)
-	delete(m.media, mediaPath)
-	m.version++
-	m.mu.Unlock()
-
-	m.log.Debug("Removed media from index: %s", mediaPath)
+	m.mu.RUnlock()
 
 	// Remove from DB synchronously. Single-row DELETEs are fast and the
 	// goroutine-per-call pattern caused DB connection pool exhaustion during
 	// bulk cleanup (10 000 items → 10 000 concurrent goroutines).
 	if m.metadataRepo != nil {
 		removeCtx, removeCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := m.metadataRepo.Delete(removeCtx, mediaPath); err != nil {
-			m.log.Warn("Failed to delete metadata from DB for %s: %v", mediaPath, err)
+		if err := m.metadataRepo.Delete(removeCtx, mediaPath); err != nil && !errors.Is(err, repositories.ErrMetadataNotFound) {
+			removeCancel()
+			return fmt.Errorf("failed to remove metadata for %s: %w", mediaPath, err)
 		}
 		removeCancel()
 	}
+
+	// Publish the delete only after persistence succeeds. The pointer guard
+	// preserves any item concurrently registered at the same path. When no cache
+	// entry exists, the DB delete above still repairs a ghost row and succeeds
+	// idempotently.
+	if !m.removeCachedMediaIfUnchanged(mediaPath, item, meta) && (item != nil || meta != nil) {
+		m.log.Debug("RemoveMedia: cache entry for %s changed during delete; preserving replacement", mediaPath)
+	}
+	m.log.Debug("Removed media from index: %s", mediaPath)
 
 	return nil
 }
 
 // UpdateMetadata updates metadata for a media file.
 func (m *Module) UpdateMetadata(mediaPath string, updates map[string]any) error {
-	m.mu.Lock()
-
-	// Refuse to create a metadata row for a path that isn't in the media index.
-	// Without this check a call against a since-deleted or never-indexed path
-	// would persist an orphan metadata row that no GetMedia/ListMedia consumer
-	// can ever return.
-	if _, ok := m.media[mediaPath]; !ok {
-		m.mu.Unlock()
-		return fmt.Errorf("media not found: %s", mediaPath)
-	}
-
-	meta, exists := m.metadata[mediaPath]
-	if !exists {
-		meta = &Metadata{
-			PlaybackPos: make(map[string]float64),
-			CustomMeta:  make(map[string]string),
+	err := m.updateMetadataPersisted(mediaPath, func(meta *Metadata) {
+		for key, value := range updates {
+			applyMetadataField(meta, key, value)
 		}
-		m.metadata[mediaPath] = meta
-	}
-
-	for key, value := range updates {
-		applyMetadataField(meta, key, value)
-	}
-	m.syncMediaItem(mediaPath, updates)
-	m.mu.Unlock()
-
-	m.log.Debug("Updated metadata for: %s", mediaPath)
-
-	if err := m.saveMetadataItem(mediaPath); err != nil {
+	})
+	if err != nil {
 		m.log.Error("Failed to save metadata after update: %v", err)
-		return fmt.Errorf("metadata updated in memory but DB save failed: %w", err)
+		return fmt.Errorf("failed to update metadata: %w", err)
 	}
-
+	m.log.Debug("Updated metadata for: %s", mediaPath)
 	return nil
 }
 
@@ -557,49 +551,6 @@ func applyMetadataField(meta *Metadata, key string, value any) {
 	}
 }
 
-// syncMediaItem synchronizes relevant metadata updates to the in-memory media item.
-// Must be called with m.mu held.
-func (m *Module) syncMediaItem(mediaPath string, updates map[string]any) {
-	item, exists := m.media[mediaPath]
-	if !exists {
-		return
-	}
-	for key, value := range updates {
-		switch key {
-		case "tags":
-			if tags, ok := value.([]string); ok {
-				item.Tags = tags
-			}
-		case "is_mature":
-			if isMature, ok := value.(bool); ok {
-				item.IsMature = isMature
-			}
-		case "mature_score":
-			if score, ok := value.(float64); ok {
-				item.MatureScore = score
-			}
-		case "mature_reason":
-			// Suppress default fallthrough: mature_reason is tracked in Metadata.MatureReasons
-			// (not CustomMeta), so it must not bleed into the MediaItem.Metadata custom-key map.
-		case "views":
-			switch views := value.(type) {
-			case float64:
-				item.Views = int(views)
-			case int:
-				item.Views = views
-			}
-		default:
-			// Sync custom metadata keys to the MediaItem.Metadata map.
-			if strVal, ok := value.(string); ok {
-				if item.Metadata == nil {
-					item.Metadata = make(map[string]string)
-				}
-				item.Metadata[key] = strVal
-			}
-		}
-	}
-}
-
 // SetTags sets tags for a media file
 func (m *Module) SetTags(mediaPath string, tags []string) error {
 	return m.UpdateMetadata(mediaPath, map[string]any{"tags": tags})
@@ -608,128 +559,61 @@ func (m *Module) SetTags(mediaPath string, tags []string) error {
 // UpdateTags merges new tags with existing tags for a media file (deduplicated, case-insensitive).
 // The merge and write happen atomically under a single write lock to prevent lost updates.
 func (m *Module) UpdateTags(mediaPath string, tags []string) error {
-	m.mu.Lock()
-
-	if _, inMedia := m.media[mediaPath]; !inMedia {
-		m.mu.Unlock()
-		return fmt.Errorf("media not found: %s", mediaPath)
-	}
-
-	meta, exists := m.metadata[mediaPath]
-	if !exists {
-		meta = &Metadata{
-			PlaybackPos: make(map[string]float64),
-			CustomMeta:  make(map[string]string),
-			Tags:        []string{},
+	err := m.updateMetadataPersisted(mediaPath, func(meta *Metadata) {
+		seen := make(map[string]bool)
+		for _, tag := range meta.Tags {
+			seen[strings.ToLower(tag)] = true
 		}
-		m.metadata[mediaPath] = meta
-	}
-
-	seen := make(map[string]bool)
-	for _, t := range meta.Tags {
-		seen[strings.ToLower(t)] = true
-	}
-	merged := append([]string(nil), meta.Tags...)
-	for _, t := range tags {
-		if t == "" {
-			continue
+		merged := append([]string(nil), meta.Tags...)
+		for _, tag := range tags {
+			if tag == "" {
+				continue
+			}
+			key := strings.ToLower(tag)
+			if !seen[key] {
+				seen[key] = true
+				merged = append(merged, tag)
+			}
 		}
-		key := strings.ToLower(t)
-		if !seen[key] {
-			seen[key] = true
-			merged = append(merged, t)
-		}
-	}
-
-	meta.Tags = merged
-	if item, ok := m.media[mediaPath]; ok {
-		tagsCopy := make([]string, len(merged))
-		copy(tagsCopy, merged)
-		item.Tags = tagsCopy
-	}
-	m.mu.Unlock()
-
-	m.log.Debug("Updated tags for: %s", mediaPath)
-
-	if err := m.saveMetadataItem(mediaPath); err != nil {
+		meta.Tags = merged
+	})
+	if err != nil {
 		m.log.Error("Failed to save metadata after tag update: %v", err)
-		return fmt.Errorf("tags updated in memory but DB save failed: %w", err)
+		return fmt.Errorf("failed to update tags: %w", err)
 	}
-
+	m.log.Debug("Updated tags for: %s", mediaPath)
 	return nil
 }
 
 // AddTag adds a tag to a media file
 func (m *Module) AddTag(mediaPath, tag string) error {
-	m.mu.Lock()
-
-	if _, inMedia := m.media[mediaPath]; !inMedia {
-		m.mu.Unlock()
-		return fmt.Errorf("media not found: %s", mediaPath)
-	}
-
-	meta, exists := m.metadata[mediaPath]
-	if !exists {
-		meta = &Metadata{
-			PlaybackPos: make(map[string]float64),
-			CustomMeta:  make(map[string]string),
-			Tags:        []string{},
+	err := m.updateMetadataPersisted(mediaPath, func(meta *Metadata) {
+		if !slices.Contains(meta.Tags, tag) {
+			meta.Tags = append(meta.Tags, tag)
 		}
-		m.metadata[mediaPath] = meta
-	}
-
-	// Check if tag already exists
-	if slices.Contains(meta.Tags, tag) {
-		m.mu.Unlock()
-		return nil
-	}
-
-	meta.Tags = append(meta.Tags, tag)
-	if item, exists := m.media[mediaPath]; exists {
-		tagsCopy := make([]string, len(meta.Tags))
-		copy(tagsCopy, meta.Tags)
-		item.Tags = tagsCopy
-	}
-	m.mu.Unlock()
-
-	if err := m.saveMetadataItem(mediaPath); err != nil {
+	})
+	if err != nil {
 		m.log.Error("Failed to save metadata after adding tag: %v", err)
-		return fmt.Errorf("tag added in memory but DB save failed: %w", err)
+		return fmt.Errorf("failed to add tag: %w", err)
 	}
-
 	return nil
 }
 
 // RemoveTag removes a tag from a media file
 func (m *Module) RemoveTag(mediaPath, tag string) error {
-	m.mu.Lock()
-
-	meta, exists := m.metadata[mediaPath]
-	if !exists {
-		m.mu.Unlock()
-		return nil
-	}
-
-	var newTags []string
-	for _, t := range meta.Tags {
-		if t != tag {
-			newTags = append(newTags, t)
+	err := m.updateMetadataPersisted(mediaPath, func(meta *Metadata) {
+		newTags := make([]string, 0, len(meta.Tags))
+		for _, existing := range meta.Tags {
+			if existing != tag {
+				newTags = append(newTags, existing)
+			}
 		}
-	}
-	meta.Tags = newTags
-
-	if item, exists := m.media[mediaPath]; exists {
-		tagsCopy := make([]string, len(newTags))
-		copy(tagsCopy, newTags)
-		item.Tags = tagsCopy
-	}
-	m.mu.Unlock()
-
-	if err := m.saveMetadataItem(mediaPath); err != nil {
+		meta.Tags = newTags
+	})
+	if err != nil {
 		m.log.Error("Failed to save metadata after removing tag: %v", err)
-		return fmt.Errorf("tag removed in memory but DB save failed: %w", err)
+		return fmt.Errorf("failed to remove tag: %w", err)
 	}
-
 	return nil
 }
 

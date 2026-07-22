@@ -105,7 +105,25 @@ func (m *Module) runImport(ctx context.Context, url, path, workDir string, batch
 		m.importState.Inserted = inserted
 		m.importMu.Unlock()
 	}
-	opts := ImportOptions{BatchSize: batchSize, Progress: progress}
+	// A re-import into a populated catalog upserts (add new + refresh changed rows)
+	// rather than INSERT IGNORE, so an updated CSV is applied incrementally without a
+	// destructive clear+reinsert — the whole point of "just add a few new rows". A
+	// first import (empty table) stays a plain insert so the reported "inserted"
+	// count is exactly the number of new rows.
+	existing, err := m.repo.CountAll(ctx)
+	if err != nil {
+		m.log.Warn("Hub import: pre-count failed, defaulting to append-only insert: %v", err)
+	}
+	upsert := existing > 0
+	if upsert {
+		m.log.Info("Hub re-import: catalog has %d rows — upserting (add new + refresh changed) instead of INSERT IGNORE", existing)
+	}
+	// Record the mode on the observable state so the admin UI can label the
+	// Inserted count honestly ("written" for upsert vs "inserted" for a fresh run).
+	m.importMu.Lock()
+	m.importState.Upsert = upsert
+	m.importMu.Unlock()
+	opts := ImportOptions{BatchSize: batchSize, Progress: progress, Upsert: upsert}
 
 	if url != "" {
 		if workDir == "" {
@@ -195,6 +213,13 @@ type ImportOptions struct {
 	Limit     int64                      // stop after N valid rows (0 => all)
 	DryRun    bool                       // parse + count only; never write to the DB
 	Progress  func(read, inserted int64) // optional, called after each flushed batch
+	// Upsert selects the write strategy. false (default) => INSERT IGNORE: new
+	// rows are added and existing embed_ids are left untouched (first/append-only
+	// import). true => INSERT ... ON DUPLICATE KEY UPDATE: existing rows are also
+	// refreshed in place, so a re-import of an updated catalog adds new rows and
+	// updates changed ones without a destructive clear+reinsert. Either way there
+	// is never a duplicate embed_id.
+	Upsert bool
 }
 
 // ImportCSV streams a pipe-delimited catalog file into the repository in batches.
@@ -219,8 +244,10 @@ func ImportCSVWithOptions(ctx context.Context, path string, repo repositories.Hu
 // ImportReader is the core streaming importer over any reader — a local file, or
 // a CSV entry streamed straight out of a downloaded zip (no 18 GB temp file). It
 // uses an enlarged scanner buffer (lines carry long iframe HTML + many preview
-// URLs), inserts in idempotent batches (INSERT IGNORE on embed_id), honors ctx
-// cancellation between batches, and supports Limit (partial import) and DryRun.
+// URLs), writes in idempotent batches keyed on embed_id (INSERT IGNORE by default,
+// or ON DUPLICATE KEY UPDATE when opts.Upsert is set for an incremental re-import),
+// honors ctx cancellation between batches, and supports Limit (partial import) and
+// DryRun.
 func ImportReader(ctx context.Context, r io.Reader, repo repositories.HubEmbedRepository, log *logger.Logger, opts ImportOptions) (int64, int64, error) {
 	batchSize := opts.BatchSize
 	if batchSize <= 0 || batchSize > 5000 {
@@ -238,7 +265,13 @@ func ImportReader(ctx context.Context, r io.Reader, repo repositories.HubEmbedRe
 			return nil
 		}
 		if !opts.DryRun {
-			n, err := repo.BatchInsert(ctx, batch)
+			// Upsert (re-import) refreshes existing rows; the default INSERT IGNORE
+			// only adds new ones. Both are keyed on embed_id so neither duplicates.
+			write := repo.BatchInsert
+			if opts.Upsert {
+				write = repo.BatchUpsert
+			}
+			n, err := write(ctx, batch)
 			if err != nil {
 				return err
 			}

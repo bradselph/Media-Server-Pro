@@ -203,7 +203,11 @@ var tableDefs = []struct {
 			preferences_changes   INT     NOT NULL DEFAULT 0,
 			bulk_deletes          INT     NOT NULL DEFAULT 0,
 			bulk_updates          INT     NOT NULL DEFAULT 0,
-			user_role_changes     INT     NOT NULL DEFAULT 0
+			user_role_changes     INT     NOT NULL DEFAULT 0,
+			hub_browses           INT     NOT NULL DEFAULT 0,
+			hub_views             INT     NOT NULL DEFAULT 0,
+			hub_searches          INT     NOT NULL DEFAULT 0,
+			hub_playlist_adds     INT     NOT NULL DEFAULT 0
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"audit_log", `
 		CREATE TABLE IF NOT EXISTS audit_log (
@@ -417,7 +421,9 @@ var tableDefs = []struct {
 			INDEX idx_dup_fingerprint (fingerprint),
 			INDEX idx_dup_status (status),
 			INDEX idx_dup_pair_ab (item_a_id, item_b_id),
-			INDEX idx_dup_pair_ba (item_b_id, item_a_id)
+			INDEX idx_dup_pair_ba (item_b_id, item_a_id),
+			INDEX idx_dup_removed_a (status, item_a_slave_id, item_a_id),
+			INDEX idx_dup_removed_b (status, item_b_slave_id, item_b_id)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	{"user_favorites", `
 		CREATE TABLE IF NOT EXISTS user_favorites (
@@ -541,8 +547,11 @@ var tableDefs = []struct {
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 	// hub_embeds: BETA external embed catalog imported from a large pipe-delimited
 	// CSV. Standalone (no FKs to media/users) so enabling/disabling or clearing it
-	// never touches other tables. embed_id is UNIQUE so re-imports are idempotent
-	// (BatchInsert uses INSERT IGNORE). FULLTEXT index powers title/tag search.
+	// never touches other tables. embed_id is UNIQUE so re-imports are idempotent:
+	// the first import INSERT IGNOREs (BatchInsert) and a re-import into a populated
+	// catalog upserts (BatchUpsert / ON DUPLICATE KEY UPDATE) to add new rows and
+	// refresh changed ones in place — no duplicates, no full-table rewrite.
+	// FULLTEXT index powers title/tag search.
 	{"hub_embeds", `
 			CREATE TABLE IF NOT EXISTS hub_embeds (
 				id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -700,6 +709,12 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"daily_stats", "bulk_deletes", "INT NOT NULL DEFAULT 0"},
 		{"daily_stats", "bulk_updates", "INT NOT NULL DEFAULT 0"},
 		{"daily_stats", "user_role_changes", "INT NOT NULL DEFAULT 0"},
+		// Hub (BETA) engagement columns — added when the Hub feature became a
+		// tracked analytics surface; existing databases auto-upgrade on startup.
+		{"daily_stats", "hub_browses", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "hub_views", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "hub_searches", "INT NOT NULL DEFAULT 0"},
+		{"daily_stats", "hub_playlist_adds", "INT NOT NULL DEFAULT 0"},
 		// Tag-backed ("smart") categories: media carrying this tag are auto-members.
 		{"media_categories", "tag", "VARCHAR(255) NOT NULL DEFAULT ''"},
 	}
@@ -743,6 +758,13 @@ func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 			"ALTER TABLE receiver_duplicates ADD INDEX idx_dup_pair_ab (item_a_id, item_b_id)"},
 		{"receiver_duplicates", "idx_dup_pair_ba",
 			"ALTER TABLE receiver_duplicates ADD INDEX idx_dup_pair_ba (item_b_id, item_a_id)"},
+		// Catalog ingestion consults resolved records as exact, durable item
+		// tombstones. These indexes keep both remove_a and remove_b side probes
+		// bounded as resolution history grows.
+		{"receiver_duplicates", "idx_dup_removed_a",
+			"ALTER TABLE receiver_duplicates ADD INDEX idx_dup_removed_a (status, item_a_slave_id, item_a_id)"},
+		{"receiver_duplicates", "idx_dup_removed_b",
+			"ALTER TABLE receiver_duplicates ADD INDEX idx_dup_removed_b (status, item_b_slave_id, item_b_id)"},
 		// Curated-category membership is keyed by (category_id, media_id) PK, which
 		// serves category->members lookups but NOT member->categories ones. The
 		// media_id index powers per-view category attribution (RecordView), the

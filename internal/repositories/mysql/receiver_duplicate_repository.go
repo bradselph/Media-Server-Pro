@@ -115,6 +115,27 @@ func (r *ReceiverDuplicateRepository) ExistsResolvedRemoval(ctx context.Context,
 	return count > 0, nil
 }
 
+// ListResolvedRemovedReceiverItemIDs returns the exact item side selected by
+// every remove_a/remove_b resolution. A fingerprint alone is not a tombstone:
+// several distinct files can legitimately share one, and suppressing the whole
+// fingerprint would hide items the administrator never removed.
+func (r *ReceiverDuplicateRepository) ListResolvedRemovedReceiverItemIDs(ctx context.Context, slaveID string) ([]string, error) {
+	query := r.db.WithContext(ctx).Model(&receiverDuplicateRow{}).
+		Select("CASE WHEN status = 'remove_a' THEN item_a_id ELSE item_b_id END AS item_id").
+		Where("status IN ('remove_a', 'remove_b')")
+	if slaveID != "" {
+		query = query.Where("(status = 'remove_a' AND item_a_slave_id = ?) OR (status = 'remove_b' AND item_b_slave_id = ?)", slaveID, slaveID)
+	} else {
+		query = query.Where("(status = 'remove_a' AND item_a_slave_id <> '') OR (status = 'remove_b' AND item_b_slave_id <> '')")
+	}
+
+	var ids []string
+	if err := query.Distinct().Pluck("item_id", &ids).Error; err != nil {
+		return nil, fmt.Errorf("failed to list resolved receiver removals: %w", err)
+	}
+	return ids, nil
+}
+
 func (r *ReceiverDuplicateRepository) UpdateStatus(ctx context.Context, id, status, resolvedBy string) error {
 	updates := map[string]any{
 		"status":      status,

@@ -14,13 +14,7 @@ import (
 	"media-server-pro/internal/runtimeenv"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
-	"media-server-pro/pkg/storage"
 )
-
-// SetStore sets the storage backend for thumbnail I/O.
-func (m *Module) SetStore(s storage.Backend) {
-	m.store = s
-}
 
 // SetMediaInputResolver sets the resolver used to convert S3 media keys to
 // ffmpeg-readable URLs (presigned GET URLs). Must be called before Start().

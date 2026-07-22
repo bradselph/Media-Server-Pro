@@ -5019,6 +5019,31 @@ paths:
         '200':
           description: Media analytics
 
+  /api/admin/analytics/hub:
+    get:
+      tags: [ admin-analytics ]
+      summary: Hub (BETA) engagement rollup
+      description: >
+        Single-round-trip rollup for the admin dashboard's Hub panel: catalog
+        size, current import job state, today's engagement counters
+        (browses/plays/searches/saves), all-time totals per Hub event type, and
+        view/browse timelines. Returns `{ "enabled": false }` when the Hub
+        feature is disabled.
+      security:
+        - sessionCookie: [ ]
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+      responses:
+        '200':
+          description: Hub analytics rollup
+
   /api/admin/analytics/export-panel:
     get:
       tags: [ admin-analytics ]

@@ -152,6 +152,61 @@ func TestDisableTask(t *testing.T) {
 	}
 }
 
+func TestScheduledExecutionDoesNotRunDisabledTask(t *testing.T) {
+	m := newTestModule(t)
+	var ran atomic.Int32
+	task := &Task{
+		ID:       "disabled-claim",
+		Name:     "Disabled Claim",
+		Schedule: time.Hour,
+		Enabled:  false,
+		Func: func(context.Context) error {
+			ran.Add(1)
+			return nil
+		},
+	}
+	if m.executeTask(context.Background(), task, true) {
+		t.Fatal("scheduled execution should report disabled")
+	}
+	if ran.Load() != 0 {
+		t.Fatal("disabled scheduled task executed")
+	}
+}
+
+func TestDisableTaskCancelsClaimedExecution(t *testing.T) {
+	m := newTestModule(t)
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	task := &Task{
+		ID:       "disable-claimed",
+		Name:     "Disable Claimed",
+		Schedule: time.Hour,
+		Enabled:  true,
+		Func: func(ctx context.Context) error {
+			close(started)
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	m.tasks[task.ID] = task
+	go func() {
+		m.executeTask(context.Background(), task, true)
+		close(finished)
+	}()
+	<-started
+	if err := m.DisableTask(task.ID); err != nil {
+		t.Fatalf("DisableTask() error: %v", err)
+	}
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("claimed task was not canceled by DisableTask")
+	}
+	if ran, _ := m.GetTask(task.ID); ran.Running {
+		t.Fatal("task remained marked running after cancellation")
+	}
+}
+
 func TestEnableTask(t *testing.T) {
 	m := newTestModule(t)
 	m.Start(context.Background())
@@ -240,6 +295,61 @@ func TestRunNow_NotFound(t *testing.T) {
 	err := m.RunNow("nonexistent")
 	if err == nil {
 		t.Error(errNonexistentTask)
+	}
+}
+
+func TestRunNowRejectedOnceStopBegins(t *testing.T) {
+	m := newTestModule(t)
+	release := make(chan struct{})
+	started := make(chan struct{})
+	m.RegisterTask(TaskRegistration{
+		ID:       "stop-admission",
+		Name:     "Stop Admission",
+		Schedule: time.Hour,
+		Func: func(context.Context) error {
+			select {
+			case <-started:
+			default:
+				close(started)
+			}
+			<-release
+			return nil
+		},
+	})
+	if err := m.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	if err := m.RunNow("stop-admission"); err != nil {
+		t.Fatalf("initial RunNow() error: %v", err)
+	}
+	<-started
+	stopDone := make(chan error, 1)
+	go func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		stopDone <- m.Stop(stopCtx)
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		m.mu.RLock()
+		stopping := m.stopping
+		m.mu.RUnlock()
+		if stopping {
+			break
+		}
+		if time.Now().After(deadline) {
+			close(release)
+			t.Fatal("Stop did not close task admission")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := m.RunNow("stop-admission"); err == nil {
+		close(release)
+		t.Fatal("RunNow succeeded after Stop began")
+	}
+	close(release)
+	if err := <-stopDone; err != nil {
+		t.Fatalf("Stop() error: %v", err)
 	}
 }
 

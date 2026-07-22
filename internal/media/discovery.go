@@ -61,7 +61,7 @@ type Module struct {
 	// detect moved/renamed files by matching fingerprint instead of path.
 	fingerprintIndex map[string]string // fingerprint -> path
 	mu               sync.RWMutex      // protects media, mediaByID, categories, metadata, fingerprintIndex, version, lastScan
-	saveMu           sync.Mutex        // serializes concurrent saveMetadata calls to prevent MySQL lock waits
+	saveMu           sync.Mutex        // serializes metadata DB writes with their cache commits/deletions
 	dataDir          string
 	scanning         bool // protected by healthMu; true while Scan() is running
 	healthy          bool
@@ -148,6 +148,249 @@ type Metadata struct {
 	BlurHash string `json:"blur_hash,omitempty"`
 	// Duration is the media file duration in seconds, extracted by ffprobe.
 	Duration float64 `json:"duration,omitempty"`
+}
+
+func cloneMetadata(meta *Metadata) *Metadata {
+	if meta == nil {
+		return nil
+	}
+	clone := *meta
+	if meta.LastPlayed != nil {
+		clone.LastPlayed = new(*meta.LastPlayed)
+	}
+	clone.PlaybackPos = maps.Clone(meta.PlaybackPos)
+	clone.MatureReasons = append([]string(nil), meta.MatureReasons...)
+	clone.Tags = append([]string(nil), meta.Tags...)
+	clone.CustomMeta = maps.Clone(meta.CustomMeta)
+	return &clone
+}
+
+func metadataFromItem(item *models.MediaItem) *Metadata {
+	return &Metadata{
+		StableID:    item.ID,
+		Views:       item.Views,
+		LastPlayed:  cloneTime(item.LastPlayed),
+		DateAdded:   item.DateAdded,
+		PlaybackPos: make(map[string]float64),
+		IsMature:    item.IsMature,
+		MatureScore: item.MatureScore,
+		Tags:        append([]string(nil), item.Tags...),
+		CustomMeta:  maps.Clone(item.Metadata),
+		BlurHash:    item.BlurHash,
+		Duration:    item.Duration,
+	}
+}
+
+func cloneTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	return new(*value)
+}
+
+func equalTimePtr(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Equal(*b)
+}
+
+// mergeMetadataChanges applies only fields changed by a detached mutation.
+// Scanner/ffprobe work can update unrelated system fields while a DB write is
+// in flight; replacing the whole snapshot would erase those newer values.
+func mergeMetadataChanges(dst, before, after *Metadata) {
+	if before.StableID != after.StableID {
+		dst.StableID = after.StableID
+	}
+	if before.ContentFingerprint != after.ContentFingerprint {
+		dst.ContentFingerprint = after.ContentFingerprint
+	}
+	if before.Views != after.Views {
+		dst.Views = after.Views
+	}
+	if !equalTimePtr(before.LastPlayed, after.LastPlayed) {
+		dst.LastPlayed = cloneTime(after.LastPlayed)
+	}
+	if !before.DateAdded.Equal(after.DateAdded) {
+		dst.DateAdded = after.DateAdded
+	}
+	if !maps.Equal(before.PlaybackPos, after.PlaybackPos) {
+		dst.PlaybackPos = maps.Clone(after.PlaybackPos)
+	}
+	if before.IsMature != after.IsMature {
+		dst.IsMature = after.IsMature
+	}
+	if before.MatureScore != after.MatureScore {
+		dst.MatureScore = after.MatureScore
+	}
+	if !slices.Equal(before.MatureReasons, after.MatureReasons) {
+		dst.MatureReasons = append([]string(nil), after.MatureReasons...)
+	}
+	if !slices.Equal(before.Tags, after.Tags) {
+		dst.Tags = append([]string(nil), after.Tags...)
+	}
+	if before.Category != after.Category {
+		dst.Category = after.Category
+	}
+	if !maps.Equal(before.CustomMeta, after.CustomMeta) {
+		dst.CustomMeta = maps.Clone(after.CustomMeta)
+	}
+	if !before.ProbeModTime.Equal(after.ProbeModTime) {
+		dst.ProbeModTime = after.ProbeModTime
+	}
+	if before.BlurHash != after.BlurHash {
+		dst.BlurHash = after.BlurHash
+	}
+	if before.Duration != after.Duration {
+		dst.Duration = after.Duration
+	}
+}
+
+// applyMetadataToItem mirrors the persisted metadata fields exposed by
+// MediaItem. Caller must hold m.mu.
+func applyMetadataToItem(item *models.MediaItem, meta *Metadata) {
+	item.Views = meta.Views
+	item.LastPlayed = cloneTime(meta.LastPlayed)
+	item.IsMature = meta.IsMature
+	item.MatureScore = meta.MatureScore
+	item.Tags = append([]string(nil), meta.Tags...)
+	item.Metadata = maps.Clone(meta.CustomMeta)
+	item.BlurHash = meta.BlurHash
+	if meta.Duration > 0 {
+		item.Duration = meta.Duration
+	}
+}
+
+// rebaseScannedItemLocked overlays the latest authoritative metadata onto an
+// item built earlier in a scan. A scan can spend seconds walking files and
+// running ffprobe; admin edits and thumbnail generation may commit during that
+// window. Publishing the stale fields captured at discovery time would make the
+// live catalog disagree with the DB and m.metadata until the next scan.
+//
+// Probe-only fields stay on the scanned item. Custom metadata is merged over
+// those probe tags so an admin value wins on key collisions. Caller must hold
+// m.mu (and the scan commit path also holds saveMu). It returns false when the
+// item's live metadata disappeared while the scan was running, which means a
+// concurrent delete won and the stale scanned item must not be republished.
+func (m *Module) rebaseScannedItemLocked(item, previous *models.MediaItem) bool {
+	if previous != nil {
+		if item.ThumbnailURL == "" && previous.ThumbnailURL != "" {
+			item.ThumbnailURL = previous.ThumbnailURL
+		}
+		// Preserve ffprobe-extracted fields when extractMetadata skipped an
+		// unchanged file. Fresh probe values already present on item win.
+		if item.Duration == 0 && previous.Duration > 0 {
+			item.Duration = previous.Duration
+		}
+		if item.Bitrate == 0 && previous.Bitrate > 0 {
+			item.Bitrate = previous.Bitrate
+		}
+		if item.Width == 0 && previous.Width > 0 {
+			item.Width = previous.Width
+			item.Height = previous.Height
+		}
+		if item.Codec == "" && previous.Codec != "" {
+			item.Codec = previous.Codec
+		}
+		if item.Container == "" && previous.Container != "" {
+			item.Container = previous.Container
+		}
+		if len(item.Metadata) == 0 && len(previous.Metadata) > 0 {
+			item.Metadata = maps.Clone(previous.Metadata)
+		}
+	}
+
+	meta := m.metadata[item.Path]
+	if meta == nil {
+		return false
+	}
+
+	// Preserve scan/probe tags while rebasing every field whose source of truth
+	// is persisted metadata. This includes all fields that may have changed
+	// concurrently while the scan was in progress.
+	probeAndCustom := maps.Clone(item.Metadata)
+	applyMetadataToItem(item, meta)
+	if probeAndCustom == nil {
+		probeAndCustom = make(map[string]string)
+	}
+	maps.Copy(probeAndCustom, item.Metadata)
+	item.Metadata = probeAndCustom
+	if !meta.DateAdded.IsZero() {
+		item.DateAdded = meta.DateAdded
+	}
+	return true
+}
+
+// updateMetadataPersisted applies a mutation to a detached metadata copy,
+// persists it, then publishes it to both caches. Failed DB writes never become
+// visible in the running catalog.
+func (m *Module) updateMetadataPersisted(path string, mutate func(*Metadata)) error {
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
+
+	m.mu.RLock()
+	item, exists := m.media[path]
+	if !exists || item == nil {
+		m.mu.RUnlock()
+		return fmt.Errorf("media not found: %s", path)
+	}
+	before := cloneMetadata(m.metadata[path])
+	if before == nil {
+		before = metadataFromItem(item)
+	}
+	m.mu.RUnlock()
+
+	candidate := cloneMetadata(before)
+	mutate(candidate)
+
+	// Rebase the requested delta onto the newest live metadata before writing.
+	// This preserves scan-derived fields published since the initial snapshot.
+	m.mu.RLock()
+	rebased := cloneMetadata(m.metadata[path])
+	latestItem := m.media[path]
+	if rebased == nil && latestItem != nil {
+		rebased = metadataFromItem(latestItem)
+	}
+	m.mu.RUnlock()
+	if rebased == nil {
+		return fmt.Errorf("media not found: %s", path)
+	}
+	mergeMetadataChanges(rebased, before, candidate)
+	if err := m.persistMetadataCandidate(path, rebased); err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	liveItem, stillExists := m.media[path]
+	if !stillExists || liveItem == nil {
+		m.mu.Unlock()
+		return fmt.Errorf("media not found: %s", path)
+	}
+	liveMeta := m.metadata[path]
+	if liveMeta == nil {
+		liveMeta = metadataFromItem(liveItem)
+	}
+	mergeMetadataChanges(liveMeta, before, candidate)
+	m.metadata[path] = liveMeta
+	applyMetadataToItem(liveItem, liveMeta)
+	m.version++
+	m.mu.Unlock()
+	return nil
+}
+
+// persistMetadataCandidate writes a detached snapshot. The caller must hold
+// saveMu so it remains ordered with deletes, bulk saves, and cache publication.
+func (m *Module) persistMetadataCandidate(path string, meta *Metadata) error {
+	if m.metadataRepo == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	if err := m.metadataRepo.Upsert(ctx, path, m.convertInternalToRepo(path, meta)); err != nil {
+		m.log.Warn("Failed to save metadata for %s: %v", path, err)
+		return err
+	}
+	return nil
 }
 
 // computeContentFingerprint computes a SHA-256 fingerprint of a media file.
@@ -510,44 +753,20 @@ func (m *Module) Scan() error {
 	// preserve its runtime-updated fields (Views, LastPlayed from IncrementViews).
 	// Also carry over ffprobe data (Duration, Width, Height, Codec, etc.) from
 	// old items when extractMetadata skipped ffprobe for unchanged files.
+	m.saveMu.Lock()
 	m.mu.Lock()
 	oldMediaByID := m.mediaByID
 	for id, newItem := range newMediaByID {
-		oldItem, existed := oldMediaByID[id]
-		if !existed {
-			continue
+		if !m.rebaseScannedItemLocked(newItem, oldMediaByID[id]) {
+			delete(newMediaByID, id)
+			delete(newMedia, newItem.Path)
 		}
-		// Preserve runtime playback metadata
-		if oldItem.Views > newItem.Views {
-			newItem.Views = oldItem.Views
-		}
-		if oldItem.LastPlayed != nil && (newItem.LastPlayed == nil || oldItem.LastPlayed.After(*newItem.LastPlayed)) {
-			newItem.LastPlayed = oldItem.LastPlayed
-		}
-		if newItem.ThumbnailURL == "" && oldItem.ThumbnailURL != "" {
-			newItem.ThumbnailURL = oldItem.ThumbnailURL
-		}
-		// Preserve ffprobe-extracted fields when extractMetadata skipped
-		// (unchanged file — ProbeModTime matched). Without this, Duration,
-		// dimensions, codec, etc. reset to zero on every hourly re-scan.
-		if newItem.Duration == 0 && oldItem.Duration > 0 {
-			newItem.Duration = oldItem.Duration
-		}
-		if newItem.Bitrate == 0 && oldItem.Bitrate > 0 {
-			newItem.Bitrate = oldItem.Bitrate
-		}
-		if newItem.Width == 0 && oldItem.Width > 0 {
-			newItem.Width = oldItem.Width
-			newItem.Height = oldItem.Height
-		}
-		if newItem.Codec == "" && oldItem.Codec != "" {
-			newItem.Codec = oldItem.Codec
-		}
-		if newItem.Container == "" && oldItem.Container != "" {
-			newItem.Container = oldItem.Container
-		}
-		if len(newItem.Metadata) == 0 && len(oldItem.Metadata) > 0 {
-			newItem.Metadata = oldItem.Metadata
+	}
+	// Local dedup may have removed the path previously stored for a fingerprint.
+	// Point every scanned fingerprint at the winner before publishing the catalog.
+	for fingerprint, winnerPath := range fpWinner {
+		if _, live := newMedia[winnerPath]; live {
+			m.fingerprintIndex[fingerprint] = winnerPath
 		}
 	}
 	m.media = newMedia
@@ -571,6 +790,7 @@ func (m *Module) Scan() error {
 		}
 	}
 	m.mu.Unlock()
+	m.saveMu.Unlock()
 
 	duration := time.Since(start)
 	m.log.Info("Media scan complete: %d items found in %v", itemCount, duration)
@@ -1460,8 +1680,12 @@ func (m *Module) GetTagCounts(includeMature bool) []TagCount {
 func (m *Module) HasFingerprint(fp string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	_, ok := m.fingerprintIndex[fp]
-	return ok
+	path, ok := m.fingerprintIndex[fp]
+	if !ok {
+		return false
+	}
+	_, live := m.media[path]
+	return live
 }
 
 // GetContentFingerprint returns the cached content fingerprint for a media
@@ -1542,6 +1766,8 @@ type Stats struct {
 
 // IncrementViews increments view count for a media item (DB and in-memory updated separately; not atomic).
 func (m *Module) IncrementViews(ctx context.Context, path string) error {
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
 	// Reject unknown media up-front so a path deleted between resolution and this
 	// call cannot create an orphaned metadata entry with no backing media item.
 	m.mu.RLock()
@@ -1597,6 +1823,8 @@ func (m *Module) UpdateBlurHash(ctx context.Context, path, hash string) error {
 	if path == "" || hash == "" {
 		return nil
 	}
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
 	if m.metadataRepo != nil {
 		if err := m.metadataRepo.UpdateBlurHash(ctx, path, hash); err != nil {
 			m.log.Error("Failed to store BlurHash via repository: %v", err)
@@ -1629,6 +1857,8 @@ func (m *Module) UpdatePlaybackPosition(ctx context.Context, path, userID string
 		}
 		return m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, position, duration, progress)
 	}
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
 
 	// Reject unknown media up-front so a path deleted between resolution and this
 	// call cannot leave an orphaned playback_positions row (the repo upserts) or
@@ -1754,7 +1984,9 @@ func (m *Module) BatchGetPlaybackPositions(ctx context.Context, ids []string, us
 // ClearPlaybackPosition removes the saved resume position for one user+path pair.
 // Called when the user deletes a single watch-history entry so the player
 // does not show a stale resume prompt on the next open.
-func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string) {
+func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string) error {
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
 	// Reset to 0 in the repository (avoids adding a new Delete method to the
 	// interface). Mirror UpdatePlaybackPosition: if the DB write fails, do NOT
 	// clear the in-memory copy — otherwise the cache shows 0 while the DB keeps
@@ -1762,7 +1994,7 @@ func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string)
 	if m.metadataRepo != nil {
 		if err := m.metadataRepo.UpdatePlaybackPosition(ctx, path, userID, 0, 0, 0); err != nil {
 			m.log.Warn("Failed to clear playback position for %s user %s: %v", path, userID, err)
-			return
+			return err
 		}
 	}
 
@@ -1772,11 +2004,14 @@ func (m *Module) ClearPlaybackPosition(ctx context.Context, path, userID string)
 	if meta, exists := m.metadata[path]; exists && meta.PlaybackPos != nil {
 		delete(meta.PlaybackPos, userID)
 	}
+	return nil
 }
 
 // DeletePlaybackPositionsByPath removes all saved resume positions for the given media path (all users).
 // Called when a media item is permanently deleted so orphaned rows do not accumulate.
 func (m *Module) DeletePlaybackPositionsByPath(ctx context.Context, path string) {
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
 	if m.metadataRepo != nil {
 		// A media item with no saved resume positions yields ErrMetadataNotFound,
 		// which is a normal outcome for this cleanup-on-delete call, not a failure.
@@ -1792,11 +2027,17 @@ func (m *Module) DeletePlaybackPositionsByPath(ctx context.Context, path string)
 }
 
 // ClearAllPlaybackPositions removes every saved resume position for a given user (in-memory and DB).
-func (m *Module) ClearAllPlaybackPositions(userID string) {
+func (m *Module) ClearAllPlaybackPositions(ctx context.Context, userID string) error {
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
 	// Persist deletion to DB so positions do not reappear after restart.
 	if m.metadataRepo != nil {
-		if err := m.metadataRepo.DeleteAllPlaybackPositionsByUser(context.Background(), userID); err != nil && !errors.Is(err, repositories.ErrMetadataNotFound) {
+		dbCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		err := m.metadataRepo.DeleteAllPlaybackPositionsByUser(dbCtx, userID)
+		cancel()
+		if err != nil && !errors.Is(err, repositories.ErrMetadataNotFound) {
 			m.log.Warn("Failed to clear playback positions for user %s: %v", userID, err)
+			return err
 		}
 	}
 	m.mu.Lock()
@@ -1806,46 +2047,20 @@ func (m *Module) ClearAllPlaybackPositions(userID string) {
 			delete(meta.PlaybackPos, userID)
 		}
 	}
+	return nil
 }
 
 // SetMatureFlag sets the mature content flag for a media item
 func (m *Module) SetMatureFlag(path string, isMature bool, score float64, reasons []string) error {
-	m.mu.Lock()
-
-	// Don't create an orphaned metadata entry for media that was deleted between
-	// the scan that produced this result and this call.
-	if _, ok := m.media[path]; !ok {
-		m.mu.Unlock()
-		return fmt.Errorf("media not found: %s", path)
-	}
-
-	meta, exists := m.metadata[path]
-	if !exists {
-		meta = &Metadata{
-			DateAdded:   time.Now(),
-			PlaybackPos: make(map[string]float64),
-			CustomMeta:  make(map[string]string),
-		}
-		m.metadata[path] = meta
-	}
-
-	meta.IsMature = isMature
-	meta.MatureScore = score
-	meta.MatureReasons = reasons
-
-	if item, exists := m.media[path]; exists {
-		item.IsMature = isMature
-		item.MatureScore = score
-	}
-	m.mu.Unlock()
-
-	// Persist only this item (not all 261) so the mature scan task remains
-	// responsive to context cancellation and doesn't block for O(n) time.
-	if err := m.saveMetadataItem(path); err != nil {
+	err := m.updateMetadataPersisted(path, func(meta *Metadata) {
+		meta.IsMature = isMature
+		meta.MatureScore = score
+		meta.MatureReasons = append([]string(nil), reasons...)
+	})
+	if err != nil {
 		m.log.Error("Failed to save metadata after SetMatureFlag: %v", err)
-		return err
+		return fmt.Errorf("failed to set mature flag: %w", err)
 	}
-
 	return nil
 }
 
@@ -1882,6 +2097,8 @@ func (m *Module) saveMetadataItem(path string) error {
 	if m.metadataRepo == nil {
 		return nil
 	}
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
 	m.mu.RLock()
 	meta, ok := m.metadata[path]
 	if !ok {
@@ -1890,12 +2107,6 @@ func (m *Module) saveMetadataItem(path string) error {
 	}
 	repoMeta := m.convertInternalToRepo(path, meta)
 	m.mu.RUnlock()
-
-	// Use saveMu to serialize with the bulk saveMetadata loop: both code paths
-	// delete+insert on media_tags for the same row, causing lock-wait timeouts
-	// when they run concurrently against the same file.
-	m.saveMu.Lock()
-	defer m.saveMu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
@@ -1907,6 +2118,9 @@ func (m *Module) saveMetadataItem(path string) error {
 }
 
 func (m *Module) saveMetadata(ctx context.Context) error {
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
+
 	// Snapshot under the read lock so we don't hold it across slow DB writes.
 	// Concurrent saveMetadata calls would each hold RLock for O(n * db_latency),
 	// causing MySQL "Lock wait timeout exceeded" when upserts race on the same rows.
@@ -1916,11 +2130,6 @@ func (m *Module) saveMetadata(ctx context.Context) error {
 		snapshot[path] = m.convertInternalToRepo(path, meta)
 	}
 	m.mu.RUnlock()
-
-	// Serialize DB writes: prevents concurrent upserts to the same rows from
-	// racing and hitting MySQL row-lock timeouts.
-	m.saveMu.Lock()
-	defer m.saveMu.Unlock()
 
 	// Batched save: one chunked multi-row upsert per ~400 rows instead of a
 	// transaction per file. BulkUpsert honors ctx between chunks, so shutdown or

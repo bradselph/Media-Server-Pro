@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"sync"
 	"testing"
 )
@@ -9,7 +10,7 @@ import (
 // leaves Tasks.Overrides pointing at the SAME map object as the live
 // m.config, unlike every other collection field (which is deep-copied).
 func TestRepro_TasksOverrides_AliasedAcrossGetCopy(t *testing.T) {
-	m := NewManager(testTmpConfigPath)
+	m := NewManager(filepath.Join(t.TempDir(), testConfigFilename))
 
 	if err := m.Update(func(c *Config) {
 		c.Tasks.Overrides = map[string]TaskOverride{
@@ -42,7 +43,7 @@ func TestRepro_TasksOverrides_AliasedAcrossGetCopy(t *testing.T) {
 // registerWithOverride and any future status endpoint would) while another
 // goroutine persists a task override. Run with -race.
 func TestRepro_TasksOverrides_ConcurrentMapRaceCrash(t *testing.T) {
-	m := NewManager(testTmpConfigPath)
+	m := NewManager(filepath.Join(t.TempDir(), testConfigFilename))
 	if err := m.Update(func(c *Config) {
 		c.Tasks.Overrides = map[string]TaskOverride{"seed-task": {}}
 	}); err != nil {

@@ -11,6 +11,7 @@
  */
 import type {HubEmbed, Playlist} from '~/types/api'
 import {useHubApi, usePlaylistApi} from '~/composables/useApiEndpoints'
+import {trackEvent} from '~/composables/useAnalytics'
 
 definePageMeta({title: 'Hub'})
 
@@ -210,6 +211,12 @@ const active = ref<HubEmbed | null>(null)
 function openEmbed(item: HubEmbed) {
   active.value = item
   modalOpen.value = true
+  // Record the play. The grid modal already has the full embed data, so this
+  // fetch exists purely to trigger the server-side hub_view tracking in
+  // GET /api/hub/embeds/:id (the same call the full player makes). Fire-and-
+  // forget — a tracking failure must never block playback.
+  void hubApi.get(item.embed_id).catch(() => {})
+  trackEvent('hub_play', {embed_id: item.embed_id, title: item.title})
 }
 
 watch(modalOpen, (open) => {

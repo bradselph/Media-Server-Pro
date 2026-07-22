@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 
@@ -16,6 +17,29 @@ type fnd0012SessionRepo struct{}
 func (fnd0012SessionRepo) Create(context.Context, *models.Session) error { return nil }
 func (fnd0012SessionRepo) Get(context.Context, string) (*models.Session, error) {
 	return nil, ErrSessionNotFound
+}
+
+type failingDeleteSessionRepo struct{ fnd0012SessionRepo }
+
+func (failingDeleteSessionRepo) Delete(context.Context, string) error {
+	return errors.New("database unavailable")
+}
+
+func TestLogout_DeleteFailureKeepsSessionCached(t *testing.T) {
+	m := &Module{
+		sessions:      map[string]*models.Session{"sess": {ID: "sess", Username: "alice"}},
+		adminSessions: make(map[string]*models.AdminSession),
+		sessionRepo:   failingDeleteSessionRepo{},
+	}
+	if err := m.Logout(context.Background(), "sess"); err == nil {
+		t.Fatal("expected repository error")
+	}
+	m.sessionsMu.RLock()
+	_, cached := m.sessions["sess"]
+	m.sessionsMu.RUnlock()
+	if !cached {
+		t.Fatal("failed persistent logout must not evict the cached session")
+	}
 }
 func (fnd0012SessionRepo) Update(context.Context, *models.Session) error   { return nil }
 func (fnd0012SessionRepo) Delete(context.Context, string) error            { return nil }

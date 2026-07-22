@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -12,6 +13,32 @@ import (
 	"media-server-pro/internal/scanner"
 	"media-server-pro/pkg/models"
 )
+
+// commitModerationReview applies the media-library classification first, then
+// lets the scanner persist and publish the queue decision while holding its
+// review mutation lock. If scanner persistence fails, the callback restores the
+// media fields captured immediately before the change.
+func (h *Handler) commitModerationReview(ctx context.Context, path, action string) error {
+	return h.scanner.ReviewItemWithCommit(ctx, path, "system", action, func(result *scanner.ScanResult) (func() error, error) {
+		oldMature, oldScore, oldReasons, err := h.media.GetMatureState(path)
+		if err != nil {
+			return nil, err
+		}
+		isMature := action == "approve"
+		score := 0.0
+		var reasons []string
+		if isMature {
+			score = result.Confidence
+			reasons = result.Reasons
+		}
+		if err := h.media.SetMatureFlag(path, isMature, score, reasons); err != nil {
+			return nil, err
+		}
+		return func() error {
+			return h.media.SetMatureFlag(path, oldMature, oldScore, oldReasons)
+		}, nil
+	})
+}
 
 // scanConfiguredDirectories runs the scanner on Videos, Music, and Uploads dirs from cfg and returns combined results.
 func (h *Handler) scanConfiguredDirectories(cfg *config.Config) []*scanner.ScanResult {
@@ -129,30 +156,8 @@ func (h *Handler) applyReviewActionToItem(ctx context.Context, action, id string
 		return false
 	}
 	path := item.Path
-	if action == "approve" {
-		confidence := 0.0
-		var reasons []string
-		if result, ok := h.scanner.GetScanResult(path); ok {
-			confidence = result.Confidence
-			reasons = result.Reasons
-		}
-		// Verify review-queue membership FIRST: otherwise a clean/never-flagged
-		// item (or a stale request after ClearReviewQueue) would get is_mature=true
-		// committed permanently before this returns false.
-		if err := h.scanner.ApproveContent(ctx, path); err != nil {
-			return false
-		}
-		if setErr := h.media.SetMatureFlag(path, true, confidence, reasons); setErr != nil {
-			h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
-			return false
-		}
-		return true
-	}
-	if err := h.scanner.RejectContent(ctx, path); err != nil {
-		return false
-	}
-	if setErr := h.media.SetMatureFlag(path, false, 0, nil); setErr != nil {
-		h.log.Error("Failed to update media library mature flag for %s: %v", id, setErr)
+	if err := h.commitModerationReview(ctx, path, action); err != nil {
+		h.log.Error("Failed to commit %s review for %s: %v", action, id, err)
 		return false
 	}
 	return true
@@ -199,7 +204,11 @@ func (h *Handler) ClearReviewQueue(c *gin.Context) {
 	if !h.requireScanner(c) {
 		return
 	}
-	h.scanner.ClearReviewQueue()
+	if err := h.scanner.ClearReviewQueue(c.Request.Context()); err != nil {
+		h.log.Error("%v", err)
+		writeError(c, http.StatusInternalServerError, errInternalServer)
+		return
+	}
 	writeSuccess(c, map[string]any{
 		"message": "Review queue cleared",
 	})
@@ -216,22 +225,13 @@ func (h *Handler) ApproveContent(c *gin.Context) {
 		return
 	}
 
-	confidence := 0.0
-	var reasons []string
-	if result, ok := h.scanner.GetScanResult(path); ok {
-		confidence = result.Confidence
-		reasons = result.Reasons
-	}
-	// Verify review-queue membership FIRST: otherwise a clean/never-flagged item
-	// (or a stale/duplicate request after ClearReviewQueue) would get is_mature=true
-	// committed permanently before the 404 below.
-	if err := h.scanner.ApproveContent(c.Request.Context(), path); err != nil {
-		writeError(c, http.StatusNotFound, "Item not found in review queue")
-		return
-	}
-	if err := h.media.SetMatureFlag(path, true, confidence, reasons); err != nil {
-		h.log.Error("Failed to update media library mature flag: %v", err)
-		writeError(c, http.StatusInternalServerError, "Failed to update media library")
+	if err := h.commitModerationReview(c.Request.Context(), path, "approve"); err != nil {
+		if errors.Is(err, scanner.ErrReviewItemNotFound) {
+			writeError(c, http.StatusNotFound, "Item not found in review queue")
+			return
+		}
+		h.log.Error("Failed to commit mature approval: %v", err)
+		writeError(c, http.StatusInternalServerError, "Failed to apply review decision")
 		return
 	}
 
@@ -253,13 +253,13 @@ func (h *Handler) RejectContent(c *gin.Context) {
 		return
 	}
 
-	if err := h.scanner.RejectContent(c.Request.Context(), path); err != nil {
-		writeError(c, http.StatusNotFound, "Item not found in review queue")
-		return
-	}
-	if err := h.media.SetMatureFlag(path, false, 0, nil); err != nil {
-		h.log.Error("Failed to update media library mature flag: %v", err)
-		writeError(c, http.StatusInternalServerError, "Failed to update media library")
+	if err := h.commitModerationReview(c.Request.Context(), path, "reject"); err != nil {
+		if errors.Is(err, scanner.ErrReviewItemNotFound) {
+			writeError(c, http.StatusNotFound, "Item not found in review queue")
+			return
+		}
+		h.log.Error("Failed to commit mature rejection: %v", err)
+		writeError(c, http.StatusInternalServerError, "Failed to apply review decision")
 		return
 	}
 

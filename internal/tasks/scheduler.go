@@ -78,6 +78,8 @@ type Module struct {
 	cancel       context.CancelFunc
 	done         <-chan struct{}
 	wg           sync.WaitGroup
+	started      bool          // guarded by mu; admissions require started && !stopping
+	stopping     bool          // guarded by mu; closes the Add-vs-Wait shutdown race
 	startupDelay time.Duration // how long to wait before the first task execution
 	healthy      bool
 	healthMsg    string
@@ -105,20 +107,24 @@ func (m *Module) Start(_ context.Context) error {
 	// Apply a startup delay so that tasks don't all fire the instant the
 	// scheduler starts.  This prevents a flood of DB queries while the
 	// remaining modules (scanner, thumbnails, …) are still initializing.
-	m.startupDelay = defaultStartupDelay
-
 	// Use a background context for task goroutines so they aren't canceled
 	// when the server's module-startup context completes.
 	taskCtx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
-	m.ctx = taskCtx
-	m.cancel = cancel
-	m.done = taskCtx.Done()
-
 	// Start all enabled tasks.
 	// Use a write lock so we can set loopRunning=true atomically before
 	// spawning goroutines.  This prevents EnableTask from racing Start and
 	// launching a duplicate runTaskLoop for the same task.
 	m.mu.Lock()
+	if m.started || m.stopping {
+		m.mu.Unlock()
+		cancel()
+		return fmt.Errorf("task scheduler already started or stopping")
+	}
+	m.startupDelay = defaultStartupDelay
+	m.ctx = taskCtx
+	m.cancel = cancel
+	m.done = taskCtx.Done()
+	m.started = true
 	for _, task := range m.tasks {
 		if task.Enabled {
 			task.loopRunning = true
@@ -126,13 +132,14 @@ func (m *Module) Start(_ context.Context) error {
 			go m.runTaskLoop(taskCtx, task)
 		}
 	}
+	taskCount := len(m.tasks)
 	m.mu.Unlock()
 
 	m.healthMu.Lock()
 	m.healthy = true
-	m.healthMsg = fmt.Sprintf("Running (%d tasks, startup delay: %v)", len(m.tasks), m.startupDelay)
+	m.healthMsg = fmt.Sprintf("Running (%d tasks, startup delay: %v)", taskCount, m.startupDelay)
 	m.healthMu.Unlock()
-	m.log.Info("Task scheduler started with %d tasks (first run in %v)", len(m.tasks), m.startupDelay)
+	m.log.Info("Task scheduler started with %d tasks (first run in %v)", taskCount, m.startupDelay)
 	return nil
 }
 
@@ -140,7 +147,19 @@ func (m *Module) Start(_ context.Context) error {
 func (m *Module) Stop(ctx context.Context) error {
 	m.log.Info("Stopping task scheduler...")
 
-	m.cancel()
+	// Close task admission under the same lock used by RegisterTask, RunNow,
+	// and EnableTask. Every positive WaitGroup Add therefore happens either
+	// before this transition or after a future Start, never concurrently with
+	// the zero-counter Wait below.
+	m.mu.Lock()
+	if !m.started || m.cancel == nil {
+		m.mu.Unlock()
+		return nil
+	}
+	m.stopping = true
+	cancel := m.cancel
+	m.mu.Unlock()
+	cancel()
 
 	// Wait for all tasks to finish with timeout
 	done := make(chan struct{})
@@ -152,6 +171,13 @@ func (m *Module) Stop(ctx context.Context) error {
 	select {
 	case <-done:
 		m.log.Info("All tasks stopped gracefully")
+		m.mu.Lock()
+		m.started = false
+		m.stopping = false
+		m.ctx = nil
+		m.cancel = nil
+		m.done = nil
+		m.mu.Unlock()
 	case <-ctx.Done():
 		m.log.Warn("Task shutdown timed out")
 	}
@@ -204,7 +230,7 @@ func (m *Module) RegisterTask(opts TaskRegistration) {
 	m.tasks[opts.ID] = task
 	m.log.Info("Registered task: %s (schedule: %v)", opts.Name, opts.Schedule)
 
-	if m.ctx != nil && task.Enabled && !task.loopRunning {
+	if m.started && !m.stopping && m.ctx != nil && task.Enabled && !task.loopRunning {
 		task.loopRunning = true
 		m.wg.Add(1)
 		go m.runTaskLoop(m.ctx, task)
@@ -258,14 +284,7 @@ func (m *Module) waitForStartupDelay(ctx context.Context, task *Task) bool {
 // tryRunScheduledTask runs the task on a schedule tick if it is still enabled.
 // Returns false if the task was disabled (caller should stop the loop), true otherwise.
 func (m *Module) tryRunScheduledTask(ctx context.Context, task *Task) bool {
-	m.mu.RLock()
-	enabled := task.Enabled
-	m.mu.RUnlock()
-	if !enabled {
-		return false
-	}
-	m.executeTask(ctx, task)
-	return true
+	return m.executeTask(ctx, task, true)
 }
 
 // runTaskLoop runs a task on its schedule
@@ -290,18 +309,18 @@ func (m *Module) runTaskLoop(ctx context.Context, task *Task) {
 		return
 	}
 
-	ticker := time.NewTicker(task.Schedule)
+	m.mu.RLock()
+	initialSchedule := task.Schedule
+	m.mu.RUnlock()
+	ticker := time.NewTicker(initialSchedule)
 	defer ticker.Stop()
 
-	// Check if the task was disabled during the startup delay before the initial run.
-	m.mu.RLock()
-	enabled := task.Enabled
-	m.mu.RUnlock()
-	if !enabled {
+	// The enabled check and execution claim are atomic, so DisableTask cannot
+	// slip through the gap and miss canceling a just-started run.
+	if !m.executeTask(ctx, task, true) {
 		m.log.Debug("Task %s: skipping initial run (disabled during startup delay)", task.Name)
 	} else {
 		m.log.Debug("Task %s: initial run", task.Name)
-		m.executeTask(ctx, task)
 	}
 
 	for {
@@ -364,18 +383,34 @@ func (m *Module) recordTaskResult(task *Task, err error, start time.Time) {
 	m.log.Debug("Task %s completed in %v", task.Name, time.Since(start))
 }
 
-// executeTask runs a single task execution with panic recovery.
-func (m *Module) executeTask(ctx context.Context, task *Task) {
+// executeTask runs a single task execution with panic recovery. When
+// requireEnabled is true, the enabled check and installation of stopRunning
+// happen under the same scheduler lock, closing the DisableTask race window.
+// It returns false only when a scheduled task is disabled.
+func (m *Module) executeTask(ctx context.Context, task *Task, requireEnabled bool) bool {
 	m.mu.Lock()
+	if requireEnabled && !task.Enabled {
+		m.mu.Unlock()
+		return false
+	}
 	if task.Running {
 		m.mu.Unlock()
 		m.log.Debug("Task %s already running, skipping", task.Name)
-		return
+		return true
 	}
+	timeout := computeTaskTimeout(task)
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	task.stopMu.Lock()
+	task.stopRunning = cancel
+	task.stopMu.Unlock()
 	task.Running = true
 	m.mu.Unlock()
 
 	defer func() {
+		cancel()
+		task.stopMu.Lock()
+		task.stopRunning = nil
+		task.stopMu.Unlock()
 		m.mu.Lock()
 		task.Running = false
 		task.LastRun = time.Now()
@@ -385,24 +420,6 @@ func (m *Module) executeTask(ctx context.Context, task *Task) {
 
 	m.log.Debug("Executing task: %s", task.Name)
 	start := time.Now()
-	// task.Schedule/Timeout are guarded by m.mu (UpdateSchedule writes them under
-	// the lock), so read them under the lock here to avoid racing with a concurrent
-	// schedule change. computeTaskTimeout is a pure function and takes no locks.
-	m.mu.Lock()
-	timeout := computeTaskTimeout(task)
-	m.mu.Unlock()
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-
-	task.stopMu.Lock()
-	task.stopRunning = cancel
-	task.stopMu.Unlock()
-
-	defer func() {
-		cancel()
-		task.stopMu.Lock()
-		task.stopRunning = nil
-		task.stopMu.Unlock()
-	}()
 
 	// Recover from panics so a single misbehaving task doesn't permanently
 	// mark itself as Running=true and block future executions.
@@ -414,32 +431,36 @@ func (m *Module) executeTask(ctx context.Context, task *Task) {
 				m.log.Error("Task %s panicked: %v", task.Name, r)
 			}
 		}()
-		err = task.Func(ctx)
+		err = task.Func(runCtx)
 	}()
 	m.recordTaskResult(task, err, start)
+	return true
 }
 
 // RunNow triggers immediate execution of a task. The goroutine is tracked by m.wg
 // so Stop() waits for it to complete.
 func (m *Module) RunNow(taskID string) error {
-	m.mu.RLock()
+	m.mu.Lock()
 	task, exists := m.tasks[taskID]
 	ctx := m.ctx
-	m.mu.RUnlock()
-
 	if !exists {
+		m.mu.Unlock()
 		return fmt.Errorf("%w: %s", ErrTaskNotFound, taskID)
 	}
-
-	if ctx == nil {
+	if !m.started || ctx == nil {
+		m.mu.Unlock()
 		return fmt.Errorf("task scheduler not started")
 	}
-
-	if ctx.Err() != nil {
+	if m.stopping || ctx.Err() != nil {
+		m.mu.Unlock()
 		return fmt.Errorf("task scheduler is stopping")
 	}
-
-	m.wg.Go(func() {
+	// Add while admission is still protected by m.mu; Stop takes the same lock
+	// before beginning Wait, which is the ordering sync.WaitGroup requires.
+	m.wg.Add(1)
+	m.mu.Unlock()
+	go func() {
+		defer m.wg.Done()
 		// Re-check ctx after the goroutine starts — the scheduler may have been
 		// stopped between the RLock release above and this goroutine being scheduled.
 		// Tasks that don't honor context cancellation would otherwise run to
@@ -447,8 +468,8 @@ func (m *Module) RunNow(taskID string) error {
 		if ctx.Err() != nil {
 			return
 		}
-		m.executeTask(ctx, task)
-	})
+		m.executeTask(ctx, task, false)
+	}()
 	return nil
 }
 
@@ -465,9 +486,11 @@ func (m *Module) EnableTask(taskID string) error {
 	// Only start a new goroutine if task is not enabled and no loop is running
 	if !task.Enabled && !task.loopRunning {
 		task.Enabled = true
-		task.loopRunning = true
-		m.wg.Add(1)
-		go m.runTaskLoop(m.ctx, task)
+		if m.started && !m.stopping && m.ctx != nil && m.ctx.Err() == nil {
+			task.loopRunning = true
+			m.wg.Add(1)
+			go m.runTaskLoop(m.ctx, task)
+		}
 		m.log.Info("Enabled task: %s", task.Name)
 	} else if !task.Enabled && task.loopRunning {
 		// Loop is still running but task was disabled - just re-enable it

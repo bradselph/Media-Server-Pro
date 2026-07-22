@@ -65,6 +65,12 @@ type Summary struct {
 	TodayBulkDeletes        int   `json:"today_bulk_deletes"`
 	TodayBulkUpdates        int   `json:"today_bulk_updates"`
 	TodayUserRoleChanges    int   `json:"today_user_role_changes"`
+
+	// Hub (BETA) engagement projections.
+	TodayHubBrowses      int `json:"today_hub_browses"`
+	TodayHubViews        int `json:"today_hub_views"`
+	TodayHubSearches     int `json:"today_hub_searches"`
+	TodayHubPlaylistAdds int `json:"today_hub_playlist_adds"`
 }
 
 // Stats holds statistics for metrics export.
@@ -211,6 +217,14 @@ func applySimpleCountToDaily(daily *models.DailyStats, eventType string, data ma
 		daily.BulkUpdates++
 	case EventUserRoleChange:
 		daily.UserRoleChanges++
+	case EventHubBrowse:
+		daily.HubBrowses++
+	case EventHubView:
+		daily.HubViews++
+	case EventHubSearch:
+		daily.HubSearches++
+	case EventHubPlaylistAdd:
+		daily.HubPlaylistAdds++
 	}
 }
 
@@ -2542,6 +2556,14 @@ func dailyStatField(d *models.DailyStats, metric string) float64 {
 		return float64(d.BulkUpdates)
 	case "user_role_changes":
 		return float64(d.UserRoleChanges)
+	case "hub_browses":
+		return float64(d.HubBrowses)
+	case "hub_views":
+		return float64(d.HubViews)
+	case "hub_searches":
+		return float64(d.HubSearches)
+	case "hub_playlist_adds":
+		return float64(d.HubPlaylistAdds)
 	}
 	return 0
 }
@@ -2677,6 +2699,10 @@ func (m *Module) GetSummary(ctx context.Context) Summary {
 		summary.TodayBulkDeletes = daily.BulkDeletes
 		summary.TodayBulkUpdates = daily.BulkUpdates
 		summary.TodayUserRoleChanges = daily.UserRoleChanges
+		summary.TodayHubBrowses = daily.HubBrowses
+		summary.TodayHubViews = daily.HubViews
+		summary.TodayHubSearches = daily.HubSearches
+		summary.TodayHubPlaylistAdds = daily.HubPlaylistAdds
 	}
 	for _, stats := range m.mediaStats {
 		summary.TotalViews += stats.TotalViews

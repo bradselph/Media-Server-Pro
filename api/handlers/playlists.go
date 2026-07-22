@@ -413,6 +413,18 @@ func (h *Handler) AddPlaylistItem(c *gin.Context) {
 		"playlist_id": playlistID,
 		"media_id":    req.MediaID,
 	})
+	// A Hub (BETA) embed saved into a playlist is a distinct engagement signal
+	// (a "save" conversion for external content), so it gets its own counter in
+	// addition to the generic playlist_item_add above. Routed through trackHubEvent
+	// — not trackServerEvent — so it honors private sessions exactly like the other
+	// three Hub engagement events (hub_browse/hub_view/hub_search). The literal
+	// matches analytics.EventHubPlaylistAdd; the daily-stats switch keys on the string.
+	if embedID, ok := strings.CutPrefix(req.MediaID, hubItemPrefix); ok {
+		h.trackHubEvent(c, "hub_playlist_add", map[string]any{
+			"playlist_id": playlistID,
+			"embed_id":    embedID,
+		})
+	}
 	writeSuccess(c, nil)
 }
 

@@ -496,6 +496,13 @@ var auditableEventTypes = map[string]bool{
 	analytics.EventReceiverPair:             true,
 	analytics.EventReceiverUnpair:           true,
 	analytics.EventRemoteStoreUpdate:        true,
+
+	// NOTE: the Hub (BETA) events (hub_import/hub_clear and the engagement
+	// events) are deliberately NOT here. The import/clear handlers already call
+	// logAdminAction, which writes the audit_log row itself; adding them here
+	// would make trackServerEvent write a SECOND, duplicate row for the same
+	// action. The high-frequency engagement events (hub_browse/hub_view/etc.)
+	// would flood audit_log and are counted via analytics only.
 }
 
 // trackServerEvent emits a server-side traffic event with the caller's

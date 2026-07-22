@@ -116,6 +116,10 @@ func (h *Handler) GetAnalyticsSummary(c *gin.Context) {
 		"today_bulk_deletes":         summary.TodayBulkDeletes,
 		"today_bulk_updates":         summary.TodayBulkUpdates,
 		"today_user_role_changes":    summary.TodayUserRoleChanges,
+		"today_hub_browses":          summary.TodayHubBrowses,
+		"today_hub_views":            summary.TodayHubViews,
+		"today_hub_searches":         summary.TodayHubSearches,
+		"today_hub_playlist_adds":    summary.TodayHubPlaylistAdds,
 	})
 }
 
@@ -776,9 +780,11 @@ func (h *Handler) fetchExportRows(c *gin.Context, panel string) ([]map[string]an
 				"uploads_failed": r.UploadsFailed, "stream_starts": r.StreamStarts, "stream_ends": r.StreamEnds,
 				"bytes_served": r.BytesServed, "hls_starts": r.HLSStarts, "hls_errors": r.HLSErrors,
 				"server_errors": r.ServerErrors, "admin_actions": r.AdminActions,
+				"hub_browses": r.HubBrowses, "hub_views": r.HubViews, "hub_searches": r.HubSearches,
+				"hub_playlist_adds": r.HubPlaylistAdds,
 			}
 		}
-		return out, []string{"date", "total_views", "unique_users", "total_watch_time", "logins", "logins_failed", "logouts", "registrations", "downloads", "searches", "favorites_added", "ratings_set", "playlists_created", "uploads_succeeded", "uploads_failed", "stream_starts", "stream_ends", "bytes_served", "hls_starts", "hls_errors", "server_errors", "admin_actions"}, nil
+		return out, []string{"date", "total_views", "unique_users", "total_watch_time", "logins", "logins_failed", "logouts", "registrations", "downloads", "searches", "favorites_added", "ratings_set", "playlists_created", "uploads_succeeded", "uploads_failed", "stream_starts", "stream_ends", "bytes_served", "hls_starts", "hls_errors", "server_errors", "admin_actions", "hub_browses", "hub_views", "hub_searches", "hub_playlist_adds"}, nil
 	case "heatmap":
 		rows := h.analytics.GetHourlyHeatmap(c.Request.Context(), days)
 		out := make([]map[string]any, len(rows))

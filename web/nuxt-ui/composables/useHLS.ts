@@ -130,6 +130,7 @@ export function useHLS(
     let checkDebounce: ReturnType<typeof setTimeout> | null = null
     let networkRetryTimer: ReturnType<typeof setTimeout> | null = null
     let activationGen = 0
+    let checkGen = 0
     let pollStartTime = 0
     const MAX_POLL_DURATION = 30 * 60 * 1000 // 30 minutes
     const MAX_CONSECUTIVE_ERRORS = 10
@@ -139,6 +140,7 @@ export function useHLS(
         // hls.js dynamic import) can't attach the previous media's stream to the
         // (still-connected) video element after the user switches items.
         activationGen++
+        checkGen++
         if (checkDebounce) {
             clearTimeout(checkDebounce)
             checkDebounce = null
@@ -200,6 +202,8 @@ export function useHLS(
         try {
             Hls = (await import('hls.js')).default
         } catch {
+            if (gen !== activationGen) return
+            hlsActivated.value = false
             hlsError.value = 'Failed to load HLS player'
             hlsLoading.value = false
             return
@@ -214,6 +218,7 @@ export function useHLS(
         }
 
         if (!Hls.isSupported()) {
+            hlsActivated.value = false
             hlsError.value = 'HLS not supported in this browser'
             hlsLoading.value = false
             return
@@ -445,7 +450,8 @@ export function useHLS(
     // Extracted poll body to avoid exceeding 4 levels of function nesting (typescript:S2004)
     const consecutiveErrors = {count: 0}
 
-    async function doPollCheck(id: string) {
+    async function doPollCheck(id: string, thisCheck: number) {
+        if (thisCheck !== checkGen) return
         if (document.hidden) return
         if (Date.now() - pollStartTime > MAX_POLL_DURATION) {
             jobRunning.value = false
@@ -458,6 +464,7 @@ export function useHLS(
         }
         try {
             const updated = await hlsApi.check(id)
+            if (thisCheck !== checkGen) return
             consecutiveErrors.count = 0
             jobProgress.value = updated.progress
             if (updated.available && updated.hls_url) {
@@ -469,7 +476,7 @@ export function useHLS(
                     clearInterval(pollTimer)
                     pollTimer = null
                 }
-                await autoActivateIfEnabled()
+                await autoActivateIfEnabled(thisCheck)
             } else if (updated.status !== 'running' && updated.status !== 'pending') {
                 jobRunning.value = false
                 if (pollTimer) {
@@ -478,6 +485,7 @@ export function useHLS(
                 }
             }
         } catch {
+            if (thisCheck !== checkGen) return
             consecutiveErrors.count++
             if (consecutiveErrors.count >= MAX_CONSECUTIVE_ERRORS) {
                 jobRunning.value = false
@@ -492,8 +500,9 @@ export function useHLS(
 
     // Activate HLS only when adaptive streaming is enabled in server settings
     // (best-effort — a failed settings fetch leaves the player on direct stream).
-    async function autoActivateIfEnabled() {
+    async function autoActivateIfEnabled(thisCheck = checkGen) {
         const settings = await settingsApi.get().catch(() => null)
+        if (thisCheck !== checkGen) return
         if (settings && settings.streaming?.adaptive !== false) await activateHLS()
     }
 
@@ -502,12 +511,18 @@ export function useHLS(
     // recheck() can re-run it on demand (e.g. after manual generation) without
     // waiting for a mediaId change.
     async function runCheck(id: string) {
+        const thisCheck = ++checkGen
+        if (pollTimer) {
+            clearInterval(pollTimer)
+            pollTimer = null
+        }
         try {
             const status = await hlsApi.check(id)
+            if (thisCheck !== checkGen) return
             if (status.available && status.hls_url) {
                 hlsAvailable.value = true
                 hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
-                await autoActivateIfEnabled()
+                await autoActivateIfEnabled(thisCheck)
             } else if (status.status === 'running' || status.status === 'pending') {
                 jobRunning.value = true
                 jobProgress.value = status.progress
@@ -516,9 +531,10 @@ export function useHLS(
                 pollStartTime = Date.now()
                 consecutiveErrors.count = 0
                 if (pollTimer) clearInterval(pollTimer)
-                pollTimer = setInterval(() => doPollCheck(id), 3000)
+                pollTimer = setInterval(() => doPollCheck(id, thisCheck), 3000)
             }
         } catch (err) {
+            if (thisCheck !== checkGen) return
             // HLS not available or check failed — fall back to direct streaming
             console.warn('[hls] check failed:', err)
         }

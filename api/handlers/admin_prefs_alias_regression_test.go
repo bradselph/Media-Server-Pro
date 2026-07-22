@@ -38,7 +38,7 @@ func TestApplyPreferencesPatch_AutoplayAliasDoesNotClobber(t *testing.T) {
 // updates map, hence out of CustomMeta) while genuine custom keys pass through.
 func TestParseAdminUpdateBody_SystemKeysNotInCustomMeta(t *testing.T) {
 	raw := map[string]json.RawMessage{
-		"metadata": json.RawMessage(`{"duration":"120","blur_hash":"L1abc","studio":"acme"}`),
+		"metadata": json.RawMessage(`{"duration":"120","Blur_Hash":"L1abc","stable_id":"fake","mature_reason":"fake","playback_positions":"fake","studio":"acme"}`),
 	}
 	parsed, errMsg := parseAdminUpdateBody(raw)
 	if errMsg != "" {
@@ -47,8 +47,13 @@ func TestParseAdminUpdateBody_SystemKeysNotInCustomMeta(t *testing.T) {
 	if _, ok := parsed.updates["duration"]; ok {
 		t.Error("duration must be reserved, not routed into custom metadata")
 	}
-	if _, ok := parsed.updates["blur_hash"]; ok {
+	if _, ok := parsed.updates["Blur_Hash"]; ok {
 		t.Error("blur_hash must be reserved, not routed into custom metadata")
+	}
+	for _, key := range []string{"stable_id", "mature_reason", "playback_positions"} {
+		if _, ok := parsed.updates[key]; ok {
+			t.Errorf("%s must be reserved, not routed into custom metadata", key)
+		}
 	}
 	if v, ok := parsed.updates["studio"]; !ok || v != "acme" {
 		t.Errorf("a non-reserved custom key should pass through; got %v ok=%v", v, ok)

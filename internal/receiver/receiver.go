@@ -30,7 +30,21 @@ import (
 	"media-server-pro/pkg/models"
 )
 
-const defaultProxyTimeout = 30 * time.Second
+const (
+	defaultProxyTimeout = 30 * time.Second
+	receiverDBTimeout   = 15 * time.Second
+)
+
+// duplicateCoordinator is the receiver-facing duplicate contract. Keeping the
+// reverse direction (duplicates -> receiver) interface-based avoids an import
+// cycle while still letting receiver own all catalog serialization.
+type duplicateCoordinator interface {
+	ClearForSlave(ctx context.Context, slaveID string) error
+	ClearPendingForSlave(ctx context.Context, slaveID string) error
+	RemovedReceiverItemIDs(ctx context.Context, slaveID string) (map[string]struct{}, error)
+	RecordDuplicatesFromSlave(ctx context.Context, slaveID string, items []duplicates.ReceiverItemRef) error
+	CountPending() int
+}
 
 // opaqueMediaID produces a deterministic, opaque 32-char hex identifier from
 // a slave ID and item ID.  This hides internal topology (which slave hosts
@@ -132,7 +146,8 @@ type Module struct {
 	dbModule       *database.Module
 	slaveRepo      repositories.ReceiverSlaveRepository
 	mediaRepo      repositories.ReceiverMediaRepository
-	dupModule      *duplicates.Module
+	dupModule      duplicateCoordinator
+	slaveWriteMu   sync.Mutex // serializes DB-first slave registration updates
 	mu             sync.RWMutex
 	slaves         map[string]*SlaveNode
 	media          map[string]*MediaItem // keyed by master-assigned ID
@@ -176,6 +191,13 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 // fingerprint collisions without depending on the receiver feature being enabled.
 func (m *Module) SetDuplicatesModule(d *duplicates.Module) {
 	m.dupModule = d
+}
+
+func boundedReceiverContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(parent, receiverDBTimeout)
 }
 
 // Name implements server.Module.
@@ -256,26 +278,50 @@ func (m *Module) setHealth(healthy bool, msg string) {
 
 // loadFromDB populates the in-memory caches from the database on startup.
 func (m *Module) loadFromDB() {
-	ctx := context.Background()
-
-	slaveRecords, err := m.slaveRepo.List(ctx)
+	slaveCtx, cancel := boundedReceiverContext(context.Background())
+	slaveRecords, err := m.slaveRepo.List(slaveCtx)
+	cancel()
 	if err != nil {
 		m.log.Warn("Failed to load slaves from DB: %v", err)
 		return
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	loadedSlaves := make(map[string]*SlaveNode, len(slaveRecords))
 	for _, rec := range slaveRecords {
-		m.slaves[rec.ID] = slaveRecordToNode(rec)
+		if rec != nil {
+			loadedSlaves[rec.ID] = slaveRecordToNode(rec)
+		}
 	}
 
-	mediaRecords, err := m.mediaRepo.ListAll(ctx)
+	mediaCtx, cancel := boundedReceiverContext(context.Background())
+	mediaRecords, err := m.mediaRepo.ListAll(mediaCtx)
+	cancel()
 	if err != nil {
 		m.log.Warn("Failed to load media from DB: %v", err)
+		m.mu.Lock()
+		m.slaves = loadedSlaves
+		m.media = make(map[string]*MediaItem)
+		m.mu.Unlock()
 		m.setHealth(true, "Running (media cache empty — awaiting slave catalog push)")
 		return
+	}
+
+	removedIDs := make(map[string]struct{})
+	if m.dupModule != nil {
+		tombstoneCtx, tombstoneCancel := boundedReceiverContext(context.Background())
+		removedIDs, err = m.dupModule.RemovedReceiverItemIDs(tombstoneCtx, "")
+		tombstoneCancel()
+		if err != nil {
+			// Fail closed: loading all rows when the durable-deletion set could not
+			// be read would make previously removed media visible after restart.
+			m.log.Warn("Failed to load receiver removal tombstones: %v", err)
+			m.mu.Lock()
+			m.slaves = loadedSlaves
+			m.media = make(map[string]*MediaItem)
+			m.mu.Unlock()
+			m.setHealth(true, "Running (media cache withheld — removal history unavailable)")
+			return
+		}
 	}
 
 	type legacyMigration struct {
@@ -284,62 +330,115 @@ func (m *Module) loadFromDB() {
 		rec      *repositories.ReceiverMediaRecord
 	}
 	var migrations []legacyMigration
+	var tombstonedRows []string
+	loadedMedia := make(map[string]*MediaItem, len(mediaRecords))
+	mediaCounts := make(map[string]int, len(loadedSlaves))
 
 	for _, rec := range mediaRecords {
 		func() {
+			rowID := "<nil>"
+			if rec != nil {
+				rowID = rec.ID
+			}
 			defer func() {
 				if r := recover(); r != nil {
-					m.log.Warn("Skipping corrupt receiver media row (id=%q): %v", rec.ID, r)
+					m.log.Warn("Skipping corrupt receiver media row (id=%q): %v", rowID, r)
 				}
 			}()
 			if rec == nil {
 				return
 			}
 			item := mediaRecordToItem(rec)
-			if node, ok := m.slaves[rec.SlaveID]; ok {
+			if node, ok := loadedSlaves[rec.SlaveID]; ok {
 				item.SlaveName = node.Name
 			}
 
 			// Migrate legacy "slaveID:itemID" composite keys to opaque IDs.
 			id := rec.ID
+			var migration *legacyMigration
 			if strings.Contains(id, ":") {
 				parts := strings.SplitN(id, ":", 2)
 				if len(parts) == 2 {
 					id = opaqueMediaID(parts[0], parts[1])
 					item.ID = id
-					// Collect for async DB migration so we don't hold m.mu during I/O.
-					migrations = append(migrations, legacyMigration{
+					migration = &legacyMigration{
 						legacyID: rec.ID,
 						newID:    id,
 						rec:      rec,
-					})
+					}
 				}
 			}
-			m.media[id] = item
+			if _, removed := removedIDs[id]; removed {
+				tombstonedRows = append(tombstonedRows, rec.ID)
+				return
+			}
+			if migration != nil {
+				// Collect for async DB migration so we don't hold m.mu during I/O.
+				migrations = append(migrations, *migration)
+			}
+			loadedMedia[id] = item
+			mediaCounts[rec.SlaveID]++
 		}()
 	}
 
-	m.log.Info("Loaded %d slaves, %d media items from DB", len(m.slaves), len(m.media))
+	type countRepair struct {
+		record *repositories.ReceiverSlaveRecord
+	}
+	var countRepairs []countRepair
+	for _, node := range loadedSlaves {
+		count := mediaCounts[node.ID]
+		if node.MediaCount != count {
+			node.MediaCount = count
+			countRepairs = append(countRepairs, countRepair{record: nodeToSlaveRecord(node)})
+		}
+	}
+
+	m.mu.Lock()
+	m.slaves = loadedSlaves
+	m.media = loadedMedia
+	m.mu.Unlock()
+
+	m.log.Info("Loaded %d slaves, %d media items from DB", len(loadedSlaves), len(loadedMedia))
 
 	// Persist migrated IDs: upsert the opaque-ID row FIRST, then delete the stale
 	// composite-key row. This ordering ensures the new row exists before the old is
 	// removed, so a crash between the two operations never loses the record.
-	if len(migrations) > 0 {
+	if len(migrations) > 0 || len(tombstonedRows) > 0 || len(countRepairs) > 0 {
 		migs := migrations
+		staleRows := tombstonedRows
+		repairs := countRepairs
 		go func() {
-			migCtx := context.Background()
 			for _, mig := range migs {
+				migCtx, migCancel := boundedReceiverContext(context.Background())
 				newRec := *mig.rec
 				newRec.ID = mig.newID
 				if err := m.mediaRepo.UpsertBatch(migCtx, newRec.SlaveID, []*repositories.ReceiverMediaRecord{&newRec}); err != nil {
 					m.log.Warn("Legacy media ID migration: failed to upsert %s: %v", mig.newID, err)
+					migCancel()
 					continue
 				}
 				if err := m.mediaRepo.DeleteByID(migCtx, mig.legacyID); err != nil {
 					m.log.Warn("Legacy media ID migration: failed to delete %s: %v", mig.legacyID, err)
 				}
+				migCancel()
 			}
-			m.log.Info("Migrated %d legacy composite receiver media IDs to opaque IDs", len(migs))
+			if len(migs) > 0 {
+				m.log.Info("Migrated %d legacy composite receiver media IDs to opaque IDs", len(migs))
+			}
+			for _, id := range staleRows {
+				cleanupCtx, cleanupCancel := boundedReceiverContext(context.Background())
+				if err := m.mediaRepo.DeleteByID(cleanupCtx, id); err != nil {
+					m.log.Warn("Failed to clean tombstoned receiver media row %s: %v", id, err)
+				}
+				cleanupCancel()
+			}
+			for _, repair := range repairs {
+				repairCtx, repairCancel := boundedReceiverContext(context.Background())
+				if err := m.slaveRepo.Upsert(repairCtx, repair.record); err != nil {
+					m.log.Warn("Failed to repair slave media count for %s: %v", repair.record.ID, err)
+				}
+				repairCancel()
+			}
 		}()
 	}
 }
@@ -363,6 +462,8 @@ func (m *Module) healthCheckLoop() {
 
 // markStaleSlaves sets slaves to "offline" if their last heartbeat is overdue.
 func (m *Module) markStaleSlaves() {
+	m.slaveWriteMu.Lock()
+	defer m.slaveWriteMu.Unlock()
 	cfg := m.config.Get()
 	threshold := cfg.Receiver.HealthCheck * 3
 	if threshold == 0 {
@@ -428,7 +529,12 @@ func (m *Module) RegisterSlave(ctx context.Context, req *RegisterRequest) (*Slav
 		slaveID = uuid.New().String()
 	}
 
-	m.mu.Lock()
+	m.slaveWriteMu.Lock()
+	defer m.slaveWriteMu.Unlock()
+	dbCtx, cancel := boundedReceiverContext(ctx)
+	defer cancel()
+
+	m.mu.RLock()
 	existing, exists := m.slaves[slaveID]
 	node := &SlaveNode{
 		ID:       slaveID,
@@ -443,13 +549,15 @@ func (m *Module) RegisterSlave(ctx context.Context, req *RegisterRequest) (*Slav
 	} else {
 		node.RegisteredAt = time.Now()
 	}
-	m.slaves[slaveID] = node
-	m.mu.Unlock()
+	m.mu.RUnlock()
 
 	rec := nodeToSlaveRecord(node)
-	if err := m.slaveRepo.Upsert(ctx, rec); err != nil {
+	if err := m.slaveRepo.Upsert(dbCtx, rec); err != nil {
 		return nil, fmt.Errorf("failed to persist slave: %w", err)
 	}
+	m.mu.Lock()
+	m.slaves[slaveID] = node
+	m.mu.Unlock()
 
 	m.log.Info("Slave registered: %s (%s) at %s", node.Name, node.ID, node.BaseURL)
 	return node, nil
@@ -476,6 +584,10 @@ func (m *Module) PushCatalog(ctx context.Context, req *CatalogPushRequest) (int,
 	if len(req.Items) > maxCatalogItems {
 		return 0, fmt.Errorf("catalog too large: %d items (max %d)", len(req.Items), maxCatalogItems)
 	}
+	m.slaveWriteMu.Lock()
+	defer m.slaveWriteMu.Unlock()
+	dbCtx, cancel := boundedReceiverContext(ctx)
+	defer cancel()
 
 	var exists bool
 	m.mu.RLock()
@@ -524,20 +636,42 @@ func (m *Module) PushCatalog(ctx context.Context, req *CatalogPushRequest) (int,
 		})
 	}
 
+	// Apply exact durable tombstones before either a full replacement or an
+	// incremental upsert. If the lookup fails, fail closed: accepting an
+	// unfiltered catalog could resurrect an item the administrator removed.
+	if m.dupModule != nil && len(records) > 0 {
+		removedIDs, err := m.dupModule.RemovedReceiverItemIDs(dbCtx, req.SlaveID)
+		if err != nil {
+			return 0, fmt.Errorf("failed to load resolved receiver removals: %w", err)
+		}
+		if len(removedIDs) > 0 {
+			filtered := records[:0]
+			for _, rec := range records {
+				if _, removed := removedIDs[rec.ID]; removed {
+					continue
+				}
+				filtered = append(filtered, rec)
+			}
+			records = filtered
+		}
+	}
+
 	if req.Full {
 		// Full replacement: atomically delete existing catalog and insert the new one
 		// inside a single transaction so a crash between the two operations cannot
 		// permanently empty the slave's catalog.
-		if err := m.mediaRepo.ReplaceSlaveMedia(ctx, req.SlaveID, records); err != nil {
+		if err := m.mediaRepo.ReplaceSlaveMedia(dbCtx, req.SlaveID, records); err != nil {
 			return 0, fmt.Errorf("failed to replace catalog: %w", err)
 		}
 		// Clear pending duplicate records for this slave so the fresh catalog
 		// is re-evaluated — resolved admin decisions are preserved.
 		if m.dupModule != nil {
-			m.dupModule.ClearPendingForSlave(req.SlaveID)
+			if err := m.dupModule.ClearPendingForSlave(dbCtx, req.SlaveID); err != nil {
+				m.log.Warn("Failed to clear stale pending duplicates for slave %s: %v", req.SlaveID, err)
+			}
 		}
 	} else if len(records) > 0 {
-		if err := m.mediaRepo.UpsertBatch(ctx, req.SlaveID, records); err != nil {
+		if err := m.mediaRepo.UpsertBatch(dbCtx, req.SlaveID, records); err != nil {
 			return 0, fmt.Errorf("failed to persist catalog: %w", err)
 		}
 	}
@@ -585,14 +719,15 @@ func (m *Module) PushCatalog(ctx context.Context, req *CatalogPushRequest) (int,
 	m.mu.Unlock()
 
 	// Update slave record in DB (outside the lock — no shared state accessed here)
-	if err := m.slaveRepo.Upsert(ctx, slaveRecord); err != nil {
+	if err := m.slaveRepo.Upsert(dbCtx, slaveRecord); err != nil {
 		m.log.Warn("Failed to update slave count after catalog push: %v", err)
 	}
 
 	m.log.Info("Catalog updated: %d items from slave %s", len(records), req.SlaveID)
 
-	// Report to the duplicates module in the background — non-critical.
-	// Use records (accepted items only) to avoid indexing rejected/suspicious paths.
+	// Detect synchronously while slaveWriteMu still fences this catalog version.
+	// A detached goroutine could run after a newer full push or unregister and
+	// recreate pending records for media that no longer exists.
 	if m.dupModule != nil {
 		refs := make([]duplicates.ReceiverItemRef, len(records))
 		for i, rec := range records {
@@ -602,7 +737,9 @@ func (m *Module) PushCatalog(ctx context.Context, req *CatalogPushRequest) (int,
 				ContentFingerprint: rec.ContentFingerprint,
 			}
 		}
-		go m.dupModule.RecordDuplicatesFromSlave(req.SlaveID, refs)
+		if err := m.dupModule.RecordDuplicatesFromSlave(dbCtx, req.SlaveID, refs); err != nil {
+			m.log.Warn("Failed to record receiver duplicates for slave %s: %v", req.SlaveID, err)
+		}
 	}
 
 	return len(records), nil
@@ -614,6 +751,8 @@ func (m *Module) PushCatalog(ctx context.Context, req *CatalogPushRequest) (int,
 // This avoids a DB UPSERT on every 15-second heartbeat while keeping the
 // in-memory state accurate for the stale-slave detector.
 func (m *Module) Heartbeat(slaveID string) error {
+	m.slaveWriteMu.Lock()
+	defer m.slaveWriteMu.Unlock()
 	m.mu.Lock()
 	node, exists := m.slaves[slaveID]
 	if !exists {
@@ -644,51 +783,71 @@ func (m *Module) Heartbeat(slaveID string) error {
 
 // UnregisterSlave removes a slave and its entire media catalog.
 func (m *Module) UnregisterSlave(slaveID string) error {
-	m.mu.RLock()
-	_, exists := m.slaves[slaveID]
-	m.mu.RUnlock()
-	if !exists {
-		return fmt.Errorf(errSlaveNotFound, slaveID)
-	}
+	removed := false
+	err := func() error {
+		m.slaveWriteMu.Lock()
+		defer m.slaveWriteMu.Unlock()
+		dbCtx, cancel := boundedReceiverContext(context.Background())
+		defer cancel()
 
-	ctx := context.Background()
-	// Delete the DB rows BEFORE mutating in-memory state. Clearing memory first
-	// meant a failed DB delete left the caches empty while the rows persisted, so
-	// the slave reappeared as a phantom on the next restart. Media rows are deleted
-	// before the slave row: if the second delete fails the residue is a benign empty
-	// slave (reloads as an empty node, retryable) rather than orphan media rows
-	// pointing at a slave that no longer exists.
-	if err := m.mediaRepo.DeleteBySlave(ctx, slaveID); err != nil {
-		return fmt.Errorf("failed to remove slave media: %w", err)
-	}
-	if err := m.slaveRepo.Delete(ctx, slaveID); err != nil {
-		return fmt.Errorf("failed to remove slave: %w", err)
-	}
-
-	// The DB is authoritative now; drop the slave and its media from the caches.
-	m.mu.Lock()
-	delete(m.slaves, slaveID)
-	for id, item := range m.media {
-		if item.SlaveID == slaveID {
-			delete(m.media, id)
+		m.mu.RLock()
+		_, exists := m.slaves[slaveID]
+		m.mu.RUnlock()
+		if !exists {
+			// A previous attempt may have completed the authoritative deletes but
+			// failed while clearing duplicate history. Make that cleanup retryable.
+			if m.dupModule != nil {
+				if err := m.dupModule.ClearForSlave(dbCtx, slaveID); err != nil {
+					return fmt.Errorf("failed to clear duplicate history: %w", err)
+				}
+			}
+			return fmt.Errorf(errSlaveNotFound, slaveID)
 		}
-	}
-	m.mu.Unlock()
 
-	// Remove all duplicate records for this slave (any status) — the slave is gone permanently.
-	if m.dupModule != nil {
-		m.dupModule.ClearForSlave(slaveID)
-	}
+		// Delete the DB rows BEFORE mutating in-memory state. Clearing memory first
+		// meant a failed DB delete left the caches empty while the rows persisted, so
+		// the slave reappeared as a phantom on the next restart. Media rows are deleted
+		// before the slave row: if the second delete fails the residue is a benign empty
+		// slave (reloads as an empty node, retryable) rather than orphan media rows
+		// pointing at a slave that no longer exists.
+		if err := m.mediaRepo.DeleteBySlave(dbCtx, slaveID); err != nil {
+			return fmt.Errorf("failed to remove slave media: %w", err)
+		}
+		if err := m.slaveRepo.Delete(dbCtx, slaveID); err != nil {
+			return fmt.Errorf("failed to remove slave: %w", err)
+		}
+
+		// The DB is authoritative now; drop the slave and its media from the caches.
+		m.mu.Lock()
+		delete(m.slaves, slaveID)
+		for id, item := range m.media {
+			if item.SlaveID == slaveID {
+				delete(m.media, id)
+			}
+		}
+		m.mu.Unlock()
+		removed = true
+
+		// Remove all duplicate records for this slave (any status) — the slave is gone permanently.
+		if m.dupModule != nil {
+			if err := m.dupModule.ClearForSlave(dbCtx, slaveID); err != nil {
+				return fmt.Errorf("failed to clear duplicate history: %w", err)
+			}
+		}
+		return nil
+	}()
 
 	// Close the slave's live WebSocket if it still has one, so its read loop and
 	// 25s ping goroutine exit via their existing deferred cleanup instead of
 	// pinging a slave that was just removed. Closing the conn makes ReadMessage
 	// error out, which triggers removeSlaveWS — the same teardown setSlaveWS uses
 	// when replacing a reconnecting slave's old connection.
-	if sw := m.getSlaveWS(slaveID); sw != nil {
-		_ = sw.conn.Close()
+	if removed {
+		if sw := m.getSlaveWS(slaveID); sw != nil {
+			_ = sw.conn.Close()
+		}
 	}
-	return nil
+	return err
 }
 
 // GetSlaves returns all registered slave nodes as value copies. Unlike media
@@ -754,14 +913,52 @@ func (m *Module) GetMediaItem(id string) *MediaItem {
 	return m.media[id]
 }
 
-// RemoveMediaItem evicts a single item from the in-memory catalog. The duplicates
-// module calls this after deleting the item's receiver_media DB row, so a
-// resolved receiver-side duplicate stops appearing in the unified /api/media
-// listing and stops being streamable/downloadable without waiting for a restart.
-func (m *Module) RemoveMediaItem(id string) {
+// RemoveMediaItem durably resolves and removes one receiver item under the same
+// serialization used by catalog pushes. The tombstone is persisted first, so a
+// failed media delete or process crash cannot let a later catalog replay restore
+// the item. Cache eviction and the owning slave's MediaCount are then committed
+// and the corrected count is persisted.
+func (m *Module) RemoveMediaItem(ctx context.Context, itemID, slaveID string, persistTombstone func(context.Context) error) error {
+	if itemID == "" || slaveID == "" {
+		return fmt.Errorf("item_id and slave_id are required")
+	}
+	if persistTombstone == nil {
+		return fmt.Errorf("receiver removal requires a durable tombstone")
+	}
+
+	m.slaveWriteMu.Lock()
+	defer m.slaveWriteMu.Unlock()
+	dbCtx, cancel := boundedReceiverContext(ctx)
+	defer cancel()
+
+	if err := persistTombstone(dbCtx); err != nil {
+		return fmt.Errorf("failed to persist receiver removal tombstone: %w", err)
+	}
+	if err := m.mediaRepo.DeleteByID(dbCtx, itemID); err != nil {
+		return fmt.Errorf("failed to delete receiver media: %w", err)
+	}
+
+	var slaveRecord *repositories.ReceiverSlaveRecord
 	m.mu.Lock()
-	delete(m.media, id)
+	delete(m.media, itemID)
+	count := 0
+	for _, item := range m.media {
+		if item.SlaveID == slaveID {
+			count++
+		}
+	}
+	if node, ok := m.slaves[slaveID]; ok {
+		node.MediaCount = count
+		slaveRecord = nodeToSlaveRecord(node)
+	}
 	m.mu.Unlock()
+
+	if slaveRecord != nil {
+		if err := m.slaveRepo.Upsert(dbCtx, slaveRecord); err != nil {
+			return fmt.Errorf("failed to persist slave media count: %w", err)
+		}
+	}
+	return nil
 }
 
 // GetStats returns a summary of the receiver module state.

@@ -62,7 +62,9 @@ func TestMoveToUniqueName(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create temp: %v", err)
 		}
-		_ = f.Close()
+		if err := f.Close(); err != nil {
+			t.Fatalf("close temp source: %v", err)
+		}
 		return f.Name()
 	}
 
