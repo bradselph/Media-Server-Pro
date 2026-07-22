@@ -169,6 +169,22 @@ func TestSetValuesBatch_InvalidPath(t *testing.T) {
 	}
 }
 
+func TestSetValuesBatch_InvalidEntryDoesNotPartiallyMutate(t *testing.T) {
+	mgr := NewManager(filepath.Join(t.TempDir(), testConfigFilename))
+	original := mgr.Get()
+
+	err := mgr.SetValuesBatch(map[string]any{
+		"server.port":        9191,
+		"zz_invalid.section": true,
+	})
+	if err == nil {
+		t.Fatal("expected invalid path error")
+	}
+	if got := mgr.Get().Server.Port; got != original.Server.Port {
+		t.Fatalf("valid entry leaked through failed batch: port=%d, want %d", got, original.Server.Port)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // getCopy — deep copy verification
 // ---------------------------------------------------------------------------

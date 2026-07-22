@@ -2,9 +2,9 @@
 // Two implementations are provided: local filesystem and S3-compatible
 // (Backblaze B2, AWS S3, MinIO, Cloudflare R2, etc.).
 //
-// Each configured directory (Videos, Uploads, Thumbnails, HLSCache, etc.)
-// gets its own Backend instance. Paths passed to methods are always
-// relative to that backend's root/prefix.
+// Primary media roles (Videos, Music, and Uploads) each get a Backend instance.
+// Regenerable thumbnail and HLS outputs intentionally remain local derived caches.
+// Paths passed to methods are always relative to the backend's root/prefix.
 package storage
 
 import (

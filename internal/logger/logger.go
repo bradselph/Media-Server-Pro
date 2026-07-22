@@ -464,6 +464,9 @@ func (l *Logger) logWithRIDSkip(level Level, requestID string, extraSkip int, ms
 		defer globalLogger.mu.Unlock()
 		if globalLogger.fileOutput != nil {
 			globalLogger.rotateIfNeeded()
+			if globalLogger.fileOutput == nil {
+				return
+			}
 			var fileFormatted string
 			if globalLogger.jsonFormat {
 				fileFormatted = l.formatMessageJSON(level, requestID, msg, extraSkip, args...)
@@ -493,18 +496,28 @@ func (l *Logger) rotateIfNeeded() {
 
 	currentPath := l.fileOutput.Name()
 
-	// Close the current file
-	_ = l.fileOutput.Sync()  // best-effort sync
-	_ = l.fileOutput.Close() // best-effort close
+	// Flush and close the current file. Rotation errors cannot be logged through
+	// Logger itself (we already hold l.mu), so report them directly to stderr.
+	if err := l.fileOutput.Sync(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "logger: sync before rotation failed for %s: %v\n", currentPath, err)
+	}
+	if err := l.fileOutput.Close(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "logger: close before rotation failed for %s: %v\n", currentPath, err)
+	}
+	l.fileOutput = nil
 
 	// Rename current to a timestamped backup so that successive rotations
 	// produce distinct files (.2006-01-02T150405) rather than overwriting the
 	// single .1 backup that the old approach created.
-	rotatedPath := currentPath + "." + time.Now().Format("20060102T150405")
-	_ = os.Rename(currentPath, rotatedPath) // best-effort rename
+	rotatedPath := currentPath + "." + time.Now().Format("20060102T150405.000000000")
+	renamed := true
+	if err := os.Rename(currentPath, rotatedPath); err != nil {
+		renamed = false
+		_, _ = fmt.Fprintf(os.Stderr, "logger: rotate rename failed for %s: %v\n", currentPath, err)
+	}
 
 	// Clean up old backups beyond maxBackups
-	if l.maxBackups > 0 {
+	if renamed && l.maxBackups > 0 {
 		l.cleanOldBackups(currentPath)
 	}
 
@@ -513,6 +526,7 @@ func (l *Logger) rotateIfNeeded() {
 	if err != nil {
 		// Fall back to writing without file
 		l.fileOutput = nil
+		_, _ = fmt.Fprintf(os.Stderr, "logger: reopen after rotation failed for %s: %v\n", currentPath, err)
 		return
 	}
 	l.fileOutput = f

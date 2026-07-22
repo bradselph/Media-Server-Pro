@@ -8,6 +8,7 @@ import type {
     AlertResult,
     AlertRule,
     AnalyticsEvent,
+    AnalyticsHealth,
     AnalyticsSummary,
     AnomalyReport,
     APIToken,
@@ -256,11 +257,6 @@ export function useMediaApi() {
         getStats: () => api.get<MediaStats>('/api/media/stats'),
         getThumbnailUrl: (id: string) => `/thumbnail?id=${encodeURIComponent(id)}`,
         getThumbnailPreviews: (id: string) => api.get<ThumbnailPreviews>(`/api/thumbnails/previews?id=${encodeURIComponent(id)}`),
-        getThumbnailBatch: (ids: string[], width?: number) => {
-            const qs = new URLSearchParams({ids: ids.join(',')})
-            if (width) qs.set('w', String(width))
-            return api.get<{ thumbnails: Record<string, string> }>(`/api/thumbnails/batch?${qs}`)
-        },
         getStreamUrl: (id: string) => `/media?id=${encodeURIComponent(id)}`,
         getDownloadUrl: (id: string) => `/download?id=${encodeURIComponent(id)}`,
         getRemoteStreamUrl: (url: string, source?: string) => {
@@ -1017,6 +1013,9 @@ export function useAnalyticsApi() {
         // Analytics module's internal diagnostics counters.
         getDiagnostics: () =>
             api.get<ModuleDiagnostics>('/api/admin/analytics/diagnostics'),
+        // Persistence-loop health (last flush and current lag).
+        getHealth: () =>
+            api.get<AnalyticsHealth>('/api/admin/analytics/health'),
         // Linear-trend projection of a single metric.
         getForecast: (metric: string, days?: number) =>
             api.get<MetricForecast>(`/api/admin/analytics/forecast${buildQS({metric, days: days || undefined})}`),

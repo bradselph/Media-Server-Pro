@@ -92,6 +92,8 @@ func (m *Module) verifyPasswordWithCacheRefresh(ctx context.Context, user *model
 
 // Authenticate validates credentials and returns a session.
 func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Session, error) {
+	m.authFlowMu.RLock()
+	defer m.authFlowMu.RUnlock()
 	if m.isLockedOut(req.IPAddress) {
 		m.log.Warn("Login attempt from locked out IP: %s", req.IPAddress)
 		return nil, ErrAccountLocked
@@ -145,6 +147,33 @@ func (m *Module) Authenticate(ctx context.Context, req *AuthRequest) (*models.Se
 
 // AdminAuthenticate authenticates admin credentials.
 func (m *Module) AdminAuthenticate(ctx context.Context, req *AuthRequest) (*models.AdminSession, error) {
+	m.authFlowMu.RLock()
+	defer m.authFlowMu.RUnlock()
+	adminUser, err := m.authenticateAdminUser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return &models.AdminSession{Session: models.Session{
+		Username: req.Username,
+		UserID:   adminUser.ID,
+		Role:     models.RoleAdmin,
+	}}, nil
+}
+
+// AuthenticateAdminSession verifies the config-backed admin credential and
+// creates its persisted session under one auth-flow read lock. A concurrent
+// password change therefore cannot slip between verification and admission.
+func (m *Module) AuthenticateAdminSession(ctx context.Context, req *AuthRequest) (*models.Session, error) {
+	m.authFlowMu.RLock()
+	defer m.authFlowMu.RUnlock()
+	adminUser, err := m.authenticateAdminUser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return m.createSession(ctx, adminUser, &sessionRequestContext{IPAddress: req.IPAddress, UserAgent: req.UserAgent})
+}
+
+func (m *Module) authenticateAdminUser(ctx context.Context, req *AuthRequest) (*models.User, error) {
 	if m.isLockedOut(req.IPAddress) {
 		m.log.Warn("Admin login attempt from locked out IP: %s", req.IPAddress)
 		return nil, ErrAccountLocked
@@ -176,19 +205,8 @@ func (m *Module) AdminAuthenticate(ctx context.Context, req *AuthRequest) (*mode
 	}
 	m.clearAttempts(req.IPAddress)
 
-	// Return a minimal AdminSession carrying just the username so the handler can
-	// call CreateSessionForUser. The AdminSession is NOT stored in adminSessions or
-	// the session repository — the handler creates the actual usable session itself.
-	session := &models.AdminSession{
-		Session: models.Session{
-			Username: req.Username,
-			UserID:   adminUser.ID,
-			Role:     models.RoleAdmin,
-		},
-	}
-
 	m.log.Info("Admin logged in from %s", req.IPAddress)
-	return session, nil
+	return adminUser, nil
 }
 
 // isLockedOut returns whether the IP is currently locked out due to failed attempts.

@@ -102,6 +102,21 @@ func (r *SuggestionProfileRepository) DeleteProfile(ctx context.Context, userID 
 	return nil
 }
 
+// ResetProfile deletes the aggregate profile and its view history in one
+// transaction so a failed second delete cannot leave a half-reset user.
+func (r *SuggestionProfileRepository) ResetProfile(ctx context.Context, userID string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Where(sqlUserIDEq, userID).Delete(&suggestionProfileRow{})
+		if result.Error != nil {
+			return fmt.Errorf("failed to delete suggestion profile: %w", result.Error)
+		}
+		if err := tx.Where(sqlUserIDEq, userID).Delete(&viewHistoryRow{}).Error; err != nil {
+			return fmt.Errorf("failed to delete suggestion view history: %w", err)
+		}
+		return nil
+	})
+}
+
 // rowToSuggestionProfileRecord builds a domain record from a DB row, decoding
 // the two JSON score maps and defaulting them to non-nil empty maps.
 func rowToSuggestionProfileRecord(row *suggestionProfileRow) (*repositories.SuggestionProfileRecord, error) {

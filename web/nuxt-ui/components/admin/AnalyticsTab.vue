@@ -2,6 +2,7 @@
 import type {
   AlertResult,
   AlertRule,
+  AnalyticsHealth,
   AnalyticsEvent,
   AnalyticsSummary,
   AnomalyReport,
@@ -207,6 +208,13 @@ onMounted(() => {
 // Per-IP traffic summary + analytics module's own diagnostics.
 const ipSummary = ref<IPSummary | null>(null)
 const diagnostics = ref<ModuleDiagnostics | null>(null)
+const analyticsHealth = ref<AnalyticsHealth | null>(null)
+
+function formatHealthTime(value: string): string {
+  if (!value || value.startsWith('0001-')) return 'Never'
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? 'Unknown' : parsed.toLocaleString()
+}
 
 // Forecasts — one per headline metric. Rendered next to the period
 // comparison so admins see "is this growing?" alongside "vs last week".
@@ -558,7 +566,8 @@ async function load() {
       analyticsApi.getForecast('stream_starts', 14),                // 32
       analyticsApi.getForecast('bytes_served', 14),                 // 33
       analyticsApi.getForecast('server_errors', 14),                // 34
-      analyticsApi.getHubAnalytics(days4chart),                       // 35
+      analyticsApi.getHubAnalytics(days4chart),                     // 35
+      analyticsApi.getHealth(),                                     // 36
     ])
     if (period.value !== capturedPeriod) return
     const r = (i: number) => results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<unknown>).value : null
@@ -602,6 +611,7 @@ async function load() {
     if (r(33) !== null) forecastBandwidth.value = r(33) as MetricForecast
     if (r(34) !== null) forecastErrors.value = r(34) as MetricForecast
     if (r(35) !== null) hubAnalytics.value = r(35) as HubAnalytics
+    if (r(36) !== null) analyticsHealth.value = r(36) as AnalyticsHealth
 
     const failed = results.filter(x => x.status === 'rejected')
     if (failed.length) notifyWarning(`${failed.length} analytics endpoint(s) failed`)
@@ -2721,10 +2731,9 @@ const hasTrafficActivity = computed(() =>
       </template>
     </UModal>
 
-    <!-- Module diagnostics — analytics module's own internal counters.
-         Helps debug "why is the dashboard slow / stale" without server
-         log access. Hidden by default to keep the page tidy; admins
-         re-enable it from the panels menu when investigating. -->
+    <!-- Module diagnostics — analytics module's own internal counters and
+         persistence-loop health. Helps debug "why is the dashboard slow /
+         stale" without server log access. -->
     <UCard v-if="panelVisibility.diagnostics && diagnostics && diagnostics.available !== false" :ui="{ body: 'p-3' }">
       <template #header>
         <div class="font-semibold flex items-center gap-2 text-muted">
@@ -2759,6 +2768,20 @@ const hasTrafficActivity = computed(() =>
         <div>
           <p class="font-bold text-highlighted">{{ diagnostics.max_reconstruct_events.toLocaleString() }}</p>
           <p class="text-muted">Max reconstruct cap</p>
+        </div>
+      </div>
+      <div v-if="analyticsHealth" class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs border-t border-default mt-3 pt-3">
+        <div>
+          <p class="font-bold text-highlighted">{{ formatHealthTime(analyticsHealth.last_flush) }}</p>
+          <p class="text-muted">Last persistence flush</p>
+        </div>
+        <div>
+          <p class="font-bold text-highlighted">{{ Math.round(analyticsHealth.flush_lag_seconds).toLocaleString() }}s</p>
+          <p class="text-muted">Flush lag</p>
+        </div>
+        <div>
+          <p class="font-bold text-highlighted">{{ formatHealthTime(analyticsHealth.checked_at) }}</p>
+          <p class="text-muted">Health checked</p>
         </div>
       </div>
     </UCard>

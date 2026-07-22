@@ -48,6 +48,7 @@ const TAB_ALIASES: Record<string, string> = {
   sources: 'ingest',
   content: 'moderation',
   discovery: 'moderation',
+  reports: 'moderation',
 }
 const activeTab = ref(
     VALID.includes(route.query.tab as string)

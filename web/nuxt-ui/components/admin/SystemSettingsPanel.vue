@@ -18,10 +18,12 @@ type ConfigSection =
 
 // ── State ─────────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const config = ref<Partial<Record<ConfigSection, Record<string, any>>>>({})
+type ConfigMap = Partial<Record<ConfigSection, Record<string, any>>>
+const config = ref<ConfigMap>({})
 const loading = ref(false)
 const saving = ref(false)
 const dirty = ref(false)
+const dirtySections = new Set<ConfigSection>()
 // True after a save when some persisted sections only take effect on restart.
 // Surfaces the backend's restart_required signal (previously computed but never
 // shown), so admins aren't misled into thinking e.g. an age-gate/storage change
@@ -166,6 +168,11 @@ const pwLoading = ref(false)
 // Raw JSON fallback
 const showRawJson = ref(false)
 const rawJsonText = ref('')
+const editingS3AccessKey = ref(false)
+const editingS3SecretKey = ref(false)
+const s3AccessKeyDraft = ref('')
+const s3SecretKeyDraft = ref('')
+type S3CredentialField = 'access_key_id' | 'secret_access_key'
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function get(section: ConfigSection, key: string) {
@@ -176,7 +183,69 @@ function get(section: ConfigSection, key: string) {
 function set(section: ConfigSection, key: string, val: any) {
   if (!config.value[section]) config.value[section] = {}
   config.value[section]![key] = val
+  dirtySections.add(section)
   dirty.value = true
+}
+
+function updateS3CredentialDraft(field: S3CredentialField, value: string) {
+  if (field === 'access_key_id') s3AccessKeyDraft.value = value
+  else s3SecretKeyDraft.value = value
+}
+
+function beginS3CredentialEdit(field: S3CredentialField) {
+  if (field === 'access_key_id') {
+    s3AccessKeyDraft.value = ''
+    editingS3AccessKey.value = true
+  } else {
+    s3SecretKeyDraft.value = ''
+    editingS3SecretKey.value = true
+  }
+}
+
+function applyS3Credential(field: S3CredentialField) {
+  const value = field === 'access_key_id' ? s3AccessKeyDraft.value : s3SecretKeyDraft.value
+  if (!value) return
+  set('storage', 's3', {...get('storage', 's3'), [field]: value})
+  if (field === 'access_key_id') {
+    editingS3AccessKey.value = false
+    s3AccessKeyDraft.value = ''
+  } else {
+    editingS3SecretKey.value = false
+    s3SecretKeyDraft.value = ''
+  }
+}
+
+function cancelS3Credential(field: S3CredentialField) {
+  if (field === 'access_key_id') {
+    editingS3AccessKey.value = false
+    s3AccessKeyDraft.value = ''
+  } else {
+    editingS3SecretKey.value = false
+    s3SecretKeyDraft.value = ''
+  }
+}
+
+function s3CredentialPending(field: S3CredentialField): boolean {
+  return typeof get('storage', 's3')?.[field] === 'string'
+}
+
+function s3CredentialConfigured(field: S3CredentialField): boolean {
+  const stagedValue = get('storage', 's3')?.[field]
+  if (typeof stagedValue === 'string') return stagedValue.length > 0
+  const flag = field === 'access_key_id' ? 'access_key_set' : 'secret_key_set'
+  return !!get('storage', 's3')?.[flag]
+}
+
+function s3CredentialStatus(field: S3CredentialField): string {
+  if (s3CredentialPending(field)) return 'Pending save'
+  return s3CredentialConfigured(field) ? 'Configured' : 'Not set'
+}
+
+function resetS3CredentialEditors() {
+  editingS3AccessKey.value = false
+  editingS3SecretKey.value = false
+  s3AccessKeyDraft.value = ''
+  s3SecretKeyDraft.value = ''
 }
 
 function toggle(section: ConfigSection, key: string) {
@@ -200,13 +269,17 @@ async function loadConfig() {
   loading.value = true
   try {
     const cfg = await adminApi.getConfig()
-    config.value = cfg ?? {}
+    if (!mounted) return
+    config.value = (cfg ?? {}) as ConfigMap
     rawJsonText.value = JSON.stringify(cfg, null, 2)
+    dirtySections.clear()
     dirty.value = false
+    resetS3CredentialEditors()
   } catch (e: unknown) {
+    if (!mounted) return
     notifyError(e, 'Failed to load config', 'i-lucide-alert-circle')
   } finally {
-    loading.value = false
+    if (mounted) loading.value = false
   }
 }
 
@@ -224,7 +297,9 @@ async function saveConfig() {
   }
   saving.value = true
   try {
-    const payload = showRawJson.value ? JSON.parse(rawJsonText.value) : config.value
+    const payload = showRawJson.value
+      ? JSON.parse(rawJsonText.value)
+      : Object.fromEntries([...dirtySections].map(section => [section, config.value[section]]))
     const resp = await adminApi.updateConfig(payload)
     if (!mounted) return
     restartRequired.value = !!resp?.restart_required
@@ -237,11 +312,11 @@ async function saveConfig() {
           ? 'Configuration saved — restart required for some changes'
           : 'Configuration saved')
     }
+    config.value = (resp?.config ?? config.value) as ConfigMap
+    rawJsonText.value = JSON.stringify(config.value, null, 2)
+    dirtySections.clear()
     dirty.value = false
-    if (showRawJson.value) {
-      // Reload structured view from saved data
-      await loadConfig()
-    }
+    resetS3CredentialEditors()
   } catch (e: unknown) {
     if (!mounted) return
     notifyError(e, 'Save failed')
@@ -286,7 +361,9 @@ watch(showRawJson, (v) => {
 
 onMounted(async () => {
   await loadConfig()
+  if (!mounted) return
   await refreshHubStatus()
+  if (!mounted) return
   // Auto-refresh while an import is running so progress updates live.
   hubPoll = setInterval(() => {
     if (hubStatus.value?.running) refreshHubStatus()
@@ -623,14 +700,48 @@ onMounted(async () => {
                         placeholder="us-west-004"/>
               </UFormField>
               <UFormField label="Access Key ID">
-                <UInput :model-value="get('storage', 's3')?.access_key_id"
-                        @update:model-value="set('storage', 's3', { ...get('storage', 's3'), access_key_id: $event })"
-                        placeholder="Application Key ID"/>
+                <div v-if="!editingS3AccessKey" class="flex items-center gap-2 min-h-8">
+                  <UBadge :color="s3CredentialPending('access_key_id') ? 'warning' : s3CredentialConfigured('access_key_id') ? 'success' : 'neutral'" variant="subtle">
+                    {{ s3CredentialStatus('access_key_id') }}
+                  </UBadge>
+                  <UButton size="xs" variant="outline" color="neutral"
+                           :label="s3CredentialConfigured('access_key_id') ? 'Change' : 'Set'"
+                           @click="beginS3CredentialEdit('access_key_id')"/>
+                </div>
+                <div v-else class="flex gap-2">
+                  <UInput :model-value="s3AccessKeyDraft" class="flex-1"
+                          @update:model-value="updateS3CredentialDraft('access_key_id', String($event))"
+                          placeholder="Application Key ID"/>
+                  <UButton icon="i-lucide-check" variant="ghost" color="primary"
+                           aria-label="Apply access key change"
+                           :disabled="!s3AccessKeyDraft"
+                           @click="applyS3Credential('access_key_id')"/>
+                  <UButton icon="i-lucide-x" variant="ghost" color="neutral"
+                           aria-label="Cancel access key change"
+                           @click="cancelS3Credential('access_key_id')"/>
+                </div>
               </UFormField>
               <UFormField label="Secret Access Key">
-                <UInput type="password" :model-value="get('storage', 's3')?.secret_access_key"
-                        @update:model-value="set('storage', 's3', { ...get('storage', 's3'), secret_access_key: $event })"
-                        placeholder="••••••••"/>
+                <div v-if="!editingS3SecretKey" class="flex items-center gap-2 min-h-8">
+                  <UBadge :color="s3CredentialPending('secret_access_key') ? 'warning' : s3CredentialConfigured('secret_access_key') ? 'success' : 'neutral'" variant="subtle">
+                    {{ s3CredentialStatus('secret_access_key') }}
+                  </UBadge>
+                  <UButton size="xs" variant="outline" color="neutral"
+                           :label="s3CredentialConfigured('secret_access_key') ? 'Change' : 'Set'"
+                           @click="beginS3CredentialEdit('secret_access_key')"/>
+                </div>
+                <div v-else class="flex gap-2">
+                  <UInput type="password" :model-value="s3SecretKeyDraft" class="flex-1"
+                          @update:model-value="updateS3CredentialDraft('secret_access_key', String($event))"
+                          placeholder="New secret access key"/>
+                  <UButton icon="i-lucide-check" variant="ghost" color="primary"
+                           aria-label="Apply secret access key change"
+                           :disabled="!s3SecretKeyDraft"
+                           @click="applyS3Credential('secret_access_key')"/>
+                  <UButton icon="i-lucide-x" variant="ghost" color="neutral"
+                           aria-label="Cancel secret access key change"
+                           @click="cancelS3Credential('secret_access_key')"/>
+                </div>
               </UFormField>
               <UFormField label="Bucket">
                 <UInput :model-value="get('storage', 's3')?.bucket"
@@ -651,7 +762,7 @@ onMounted(async () => {
             <p class="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Per-Role Key Prefixes <span
                 class="font-normal normal-case opacity-70">(optional)</span></p>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-4xl">
-              <UFormField v-for="role in ['videos', 'music', 'thumbnails', 'uploads', 'hls_cache']" :key="role"
+              <UFormField v-for="role in ['videos', 'music', 'uploads']" :key="role"
                           :label="role">
                 <UInput
                     :model-value="get('storage', 's3')?.prefixes?.[role] || ''"
@@ -663,6 +774,7 @@ onMounted(async () => {
             <p class="text-xs text-muted mt-2">
               Defaults to <code>&lt;role&gt;/</code>. Useful when sharing a bucket across
               environments (e.g. set <code>prod/videos/</code> and <code>staging/videos/</code>).
+              Thumbnail and HLS outputs are regenerable local caches and are not stored in S3.
             </p>
           </div>
           <p v-if="get('storage', 'backend') === 's3'" class="text-xs text-muted mt-3">

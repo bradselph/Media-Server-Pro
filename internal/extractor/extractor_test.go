@@ -1,11 +1,17 @@
 package extractor
 
 import (
+	"context"
 	"errors"
+	"io"
+	"net/http"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"media-server-pro/internal/config"
 	"media-server-pro/internal/repositories"
 )
 
@@ -14,6 +20,121 @@ const (
 	testSegmentFilename    = "segment001.ts"
 	testStreamTitle        = "Test Stream"
 )
+
+type extractorRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f extractorRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+type fakeExtractorItemRepository struct {
+	mu                    sync.Mutex
+	records               map[string]*repositories.ExtractorItemRecord
+	upsertContextDeadline bool
+	deleteContextDeadline bool
+}
+
+func newFakeExtractorItemRepository(records ...*repositories.ExtractorItemRecord) *fakeExtractorItemRepository {
+	repo := &fakeExtractorItemRepository{records: make(map[string]*repositories.ExtractorItemRecord, len(records))}
+	for _, record := range records {
+		cp := *record
+		repo.records[record.ID] = &cp
+	}
+	return repo
+}
+
+func (r *fakeExtractorItemRepository) Upsert(ctx context.Context, item *repositories.ExtractorItemRecord) error {
+	_, hasDeadline := ctx.Deadline()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.upsertContextDeadline = hasDeadline
+	cp := *item
+	if existing := r.records[item.ID]; existing != nil {
+		// Match the MySQL repository's conflict update: AddedBy and CreatedAt are
+		// immutable and therefore retain their original values.
+		cp.AddedBy = existing.AddedBy
+		cp.CreatedAt = existing.CreatedAt
+	}
+	r.records[item.ID] = &cp
+	return nil
+}
+
+func (r *fakeExtractorItemRepository) Get(_ context.Context, id string) (*repositories.ExtractorItemRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	record := r.records[id]
+	if record == nil {
+		return nil, nil
+	}
+	cp := *record
+	return &cp, nil
+}
+
+func (r *fakeExtractorItemRepository) Delete(ctx context.Context, id string) error {
+	_, hasDeadline := ctx.Deadline()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.deleteContextDeadline = hasDeadline
+	if _, exists := r.records[id]; !exists {
+		return ErrNotFound
+	}
+	delete(r.records, id)
+	return nil
+}
+
+func (r *fakeExtractorItemRepository) List(context.Context) ([]*repositories.ExtractorItemRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	records := make([]*repositories.ExtractorItemRecord, 0, len(r.records))
+	for _, record := range r.records {
+		cp := *record
+		records = append(records, &cp)
+	}
+	return records, nil
+}
+
+func (r *fakeExtractorItemRepository) UpdateStatus(_ context.Context, id, status, errorMsg string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	record := r.records[id]
+	if record == nil {
+		return ErrNotFound
+	}
+	record.Status = status
+	record.ErrorMessage = errorMsg
+	return nil
+}
+
+func (r *fakeExtractorItemRepository) deadlineFlags() (upsert, delete bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.upsertContextDeadline, r.deleteContextDeadline
+}
+
+func newExtractorTestConfig(t *testing.T, maxItems int) *config.Manager {
+	t.Helper()
+	cfg := config.NewManager(filepath.Join(t.TempDir(), "config.json"))
+	if err := cfg.Update(func(c *config.Config) {
+		c.Extractor.MaxItems = maxItems
+	}); err != nil {
+		t.Fatalf("configure extractor: %v", err)
+	}
+	return cfg
+}
+
+func successfulExtractorHTTPClient() *http.Client {
+	return &http.Client{
+		Transport: extractorRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("#EXTM3U\n")),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}),
+		Timeout: time.Second,
+	}
+}
 
 // ---------------------------------------------------------------------------
 // generateID
@@ -274,6 +395,131 @@ func TestGetStats(t *testing.T) {
 	}
 	if stats.ErrorItems != 1 {
 		t.Errorf("ErrorItems = %d, want 1", stats.ErrorItems)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AddItem
+// ---------------------------------------------------------------------------
+
+func TestAddItem_UpdateAtCapacityPreservesImmutableFields(t *testing.T) {
+	const streamURL = "https://8.8.8.8/existing.m3u8"
+	id := generateID(streamURL)
+	createdAt := time.Date(2025, time.January, 2, 3, 4, 5, 0, time.UTC)
+	existing := &ExtractedItem{
+		ID:        id,
+		Title:     "Original title",
+		StreamURL: streamURL,
+		Status:    "active",
+		AddedBy:   "original-admin",
+		CreatedAt: createdAt,
+	}
+	repo := newFakeExtractorItemRepository(itemToRecord(existing))
+	m := NewModule(newExtractorTestConfig(t, 1), nil)
+	m.repo = repo
+	m.httpClient = successfulExtractorHTTPClient()
+	m.items[id] = existing
+
+	updated, err := m.AddItem(streamURL, "Updated title", "different-admin")
+	if err != nil {
+		t.Fatalf("AddItem update at capacity: %v", err)
+	}
+	if updated.Title != "Updated title" {
+		t.Errorf("updated title = %q, want Updated title", updated.Title)
+	}
+	if updated.AddedBy != existing.AddedBy {
+		t.Errorf("updated AddedBy = %q, want immutable %q", updated.AddedBy, existing.AddedBy)
+	}
+	if !updated.CreatedAt.Equal(createdAt) {
+		t.Errorf("updated CreatedAt = %v, want immutable %v", updated.CreatedAt, createdAt)
+	}
+
+	cached := m.GetItem(id)
+	persisted, err := repo.Get(context.Background(), id)
+	if err != nil {
+		t.Fatalf("repo.Get: %v", err)
+	}
+	if cached == nil || persisted == nil {
+		t.Fatal("expected item in both cache and repository")
+	}
+	if cached.AddedBy != persisted.AddedBy || !cached.CreatedAt.Equal(persisted.CreatedAt) {
+		t.Fatalf("cache immutable fields (%q, %v) diverged from repository (%q, %v)",
+			cached.AddedBy, cached.CreatedAt, persisted.AddedBy, persisted.CreatedAt)
+	}
+	upsertDeadline, _ := repo.deadlineFlags()
+	if !upsertDeadline {
+		t.Error("AddItem repository context must have a deadline")
+	}
+}
+
+func TestAddItem_DoesNotHoldWriteLockDuringRemoteFetch(t *testing.T) {
+	const (
+		streamURL = "https://8.8.4.4/new.m3u8"
+		removeID  = "existing-item"
+	)
+	repo := newFakeExtractorItemRepository(&repositories.ExtractorItemRecord{ID: removeID})
+	m := NewModule(newExtractorTestConfig(t, 10), nil)
+	m.repo = repo
+	m.items[removeID] = &ExtractedItem{ID: removeID}
+
+	fetchStarted := make(chan struct{})
+	releaseFetch := make(chan struct{})
+	m.httpClient = &http.Client{
+		Transport: extractorRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			close(fetchStarted)
+			select {
+			case <-releaseFetch:
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader("#EXTM3U\n")),
+					Header:     make(http.Header),
+					Request:    req,
+				}, nil
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
+			}
+		}),
+		Timeout: 5 * time.Second,
+	}
+
+	addDone := make(chan error, 1)
+	go func() {
+		_, err := m.AddItem(streamURL, "New stream", "admin")
+		addDone <- err
+	}()
+
+	select {
+	case <-fetchStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("AddItem did not begin remote fetch")
+	}
+
+	removeDone := make(chan error, 1)
+	go func() { removeDone <- m.RemoveItem(removeID) }()
+	select {
+	case err := <-removeDone:
+		if err != nil {
+			close(releaseFetch)
+			<-addDone
+			t.Fatalf("RemoveItem while AddItem fetched remotely: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		close(releaseFetch)
+		<-addDone
+		<-removeDone
+		t.Fatal("RemoveItem blocked behind AddItem remote fetch; writeMu is held across network I/O")
+	}
+
+	close(releaseFetch)
+	if err := <-addDone; err != nil {
+		t.Fatalf("AddItem after releasing fetch: %v", err)
+	}
+	upsertDeadline, deleteDeadline := repo.deadlineFlags()
+	if !upsertDeadline {
+		t.Error("AddItem repository context must have a deadline")
+	}
+	if !deleteDeadline {
+		t.Error("RemoveItem repository context must have a deadline")
 	}
 }
 

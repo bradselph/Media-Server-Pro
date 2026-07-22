@@ -181,7 +181,9 @@ func TestOpenZippedCSV_StreamsEntry(t *testing.T) {
 	if err := zw.Close(); err != nil {
 		t.Fatalf("close zip writer: %v", err)
 	}
-	_ = zf.Close()
+	if err := zf.Close(); err != nil {
+		t.Fatalf("close zip file: %v", err)
+	}
 
 	rc, name, err := OpenZippedCSV(zipPath, nil)
 	if err != nil {

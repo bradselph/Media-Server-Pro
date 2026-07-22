@@ -153,7 +153,10 @@ func isDirWritable(dir string) bool {
 	if err != nil {
 		return false
 	}
-	_ = f.Close()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(probe)
+		return false
+	}
 	_ = os.Remove(probe)
 	return true
 }

@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- fix(wiring): surface media reports under Moderation and analytics flush health
+  in the admin dashboard; make S3 credential edits explicit and redaction-aware
+- fix(storage): remove dead thumbnail/HLS S3 injection and document both as local,
+  regenerable derived caches while primary media and uploads retain S3 support
+- fix(consistency): make config batches, playlist reorders/clears, metadata edits,
+  session revocation, moderation, and extractor mutations failure-atomic
+- fix(frontend): prevent stale HLS, media-scan, and settings polls after unmount
 - feat(hub): incremental re-import — a re-import into a populated catalog now
   upserts (INSERT ... ON DUPLICATE KEY UPDATE on embed_id) to add new rows and
   refresh changed ones in place, instead of a destructive TRUNCATE + full

@@ -250,9 +250,18 @@ func (r *ScanResultRepository) MarkReviewed(ctx context.Context, path, reviewedB
 		return fmt.Errorf("failed to mark as reviewed: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("scan result not found: %s", path)
+		return fmt.Errorf("%w: %s", repositories.ErrScanResultNotFound, path)
 	}
 	return nil
+}
+
+// ClearPendingReview dismisses every currently pending review without deleting
+// its scan result. This makes the admin "clear queue" operation durable across
+// restarts while preserving classifications and reasons.
+func (r *ScanResultRepository) ClearPendingReview(ctx context.Context) error {
+	return r.db.WithContext(ctx).Model(&scanResultRow{}).
+		Where("needs_review = ?", true).
+		Update("needs_review", false).Error
 }
 
 // Delete removes a scan result by file path.
@@ -262,7 +271,7 @@ func (r *ScanResultRepository) Delete(ctx context.Context, path string) error {
 		return fmt.Errorf("failed to delete scan result: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("scan result not found: %s", path)
+		return fmt.Errorf("%w: %s", repositories.ErrScanResultNotFound, path)
 	}
 	return nil
 }

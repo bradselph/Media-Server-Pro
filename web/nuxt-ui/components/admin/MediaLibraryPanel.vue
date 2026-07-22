@@ -8,12 +8,14 @@ const adminApi = useAdminApi()
 const hlsApi = useHlsApi()
 const chaptersApi = useChaptersApi()
 const {notifyError, notifySuccess, notifyInfo} = useAdminFeedback()
+let mounted = true
 
 const thumbStats = ref<ThumbnailStats | null>(null)
 
 async function loadThumbStats() {
   try {
-    thumbStats.value = await adminApi.getThumbnailStats()
+    const stats = await adminApi.getThumbnailStats()
+    if (mounted) thumbStats.value = stats
   } catch { /* optional — suppress if endpoint unavailable */
   }
 }
@@ -323,7 +325,7 @@ async function loadInternal(silent: boolean) {
       is_mature: params.is_mature === 'all' ? '' : params.is_mature,
     }
     const res = await adminApi.listMedia(apiParams)
-    if (seq !== loadSeq) return
+    if (!mounted || seq !== loadSeq) return
     items.value = res.items ?? []
     totalItems.value = res.total_items ?? 0
     totalPages.value = res.total_pages ?? 1
@@ -331,10 +333,10 @@ async function loadInternal(silent: boolean) {
     // accurate even when a scan was started elsewhere or is still running.
     scanning.value = res.scanning ?? false
   } catch (e: unknown) {
-    if (seq !== loadSeq) return
+    if (!mounted || seq !== loadSeq) return
     if (!silent) notifyError(e, 'Failed to load media')
   } finally {
-    if (seq === loadSeq) loading.value = false
+    if (mounted && seq === loadSeq) loading.value = false
   }
 }
 
@@ -352,8 +354,10 @@ async function handleScan() {
   scanning.value = true
   try {
     await adminApi.scanMedia()
+    if (!mounted) return
     notifySuccess('Media scan started')
   } catch (e: unknown) {
+    if (!mounted) return
     // 409 = a scan is already running; that is not a failure. Show an accurate
     // message and still poll so the indicator tracks the in-progress scan.
     if ((e as { status?: number })?.status === 409) {
@@ -368,6 +372,7 @@ async function handleScan() {
   // real progress and auto-clears (newly-scanned items appear) when it ends.
   // Bounded + silent so a transient error can't spin forever or spam toasts.
   stopScanPoll()
+  if (!mounted) return
   scanPolls = 0
   scanPollTimer = setInterval(async () => {
     scanPolls++
@@ -446,6 +451,7 @@ const route = useRoute()
 const mediaApi = useMediaApi()
 onMounted(async () => {
   await load()
+  if (!mounted) return
   loadThumbStats()
   // Auto-open edit modal when linked from player page (?edit=mediaId)
   const editId = route.query.edit as string | undefined
@@ -463,6 +469,7 @@ onMounted(async () => {
   }
 })
 onUnmounted(() => {
+  mounted = false
   if (searchTimer) clearTimeout(searchTimer);
   stopScanPoll()
 })
@@ -919,8 +926,5 @@ onUnmounted(() => {
       </UCard>
     </UModal>
 
-    <!-- Moderation reports (design plan §5.3) — surfaces user-submitted
-         reports against media items so admins can resolve or dismiss them. -->
-    <AdminMediaReportsPanel class="mt-6"/>
   </div>
 </template>

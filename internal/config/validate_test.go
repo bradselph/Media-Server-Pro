@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -9,7 +11,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func newTestManager() *Manager {
-	return NewManager("/tmp/validate-test-config.json")
+	return NewManager(filepath.Join(os.TempDir(), "validate-test-config.json"))
 }
 
 func TestValidate_DefaultConfig_HasDatabaseError(t *testing.T) {

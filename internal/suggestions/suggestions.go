@@ -3,6 +3,7 @@ package suggestions
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -43,6 +44,7 @@ type UserProfile struct {
 	TotalWatchTime  float64            `json:"total_watch_time"`
 	LastUpdated     time.Time          `json:"last_updated"`
 	dirty           bool               // true when profile has unsaved mutations; protected by module mu (writers hold Lock, saveProfiles holds RLock)
+	revision        uint64             // monotonic mutation version; prevents stale saves from clearing or resurrecting newer state
 }
 
 // Suggestion represents a content recommendation.
@@ -76,6 +78,8 @@ type Module struct {
 	mediaByID       map[string]*MediaInfo // keyed by StableID (secondary index)
 	catalogueSeeded bool                  // true after first non-empty UpdateMediaData
 	mu              sync.RWMutex
+	persistMu       sync.Mutex // orders resets/rekeys/purges with background profile saves
+	nextRevision    uint64     // protected by mu; revisions never repeat within a process, even after reset/eviction
 	healthy         bool
 	healthMsg       string
 	healthMu        sync.RWMutex
@@ -241,6 +245,7 @@ func (m *Module) evictStaleProfiles(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			m.persistMu.Lock()
 			cutoff := time.Now().Add(-profileEvictAfter)
 			m.mu.Lock()
 			var toEvict []*UserProfile
@@ -258,8 +263,13 @@ func (m *Module) evictStaleProfiles(ctx context.Context) {
 			// Save each stale profile to MySQL before evicting from memory. Use the
 			// loop's ctx so a shutdown cancels an in-flight save instead of hanging
 			// m.wg.Wait().
+			saved := make(map[string]uint64, len(toEvict))
 			for _, profile := range toEvict {
-				_ = m.saveOneProfile(ctx, profile)
+				if err := m.saveOneProfile(ctx, profile); err != nil {
+					m.log.Warn("Failed to save stale suggestion profile for %s: %v", profile.UserID, err)
+					continue
+				}
+				saved[profile.UserID] = profile.revision
 			}
 
 			// Re-check LastUpdated under write lock before evicting (TOCTOU: profile may have been updated).
@@ -267,9 +277,11 @@ func (m *Module) evictStaleProfiles(ctx context.Context) {
 				m.mu.Lock()
 				actuallyEvicted := 0
 				for _, profile := range toEvict {
-					if p, ok := m.profiles[profile.UserID]; ok && p.LastUpdated.Before(cutoff) {
-						delete(m.profiles, profile.UserID)
-						actuallyEvicted++
+					if revision, ok := saved[profile.UserID]; ok {
+						if p, exists := m.profiles[profile.UserID]; exists && p.revision == revision && p.LastUpdated.Before(cutoff) {
+							delete(m.profiles, profile.UserID)
+							actuallyEvicted++
+						}
 					}
 				}
 				m.mu.Unlock()
@@ -277,6 +289,7 @@ func (m *Module) evictStaleProfiles(ctx context.Context) {
 					m.log.Info("Evicted %d stale user profiles (inactive > %v)", actuallyEvicted, profileEvictAfter)
 				}
 			}
+			m.persistMu.Unlock()
 		}
 	}
 }
@@ -355,6 +368,8 @@ func (m *Module) RecordView(userID, mediaPath string, categoryIDs []string, medi
 	profile.TotalViews++
 	profile.TotalWatchTime += duration
 	profile.LastUpdated = time.Now()
+	m.nextRevision++
+	profile.revision = m.nextRevision
 	profile.dirty = true
 
 	m.log.Debug("Recorded view for user %s: %s (categories: %v)", userID, mediaPath, categoryIDs)
@@ -373,7 +388,11 @@ func (m *Module) RecordCompletion(userID, mediaPath string) {
 
 	for i, vh := range profile.ViewHistory {
 		if vh.MediaPath == mediaPath {
-			profile.ViewHistory[i].CompletedAt = new(time.Now())
+			now := time.Now()
+			profile.ViewHistory[i].CompletedAt = new(now)
+			profile.LastUpdated = now
+			m.nextRevision++
+			profile.revision = m.nextRevision
 			profile.dirty = true
 			break
 		}
@@ -407,6 +426,8 @@ func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 		}
 		profile.ViewHistory[i].Rating = rating
 		profile.LastUpdated = time.Now()
+		m.nextRevision++
+		profile.revision = m.nextRevision
 		profile.dirty = true
 		m.log.Debug("Recorded rating %.1f for %s by user %s", rating, mediaPath, userID)
 		snap := m.snapshotProfile(profile)
@@ -427,6 +448,8 @@ func (m *Module) RecordRating(userID, mediaPath string, rating float64) {
 		profile.ViewHistory = profile.ViewHistory[len(profile.ViewHistory)-maxViewHistory:]
 	}
 	profile.LastUpdated = time.Now()
+	m.nextRevision++
+	profile.revision = m.nextRevision
 	profile.dirty = true
 	m.log.Debug("Recorded rating %.1f for %s by user %s (new entry)", rating, mediaPath, userID)
 	snap := m.snapshotProfile(profile)
@@ -446,20 +469,39 @@ func (m *Module) snapshotProfile(profile *UserProfile) *UserProfile {
 	return &cp
 }
 
-// persistRating immediately saves a profile snapshot to the DB in a background goroutine.
-// Errors are logged but not returned — rating persistence is best-effort relative to the
-// HTTP response, but no longer delayed by the periodic save interval.
+// persistRating immediately saves a profile snapshot to the DB. Persistence is
+// serialized with reset/rekey/purge operations and the revision is rechecked
+// before the write, so a delayed rating can never resurrect a reset profile or
+// overwrite a newer rating. Errors remain best-effort because RecordRating's
+// public API predates repository error returns; dirty state is retained for the
+// periodic retry.
 func (m *Module) persistRating(userID string, snap *UserProfile) {
 	if m.repo == nil {
 		return
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := m.saveOneProfile(ctx, snap); err != nil {
-			m.log.Warn("RecordRating: failed to persist rating for %s: %v", userID, err)
-		}
-	}()
+	m.persistMu.Lock()
+	defer m.persistMu.Unlock()
+	m.mu.RLock()
+	current := m.profiles[userID]
+	currentRevision := uint64(0)
+	if current != nil {
+		currentRevision = current.revision
+	}
+	m.mu.RUnlock()
+	if current == nil || currentRevision != snap.revision {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := m.saveOneProfile(ctx, snap); err != nil {
+		m.log.Warn("RecordRating: failed to persist rating for %s: %v", userID, err)
+		return
+	}
+	m.mu.Lock()
+	if current := m.profiles[userID]; current != nil && current.revision == snap.revision {
+		current.dirty = false
+	}
+	m.mu.Unlock()
 }
 
 // UpdateMediaData atomically replaces the in-memory media catalog used for suggestions.
@@ -1131,9 +1173,17 @@ func (m *Module) GetUserRatingsByPath(userID string) map[string]float64 {
 // PurgeMediaPath removes all view history entries for the given media path from every
 // in-memory profile and deletes the corresponding rows from the database. Called when
 // a media item is deleted so that orphaned view-history rows do not skew suggestions.
-func (m *Module) PurgeMediaPath(mediaPath string) {
-	if m.repo == nil {
-		return
+func (m *Module) PurgeMediaPath(mediaPath string) error {
+	m.persistMu.Lock()
+	defer m.persistMu.Unlock()
+	if m.repo != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := m.repo.DeleteViewHistoryByMediaPath(ctx, mediaPath)
+		cancel()
+		if err != nil && !errors.Is(err, repositories.ErrViewHistoryNotFound) {
+			m.log.Error("failed to purge view history for deleted media %q: %v", mediaPath, err)
+			return fmt.Errorf("purge suggestion history for %q: %w", mediaPath, err)
+		}
 	}
 	m.mu.Lock()
 	for _, profile := range m.profiles {
@@ -1145,15 +1195,13 @@ func (m *Module) PurgeMediaPath(mediaPath string) {
 		}
 		if len(filtered) != len(profile.ViewHistory) {
 			profile.ViewHistory = filtered
+			m.nextRevision++
+			profile.revision = m.nextRevision
 			profile.dirty = true
 		}
 	}
 	m.mu.Unlock()
-
-	ctx := context.Background()
-	if err := m.repo.DeleteViewHistoryByMediaPath(ctx, mediaPath); err != nil {
-		m.log.Error("failed to purge view history for deleted media %q: %v", mediaPath, err)
-	}
+	return nil
 }
 
 // RenameMediaPath re-keys view-history entries when a media file is renamed so
@@ -1162,9 +1210,21 @@ func (m *Module) PurgeMediaPath(mediaPath string) {
 // directly so users whose profiles are not currently loaded (evicted) migrate
 // too. When a profile already has an entry for newPath, the old entry is
 // dropped in its favor rather than duplicated.
-func (m *Module) RenameMediaPath(oldPath, newPath string) {
+func (m *Module) RenameMediaPath(oldPath, newPath string) error {
 	if oldPath == "" || newPath == "" || oldPath == newPath {
-		return
+		return nil
+	}
+
+	m.persistMu.Lock()
+	defer m.persistMu.Unlock()
+	if m.repo != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := m.repo.RenameViewHistoryMediaPath(ctx, oldPath, newPath)
+		cancel()
+		if err != nil {
+			m.log.Error("failed to re-key view history for renamed media %q -> %q: %v", oldPath, newPath, err)
+			return fmt.Errorf("re-key suggestion history %q -> %q: %w", oldPath, newPath, err)
+		}
 	}
 
 	m.mu.Lock()
@@ -1186,39 +1246,32 @@ func (m *Module) RenameMediaPath(oldPath, newPath string) {
 		} else {
 			profile.ViewHistory[oldIdx].MediaPath = newPath
 		}
+		m.nextRevision++
+		profile.revision = m.nextRevision
 		// Not marked dirty: the database is re-keyed below, so memory and DB
 		// already agree without another flush.
 	}
 	m.mu.Unlock()
-
-	if m.repo == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := m.repo.RenameViewHistoryMediaPath(ctx, oldPath, newPath); err != nil {
-		m.log.Error("failed to re-key view history for renamed media %q -> %q: %v", oldPath, newPath, err)
-	}
+	return nil
 }
 
 // ResetUserProfile clears the in-memory profile and deletes persisted data (profile
 // row + view history) from the database for the given user.  After the reset the
 // user starts accumulating a fresh profile from their next viewing session.
 func (m *Module) ResetUserProfile(userID string) error {
-	if m.repo == nil {
-		return nil
+	m.persistMu.Lock()
+	defer m.persistMu.Unlock()
+	if m.repo != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := m.repo.ResetProfile(ctx, userID); err != nil {
+			return fmt.Errorf("failed to reset suggestion profile: %w", err)
+		}
 	}
 	m.mu.Lock()
+	m.nextRevision++ // keep future profile revisions distinct from any pre-reset snapshot
 	delete(m.profiles, userID)
 	m.mu.Unlock()
-
-	ctx := context.Background()
-	if err := m.repo.DeleteProfile(ctx, userID); err != nil {
-		return fmt.Errorf("failed to delete suggestion profile: %w", err)
-	}
-	if err := m.repo.DeleteViewHistory(ctx, userID); err != nil {
-		return fmt.Errorf("failed to delete suggestion view history: %w", err)
-	}
 	return nil
 }
 
@@ -1309,6 +1362,8 @@ func (m *Module) loadProfiles() error {
 // RecordRating callers. dirty is cleared only after a successful save so failed writes are
 // retried on the next periodic tick.
 func (m *Module) saveProfiles(ctx context.Context) error {
+	m.persistMu.Lock()
+	defer m.persistMu.Unlock()
 	// Phase 1 — snapshot all dirty profiles under RLock (safe: read-only on fields).
 	type snapEntry struct {
 		userID string
@@ -1348,7 +1403,7 @@ func (m *Module) saveProfiles(ctx context.Context) error {
 			// mutated the profile after the snapshot was taken. Otherwise clearing
 			// dirty here would discard that newer state until the next mutation.
 			m.mu.Lock()
-			if p, ok := m.profiles[entry.userID]; ok && !p.LastUpdated.After(entry.snap.LastUpdated) {
+			if p, ok := m.profiles[entry.userID]; ok && p.revision == entry.snap.revision {
 				p.dirty = false
 			}
 			m.mu.Unlock()
