@@ -13,6 +13,8 @@ config.json
 # Personal Cosmos Cloud import (not part of the project's official deploy path)
 docker-compose.cosmos.yml
 dev-tools/
+# Host-migration working checklist (local operator notes, may reference host details)
+HOST-MIGRATION.md
 
 /web/static/react/
 /node_modules/
