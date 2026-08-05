@@ -123,6 +123,7 @@ import type {
     WatchHistoryItem,
     HubEmbed,
     HubListResponse,
+    HubPlaybackCapability,
     HubImportStatus,
     HubAnalytics,
     PlaylistImportStatus,
@@ -1158,6 +1159,15 @@ export function useHubApi() {
         },
         get: (id: string) => api.get<HubEmbed>(`${base}/embeds/${encodeURIComponent(id)}`),
         categories: () => api.get<string[]>(`${base}/categories`),
+        // Ask whether this item can be played through the server. Never returns the
+        // upstream URL — only which player to attach.
+        checkPlayback: (id: string) =>
+            api.get<HubPlaybackCapability>(`${base}/embeds/${encodeURIComponent(id)}/playback`),
+        // Byte routes live outside /api (like /hls and /extractor) so they are
+        // excluded from gzip and rate limiting; they carry the session cookie
+        // automatically because they are same-origin.
+        getProxyMasterUrl: (id: string) => `/hub/proxy/${encodeURIComponent(id)}/master.m3u8`,
+        getProxyStreamUrl: (id: string) => `/hub/proxy/${encodeURIComponent(id)}/stream`,
         // Admin — import runs from the server-configured hub.csv_path (config/env only).
         triggerImport: () => api.post<{ status: string }>(`${adminBase}/import`, {}),
         importStatus: () => api.get<HubImportStatus>(`${adminBase}/status`),

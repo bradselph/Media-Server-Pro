@@ -97,6 +97,11 @@ const (
 	EventHubPlaylistAdd = "hub_playlist_add"
 	EventHubImport      = "hub_import"
 	EventHubClear       = "hub_clear"
+	// EventHubProxyPlay records a playback served through the server-side proxy
+	// rather than the provider's iframe. Intentionally not mapped to a
+	// daily_stats column: the raw event is enough to see uptake, and adding a
+	// column would mean a migration plus schema changes for a beta signal.
+	EventHubProxyPlay = "hub_proxy_play"
 
 	// Library curation events — recorded as raw events so they appear in the
 	// admin actions panel and audit log, but intentionally NOT mapped to a

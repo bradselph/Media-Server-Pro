@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+- feat(hub): server-side playback — the server can now resolve a Hub item's real
+  stream and proxy the bytes itself, so the provider sees this server instead of
+  the viewer. Fixes embeds that refuse to play for viewers in blocked regions
+  without needing a VPN. Adds a "Play on server" control to the Hub player;
+  supports both adaptive HLS (via hls.js) and progressive MP4 with seeking, and
+  falls back to the normal embed whenever resolution is unavailable. Resolution
+  is a configurable chain (`hub.proxy_resolvers`): the downloader service's
+  detector, or direct parsing of the provider's embed page, so it works with or
+  without the sidecar deployed. Off by default; admin-only when first enabled,
+  and `hub.proxy_all_users` opens it to everyone with no redeploy
+- feat(hub): proxied catalog artwork — thumbnails and hover previews route
+  through the server (`hub.proxy_images`, on by default), which stops every
+  browsing user's IP reaching the provider CDN and fixes the grid of broken
+  thumbnails blocked viewers saw. Shared in-memory cache plus long browser
+  cache headers keep the added bandwidth small
+- fix(hub): stable pagination — catalog ordering now always ends in a unique
+  tiebreaker. Large numbers of rows share a view count or duration, so without
+  one MySQL was free to order equal rows differently per query, silently
+  repeating some items and skipping others while paging
+- perf(hub): browsing a large catalog no longer runs a full `COUNT(*)` per page
+  (the unfiltered total is cached), and new `(views, id)` / `(duration_secs, id)`
+  indexes let the two main sorts use an index instead of a full-table filesort
+- feat(hub): "Top rated" sort, ordered by a vote-count-smoothed rating so a
+  single 1-0 item cannot outrank a heavily-rated one. Backed by an indexed
+  generated column, added without a table rebuild or backfill
+- fix(hub): hover previews are fetched before the scrub starts, so cards no
+  longer flash empty on every frame over a slow link; a thumbnail that fails to
+  load now shows a placeholder instead of an empty hole
+
 - fix(wiring): surface media reports under Moderation and analytics flush health
   in the admin dashboard; make S3 credential edits explicit and redaction-aware
 - fix(storage): remove dead thumbnail/HLS S3 injection and document both as local,

@@ -567,9 +567,13 @@ var tableDefs = []struct {
 				thumb_url     TEXT,
 				preview_urls  MEDIUMTEXT,
 				created_at    TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+				rating_score  DOUBLE AS ((rating_up + 25) / (rating_up + rating_down + 50)) VIRTUAL,
 				UNIQUE KEY uniq_hub_embed_id (embed_id),
 				INDEX idx_hub_embeds_views (views),
 				INDEX idx_hub_embeds_title (title(191)),
+				INDEX idx_hub_embeds_views_id (views, id),
+				INDEX idx_hub_embeds_duration_id (duration_secs, id),
+				INDEX idx_hub_embeds_rating (rating_score, id),
 				FULLTEXT INDEX ft_hub_embeds_title_tags (title, tags)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 }
@@ -717,6 +721,15 @@ func (m *Module) ensureSchemaColumns(ctx context.Context) error {
 		{"daily_stats", "hub_playlist_adds", "INT NOT NULL DEFAULT 0"},
 		// Tag-backed ("smart") categories: media carrying this tag are auto-members.
 		{"media_categories", "tag", "VARCHAR(255) NOT NULL DEFAULT ''"},
+		// Hub "top rated" ordering. A raw up/down ratio puts a single 1-0 item above
+		// a 50000-49 one, so this is a smoothed (Bayesian) ratio: the +25/+50 prior
+		// pulls low-vote rows toward the middle and lets confident rows rise.
+		//
+		// VIRTUAL, not STORED: adding a virtual column is a metadata-only change
+		// even on a multi-million-row catalog, and it stays correct across
+		// re-imports with no backfill. The index below is what makes it sortable.
+		{"hub_embeds", "rating_score",
+			"DOUBLE AS ((rating_up + 25) / (rating_up + rating_down + 50)) VIRTUAL"},
 	}
 	for _, col := range columns {
 		if err := m.ensureColumn(ctx, col.table, col.column, col.def); err != nil {
@@ -798,6 +811,20 @@ func (m *Module) ensureSchemaIndexes(ctx context.Context) error {
 			"ALTER TABLE analytics_events ADD INDEX idx_user_timestamp (user_id, timestamp)"},
 		{"analytics_events", "idx_media_timestamp",
 			"ALTER TABLE analytics_events ADD INDEX idx_media_timestamp (media_id, timestamp)"},
+		// Hub catalog ordering. Every browse is "ORDER BY <key> DESC, id DESC" with
+		// an offset, so the sort key alone is not enough — without id in the index
+		// MySQL still has to sort, and rows with equal keys can repeat or vanish
+		// between pages. These three cover the three indexed sorts.
+		//
+		// On a large catalog the first startup after upgrade spends real time
+		// building these; that is one-time, and the alternative is a full-table
+		// filesort on every page load.
+		{"hub_embeds", "idx_hub_embeds_views_id",
+			"ALTER TABLE hub_embeds ADD INDEX idx_hub_embeds_views_id (views, id)"},
+		{"hub_embeds", "idx_hub_embeds_duration_id",
+			"ALTER TABLE hub_embeds ADD INDEX idx_hub_embeds_duration_id (duration_secs, id)"},
+		{"hub_embeds", "idx_hub_embeds_rating",
+			"ALTER TABLE hub_embeds ADD INDEX idx_hub_embeds_rating (rating_score, id)"},
 	}
 	for _, idx := range indexes {
 		if err := m.ensureIndex(ctx, idx.table, idx.index, idx.sql); err != nil {

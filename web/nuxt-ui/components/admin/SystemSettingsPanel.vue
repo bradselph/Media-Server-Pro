@@ -554,6 +554,54 @@ onMounted(async () => {
               Local CSV: <code>{{ get('hub', 'csv_path') }}</code> (set via config/env)
             </div>
 
+            <!-- Server-side playback / artwork -->
+            <div class="border-t border-default pt-3 space-y-4">
+              <p class="text-xs text-muted">
+                Hub items are third-party embeds, so by default the provider sees each
+                viewer's IP — and where the provider blocks a region, embeds refuse to
+                play and artwork breaks. These options make the server fetch the media
+                instead, so the provider only ever sees this server.
+              </p>
+
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm">Proxy thumbnails</p>
+                  <p class="text-xs text-muted">
+                    Serve catalog artwork through the server. Cached and cheap; fixes
+                    broken thumbnails for blocked viewers.
+                  </p>
+                </div>
+                <USwitch :model-value="get('hub', 'proxy_images')"
+                         @update:model-value="set('hub', 'proxy_images', $event)"/>
+              </div>
+
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm">Server-side playback</p>
+                  <p class="text-xs text-muted">
+                    Adds a "Play on server" control to the player. Every byte flows
+                    through this server, so it costs upstream bandwidth twice.
+                  </p>
+                </div>
+                <USwitch :model-value="get('hub', 'proxy_enabled')"
+                         @update:model-value="set('hub', 'proxy_enabled', $event)"/>
+              </div>
+
+              <div class="flex items-center justify-between"
+                   :class="get('hub', 'proxy_enabled') ? '' : 'opacity-50'">
+                <div>
+                  <p class="text-sm">Allow all users</p>
+                  <p class="text-xs text-muted">
+                    Off: administrators only. On: every logged-in viewer with mature
+                    content enabled. Takes effect without a restart.
+                  </p>
+                </div>
+                <USwitch :model-value="get('hub', 'proxy_all_users')"
+                         :disabled="!get('hub', 'proxy_enabled')"
+                         @update:model-value="set('hub', 'proxy_all_users', $event)"/>
+              </div>
+            </div>
+
             <div class="flex flex-wrap items-center gap-4 text-sm border-t border-default pt-3">
               <span><span class="text-muted">Rows:</span> {{ (hubStatus?.total_rows ?? 0).toLocaleString() }}</span>
               <span v-if="hubStatus?.running" class="inline-flex items-center gap-1.5 text-primary">

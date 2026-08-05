@@ -103,6 +103,13 @@ KNOB_ORDER=(
   HUB_CSV_PATH
   HUB_WORK_DIR
   HUB_PAGE_SIZE
+  HUB_PROXY_IMAGES
+  HUB_PROXY_ENABLED
+  HUB_PROXY_ALL_USERS
+  HUB_PROXY_RESOLVERS
+  HUB_PROXY_CACHE_TTL_SECONDS
+  HUB_PROXY_MAX_CONCURRENT_RESOLVES
+  HUB_PROXY_IMAGE_CACHE_MB
   # ── HiDrive WebDAV cold-tier mount ───────────────────────────────
   HIDRIVE_ENABLED
   HIDRIVE_WEBDAV_URL
@@ -427,6 +434,41 @@ KNOB_DESCRIPTION[HUB_PAGE_SIZE]="Embeds per page in the Hub browse grid."
 KNOB_DEFAULT[HUB_PAGE_SIZE]="60"
 KNOB_SCOPE[HUB_PAGE_SIZE]="runtime"
 KNOB_SECTION[HUB_PAGE_SIZE]="Hub (BETA)"
+
+KNOB_DESCRIPTION[HUB_PROXY_IMAGES]="Serve Hub thumbnails and hover previews through this server instead of the provider CDN (true | false). Stops viewer IPs reaching the provider and fixes broken artwork where the provider blocks the viewer."
+KNOB_DEFAULT[HUB_PROXY_IMAGES]="true"
+KNOB_SCOPE[HUB_PROXY_IMAGES]="runtime"
+KNOB_SECTION[HUB_PROXY_IMAGES]="Hub (BETA)"
+
+KNOB_DESCRIPTION[HUB_PROXY_ENABLED]="Server-side video playback: the server resolves the real stream and proxies the bytes, so the provider sees this server not the viewer (true | false). Costs upstream bandwidth twice."
+KNOB_DEFAULT[HUB_PROXY_ENABLED]="false"
+KNOB_SCOPE[HUB_PROXY_ENABLED]="runtime"
+KNOB_SECTION[HUB_PROXY_ENABLED]="Hub (BETA)"
+
+KNOB_DESCRIPTION[HUB_PROXY_ALL_USERS]="Who may use server-side playback: false = administrators only (rollout default), true = every logged-in viewer with mature content enabled."
+KNOB_DEFAULT[HUB_PROXY_ALL_USERS]="false"
+KNOB_SCOPE[HUB_PROXY_ALL_USERS]="runtime"
+KNOB_SECTION[HUB_PROXY_ALL_USERS]="Hub (BETA)"
+
+KNOB_DESCRIPTION[HUB_PROXY_RESOLVERS]="Ordered, comma-separated resolver chain for turning an embed id into a playable stream; first success wins. sidecar = the downloader service, page = parse the provider embed page directly."
+KNOB_DEFAULT[HUB_PROXY_RESOLVERS]="sidecar,page"
+KNOB_SCOPE[HUB_PROXY_RESOLVERS]="runtime"
+KNOB_SECTION[HUB_PROXY_RESOLVERS]="Hub (BETA)"
+
+KNOB_DESCRIPTION[HUB_PROXY_CACHE_TTL_SECONDS]="How long a resolved stream URL is reused. A safety net only: an expired URL is detected and re-resolved when the CDN rejects it."
+KNOB_DEFAULT[HUB_PROXY_CACHE_TTL_SECONDS]="1800"
+KNOB_SCOPE[HUB_PROXY_CACHE_TTL_SECONDS]="runtime"
+KNOB_SECTION[HUB_PROXY_CACHE_TTL_SECONDS]="Hub (BETA)"
+
+KNOB_DESCRIPTION[HUB_PROXY_MAX_CONCURRENT_RESOLVES]="Cap on how many distinct Hub items may be resolving at once. Applied at startup."
+KNOB_DEFAULT[HUB_PROXY_MAX_CONCURRENT_RESOLVES]="4"
+KNOB_SCOPE[HUB_PROXY_MAX_CONCURRENT_RESOLVES]="runtime"
+KNOB_SECTION[HUB_PROXY_MAX_CONCURRENT_RESOLVES]="Hub (BETA)"
+
+KNOB_DESCRIPTION[HUB_PROXY_IMAGE_CACHE_MB]="In-memory budget for cached Hub artwork, in MB. 0 disables the cache (images still proxy, just refetched)."
+KNOB_DEFAULT[HUB_PROXY_IMAGE_CACHE_MB]="512"
+KNOB_SCOPE[HUB_PROXY_IMAGE_CACHE_MB]="runtime"
+KNOB_SECTION[HUB_PROXY_IMAGE_CACHE_MB]="Hub (BETA)"
 
 # ── HiDrive WebDAV cold-tier mount ───────────────────────────────────
 # These knobs drive `./deploy.sh --setup-hidrive`, which mounts an IONOS

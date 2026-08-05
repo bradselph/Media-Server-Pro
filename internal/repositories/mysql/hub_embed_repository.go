@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -30,9 +31,23 @@ type hubEmbedRow struct {
 
 func (hubEmbedRow) TableName() string { return "hub_embeds" }
 
+// hubTotalTTL bounds how long the unfiltered row count is reused. The catalog
+// only changes on import or clear, both of which invalidate the cache outright,
+// so this is a backstop for writes that bypass this process.
+const hubTotalTTL = 5 * time.Minute
+
 // HubEmbedRepository is the MySQL implementation of repositories.HubEmbedRepository.
 type HubEmbedRepository struct {
 	db *gorm.DB
+
+	// Unfiltered COUNT(*) cache. InnoDB has no O(1) row count, so on a catalog of
+	// millions of rows the count behind every browse page costs more than the
+	// page of rows itself. The mutex is held across the query on purpose: it
+	// collapses a burst of concurrent cold reads into one count.
+	totalMu    sync.Mutex
+	totalValue int64
+	totalAt    time.Time
+	totalValid bool
 }
 
 // NewHubEmbedRepository constructs the repository over the given GORM handle.
@@ -41,6 +56,34 @@ func NewHubEmbedRepository(db *gorm.DB) repositories.HubEmbedRepository {
 		panic("NewHubEmbedRepository: db is nil")
 	}
 	return &HubEmbedRepository{db: db}
+}
+
+// cachedTotal returns the unfiltered row count, refreshing it past the TTL.
+func (r *HubEmbedRepository) cachedTotal(ctx context.Context) (int64, error) {
+	r.totalMu.Lock()
+	defer r.totalMu.Unlock()
+	if r.totalValid && time.Since(r.totalAt) < hubTotalTTL {
+		return r.totalValue, nil
+	}
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&hubEmbedRow{}).Count(&total).Error; err != nil {
+		return 0, fmt.Errorf("count hub embeds: %w", err)
+	}
+	r.storeTotal(total)
+	return total, nil
+}
+
+func (r *HubEmbedRepository) storeTotal(total int64) {
+	r.totalValue = total
+	r.totalAt = time.Now()
+	r.totalValid = true
+}
+
+// invalidateTotal drops the cached count after a write.
+func (r *HubEmbedRepository) invalidateTotal() {
+	r.totalMu.Lock()
+	r.totalValid = false
+	r.totalMu.Unlock()
 }
 
 // BatchInsert idempotently inserts embeds using INSERT IGNORE (OnConflict DoNothing
@@ -60,6 +103,7 @@ func (r *HubEmbedRepository) BatchInsert(ctx context.Context, embeds []*reposito
 	if result.Error != nil {
 		return 0, fmt.Errorf("failed to batch insert hub embeds: %w", result.Error)
 	}
+	r.invalidateTotal()
 	return result.RowsAffected, nil
 }
 
@@ -106,19 +150,24 @@ func (r *HubEmbedRepository) BatchUpsert(ctx context.Context, embeds []*reposito
 	if result.Error != nil {
 		return 0, fmt.Errorf("failed to batch upsert hub embeds: %w", result.Error)
 	}
+	r.invalidateTotal()
 	return result.RowsAffected, nil
 }
 
 // List returns a page ordered by sort plus the total row count.
+//
+// The count comes from cachedTotal rather than a fresh COUNT(*): the unfiltered
+// total is identical for every page and every viewer, and recomputing it per
+// request dominated the cost of browsing a large catalog.
 func (r *HubEmbedRepository) List(ctx context.Context, offset, limit int, sort string) ([]*repositories.HubEmbedRecord, int64, error) {
 	limit, offset = hubClampPage(limit, offset)
-	q := r.db.WithContext(ctx).Model(&hubEmbedRow{})
-	var total int64
-	if err := q.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("count hub embeds: %w", err)
+	total, err := r.cachedTotal(ctx)
+	if err != nil {
+		return nil, 0, err
 	}
 	var rows []hubEmbedRow
-	if err := q.Order(hubSortOrder(sort)).Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&hubEmbedRow{}).
+		Order(hubSortOrder(sort)).Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
 		return nil, 0, fmt.Errorf("list hub embeds: %w", err)
 	}
 	return hubRowsToRecords(rows), total, nil
@@ -189,10 +238,20 @@ func (r *HubEmbedRepository) GetByEmbedIDs(ctx context.Context, embedIDs []strin
 }
 
 // CountAll returns the total number of imported rows.
+// CountAll returns the exact current row count.
+//
+// Deliberately uncached: the auto-import bootstrap decides whether the catalog
+// is empty from this, and acting on a stale zero would re-import a populated
+// catalog. It does refresh the cache that List reads.
 func (r *HubEmbedRepository) CountAll(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&hubEmbedRow{}).Count(&count).Error
-	return count, err
+	if err := r.db.WithContext(ctx).Model(&hubEmbedRow{}).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	r.totalMu.Lock()
+	r.storeTotal(count)
+	r.totalMu.Unlock()
+	return count, nil
 }
 
 // CategorySamples returns the raw ';'-joined category strings from the most-viewed
@@ -215,7 +274,11 @@ func (r *HubEmbedRepository) CategorySamples(ctx context.Context, limit int) ([]
 
 // DeleteAll truncates the catalog table.
 func (r *HubEmbedRepository) DeleteAll(ctx context.Context) error {
-	return r.db.WithContext(ctx).Exec("TRUNCATE TABLE hub_embeds").Error
+	if err := r.db.WithContext(ctx).Exec("TRUNCATE TABLE hub_embeds").Error; err != nil {
+		return err
+	}
+	r.invalidateTotal()
+	return nil
 }
 
 // hubClampPage bounds limit/offset to safe ranges.
@@ -229,15 +292,30 @@ func hubClampPage(limit, offset int) (int, int) {
 	return limit, offset
 }
 
+// hubSortOrder maps a sort key to an ORDER BY clause.
+//
+// Every clause ends in the unique id column. That tiebreaker is not cosmetic: a
+// huge share of catalog rows share a view count or duration, and without a
+// unique final key MySQL is free to order equal rows differently between
+// queries — so paging through results silently shows some items twice and skips
+// others. Each indexed sort has a matching (key, id) index; see the hub_embeds
+// entries in internal/database/migrations.go.
 func hubSortOrder(sort string) string {
 	switch sort {
 	case "views":
-		return "views DESC"
+		return "views DESC, id DESC"
 	case "duration":
-		return "duration_secs DESC"
+		return "duration_secs DESC, id DESC"
+	case "rating":
+		// rating_score is a generated column: a vote-count-smoothed up/down ratio,
+		// so a lone 1-0 item cannot outrank a heavily-rated one.
+		return "rating_score DESC, id DESC"
 	case "title":
-		return "title ASC"
+		// No usable index: title is only prefix-indexed, which MySQL cannot use to
+		// avoid a sort. Kept because it is cheap for filtered result sets.
+		return "title ASC, id ASC"
 	default:
+		// "newest" and any unknown value: most recently imported first.
 		return "id DESC"
 	}
 }
