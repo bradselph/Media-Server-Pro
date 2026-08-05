@@ -1141,6 +1141,13 @@ export interface ServerSettings {
     }
     hub?: {
         enabled: boolean
+        // Server-side playback: the server fetches the media and streams it on, so
+        // the provider sees the server rather than the viewer. proxy_all_users is
+        // the rollout switch — while false the feature is admin-only.
+        proxy_enabled?: boolean
+        proxy_all_users?: boolean
+        // Catalog artwork routed through the server. Independent of playback.
+        proxy_images?: boolean
     }
 }
 
@@ -1160,6 +1167,20 @@ export interface HubEmbed {
     thumb_url: string
     preview_urls: string[]
     is_mature: boolean
+}
+
+/**
+ * Whether an embed can be played through the server, and which player to use.
+ *
+ * `available: false` is an ordinary answer, not an error — the caller keeps
+ * showing the provider iframe. The resolved upstream URL is deliberately never
+ * part of this response.
+ */
+export interface HubPlaybackCapability {
+    available: boolean
+    kind?: 'hls' | 'mp4'
+    quality?: string
+    reason?: string
 }
 
 export interface HubListResponse {

@@ -484,6 +484,45 @@ type HubConfig struct {
 	// the module starts with an empty table (from SourceURL, else CSVPath), so a
 	// fresh deployment needs no manual import step. Skipped once data is present.
 	AutoImport bool `json:"auto_import"`
+
+	// ─── Server-side proxied playback ────────────────────────────────────────
+	// Catalog entries are third-party iframes, so playback and artwork normally
+	// load in the viewer's browser and the provider sees the viewer's IP. Where
+	// the provider blocks a region, that means the embed simply does not play.
+	// The knobs below move those fetches server-side (see internal/hub/resolve.go
+	// and internal/hub/stream.go) so the provider only ever sees this server.
+
+	// ProxyEnabled turns on server-side video playback. Off by default: it costs
+	// upstream bandwidth twice (provider -> server -> viewer) and depends on a
+	// working resolver, so it is opt-in.
+	ProxyEnabled bool `json:"proxy_enabled"`
+	// ProxyAllUsers widens server-side playback from admins to every logged-in,
+	// mature-permitted user. This is the entire rollout step — no route or code
+	// change is needed to go wide, and it is hot-reloadable.
+	ProxyAllUsers bool `json:"proxy_all_users"`
+	// ProxyImages routes catalog thumbnails and hover previews through the server.
+	// Deliberately independent of ProxyEnabled and defaulted ON: images are small
+	// and cached, and proxying them is what stops blocked viewers from seeing a
+	// grid of broken artwork — a fix that stands on its own even with video
+	// proxying off.
+	ProxyImages bool `json:"proxy_images"`
+	// ProxyResolvers is the ordered resolver chain that turns an embed id into a
+	// playable URL; the first one to succeed wins. Known names: "sidecar" (the
+	// downloader service's /api/detect, which carries yt-dlp and any configured
+	// proxy pool) and "page" (fetch and parse the provider's own embed page).
+	// Unknown names are ignored, so this can be reordered without a code change.
+	ProxyResolvers []string `json:"proxy_resolvers"`
+	// ProxyCacheTTL bounds how long a resolved stream URL is reused. Resolved CDN
+	// URLs are signed and expire on their own schedule, so this is only a safety
+	// net — the authoritative recovery is the on-403 re-resolve in stream.go.
+	ProxyCacheTTL time.Duration `json:"proxy_cache_ttl"`
+	// ProxyMaxConcurrentResolves caps how many distinct embeds may be resolving
+	// at once, bounding load on the resolver chain. Applied at construction.
+	ProxyMaxConcurrentResolves int `json:"proxy_max_concurrent_resolves"`
+	// ProxyImageCacheMB bounds the in-memory proxied-image cache. Once exceeded
+	// the oldest entries are evicted. Zero disables caching (images still proxy,
+	// they are just refetched).
+	ProxyImageCacheMB int `json:"proxy_image_cache_mb"`
 }
 
 // HuggingFaceConfig holds settings for Hugging Face Inference API (visual classification).

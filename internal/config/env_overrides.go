@@ -1,5 +1,10 @@
 package config
 
+import (
+	"strings"
+	"time"
+)
+
 // applyEnvOverrides applies every environment override (infrastructure +
 // tunable). It is used only when seeding a brand-new config.json or during the
 // one-shot EnvSeedMigrated upgrade. On normal loads of an existing config only
@@ -31,6 +36,7 @@ func (m *Manager) applySeededInfraEnvOverrides() {
 //   - object-storage (S3) endpoint + credentials
 //   - updater branch / method (deploy.sh controls which branch ships)
 //   - admin bootstrap username / password (operator credential reset)
+//
 // applyInfraEnvOverrides applies env vars that ALWAYS win on every load — data
 // paths and credentials owned by the orchestration layer, not the admin UI.
 // (server/logging/updater moved to applySeededInfraEnvOverrides so the admin UI
@@ -88,5 +94,38 @@ func (m *Manager) applyHubEnvOverrides() {
 	}
 	if val, ok := envGetInt("HUB_PAGE_SIZE"); ok && val > 0 {
 		m.config.Hub.PageSize = val
+	}
+	if val, found := envGetBool("HUB_PROXY_ENABLED"); found {
+		m.config.Hub.ProxyEnabled = val
+	}
+	if val, found := envGetBool("HUB_PROXY_ALL_USERS"); found {
+		m.config.Hub.ProxyAllUsers = val
+	}
+	if val, found := envGetBool("HUB_PROXY_IMAGES"); found {
+		m.config.Hub.ProxyImages = val
+	}
+	// Comma-separated so the chain can be reordered from a .env file, e.g.
+	// HUB_PROXY_RESOLVERS=page,sidecar. Empty entries are dropped; an all-empty
+	// value leaves the configured chain untouched rather than disabling playback.
+	if val := envGetStr("HUB_PROXY_RESOLVERS"); val != "" {
+		parts := strings.Split(val, ",")
+		names := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				names = append(names, t)
+			}
+		}
+		if len(names) > 0 {
+			m.config.Hub.ProxyResolvers = names
+		}
+	}
+	if val, ok := envGetDuration(time.Second, "HUB_PROXY_CACHE_TTL_SECONDS"); ok && val > 0 {
+		m.config.Hub.ProxyCacheTTL = val
+	}
+	if val, ok := envGetInt("HUB_PROXY_MAX_CONCURRENT_RESOLVES"); ok && val > 0 {
+		m.config.Hub.ProxyMaxConcurrentResolves = val
+	}
+	if val, ok := envGetInt("HUB_PROXY_IMAGE_CACHE_MB"); ok && val >= 0 {
+		m.config.Hub.ProxyImageCacheMB = val
 	}
 }

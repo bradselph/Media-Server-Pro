@@ -276,7 +276,7 @@ setup_ssh_auth() {
   # 1. Generate key if missing
   if [[ ! -f "$keyfile" ]]; then
     info "Generating SSH key at $keyfile..."
-    mkdir -p "$(dirname "$keyfile")"
+    sudo mkdir -p "$(dirname "$keyfile")"
     ssh-keygen -t ed25519 -f "$keyfile" -N "" -C "mediaserver-deploy"
     echo ""
   fi
@@ -334,7 +334,21 @@ setup_ssh_auth() {
 # remote() is set up after SSH auth; it SSHes to the current target.
 REMOTE_HOST=""
 REMOTE_USER=""
-remote() { ssh "${SSH_OPTS[@]}" "$REMOTE_USER@$REMOTE_HOST" -- "$@"; }
+remote() {
+  local remote_script=""
+
+  if [[ $# -eq 1 ]]; then
+    remote_script="$1"
+  else
+    printf -v remote_script '%q ' "$@"
+  fi
+
+  # Run every deployment command inside a root login shell on the VPS.
+  # If SSH already connected as root, use bash directly. Otherwise verify
+  # passwordless sudo, then use sudo su to enter root before running it.
+  printf '%s\n' "$remote_script" | ssh "${SSH_OPTS[@]}" "$REMOTE_USER@$REMOTE_HOST" -- \
+    'if [ "$(id -u)" -eq 0 ]; then exec /bin/bash -s; elif sudo -n true 2>/dev/null; then exec sudo -n su - root -c "/bin/bash -s"; else echo "[deploy] ERROR: $USER requires passwordless sudo access for root deployment" >&2; exit 1; fi'
+}
 
 run_or_dry() {
   if $DRY_RUN; then
@@ -467,6 +481,7 @@ if $SETUP; then
     fi
 
     # ── Clone repository ─────────────────────────────────────────────────────
+    git config --global --add safe.directory '$DEPLOY_DIR' 2>/dev/null || true
     if [ ! -d '$DEPLOY_DIR/.git' ]; then
       echo '[setup] Cloning repository...'
       sudo mkdir -p '$(dirname "$DEPLOY_DIR")'
@@ -894,10 +909,14 @@ run_or_dry remote "
   set -euo pipefail
   export PATH=\$PATH:/usr/local/go/bin
 
+  # Root runs Git against a tree later owned by mediaserver. Mark it safe
+  # before any repository operation to avoid Git's ownership protection.
+  git config --global --add safe.directory '$DEPLOY_DIR' 2>/dev/null || true
+
   # Clone if the directory doesn't exist yet
   if [ ! -d '$DEPLOY_DIR/.git' ]; then
     echo '[deploy] Deploy directory not found — cloning repository...'
-    mkdir -p '$DEPLOY_DIR'
+    sudo mkdir -p '$DEPLOY_DIR'
     git clone --branch '$BRANCH' '$CLONE_URL' '$DEPLOY_DIR'
     echo '[deploy] Clone complete'
   fi

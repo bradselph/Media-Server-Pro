@@ -56,7 +56,7 @@ import (
 //
 //	go build -ldflags "-X main.Version=$(cat VERSION) -X main.BuildDate=$(date +%Y-%m-%d)" ./cmd/server
 var (
-	Version   = "1.23.24"
+	Version = "1.23.24"
 
 	BuildDate = "dev"
 )
@@ -465,6 +465,15 @@ func initModules(srv *server.Server, cfg *config.Manager, log *logger.Logger, st
 	// files become recommendable immediately, not at the next scheduled scan.
 	m.downloader.SetPostScanHook(func() { feedSuggestions(m.media, m.suggestions, m.receiver) })
 	mustRegister(srv, m.downloader)
+
+	// Let the Hub use the downloader service to resolve a provider page into a
+	// playable stream. Wired here rather than as a package dependency so the Hub
+	// stays usable without the downloader — its resolver chain just falls through
+	// to the built-in one. Registration does not start modules, so ordering
+	// against the Hub's own registration above is irrelevant.
+	if m.hub != nil {
+		m.hub.SetStreamDetector(&downloaderStreamDetector{dl: m.downloader})
+	}
 
 	// Extractor (non-critical — requires database for item persistence)
 	m.extractor = extractor.NewModule(cfg, m.database)

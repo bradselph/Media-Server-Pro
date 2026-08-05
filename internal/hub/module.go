@@ -7,10 +7,14 @@ package hub
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"media-server-pro/internal/config"
 	"media-server-pro/internal/database"
@@ -54,15 +58,18 @@ type Filter struct {
 	Search   string
 	Category string
 	Tag      string
-	SortBy   string // "views" | "duration" | "title" | "" (newest)
+	// SortBy is "views" | "duration" | "rating" | "title" | "newest" ("" is
+	// treated as newest). Unknown values fall back to newest rather than
+	// erroring, so an old client cannot break the listing.
+	SortBy string
 }
 
 // ImportState is the observable state of the CSV import job.
 type ImportState struct {
-	Running bool   `json:"running"`
-	Phase   string `json:"phase,omitempty"` // "downloading" | "importing" | ""
-	Source  string `json:"source,omitempty"`
-	RowsRead int64 `json:"rows_read"`
+	Running  bool   `json:"running"`
+	Phase    string `json:"phase,omitempty"` // "downloading" | "importing" | ""
+	Source   string `json:"source,omitempty"`
+	RowsRead int64  `json:"rows_read"`
 	// Inserted is the number of rows written. For a first (append-only) import it
 	// is the new-row count; for an upsert re-import (see Upsert) it is the driver's
 	// affected-row count (insert = 1, refresh = 2, no-op = 0) and so is NOT a
@@ -98,6 +105,31 @@ type Module struct {
 	catMu       sync.Mutex
 	catCache    []string
 	catCachedAt time.Time
+
+	// ─── server-side playback (resolve.go / stream.go / images.go) ───────────
+	// httpClient reaches the provider and its CDN. It deliberately carries no
+	// client-level Timeout: a media response is streamed for the length of the
+	// video, and a whole-request deadline would sever playback mid-stream. Setup
+	// is still bounded by the transport, and cancellation rides on the request
+	// context so a viewer closing the tab tears the upstream fetch down.
+	httpClient *http.Client
+	// detector is an optional external resolver (the downloader service).
+	detector   StreamDetector
+	detectorMu sync.RWMutex
+	// resolveCache maps embed id -> *ResolvedStream.
+	resolveCache sync.Map
+	// resolveGroup coalesces concurrent resolutions of the same embed.
+	resolveGroup singleflight.Group
+	// resolveSem bounds how many distinct embeds resolve at once.
+	resolveSem chan struct{}
+	// playlistCache maps "<embed>:master" / "<embed>:<rendition>" -> *cachedPlaylist.
+	playlistCache sync.Map
+	// imageURLs remembers catalog artwork URLs so serving an image does not need
+	// a database round trip per request.
+	imageURLs  map[string]imageURLs
+	imageURLMu sync.RWMutex
+	// imageCache holds fetched artwork bytes, shared across viewers.
+	imageCache *imageCache
 }
 
 // NewModule constructs the Hub module. Following the autodiscovery pattern, this
@@ -105,11 +137,30 @@ type Module struct {
 // in the caller's feature gate (main.go constructs+registers this only when
 // Features.EnableHub is set).
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
+	hc := cfg.Get().Hub
+	resolves := hc.ProxyMaxConcurrentResolves
+	if resolves <= 0 {
+		resolves = 4
+	}
+	cacheBytes := int64(hc.ProxyImageCacheMB) * 1024 * 1024
 	return &Module{
 		config:    cfg,
 		log:       logger.New("hub"),
 		dbModule:  dbModule,
 		healthMsg: "Not started",
+		httpClient: &http.Client{
+			Transport: helpers.SafeHTTPTransport(),
+			// No Timeout — see the field comment on Module.httpClient.
+			CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+				if len(via) >= 10 {
+					return fmt.Errorf("too many redirects")
+				}
+				return nil
+			},
+		},
+		resolveSem: make(chan struct{}, resolves),
+		imageURLs:  make(map[string]imageURLs),
+		imageCache: newImageCache(cacheBytes),
 	}
 }
 
@@ -149,6 +200,13 @@ func (m *Module) Stop(_ context.Context) error {
 		m.importCancel()
 	}
 	m.importMu.Unlock()
+	// Drop every cached upstream URL and artwork blob so no resolved provider
+	// URL outlives the module.
+	m.clearProxyCaches()
+	m.imageCache.clear()
+	m.imageURLMu.Lock()
+	m.imageURLs = make(map[string]imageURLs)
+	m.imageURLMu.Unlock()
 	m.setHealth(false, "Stopped")
 	return nil
 }
@@ -205,7 +263,7 @@ func (m *Module) GetEmbeds(ctx context.Context, filter Filter, limit, offset int
 	}
 	out := make([]*Embed, len(recs))
 	for i, r := range recs {
-		out[i] = toEmbed(r)
+		out[i] = m.toEmbed(r)
 	}
 	return out, total, nil
 }
@@ -220,7 +278,7 @@ func (m *Module) GetEmbedByID(ctx context.Context, embedID string) (*Embed, erro
 	if err != nil || rec == nil {
 		return nil, err
 	}
-	return toEmbed(rec), nil
+	return m.toEmbed(rec), nil
 }
 
 // GetEmbedsByIDs returns the embeds for the given ids in one query, skipping ids
@@ -237,7 +295,7 @@ func (m *Module) GetEmbedsByIDs(ctx context.Context, embedIDs []string) ([]*Embe
 	}
 	out := make([]*Embed, len(recs))
 	for i, r := range recs {
-		out[i] = toEmbed(r)
+		out[i] = m.toEmbed(r)
 	}
 	return out, nil
 }
@@ -304,10 +362,29 @@ func (m *Module) ClearAll(ctx context.Context) error {
 }
 
 // toEmbed converts a stored record to the API representation.
-func toEmbed(r *repositories.HubEmbedRecord) *Embed {
+//
+// When artwork proxying is on, the returned URLs point at this server rather
+// than the provider CDN. That is deliberate and load-bearing: handing the CDN
+// URL to the browser would have it fetched directly, which both reports the
+// viewer's IP to the provider and shows a broken image to anyone the provider
+// blocks. EmbedURL is left as the provider's own iframe URL because that remains
+// the fallback player.
+func (m *Module) toEmbed(r *repositories.HubEmbedRecord) *Embed {
 	previews := splitList(r.PreviewURLs)
 	if len(previews) > maxPreviewURLs {
 		previews = previews[:maxPreviewURLs]
+	}
+	thumb := r.ThumbURL
+	if m.imageProxyEnabled() {
+		// Remember the real URLs now, while we hold the record: the image
+		// requests that follow this page load then need no database lookup.
+		m.rememberImageURLs(r)
+		thumb = ProxiedThumbURL(r.EmbedID)
+		// Truncation above keeps a prefix, so these indices still line up with
+		// the full list recorded above.
+		for i := range previews {
+			previews[i] = ProxiedPreviewURL(r.EmbedID, i)
+		}
 	}
 	return &Embed{
 		EmbedID:     r.EmbedID,
@@ -320,7 +397,7 @@ func toEmbed(r *repositories.HubEmbedRecord) *Embed {
 		RatingDown:  r.RatingDown,
 		Tags:        splitList(r.Tags),
 		Categories:  splitList(r.Categories),
-		ThumbURL:    r.ThumbURL,
+		ThumbURL:    thumb,
 		PreviewURLs: previews,
 		IsMature:    true,
 	}

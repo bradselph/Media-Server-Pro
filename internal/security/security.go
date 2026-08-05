@@ -1139,6 +1139,11 @@ func (m *Module) GinMiddleware() gin.HandlerFunc {
 			strings.HasPrefix(cleaned, "/stream") ||
 			strings.HasPrefix(cleaned, "/hls/") ||
 			strings.HasPrefix(cleaned, "/extractor/hls/") ||
+			// Hub server-side playback: one video is hundreds of segment requests
+			// and one catalog page is dozens of thumbnails, so normal use would
+			// otherwise trip the general per-IP limit.
+			strings.HasPrefix(cleaned, "/hub/proxy/") ||
+			strings.HasPrefix(cleaned, "/hub/img/") ||
 			strings.HasPrefix(cleaned, "/download") ||
 			strings.HasPrefix(cleaned, "/thumbnail") ||
 			mediaExempt ||

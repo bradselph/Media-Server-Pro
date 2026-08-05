@@ -428,6 +428,10 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 		"/remote/stream",
 		"/receiver/stream",
 		"/extractor/hls/",
+		// Hub server-side playback + artwork: already-compressed media and images,
+		// and gzip-wrapping a long-lived stream response breaks range handling.
+		"/hub/proxy/",
+		"/hub/img/",
 		// Embedded SPA assets: correct Content-Type + nosniff; avoid gzip wrapper edge cases
 		"/web/static/",
 		"/_nuxt/",
@@ -499,6 +503,19 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	r.GET("/extractor/hls/:id/master.m3u8", requireAuth(), h.ExtractorHLSMaster)
 	r.GET("/extractor/hls/:id/:quality/playlist.m3u8", requireAuth(), h.ExtractorHLSVariant)
 	r.GET("/extractor/hls/:id/:quality/:segment", requireAuth(), h.ExtractorHLSSegment)
+
+	// Hub (BETA) server-side playback + artwork. These fetch the provider's media
+	// from the server so the provider never sees the viewer's IP.
+	//
+	// Registered under plain requireAuth(), NOT adminAuth: the admin-only phase is
+	// enforced inside the handlers against hub.proxy_all_users, so opening the
+	// feature to everyone is a config change rather than a route change.
+	r.GET("/hub/proxy/:id/master.m3u8", requireAuth(), h.HubProxyMaster)
+	r.GET("/hub/proxy/:id/stream", requireAuth(), h.HubProxyStream)
+	r.GET("/hub/proxy/:id/:quality/playlist.m3u8", requireAuth(), h.HubProxyVariant)
+	r.GET("/hub/proxy/:id/:quality/:asset", requireAuth(), h.HubProxyAsset)
+	r.GET("/hub/img/:id/t", requireAuth(), h.HubProxyThumb)
+	r.GET("/hub/img/:id/p/:idx", requireAuth(), h.HubProxyPreview)
 
 	// Receiver WebSocket — middleware enforces valid X-API-Key or api_key before upgrade.
 	r.GET("/ws/receiver", h.RequireReceiverWithAPIKey(), h.ReceiverWebSocket)

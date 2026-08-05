@@ -272,8 +272,15 @@ func (h *Handler) GetServerSettings(c *gin.Context) {
 			"enabled": cfg.AgeGate.Enabled,
 		},
 		// Hub (BETA) — dedicated block so the nav can gate on it like uploads.
+		// The proxy flags are mirrored here (not just in the admin config) so the
+		// SPA can show or hide the "Play on server" control purely from public
+		// settings — that is what makes widening access to all users a config
+		// flip with no frontend rebuild.
 		"hub": map[string]any{
-			"enabled": cfg.Hub.Enabled,
+			"enabled":         cfg.Hub.Enabled,
+			"proxy_enabled":   cfg.Hub.Enabled && cfg.Hub.ProxyEnabled,
+			"proxy_all_users": cfg.Hub.ProxyAllUsers,
+			"proxy_images":    cfg.Hub.Enabled && cfg.Hub.ProxyImages,
 		},
 		"auth": map[string]any{
 			"allow_registration": cfg.Auth.AllowRegistration,

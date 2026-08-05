@@ -11,6 +11,7 @@
  */
 import type {HubEmbed, Playlist} from '~/types/api'
 import {useHubApi, usePlaylistApi} from '~/composables/useApiEndpoints'
+import {useHubProxyPlayback} from '~/composables/useHubProxyPlayback'
 import {trackEvent} from '~/composables/useAnalytics'
 
 definePageMeta({title: 'Hub'})
@@ -34,7 +35,7 @@ const allowed = computed(() => hubEnabled.value && canViewMature.value)
 const route = useRoute()
 const router = useRouter()
 
-const SORTS = ['views', 'duration', 'title', 'newest'] as const
+const SORTS = ['views', 'rating', 'duration', 'title', 'newest'] as const
 type SortKey = typeof SORTS[number]
 
 function initialSort(): SortKey {
@@ -64,9 +65,12 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit)))
 
 const sortItems = [
   {label: 'Most viewed', value: 'views'},
+  {label: 'Top rated', value: 'rating'},
   {label: 'Longest', value: 'duration'},
   {label: 'Title A–Z', value: 'title'},
-  {label: 'Newest', value: 'newest'},
+  // Ordered by import position, which is the only recency signal the catalog
+  // carries — labelled honestly rather than as a publish date.
+  {label: 'Recently added', value: 'newest'},
 ]
 const categoryItems = computed(() => [
   {label: 'All categories', value: ''},
@@ -174,19 +178,50 @@ function scrollToTop() {
 }
 
 // ── Hover preview (single shared interval; grid mounts thumbnails only) ───────
+// Frames are fetched into the browser cache before the scrub starts. Previously
+// each 700ms tick swapped in a URL that had never been requested, so on a slow
+// link the card flashed empty on every frame — the scrub looked broken exactly
+// when it was least able to recover.
 const hoverId = ref('')
 const hoverFrame = ref(0)
 let hoverTimer: ReturnType<typeof setInterval> | null = null
+const preloadedPreviews = new Set<string>()
+
+// A handful of frames conveys the clip; preloading all 20 would fire 20 requests
+// for every card the pointer crosses.
+const MAX_SCRUB_FRAMES = 8
+const SCRUB_INTERVAL_MS = 700
+
+function scrubFrames(item: HubEmbed): string[] {
+  return item.preview_urls.slice(0, MAX_SCRUB_FRAMES)
+}
+
+function preloadPreviews(item: HubEmbed): Promise<void> {
+  if (preloadedPreviews.has(item.embed_id)) return Promise.resolve()
+  preloadedPreviews.add(item.embed_id)
+  const frames = scrubFrames(item)
+  return Promise.all(frames.map(src => new Promise<void>((resolve) => {
+    const img = new Image()
+    // Resolve on failure too: one dead frame must not stall the whole scrub.
+    img.onload = () => resolve()
+    img.onerror = () => resolve()
+    img.src = src
+  }))).then(() => undefined)
+}
 
 function startHover(item: HubEmbed) {
   hoverId.value = item.embed_id
   hoverFrame.value = 0
   if (hoverTimer) clearInterval(hoverTimer)
-  if (item.preview_urls.length > 1) {
+  if (scrubFrames(item).length < 2) return
+  void preloadPreviews(item).then(() => {
+    // The pointer may have left, or moved to another card, while frames loaded.
+    if (hoverId.value !== item.embed_id) return
+    if (hoverTimer) clearInterval(hoverTimer)
     hoverTimer = setInterval(() => {
       hoverFrame.value++
-    }, 700)
-  }
+    }, SCRUB_INTERVAL_MS)
+  })
 }
 
 function stopHover() {
@@ -198,10 +233,20 @@ function stopHover() {
 }
 
 function cardThumb(item: HubEmbed): string {
-  if (hoverId.value === item.embed_id && item.preview_urls.length > 0) {
-    return item.preview_urls[hoverFrame.value % item.preview_urls.length]
+  const frames = scrubFrames(item)
+  if (hoverId.value === item.embed_id && frames.length > 0) {
+    return frames[hoverFrame.value % frames.length]
   }
   return item.thumb_url
+}
+
+// Artwork can 404 for removed videos, and when it is served straight from the
+// provider it can be blocked outright for some viewers. Remember which failed so
+// the card renders a deliberate placeholder instead of an empty hole.
+const brokenThumbs = ref<Record<string, boolean>>({})
+
+function onThumbError(item: HubEmbed) {
+  brokenThumbs.value = {...brokenThumbs.value, [item.embed_id]: true}
 }
 
 // ── Player modal (click-to-load iframe) ──────────────────────────────────────
@@ -209,6 +254,9 @@ const modalOpen = ref(false)
 const active = ref<HubEmbed | null>(null)
 
 function openEmbed(item: HubEmbed) {
+  // Leaving a previous server stream attached would keep it downloading behind
+  // the newly opened item.
+  serverPlay.deactivate()
   active.value = item
   modalOpen.value = true
   // Record the play. The grid modal already has the full embed data, so this
@@ -220,7 +268,47 @@ function openEmbed(item: HubEmbed) {
 }
 
 watch(modalOpen, (open) => {
-  if (!open) active.value = null
+  if (!open) {
+    serverPlay.deactivate()
+    active.value = null
+  }
+})
+
+// Server-side playback.
+// The provider's iframe loads in the viewer's browser, so the provider sees the
+// viewer's IP - and where it blocks a region, nothing plays at all. Server-side
+// playback has this server fetch the media instead and stream it on.
+//
+// Visibility is driven by public server settings rather than a build-time flag,
+// so widening the feature from admins to everyone is a config change that takes
+// effect on the next page load, with no redeploy.
+const videoRef = ref<HTMLVideoElement | null>(null)
+const serverPlay = useHubProxyPlayback(videoRef)
+
+const canServerPlay = computed(() =>
+  serverSettings.value?.hub?.proxy_enabled === true
+  && (authStore.isAdmin || serverSettings.value?.hub?.proxy_all_users === true),
+)
+
+function toggleServerPlay() {
+  if (!active.value) return
+  if (serverPlay.active.value) {
+    serverPlay.deactivate()
+    return
+  }
+  void serverPlay.activate(active.value.embed_id)
+}
+
+// Surface failures as a toast. The iframe is still mounted underneath, so this
+// reports that the enhancement did not apply - it is not a blocking error.
+watch(serverPlay.error, (message) => {
+  if (!message) return
+  toast.add({
+    title: message,
+    description: 'Showing the standard embed instead.',
+    color: 'warning',
+    icon: 'i-lucide-alert-triangle',
+  })
 })
 
 // ── Add to playlist ──────────────────────────────────────────────────────────
@@ -260,12 +348,6 @@ function formatViews(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
   if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K'
   return String(n)
-}
-
-function onThumbError(e: Event) {
-  // Third-party CDN URLs can 404; hide the broken image so the card stays clean.
-  const el = e.target as HTMLImageElement
-  el.style.visibility = 'hidden'
 }
 
 onMounted(async () => {
@@ -369,13 +451,21 @@ onBeforeUnmount(() => {
                  playlist button so we never nest interactive elements). -->
             <button type="button" class="absolute inset-0 w-full h-full" aria-label="Play" @click="openEmbed(item)">
               <img
+                  v-if="!brokenThumbs[item.embed_id]"
                   :src="cardThumb(item)"
                   :alt="item.title"
                   loading="lazy"
+                  decoding="async"
                   referrerpolicy="no-referrer"
                   class="w-full h-full object-cover"
-                  @error="onThumbError"
+                  @error="onThumbError(item)"
               >
+              <!-- Deliberate placeholder: an invisible image left the card as an
+                   empty hole, which read as a broken page rather than one absent
+                   thumbnail. -->
+              <div v-else class="w-full h-full flex items-center justify-center bg-muted/60">
+                <UIcon name="i-lucide-image-off" class="size-6 text-muted"/>
+              </div>
               <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
                 <UIcon name="i-lucide-play" class="size-10 text-white drop-shadow"/>
               </div>
@@ -424,7 +514,19 @@ onBeforeUnmount(() => {
         <template #body>
           <div v-if="active">
             <div class="aspect-video w-full bg-black rounded overflow-hidden">
+              <!-- Server-side playback. The iframe below stays the default and the
+                   fallback: every failure path in useHubProxyPlayback clears
+                   `active`, which restores it. -->
+              <video
+                  v-if="serverPlay.active.value"
+                  ref="videoRef"
+                  class="w-full h-full"
+                  controls
+                  autoplay
+                  playsinline
+              />
               <iframe
+                  v-else
                   :src="active.embed_url"
                   class="w-full h-full"
                   frameborder="0"
@@ -438,15 +540,27 @@ onBeforeUnmount(() => {
             <div class="mt-3">
               <div class="flex items-center justify-between gap-2">
                 <p class="text-sm font-medium">{{ active.title }}</p>
-                <UButton
-                    v-if="authStore.isLoggedIn"
-                    icon="i-lucide-list-plus"
-                    label="Add to Playlist"
-                    variant="outline"
-                    color="neutral"
-                    size="xs"
-                    @click="openAddToPlaylist(active)"
-                />
+                <div class="flex items-center gap-2">
+                  <UButton
+                      v-if="canServerPlay"
+                      :icon="serverPlay.active.value ? 'i-lucide-square-play' : 'i-lucide-server'"
+                      :label="serverPlay.active.value ? 'Show embed' : 'Play on server'"
+                      :loading="serverPlay.loading.value"
+                      variant="outline"
+                      color="primary"
+                      size="xs"
+                      @click="toggleServerPlay"
+                  />
+                  <UButton
+                      v-if="authStore.isLoggedIn"
+                      icon="i-lucide-list-plus"
+                      label="Add to Playlist"
+                      variant="outline"
+                      color="neutral"
+                      size="xs"
+                      @click="openAddToPlaylist(active)"
+                  />
+                </div>
               </div>
               <p class="text-xs text-muted mt-1">
                 <span v-if="active.pornstar">{{ active.pornstar }} · </span>

@@ -279,6 +279,18 @@ func defaultHubConfig() HubConfig {
 		SourceURL:       "",
 		WorkDir:         "",
 		AutoImport:      false,
+		// Video proxying is opt-in (it doubles upstream bandwidth and needs a
+		// working resolver); image proxying is on by default because it is cheap,
+		// cached, and fixes broken artwork for blocked viewers on its own.
+		ProxyEnabled:  false,
+		ProxyAllUsers: false,
+		ProxyImages:   true,
+		// Sidecar first: it carries yt-dlp and any configured proxy pool, so it
+		// survives provider page changes that would break direct page parsing.
+		ProxyResolvers:             []string{"sidecar", "page"},
+		ProxyCacheTTL:              30 * time.Minute,
+		ProxyMaxConcurrentResolves: 4,
+		ProxyImageCacheMB:          512,
 	}
 }
 

@@ -421,6 +421,16 @@ func buildConfigHubMap(cfg *config.Config) map[string]any {
 		"auto_import":       cfg.Hub.AutoImport,
 		"page_size":         cfg.Hub.PageSize,
 		"import_batch_size": cfg.Hub.ImportBatchSize,
+		// Server-side proxied playback / artwork. This map is hand-maintained and
+		// has no completeness check, so a field omitted here silently never reaches
+		// the admin UI.
+		"proxy_enabled":                 cfg.Hub.ProxyEnabled,
+		"proxy_all_users":               cfg.Hub.ProxyAllUsers,
+		"proxy_images":                  cfg.Hub.ProxyImages,
+		"proxy_resolvers":               cfg.Hub.ProxyResolvers,
+		"proxy_cache_ttl":               cfg.Hub.ProxyCacheTTL,
+		"proxy_max_concurrent_resolves": cfg.Hub.ProxyMaxConcurrentResolves,
+		"proxy_image_cache_mb":          cfg.Hub.ProxyImageCacheMB,
 	}
 }
 
