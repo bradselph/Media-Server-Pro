@@ -442,8 +442,56 @@ func (r *pageResolver) Name() string { return "page" }
 // Available is always true: it needs nothing but outbound HTTP.
 func (r *pageResolver) Available() bool { return true }
 
+// Resolve tries each candidate page in turn and uses the first that yields a
+// stream.
+//
+// Order matters. The watch page is first because it is the page that actually
+// carries the player configuration: /embed/<id> is a thin shell whose player is
+// bootstrapped separately, so it frequently contains no flashvars_ object at all
+// and parsing it fails with ErrNoStream. Resolving against the embed page alone
+// is why this resolver could not stand in for the sidecar on a deployment with no
+// downloader service — the fallback silently never produced a stream.
+//
+// The embed page is still tried second: it costs one extra request only on a path
+// that was about to fail outright, and the two pages have historically swapped
+// which one carries the definitions.
 func (r *pageResolver) Resolve(ctx context.Context, embedID string) (*ResolvedStream, error) {
-	pageURL := embedBaseURL + embedID
+	candidates := []string{providerPageURL + embedID, embedBaseURL + embedID}
+	var lastErr error
+	for i, pageURL := range candidates {
+		// Share the chain's deadline out across the attempts still to come, so a
+		// first candidate that hangs cannot consume the whole budget and leave the
+		// fallback with no time to run. Without this, adding a second candidate
+		// could turn a formerly-working single fetch into a timeout.
+		attemptCtx, cancel := pageAttemptContext(ctx, len(candidates)-i)
+		rs, err := r.resolveFromPage(attemptCtx, pageURL)
+		cancel()
+		if err == nil {
+			return rs, nil
+		}
+		lastErr = err
+		r.m.log.Debug("Hub: page resolver found no stream at %s: %v", pageURL, err)
+	}
+	return nil, lastErr
+}
+
+// pageAttemptContext gives one candidate an equal share of the time left on
+// ctx's deadline. With no deadline it returns ctx unchanged, so the caller's own
+// cancellation still applies.
+func pageAttemptContext(ctx context.Context, attemptsLeft int) (context.Context, context.CancelFunc) {
+	deadline, ok := ctx.Deadline()
+	if !ok || attemptsLeft <= 1 {
+		return context.WithCancel(ctx)
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, remaining/time.Duration(attemptsLeft))
+}
+
+// resolveFromPage parses one candidate page into a playable stream.
+func (r *pageResolver) resolveFromPage(ctx context.Context, pageURL string) (*ResolvedStream, error) {
 	if err := helpers.ValidateURLForSSRF(pageURL); err != nil {
 		return nil, fmt.Errorf("embed URL rejected: %w", err)
 	}

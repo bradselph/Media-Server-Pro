@@ -560,6 +560,12 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	api.GET("/hub/embeds", h.ListHubEmbeds)
 	api.GET("/hub/categories", h.ListHubCategories)
 	api.GET("/hub/embeds/:id", h.GetHubEmbed)
+	// Capability probe for server-side playback. The frontend calls this BEFORE it
+	// attaches a player, and treats any non-2xx as "cannot proxy" — so while this
+	// route was missing, every /hub/proxy/* route below was unreachable in practice
+	// no matter how hub.proxy_enabled was set. Gated inside the handler
+	// (requireHubProxyAccess), like the byte routes.
+	api.GET("/hub/embeds/:id/playback", requireAuth(), h.GetHubEmbedPlayback)
 
 	// Playback
 	api.GET("/playback", requireAuth(), h.GetPlaybackPosition)

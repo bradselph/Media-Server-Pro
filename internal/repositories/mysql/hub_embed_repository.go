@@ -48,6 +48,17 @@ type HubEmbedRepository struct {
 	totalValue int64
 	totalAt    time.Time
 	totalValid bool
+
+	// Filtered reads. Kept as two caches rather than one because the entries have
+	// wildly different sizes: a count is an int64 and a page is up to 200 records
+	// carrying preview URLs, so a shared entry bound would either starve the
+	// counts or blow the memory budget on pages. See hub_embed_cache.go.
+	countCache *hubResultCache
+	pageCache  *hubResultCache
+
+	// Presence of the categories FULLTEXT index, re-checked periodically. See
+	// hub_embed_search.go.
+	ftIndexState
 }
 
 // NewHubEmbedRepository constructs the repository over the given GORM handle.
@@ -55,7 +66,11 @@ func NewHubEmbedRepository(db *gorm.DB) repositories.HubEmbedRepository {
 	if db == nil {
 		panic("NewHubEmbedRepository: db is nil")
 	}
-	return &HubEmbedRepository{db: db}
+	return &HubEmbedRepository{
+		db:         db,
+		countCache: newHubResultCache(hubCountCacheMax, hubFilterTTL),
+		pageCache:  newHubResultCache(hubPageCacheMax, hubFilterTTL),
+	}
 }
 
 // cachedTotal returns the unfiltered row count, refreshing it past the TTL.
@@ -79,11 +94,21 @@ func (r *HubEmbedRepository) storeTotal(total int64) {
 	r.totalValid = true
 }
 
-// invalidateTotal drops the cached count after a write.
+// invalidateTotal drops every cached read after a write.
+//
+// An import or a clear can change any row, so per-key invalidation would be
+// guesswork; dropping everything is correct and cheap, because writes happen at
+// import time rather than in the browse path.
 func (r *HubEmbedRepository) invalidateTotal() {
 	r.totalMu.Lock()
 	r.totalValid = false
 	r.totalMu.Unlock()
+	if r.countCache != nil {
+		r.countCache.clear()
+	}
+	if r.pageCache != nil {
+		r.pageCache.clear()
+	}
 }
 
 // BatchInsert idempotently inserts embeds using INSERT IGNORE (OnConflict DoNothing
@@ -165,50 +190,107 @@ func (r *HubEmbedRepository) List(ctx context.Context, offset, limit int, sort s
 	if err != nil {
 		return nil, 0, err
 	}
-	var rows []hubEmbedRow
-	if err := r.db.WithContext(ctx).Model(&hubEmbedRow{}).
-		Order(hubSortOrder(sort)).Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
-		return nil, 0, fmt.Errorf("list hub embeds: %w", err)
+	// Cached too. Each sort has a covering (sortkey, id) index so page 1 is fast,
+	// but LIMIT/OFFSET still walks the index from the start — a viewer deep in the
+	// catalog pays for every row they skipped. Caching makes paging back and forth
+	// through a range free.
+	records, err := hubMemo(r.pageCache, "list\x00"+hubPageKey("", sort, offset, limit),
+		func() ([]*repositories.HubEmbedRecord, error) {
+			var rows []hubEmbedRow
+			if fErr := r.db.WithContext(ctx).Model(&hubEmbedRow{}).
+				Order(hubSortOrder(sort)).Limit(limit).Offset(offset).Find(&rows).Error; fErr != nil {
+				return nil, fmt.Errorf("list hub embeds: %w", fErr)
+			}
+			return hubRowsToRecords(rows), nil
+		})
+	if err != nil {
+		return nil, 0, err
 	}
-	return hubRowsToRecords(rows), total, nil
+	return records, total, nil
 }
 
 // Search filters by a full-text query and/or category/tag. Short queries (below
 // InnoDB's ft_min_word_len) fall back to an indexed title-prefix LIKE so partial
 // single-word searches still return something rather than an empty FULLTEXT set.
+// Both the count and the page are served from cache when possible. They are
+// cached separately because the count depends only on the predicate: it is the
+// same for every page and every sort of a given filter, so paging through a
+// category or flipping its sort order reuses one count instead of recomputing a
+// full-table aggregate each time. See hub_embed_cache.go for why this matters so
+// much more on the filtered path than the unfiltered one.
 func (r *HubEmbedRepository) Search(ctx context.Context, query string, filter repositories.HubEmbedFilter, offset, limit int) ([]*repositories.HubEmbedRecord, int64, error) {
 	limit, offset = hubClampPage(limit, offset)
-	q := r.db.WithContext(ctx).Model(&hubEmbedRow{})
-	if query != "" {
-		if len(query) >= 3 {
-			q = q.Where("MATCH(title, tags) AGAINST(? IN NATURAL LANGUAGE MODE)", query)
-		} else {
-			q = q.Where("title LIKE ?", query+"%")
-		}
-	}
-	// Categories and tags are stored as ';'-joined lists, so wrap the column in
-	// sentinel delimiters and match the exact facet value between them. This
-	// avoids the substring over-match a bare LIKE '%val%' would cause (e.g. the
-	// facet "Teen" matching a stored "Teenager"). The leading-wildcard pattern
-	// is already a scan either way, so there is no added index cost.
+
+	// Resolved once per call rather than inside applyFilter, so the count and the
+	// page are always built with the same plan and a single cached lookup serves
+	// both.
+	var ftInfo categoryIndexInfo
 	if filter.Category != "" {
-		q = q.Where("CONCAT(';', categories, ';') LIKE ? ESCAPE '\\\\'", "%;"+escapeLike(filter.Category)+";%")
+		ftInfo = r.categoryIndexReady(ctx)
 	}
-	if filter.Tag != "" {
-		q = q.Where("CONCAT(';', tags, ';') LIKE ? ESCAPE '\\\\'", "%;"+escapeLike(filter.Tag)+";%")
+
+	// applyFilter rebuilds the predicate per query. A single *gorm.DB cannot be
+	// shared between the Count and the Find here: the two now run on independent
+	// cache paths and may not both execute.
+	applyFilter := func() *gorm.DB {
+		q := r.db.WithContext(ctx).Model(&hubEmbedRow{})
+		if query != "" {
+			if len(query) >= 3 {
+				q = q.Where("MATCH(title, tags) AGAINST(? IN NATURAL LANGUAGE MODE)", query)
+			} else {
+				q = q.Where("title LIKE ?", query+"%")
+			}
+		}
+		// Categories and tags are stored as ';'-joined lists, so wrap the column in
+		// sentinel delimiters and match the exact facet value between them. This
+		// avoids the substring over-match a bare LIKE '%val%' would cause (e.g. the
+		// facet "Teen" matching a stored "Teenager"). The leading-wildcard pattern
+		// is already a scan either way, so there is no added index cost.
+		if filter.Category != "" {
+			// Narrow with the FULLTEXT index first where we safely can. This does
+			// not change which rows come back — the exact LIKE below still decides
+			// that — it only stops MySQL from reading the whole table to find them.
+			if ftInfo.usable {
+				if expr, ok := hubCategoryMatchExpr(filter.Category, ftInfo.minTokenSize); ok {
+					q = q.Where("MATCH(categories) AGAINST(? IN BOOLEAN MODE)", expr)
+				}
+			}
+			q = q.Where("CONCAT(';', categories, ';') LIKE ? ESCAPE '\\\\'", "%;"+escapeLike(filter.Category)+";%")
+		}
+		if filter.Tag != "" {
+			q = q.Where("CONCAT(';', tags, ';') LIKE ? ESCAPE '\\\\'", "%;"+escapeLike(filter.Tag)+";%")
+		}
+		return q
 	}
-	var total int64
-	if err := q.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("count hub embed search: %w", err)
+
+	filterKey := hubFilterKey(query, filter.Category, filter.Tag)
+	total, err := hubMemo(r.countCache, "count\x00"+filterKey, func() (int64, error) {
+		var n int64
+		if cErr := applyFilter().Count(&n).Error; cErr != nil {
+			return 0, fmt.Errorf("count hub embed search: %w", cErr)
+		}
+		return n, nil
+	})
+	if err != nil {
+		return nil, 0, err
 	}
-	var rows []hubEmbedRow
-	// Honor the caller's sort in the filtered path too — previously this was
-	// pinned to views DESC, so picking Longest/Title/Newest while a search or
-	// category filter was active silently reverted to most-viewed.
-	if err := q.Order(hubSortOrder(filter.SortBy)).Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
-		return nil, 0, fmt.Errorf("search hub embeds: %w", err)
+
+	records, err := hubMemo(r.pageCache, "search\x00"+hubPageKey(filterKey, filter.SortBy, offset, limit),
+		func() ([]*repositories.HubEmbedRecord, error) {
+			var rows []hubEmbedRow
+			// Honor the caller's sort in the filtered path too — previously this was
+			// pinned to views DESC, so picking Longest/Title/Newest while a search or
+			// category filter was active silently reverted to most-viewed.
+			if fErr := applyFilter().Order(hubSortOrder(filter.SortBy)).
+				Limit(limit).Offset(offset).Find(&rows).Error; fErr != nil {
+				return nil, fmt.Errorf("search hub embeds: %w", fErr)
+			}
+			return hubRowsToRecords(rows), nil
+		})
+	if err != nil {
+		return nil, 0, err
 	}
-	return hubRowsToRecords(rows), total, nil
+	return records, total, nil
 }
 
 // GetByEmbedID returns a single embed by its natural key, or (nil, nil) if absent.

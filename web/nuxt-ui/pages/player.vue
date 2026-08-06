@@ -7,6 +7,7 @@ import {getMediaGradient} from '~/utils/gradient'
 import {hlsQualityName} from '~/utils/hlsQuality'
 import {useQueueStore} from '~/stores/queue'
 import {useCategoriesApi, useHubApi} from '~/composables/useApiEndpoints'
+import {useHubProxyPlayback} from '~/composables/useHubProxyPlayback'
 
 definePageMeta({layout: 'default', title: 'Player'})
 
@@ -75,6 +76,81 @@ const hubApi = useHubApi()
 const isHubId = (id: string | undefined): boolean => !!id?.startsWith('hub:')
 const isHubItem = computed(() => isHubId(mediaId.value))
 const hubEmbed = ref<HubEmbed | null>(null)
+
+// Server-side playback for Hub items.
+//
+// This page is where every non-grid route ends up — playlists, history,
+// favorites, search, categories, recommendations and shared links all navigate
+// to /player?id=hub:<embed_id>. Without this, all of those were pinned to the
+// provider's iframe, so a viewer the provider blocks got a dead box no matter
+// how the feature was configured; only the /hub grid's own modal could proxy.
+//
+// The iframe below stays the fallback: every failure path in the composable
+// clears `active`, which restores it.
+const hubVideoRef = ref<HTMLVideoElement | null>(null)
+const hubServerPlay = useHubProxyPlayback(hubVideoRef)
+
+const canHubServerPlay = computed(() =>
+  serverSettings.value?.hub?.proxy_enabled === true
+  && (authStore.isAdmin || serverSettings.value?.hub?.proxy_all_users === true),
+)
+
+// Shared with pages/hub.vue so a viewer's choice carries across both surfaces.
+const HUB_PREFER_SERVER_KEY = 'hub:preferServerPlay'
+const hubPreferServer = ref(true)
+
+// Identifies the in-flight automatic attach, or 0 when the current attempt is
+// the viewer's own. A token rather than a boolean because activate() also
+// resolves for superseded attempts, so a previous item's `finally` would
+// otherwise clear the flag belonging to the attach that replaced it.
+let hubAttemptSeq = 0
+let hubAutoAttemptId = 0
+
+function persistHubServerPreference() {
+  try {
+    localStorage.setItem(HUB_PREFER_SERVER_KEY, hubPreferServer.value ? '1' : '0')
+  } catch { /* storage unavailable — preference just won't persist */ }
+}
+
+function toggleHubServerPlay() {
+  const embedId = mediaId.value?.slice(4)
+  if (!embedId) return
+  // The viewer asked for this, so from here on failures are worth reporting.
+  hubAttemptSeq++
+  hubAutoAttemptId = 0
+  if (hubServerPlay.active.value) {
+    hubPreferServer.value = false
+    persistHubServerPreference()
+    hubServerPlay.deactivate()
+    return
+  }
+  hubPreferServer.value = true
+  persistHubServerPreference()
+  void hubServerPlay.activate(embedId)
+}
+
+// Attach the server stream as soon as a hub item loads, rather than waiting for
+// a click that a blocked viewer has no way to know they need.
+function maybeAutoAttachHubServerPlay(embedId: string) {
+  if (!canHubServerPlay.value || !hubPreferServer.value) return
+  const attempt = ++hubAttemptSeq
+  hubAutoAttemptId = attempt
+  void hubServerPlay.activate(embedId).finally(() => {
+    if (hubAutoAttemptId === attempt) hubAutoAttemptId = 0
+  })
+}
+
+// flush: 'sync' so an attach-time failure is seen while hubAutoAttempt is still
+// set; later mid-stream failures fall through to the toast.
+watch(hubServerPlay.error, (message) => {
+  if (!message || hubAutoAttemptId !== 0) return
+  toast.add({
+    title: message,
+    description: 'Showing the standard embed instead.',
+    color: 'warning',
+    icon: 'i-lucide-alert-triangle',
+  })
+}, {flush: 'sync'})
 
 // Chapters
 const chapters = ref<MediaChapter[]>([])
@@ -658,6 +734,11 @@ let loadGeneration = 0
 let playerMounted = false
 onMounted(() => {
   playerMounted = true
+  try {
+    // Absent key => default on, so a blocked viewer gets working playback
+    // without first having to discover a setting.
+    hubPreferServer.value = localStorage.getItem(HUB_PREFER_SERVER_KEY) !== '0'
+  } catch { /* storage unavailable — keep the default */ }
 })
 onUnmounted(() => {
   playerMounted = false
@@ -675,6 +756,9 @@ async function loadMedia(id: string) {
   if (isHubId(id)) {
     const switching = !!media.value || !!hubEmbed.value
     if (!switching) loading.value = true
+    // A stream left attached from the previous item would keep downloading
+    // behind the new one.
+    hubServerPlay.deactivate()
     media.value = null
     error.value = ''
     similar.value = []
@@ -693,6 +777,15 @@ async function loadMedia(id: string) {
         thumbnail_url: embed?.thumb_url,
         duration: embed?.duration_secs ?? 0,
       })
+      // Server settings drive the gate, so the auto-attach has to wait for them
+      // — on a cold navigation straight to /player they may not be loaded yet.
+      // Deliberately NOT awaited here: the embed UI is ready to show now, and
+      // blocking on this would hold the loading spinner over it for an extra
+      // round trip. The attach is an enhancement layered on afterwards.
+      void loadServerSettings().then(() => {
+        if (!playerMounted || gen !== loadGeneration) return
+        maybeAutoAttachHubServerPlay(id.slice(4))
+      })
     } catch (e: unknown) {
       if (!playerMounted || gen !== loadGeneration) return
       hubEmbed.value = null
@@ -703,6 +796,7 @@ async function loadMedia(id: string) {
     return
   }
   hubEmbed.value = null // switching to a local item clears any prior embed
+  hubServerPlay.deactivate()
 
   const isSwitch = !!media.value
   if (!isSwitch) loading.value = true
@@ -1637,7 +1731,19 @@ watch(mediaId, (id, oldId) => {
     <div v-else-if="isHubItem && hubEmbed" class="grid grid-cols-1 md:gap-6" :class="isTheater ? '' : 'xl:grid-cols-3'">
       <div class="xl:col-span-2 flex flex-col gap-3 md:gap-4">
         <div class="relative bg-black overflow-hidden max-md:rounded-none md:rounded-xl aspect-video">
+          <!-- Server-side playback: this server fetches the media and streams it
+               on, so the provider never sees the viewer. The iframe below is the
+               fallback and is restored by every failure path. -->
+          <video
+              v-if="hubServerPlay.active.value"
+              ref="hubVideoRef"
+              class="w-full h-full"
+              controls
+              autoplay
+              playsinline
+          />
           <iframe
+              v-else
               :src="hubEmbed.embed_url"
               class="w-full h-full"
               frameborder="0"
@@ -1658,11 +1764,23 @@ watch(mediaId, (id, oldId) => {
               <UBadge color="warning" variant="subtle" size="xs" class="ml-1">Hub · BETA</UBadge>
             </p>
           </div>
-          <div v-if="playlistIdParam" class="flex items-center gap-2 shrink-0">
-            <UButton :disabled="!hasPrevItem" icon="i-lucide-skip-back" color="neutral" variant="soft"
-                     aria-label="Previous" @click="navigateToPrevItem"/>
-            <UButton :disabled="!hasNextItem" icon="i-lucide-skip-forward" color="neutral" variant="soft"
-                     aria-label="Next" @click="navigateToNextItem"/>
+          <div class="flex items-center gap-2 shrink-0">
+            <UButton
+                v-if="canHubServerPlay"
+                :icon="hubServerPlay.active.value ? 'i-lucide-square-play' : 'i-lucide-server'"
+                :label="hubServerPlay.active.value ? 'Show embed' : 'Play on server'"
+                :loading="hubServerPlay.loading.value"
+                variant="outline"
+                color="primary"
+                size="xs"
+                @click="toggleHubServerPlay"
+            />
+            <template v-if="playlistIdParam">
+              <UButton :disabled="!hasPrevItem" icon="i-lucide-skip-back" color="neutral" variant="soft"
+                       aria-label="Previous" @click="navigateToPrevItem"/>
+              <UButton :disabled="!hasNextItem" icon="i-lucide-skip-forward" color="neutral" variant="soft"
+                       aria-label="Next" @click="navigateToNextItem"/>
+            </template>
           </div>
         </div>
       </div>
