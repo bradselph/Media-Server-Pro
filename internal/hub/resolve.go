@@ -181,7 +181,12 @@ func (m *Module) ResolveStream(ctx context.Context, embedID string) (*ResolvedSt
 		if rs := m.cachedResolve(embedID); rs != nil {
 			return rs, nil
 		}
-		rs, rErr := m.doResolve(ctx, embedID)
+		// Detach from the leader's request context. Every caller coalesced onto
+		// this slot receives whatever it returns, so honouring one viewer's
+		// cancellation would fail resolution for the others too — a viewer
+		// closing their tab must not knock everyone else back to the iframe.
+		// doResolve applies its own resolveTimeout, so this cannot hang.
+		rs, rErr := m.doResolve(context.WithoutCancel(ctx), embedID)
 		if rErr != nil {
 			return nil, rErr
 		}
@@ -678,9 +683,15 @@ func (m *Module) fetchText(ctx context.Context, rawURL, referer string) (string,
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("upstream returned %s for %s", resp.Status, rawURL)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPageBytes))
+	// +1 so the cap is detectable: silently truncating the page would make the
+	// extractors below fail in confusing ways (or, worse, match a partial URL)
+	// instead of reporting that the page was too large to parse.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPageBytes+1))
 	if err != nil {
 		return "", err
+	}
+	if int64(len(body)) > maxPageBytes {
+		return "", fmt.Errorf("page exceeds %d bytes: %s", int64(maxPageBytes), rawURL)
 	}
 	return string(body), nil
 }

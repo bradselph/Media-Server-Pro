@@ -1523,6 +1523,12 @@ onMounted(async () => {
                       :model-value="Math.round(Number(get('admin', 'session_timeout') ?? 0) / 3_600_000_000_000)"
                       @update:model-value="set('admin', 'session_timeout', Number($event) * 3_600_000_000_000)"/>
             </UFormField>
+            <UFormField label="Query Timeout (seconds)"
+                        help="Server-side cap on the admin SQL query tool. Default 30.">
+              <UInput type="number" min="1"
+                      :model-value="Math.round(Number(get('admin', 'query_timeout') ?? 0) / 1_000_000_000)"
+                      @update:model-value="set('admin', 'query_timeout', Number($event) * 1_000_000_000)"/>
+            </UFormField>
           </div>
         </UCard>
 

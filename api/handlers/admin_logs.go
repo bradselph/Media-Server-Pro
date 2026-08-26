@@ -53,8 +53,13 @@ func (h *Handler) GetServerLogs(c *gin.Context) {
 			continue
 		}
 
-		for _, line := range lines {
-			logEntry := parseLogLine(line)
+		// readLastNLines yields a file's lines oldest-first, but the response is
+		// newest-first overall, so reverse each file's block as it is appended.
+		// Reversing the whole accumulated slice instead would also invert the
+		// file order, which is already newest-first from the sort above — that
+		// put an older file's lines ahead of a newer file's.
+		for i := len(lines) - 1; i >= 0; i-- {
+			logEntry := parseLogLine(lines[i])
 			logLines = append(logLines, logEntry)
 		}
 
@@ -62,10 +67,6 @@ func (h *Handler) GetServerLogs(c *gin.Context) {
 		if len(logLines) >= limit || filesProcessed >= maxLogFiles {
 			break
 		}
-	}
-
-	for i, j := 0, len(logLines)-1; i < j; i, j = i+1, j-1 {
-		logLines[i], logLines[j] = logLines[j], logLines[i]
 	}
 
 	logLines = filterLogEntries(logLines, strings.ToLower(c.Query("level")), strings.ToLower(c.Query("module")))

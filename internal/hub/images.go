@@ -195,9 +195,16 @@ func (m *Module) fetchImage(ctx context.Context, rawURL string) (blob []byte, co
 		return nil, "", &upstreamError{status: resp.StatusCode, url: rawURL}
 	}
 
-	blob, err = io.ReadAll(io.LimitReader(resp.Body, maxImageBytes))
+	// Read one byte past the cap so hitting it is detectable: a plain
+	// LimitReader at exactly maxImageBytes returns a truncated blob with a nil
+	// error, and that corrupt artwork would then be cached and served with a
+	// week-long Cache-Control.
+	blob, err = io.ReadAll(io.LimitReader(resp.Body, maxImageBytes+1))
 	if err != nil {
 		return nil, "", err
+	}
+	if int64(len(blob)) > maxImageBytes {
+		return nil, "", fmt.Errorf("image exceeds %d bytes: %s", int64(maxImageBytes), rawURL)
 	}
 	contentType = resp.Header.Get("Content-Type")
 	if !strings.HasPrefix(contentType, "image/") {

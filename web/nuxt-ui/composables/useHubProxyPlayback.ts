@@ -19,6 +19,11 @@
 import type {Ref} from 'vue'
 import {useHubApi} from '~/composables/useApiEndpoints'
 
+/** Fatal hls.js network errors tolerated per attach before falling back. */
+const MAX_NETWORK_RETRIES = 3
+/** Fatal hls.js media errors tolerated per attach before falling back. */
+const MAX_MEDIA_RETRIES = 2
+
 export interface UseHubProxyPlaybackReturn {
     /** Whether the <video> element (rather than the iframe) should be shown. */
     active: Ref<boolean>
@@ -96,6 +101,13 @@ export function useHubProxyPlayback(
     async function attachHls(el: HTMLVideoElement, url: string, token: number) {
         // Safari plays HLS natively; loading hls.js there is wasted work.
         if (el.canPlayType('application/vnd.apple.mpegurl')) {
+            // Native playback has no hls.js error events and no startLoad() to
+            // retry with, so listen on the element itself. Without this the
+            // failure path never ran here and a broken stream left the viewer
+            // on a frozen <video> instead of falling back to the iframe.
+            el.addEventListener('error', () => {
+                if (token === gen) fail('Server playback failed')
+            })
             el.src = url
             return
         }
@@ -108,16 +120,23 @@ export function useHubProxyPlayback(
 
         const hls = new Hls({enableWorker: true, lowLatencyMode: false, backBufferLength: 90})
         hlsInstance = hls
+        // Recovery budgets, per attach. Retrying unconditionally meant a
+        // persistently broken stream looped forever, so `active` never went
+        // back to false and the iframe fallback was unreachable.
+        let networkRetries = 0
+        let mediaRetries = 0
         hls.on(Hls.Events.ERROR, (_e: unknown, data: import('hls.js').ErrorData) => {
             if (!data.fatal || token !== gen) return
             // Network errors are usually a rotated upstream URL. The server
-            // re-resolves on its own, so one reload attempt normally recovers;
-            // anything else falls back to the iframe.
-            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            // re-resolves on its own, so a reload normally recovers; once the
+            // budget is spent, fall back to the iframe.
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR && networkRetries < MAX_NETWORK_RETRIES) {
+                networkRetries++
                 hls.startLoad()
                 return
             }
-            if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRetries < MAX_MEDIA_RETRIES) {
+                mediaRetries++
                 hls.recoverMediaError()
                 return
             }

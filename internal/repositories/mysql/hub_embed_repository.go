@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -298,7 +299,7 @@ func (r *HubEmbedRepository) GetByEmbedID(ctx context.Context, embedID string) (
 	var row hubEmbedRow
 	err := r.db.WithContext(ctx).Where("embed_id = ?", embedID).First(&row).Error
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get hub embed: %w", err)

@@ -43,6 +43,12 @@ const (
 	// maxPlaylistBytes bounds a playlist read. Playlists are text and small; a
 	// multi-megabyte one is a malformed or hostile response.
 	maxPlaylistBytes = 8 << 20
+
+	// drainLimitBytes bounds how much of a discarded response body is read back
+	// before closing it. Reading a rejected response to EOF lets the transport
+	// reuse the connection; the cap stops a large error page from being read in
+	// full just to return a socket to the pool.
+	drainLimitBytes = 4 << 10
 )
 
 // cachedPlaylist is a parsed playlist: either the variant list from a master, or
@@ -224,9 +230,15 @@ func (m *Module) fetchPlaylistOnce(ctx context.Context, rawURL string) (body, fi
 	if resp.StatusCode != http.StatusOK {
 		return "", "", &upstreamError{status: resp.StatusCode, url: rawURL}
 	}
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxPlaylistBytes))
+	// +1 so an oversized playlist is rejected rather than silently truncated:
+	// a playlist cut mid-line parses into a valid-looking but incomplete
+	// variant list, which is worse than failing outright.
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxPlaylistBytes+1))
 	if err != nil {
 		return "", "", err
+	}
+	if int64(len(raw)) > maxPlaylistBytes {
+		return "", "", fmt.Errorf("playlist exceeds %d bytes: %s", int64(maxPlaylistBytes), rawURL)
 	}
 	return string(raw), resp.Request.URL.String(), nil
 }
@@ -287,6 +299,11 @@ func (m *Module) proxyBytes(w http.ResponseWriter, r *http.Request, embedID, tar
 	// A rejected URL mid-playback means the signature expired: re-resolve once
 	// and retry before giving up, so a long video does not simply die.
 	if isRetryableStatus(resp.StatusCode) {
+		// Drain before closing so the transport can pool the connection: an
+		// expired signed URL is the common case here, and closing an unread
+		// body forces a fresh TCP+TLS handshake for the retry that follows.
+		// The bound keeps a large error page from being read in full.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, drainLimitBytes))
 		_ = resp.Body.Close()
 		m.invalidateResolve(embedID)
 		rs, rErr := m.ResolveStream(r.Context(), embedID)
