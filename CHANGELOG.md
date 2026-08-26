@@ -2,6 +2,58 @@
 
 ## [Unreleased]
 
+- fix(admin): the server log viewer no longer shuffles lines once a second log
+  file is read. Files are walked newest-first (which is what makes the `limit`
+  cut-off keep the most recent lines) while each file is read oldest-first, so
+  reversing the whole accumulated list inverted the file order too — an older
+  file's lines were emitted ahead of a newer file's. Each file's block is now
+  reversed as it is appended
+- fix(hub): a viewer closing their tab mid-resolution no longer breaks server
+  playback for everyone else opening the same item. Concurrent misses are
+  coalesced onto one resolution, and that resolution had adopted the first
+  caller's request context, so its cancellation was delivered to every other
+  waiter — dropping them back to the (possibly blocked) provider iframe
+- fix(hub): oversized upstream artwork, playlists, and provider pages are now
+  rejected instead of being silently truncated at the read cap. A capped read
+  returns short data with no error, so a truncated thumbnail was cached and
+  served to every later viewer with a week-long `Cache-Control`
+- fix(hub): a rejected upstream response is drained before it is closed, so the
+  retry after an expired signed URL reuses a pooled connection instead of
+  forcing a fresh TCP+TLS handshake — on the exact path expiry recovery uses
+- fix(hub): server playback now falls back to the embed after a bounded number
+  of hls.js recovery attempts. Fatal network and media errors were retried
+  unconditionally, so a persistently broken stream looped forever and left the
+  viewer on a frozen `<video>` with the iframe fallback unreachable. Safari's
+  native-HLS path had no error listener at all and now has one
+- fix(receiver): copying an item from a peer fails when the stream is larger
+  than the peer's declared size, instead of committing a truncated file to the
+  library as a success. The size cap came from the peer's own metadata, so a
+  stale value silently cut the copy short and the short-read guard could never
+  fire
+- fix(admin): resolving a receiver duplicate returns 404, 409, 503, or 500 as
+  appropriate rather than collapsing every failure into 400 — a database outage
+  was reported as a client error and stayed invisible to 5xx alerting
+- fix(tasks): the scheduler stops the ticker that is actually live at shutdown.
+  A deferred `ticker.Stop()` binds its receiver where it is written, so after a
+  schedule change it stopped the replaced ticker rather than the current one
+- fix(config): the admin SQL query timeout is now readable and editable. It was
+  defaulted and enforced but absent from `GET /api/admin/config`, the System
+  Settings panel, and every env override, so config.json was the only way to
+  change it. Adds an admin field and `ADMIN_QUERY_TIMEOUT_SECONDS`
+- fix(install): the post-install health check probes `/health`, the path the
+  server actually registers, instead of `/api/health` — which always 404'd, so
+  every install ended on a false "health check did not get a successful
+  response" warning even when the server was up
+- fix(lint): use `errors.Is` for the GORM not-found sentinel in the hub embed
+  repository (the one `==` comparison left among 23 correct call sites) and
+  gofmt two drifted files, so the `vet`, `errorlint`, and `gofmt` CI gates pass
+- fix(tests): repair the `internal/duplicates` test package, which had not
+  compiled since the `context.Context` refactor, and the receiver test that
+  asserted pointer identity on a context the module deliberately derives with a
+  timeout. Three tests that took `_ *testing.T` — and so could never fail —
+  now assert. Replaces a committed assertion-free scratch test with real
+  regression coverage for admin log ordering
+
 - feat(hub): server-side playback — the server can now resolve a Hub item's real
   stream and proxy the bytes itself, so the provider sees this server instead of
   the viewer. Fixes embeds that refuse to play for viewers in blocked regions
