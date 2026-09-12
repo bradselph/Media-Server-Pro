@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+- feat(database): added a liveness heartbeat that pings the pool every
+  `DATABASE_HEARTBEAT_INTERVAL` (30s default). Previously nothing probed the
+  connection on its own, so a link dropped while the server was idle was not
+  discovered until the next user request — and that request paid for the
+  discovery. One success resets the failure count, so the threshold means
+  "sustained outage", not "one blip"
+- feat(database): after `DATABASE_HEARTBEAT_THRESHOLD` consecutive failed pings
+  (5 default, ≈2.5 min) the heartbeat can re-run `deploy.sh` to restart the
+  stack. Off by default (`DATABASE_RECOVERY_ENABLED`); guarded by a cooldown
+  (15m) and an attempt cap (3) so an hour-long outage cannot become an hour of
+  back-to-back deploys. Under systemd the command is handed to `systemd-run` so
+  the deploy's own `systemctl stop` does not kill it mid-flight. Note the
+  shipped unit sets `NoNewPrivileges=true`, which blocks the `sudo` calls inside
+  `deploy.sh` — see `DATABASE_RECOVERY_COMMAND` in `.env.docker.example`
+- fix(database): `Health()` no longer latches unhealthy for the life of the
+  process. The liveness ping was gated on the cached healthy flag, so the first
+  failure cleared the flag and thereby skipped the only check that could set it
+  back — one transient blip left `/api/admin/database/status` reporting
+  "disconnected" (and `repository_type: JSON`) and `AdminExecuteQuery` refusing
+  to run until a restart
 - fix(admin): the server log viewer no longer shuffles lines once a second log
   file is read. Files are walked newest-first (which is what makes the `limit`
   cut-off keep the most recent lines) while each file is read oldest-first, so

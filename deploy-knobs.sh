@@ -125,6 +125,13 @@ KNOB_ORDER=(
   DATABASE_USERNAME
   DATABASE_PASSWORD
   DATABASE_TLS_MODE
+  DATABASE_HEARTBEAT_ENABLED
+  DATABASE_HEARTBEAT_INTERVAL
+  DATABASE_HEARTBEAT_THRESHOLD
+  DATABASE_RECOVERY_ENABLED
+  DATABASE_RECOVERY_COMMAND
+  DATABASE_RECOVERY_COOLDOWN
+  DATABASE_RECOVERY_MAX_ATTEMPTS
   # ── Frontend (build-time, baked into Nuxt bundle) ────────────────
   NUXT_PUBLIC_GA_ID
   NUXT_PUBLIC_BUILD_ID
@@ -545,6 +552,41 @@ KNOB_DESCRIPTION[DATABASE_TLS_MODE]="MySQL TLS handshake mode (false | true | sk
 KNOB_DEFAULT[DATABASE_TLS_MODE]="false"
 KNOB_SCOPE[DATABASE_TLS_MODE]="runtime"
 KNOB_SECTION[DATABASE_TLS_MODE]="Database"
+
+KNOB_DESCRIPTION[DATABASE_HEARTBEAT_ENABLED]="Background loop that pings the DB on an interval so a connection lost while the server is idle is noticed immediately instead of on the next user request."
+KNOB_DEFAULT[DATABASE_HEARTBEAT_ENABLED]="true"
+KNOB_SCOPE[DATABASE_HEARTBEAT_ENABLED]="runtime"
+KNOB_SECTION[DATABASE_HEARTBEAT_ENABLED]="Database"
+
+KNOB_DESCRIPTION[DATABASE_HEARTBEAT_INTERVAL]="How often to ping the DB (Go duration, e.g. 30s). Minimum 1s."
+KNOB_DEFAULT[DATABASE_HEARTBEAT_INTERVAL]="30s"
+KNOB_SCOPE[DATABASE_HEARTBEAT_INTERVAL]="runtime"
+KNOB_SECTION[DATABASE_HEARTBEAT_INTERVAL]="Database"
+
+KNOB_DESCRIPTION[DATABASE_HEARTBEAT_THRESHOLD]="Consecutive failed pings before the recovery command runs. With the 30s default interval, 5 means ~2.5 min of sustained failure. One success resets the count."
+KNOB_DEFAULT[DATABASE_HEARTBEAT_THRESHOLD]="5"
+KNOB_SCOPE[DATABASE_HEARTBEAT_THRESHOLD]="runtime"
+KNOB_SECTION[DATABASE_HEARTBEAT_THRESHOLD]="Database"
+
+KNOB_DESCRIPTION[DATABASE_RECOVERY_ENABLED]="Re-run deploy.sh to restart the stack when the heartbeat crosses its failure threshold. OFF by default: it restarts the whole service, which is rarely wanted on a dev box. Requires the unit to be able to run deploy.sh -- see DATABASE_RECOVERY_COMMAND."
+KNOB_DEFAULT[DATABASE_RECOVERY_ENABLED]="false"
+KNOB_SCOPE[DATABASE_RECOVERY_ENABLED]="runtime"
+KNOB_SECTION[DATABASE_RECOVERY_ENABLED]="Database"
+
+KNOB_DESCRIPTION[DATABASE_RECOVERY_COMMAND]="Script to run on recovery. Empty = deploy.sh next to the server binary. Under systemd it is started via systemd-run so the deploy's own 'systemctl stop' does not kill it; note the shipped unit sets NoNewPrivileges=true, which blocks the sudo calls inside deploy.sh."
+KNOB_DEFAULT[DATABASE_RECOVERY_COMMAND]=""
+KNOB_SCOPE[DATABASE_RECOVERY_COMMAND]="runtime"
+KNOB_SECTION[DATABASE_RECOVERY_COMMAND]="Database"
+
+KNOB_DESCRIPTION[DATABASE_RECOVERY_COOLDOWN]="Minimum gap between recovery attempts (Go duration). Keeps a DB that is down for an hour from triggering an hour of back-to-back deploys. Minimum 1m."
+KNOB_DEFAULT[DATABASE_RECOVERY_COOLDOWN]="15m"
+KNOB_SCOPE[DATABASE_RECOVERY_COOLDOWN]="runtime"
+KNOB_SECTION[DATABASE_RECOVERY_COOLDOWN]="Database"
+
+KNOB_DESCRIPTION[DATABASE_RECOVERY_MAX_ATTEMPTS]="Give up after this many recovery attempts and just log (0 = unlimited). The counter resets as soon as a ping succeeds."
+KNOB_DEFAULT[DATABASE_RECOVERY_MAX_ATTEMPTS]="3"
+KNOB_SCOPE[DATABASE_RECOVERY_MAX_ATTEMPTS]="runtime"
+KNOB_SECTION[DATABASE_RECOVERY_MAX_ATTEMPTS]="Database"
 
 # ── Frontend (build-time, baked into Nuxt bundle) ────────────────────
 KNOB_DESCRIPTION[NUXT_PUBLIC_GA_ID]="Google Analytics 4 measurement id (G-XXXXXXXXXX). Empty = no GA loaded. Surfaces in the bundle via runtimeConfig.public.gaId; consent gate still applies."

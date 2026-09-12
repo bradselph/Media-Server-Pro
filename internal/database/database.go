@@ -28,6 +28,13 @@ type Module struct {
 	healthy   bool
 	healthMsg string
 	healthMu  sync.RWMutex
+
+	// bgMu protects bgCancel. Background schema work (deferred index builds) is
+	// started from Start and must be cancelled and joined by Stop, otherwise it
+	// outlives the pool it queries through.
+	bgMu     sync.Mutex
+	bgCancel context.CancelFunc
+	bgWG     sync.WaitGroup
 }
 
 // NewModule creates a new database module instance
@@ -85,6 +92,7 @@ func (m *Module) Start(ctx context.Context) error {
 	}
 
 	m.setHealth(true, "Connected")
+	m.startHeartbeat(cfg.Database)
 	m.log.Info("Database module started successfully")
 	return nil
 }
@@ -248,6 +256,11 @@ func (w *gormLogWriter) Printf(format string, args ...any) {
 func (m *Module) Stop(_ context.Context) error {
 	m.log.Info("Stopping database module...")
 
+	// Join the heartbeat before touching the pool: it pings through m.sqlDB, so
+	// closing the pool out from under it would have it report a fault (and, with
+	// recovery enabled, potentially act on one) during an orderly shutdown.
+	m.stopHeartbeat()
+
 	m.dbMu.Lock()
 	sqlDB := m.sqlDB
 	m.sqlDB = nil
@@ -273,18 +286,27 @@ func (m *Module) Health() models.HealthStatus {
 	msg := m.healthMsg
 	m.healthMu.RUnlock()
 
-	// Live-ping the database if we think we're healthy, to detect silent disconnects.
+	// Live-ping the database to detect silent disconnects.
+	//
+	// The ping runs whenever a pool exists, NOT only while we already believe we
+	// are healthy. Gating it on `healthy` latched the module unhealthy for the
+	// rest of the process: the first failed ping set healthy=false, which then
+	// skipped the very check that could have cleared it, so a single transient
+	// blip made /admin/database/status report "disconnected" (and
+	// AdminExecuteQuery refuse to run) until a restart. A nil pool means Stop
+	// has run, and that state is not something a ping should clear.
 	m.dbMu.RLock()
 	sqlDB := m.sqlDB
 	m.dbMu.RUnlock()
-	if healthy && sqlDB != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	if sqlDB != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), healthPingTimeout)
 		defer cancel()
 		if err := sqlDB.PingContext(ctx); err != nil {
-			healthy = false
-			msg = fmt.Sprintf("Ping failed: %v", err)
-			m.setHealth(false, msg)
+			healthy, msg = false, fmt.Sprintf("Ping failed: %v", err)
+		} else {
+			healthy, msg = true, "Connected"
 		}
+		m.setHealth(healthy, msg)
 	}
 
 	status := models.StatusHealthy

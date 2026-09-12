@@ -189,6 +189,38 @@ func (m *Manager) validateDatabase() []error {
 	if m.config.Database.Username == "" {
 		errs = append(errs, fmt.Errorf("database username is required"))
 	}
+	return append(errs, m.validateDatabaseHeartbeat()...)
+}
+
+// validateDatabaseHeartbeat checks the heartbeat and recovery knobs.
+//
+// These are validated rather than clamped because getting them wrong is not a
+// performance problem: a too-short interval hammers the database, and a
+// too-small threshold turns one dropped packet into a full stack restart.
+func (m *Manager) validateDatabaseHeartbeat() []error {
+	db := m.config.Database
+	if !db.HeartbeatEnabled {
+		return nil
+	}
+	var errs []error
+	if db.HeartbeatInterval < time.Second {
+		errs = append(errs, fmt.Errorf("database heartbeat_interval must be at least 1s, got: %v", db.HeartbeatInterval))
+	}
+	if db.HeartbeatThreshold < 1 {
+		errs = append(errs, fmt.Errorf("database heartbeat_threshold must be at least 1, got: %d", db.HeartbeatThreshold))
+	}
+	if !db.RecoveryEnabled {
+		return errs
+	}
+	// A recovery run restarts the server that is executing it, so a cooldown
+	// shorter than one deploy means the next attempt fires while the previous
+	// one is still mid-flight.
+	if db.RecoveryCooldown < time.Minute {
+		errs = append(errs, fmt.Errorf("database recovery_cooldown must be at least 1m, got: %v", db.RecoveryCooldown))
+	}
+	if db.RecoveryMaxAttempts < 0 {
+		errs = append(errs, fmt.Errorf("database recovery_max_attempts cannot be negative, got: %d", db.RecoveryMaxAttempts))
+	}
 	return errs
 }
 

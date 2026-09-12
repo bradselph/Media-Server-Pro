@@ -585,4 +585,19 @@ type DatabaseConfig struct {
 	RetryInterval      time.Duration `json:"retry_interval"`
 	TLSMode            string        `json:"tls_mode,omitempty"`
 	SlowQueryThreshold time.Duration `json:"slow_query_threshold"` // GORM slow-query log threshold; 0 = disabled; default 500ms
+
+	// Heartbeat: a background loop that pings the pool on an interval so a
+	// connection lost between requests is noticed while the server is idle,
+	// rather than on the next user request.
+	HeartbeatEnabled   bool          `json:"heartbeat_enabled"`
+	HeartbeatInterval  time.Duration `json:"heartbeat_interval"`  // how often to ping; default 30s
+	HeartbeatThreshold int           `json:"heartbeat_threshold"` // consecutive failed pings before recovery; default 5
+
+	// Recovery: what to run when the heartbeat has failed HeartbeatThreshold
+	// times in a row. Intended for re-running deploy.sh to bring the stack back.
+	RecoveryEnabled     bool          `json:"recovery_enabled"`
+	RecoveryCommand     string        `json:"recovery_command,omitempty"` // empty = auto-locate deploy.sh next to the binary
+	RecoveryArgs        []string      `json:"recovery_args,omitempty"`
+	RecoveryCooldown    time.Duration `json:"recovery_cooldown"`     // minimum gap between attempts; default 15m
+	RecoveryMaxAttempts int           `json:"recovery_max_attempts"` // give up after this many; 0 = unlimited; default 3
 }

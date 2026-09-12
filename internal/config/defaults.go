@@ -369,6 +369,17 @@ func defaultDatabaseConfig() DatabaseConfig {
 		MaxRetries:         3,
 		RetryInterval:      2 * time.Second,
 		SlowQueryThreshold: 500 * time.Millisecond,
+
+		HeartbeatEnabled:   true,
+		HeartbeatInterval:  30 * time.Second,
+		HeartbeatThreshold: 5, // 5 x 30s => ~2.5 min of sustained failure
+
+		// Recovery is opt-in: it restarts the whole stack, which is never the
+		// right default for a dev box with a flaky local MySQL.
+		RecoveryEnabled:     false,
+		RecoveryCommand:     "",
+		RecoveryCooldown:    15 * time.Minute,
+		RecoveryMaxAttempts: 3,
 	}
 }
 
