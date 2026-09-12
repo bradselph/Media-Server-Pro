@@ -313,7 +313,10 @@ func (m *Module) runTaskLoop(ctx context.Context, task *Task) {
 	initialSchedule := task.Schedule
 	m.mu.RUnlock()
 	ticker := time.NewTicker(initialSchedule)
-	defer ticker.Stop()
+	// Closure, not `defer ticker.Stop()`: the reschedule branch below replaces
+	// ticker, and a method-value defer would bind the receiver here and stop
+	// the original ticker instead of whichever one is live at return.
+	defer func() { ticker.Stop() }()
 
 	// The enabled check and execution claim are atomic, so DisableTask cannot
 	// slip through the gap and miss canceling a just-started run.

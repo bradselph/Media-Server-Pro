@@ -193,7 +193,8 @@ func TestFND0239_RegisterSlave_AcceptsContext(t *testing.T) {
 		BaseURL: "https://example.com:8080",
 	}
 
-	ctx := context.Background()
+	type callerKey struct{}
+	ctx := context.WithValue(context.Background(), callerKey{}, "caller")
 	node, err := m.RegisterSlave(ctx, req)
 
 	if err != nil {
@@ -205,9 +206,19 @@ func TestFND0239_RegisterSlave_AcceptsContext(t *testing.T) {
 	if mock.upsertCalls != 1 {
 		t.Errorf("Upsert called %d times, expected 1", mock.upsertCalls)
 	}
-	// Verify the context was passed through to the repo
-	if mock.lastCtx != ctx {
-		t.Error("RegisterSlave should pass the supplied context to slaveRepo.Upsert")
+	// RegisterSlave bounds DB work through boundedReceiverContext, so the repo
+	// necessarily receives a *derived* context — never the caller's own value.
+	// Assert derivation (the caller's values survive the wrap) and that the
+	// timeout was applied; a pointer-identity check here would contradict the
+	// very timeout-bounding this test exists to guard.
+	if mock.lastCtx == nil {
+		t.Fatal("RegisterSlave should pass a context to slaveRepo.Upsert")
+	}
+	if got := mock.lastCtx.Value(callerKey{}); got != "caller" {
+		t.Errorf("repo context is not derived from the caller's context: value = %v", got)
+	}
+	if _, ok := mock.lastCtx.Deadline(); !ok {
+		t.Error("repo context should carry the bounded receiver DB deadline")
 	}
 }
 

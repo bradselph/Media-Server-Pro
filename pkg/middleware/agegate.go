@@ -39,12 +39,12 @@ type ageGateState struct {
 }
 
 type AgeGate struct {
-	state          atomic.Pointer[ageGateState]
-	mu             sync.RWMutex
-	verifiedIPs    map[string]time.Time
-	log            *logger.Logger
-	evictMu        sync.Mutex
-	evicting       bool
+	state       atomic.Pointer[ageGateState]
+	mu          sync.RWMutex
+	verifiedIPs map[string]time.Time
+	log         *logger.Logger
+	evictMu     sync.Mutex
+	evicting    bool
 	// OnVerify is called when a visitor passes the age gate. Set by the caller
 	// to integrate with analytics without creating a dependency from middleware
 	// to the analytics package. The gin.Context is passed so the caller can

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -8,6 +9,24 @@ import (
 	"media-server-pro/internal/analytics"
 	"media-server-pro/internal/duplicates"
 )
+
+// writeDuplicateResolveError maps a ResolveDuplicate failure onto the right
+// status. Collapsing every failure into 400 hid database outages behind a
+// client-error code, so 5xx-based alerting never saw them.
+func writeDuplicateResolveError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, duplicates.ErrNotFound):
+		writeError(c, http.StatusNotFound, err.Error())
+	case errors.Is(err, duplicates.ErrAlreadyResolved):
+		writeError(c, http.StatusConflict, err.Error())
+	case errors.Is(err, duplicates.ErrInvalidAction):
+		writeError(c, http.StatusBadRequest, err.Error())
+	case errors.Is(err, duplicates.ErrUnavailable):
+		writeError(c, http.StatusServiceUnavailable, err.Error())
+	default:
+		writeError(c, http.StatusInternalServerError, err.Error())
+	}
+}
 
 // AdminScanLocalDuplicates triggers a fresh scan of local media for content-fingerprint duplicates.
 // POST /api/admin/duplicates/scan
@@ -78,7 +97,7 @@ func (h *Handler) AdminResolveDuplicate(c *gin.Context) {
 		Action:     body.Action,
 		ResolvedBy: resolvedBy,
 	}); err != nil {
-		writeError(c, http.StatusBadRequest, err.Error())
+		writeDuplicateResolveError(c, err)
 		return
 	}
 

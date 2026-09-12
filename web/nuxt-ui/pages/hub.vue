@@ -259,6 +259,23 @@ function openEmbed(item: HubEmbed) {
   serverPlay.deactivate()
   active.value = item
   modalOpen.value = true
+  // Try the server first when it is available to this viewer. Waiting for a
+  // click meant a blocked viewer had to recognise a dead iframe and find a
+  // button to fix it — but a blocked embed renders as a silent black box, and a
+  // cross-origin iframe failure is not observable from JS, so nothing would ever
+  // prompt them. Attaching up front is also what makes the feature work for the
+  // people it exists for. Failure is free: every path in the composable clears
+  // `active`, which restores the iframe below.
+  if (canServerPlay.value && preferServerPlay.value) {
+    const attempt = ++attemptSeq
+    autoAttemptId = attempt
+    // Cleared only once this attach settles, and only if it is still the current
+    // one — so the sync watcher below still suppresses a failure raised during
+    // the attach itself, while later mid-stream failures are reported normally.
+    void serverPlay.activate(item.embed_id).finally(() => {
+      if (autoAttemptId === attempt) autoAttemptId = 0
+    })
+  }
   // Record the play. The grid modal already has the full embed data, so this
   // fetch exists purely to trigger the server-side hub_view tracking in
   // GET /api/hub/embeds/:id (the same call the full player makes). Fire-and-
@@ -290,26 +307,62 @@ const canServerPlay = computed(() =>
   && (authStore.isAdmin || serverSettings.value?.hub?.proxy_all_users === true),
 )
 
+// Whether to attach the server stream automatically on every item. Remembered
+// across items and sessions: a viewer who deliberately went back to the provider
+// embed should not be pulled onto the proxy again by the next click, and a
+// blocked viewer should not have to re-engage it for every video.
+const PREFER_SERVER_KEY = 'hub:preferServerPlay'
+const preferServerPlay = ref(true)
+
+// Identifies the in-flight automatic attach, or 0 when the current attempt is
+// the viewer's own. Automatic attempts fail quietly — a viewer who never asked
+// for server playback should not get a warning toast on an item the iframe can
+// play fine.
+//
+// A token rather than a boolean because activate() also resolves for superseded
+// attempts (it returns early on a stale generation without reporting anything),
+// so a previous item's `finally` would otherwise clear the flag belonging to the
+// attach that replaced it, and that one's failure would toast.
+let attemptSeq = 0
+let autoAttemptId = 0
+
 function toggleServerPlay() {
   if (!active.value) return
+  // The viewer asked for this, so from here on failures are worth reporting.
+  attemptSeq++
+  autoAttemptId = 0
   if (serverPlay.active.value) {
+    preferServerPlay.value = false
+    persistServerPlayPreference()
     serverPlay.deactivate()
     return
   }
+  preferServerPlay.value = true
+  persistServerPlayPreference()
   void serverPlay.activate(active.value.embed_id)
+}
+
+function persistServerPlayPreference() {
+  try {
+    localStorage.setItem(PREFER_SERVER_KEY, preferServerPlay.value ? '1' : '0')
+  } catch { /* storage unavailable — preference just won't persist */ }
 }
 
 // Surface failures as a toast. The iframe is still mounted underneath, so this
 // reports that the enhancement did not apply - it is not a blocking error.
+// flush: 'sync' so this runs at the moment the composable sets the error, still
+// inside activate() — otherwise the default post-flush timing could land after
+// the `finally` above cleared autoAttempt and a silent attempt would toast.
 watch(serverPlay.error, (message) => {
   if (!message) return
+  if (autoAttemptId !== 0) return
   toast.add({
     title: message,
     description: 'Showing the standard embed instead.',
     color: 'warning',
     icon: 'i-lucide-alert-triangle',
   })
-})
+}, {flush: 'sync'})
 
 // ── Add to playlist ──────────────────────────────────────────────────────────
 // Hub items are stored in playlists as media_id = "hub:<embed_id>" so the rest
@@ -351,6 +404,11 @@ function formatViews(n: number): string {
 }
 
 onMounted(async () => {
+  try {
+    // Absent key => default on, so a blocked viewer gets working playback
+    // without first discovering a setting.
+    preferServerPlay.value = localStorage.getItem(PREFER_SERVER_KEY) !== '0'
+  } catch { /* storage unavailable — keep the default */ }
   await loadServerSettings()
   if (!allowed.value) return
   try {

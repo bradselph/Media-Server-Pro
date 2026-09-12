@@ -2111,7 +2111,7 @@ step_health_check() {
     host="$SRV_HOST"
   fi
   port="$SRV_PORT"
-  url="$scheme://$host:$port/api/health"
+  url="$scheme://$host:$port/health"
 
   # If we didn't install systemd, start a one-off server in the background.
   local started_here=0 pid=""

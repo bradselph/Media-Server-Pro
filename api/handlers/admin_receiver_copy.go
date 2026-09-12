@@ -186,9 +186,17 @@ func (h *Handler) streamReceiverItemToDir(ctx context.Context, id string, item *
 	if limit <= 0 {
 		limit = receiverCopyMaxBytes
 	}
-	written, err := io.Copy(tmp, io.LimitReader(reader, limit))
+	// Copy one byte past the limit so hitting it is detectable. item.Size is the
+	// peer's self-reported metadata: if it understates the real file, a
+	// LimitReader at exactly item.Size stops with a nil error and written ==
+	// item.Size, so the short-read check below cannot fire and a truncated
+	// file would be committed to the library as a success.
+	written, err := io.Copy(tmp, io.LimitReader(reader, limit+1))
 	if err != nil {
 		return "", fmt.Errorf("copy stream: %w", err)
+	}
+	if written > limit {
+		return "", fmt.Errorf("peer stream exceeds declared size of %d bytes", limit)
 	}
 	if item.Size > 0 && written < item.Size {
 		return "", fmt.Errorf("short read from peer: got %d of %d bytes", written, item.Size)

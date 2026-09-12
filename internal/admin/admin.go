@@ -497,6 +497,7 @@ func buildConfigAdminMap(cfg *config.Config) map[string]any {
 		"max_query_rows":           cfg.Admin.MaxQueryRows,
 		"audit_log_retention_days": cfg.Admin.AuditLogRetentionDays,
 		"session_timeout":          cfg.Admin.SessionTimeout,
+		"query_timeout":            cfg.Admin.QueryTimeout,
 	}
 }
 

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
+	"time"
 )
 
 const (
@@ -574,7 +576,14 @@ var tableDefs = []struct {
 				INDEX idx_hub_embeds_views_id (views, id),
 				INDEX idx_hub_embeds_duration_id (duration_secs, id),
 				INDEX idx_hub_embeds_rating (rating_score, id),
-				FULLTEXT INDEX ft_hub_embeds_title_tags (title, tags)
+				FULLTEXT INDEX ft_hub_embeds_title_tags (title, tags),
+				-- Category filtering used to be a leading-wildcard LIKE over a
+				-- wrapped column, which no index can satisfy, so browsing a
+				-- category read the entire table (gigabytes, given the TEXT and
+				-- MEDIUMTEXT columns above) twice per request. This index lets the
+				-- filter narrow by MATCH first; the LIKE is kept as an exact
+				-- residual so results are unchanged. See hubCategoryMatchExpr.
+				FULLTEXT INDEX ft_hub_embeds_categories (categories)
 			) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`},
 }
 
@@ -609,7 +618,84 @@ func (m *Module) ensureSchema(ctx context.Context) error {
 		m.log.Warn("Duration backfill from validation_results failed (non-fatal): %v", err)
 	}
 	m.log.Info("Database schema is up to date")
+	m.startDeferredIndexBuilds()
 	return nil
+}
+
+// deferredIndexTimeout bounds one background index build. Generous on purpose:
+// the whole reason these are deferred is that they can legitimately run for a
+// long time on a large table.
+const deferredIndexTimeout = 6 * time.Hour
+
+// deferredIndexes are indexes that must NOT be built inline with startup.
+//
+// Every index above is created against a table that is either small or empty in
+// practice, so building it inside Start() costs milliseconds. This one is not:
+// hub_embeds holds a multi-million-row imported catalog, and ADD FULLTEXT scans
+// and tokenises the whole categories column. That takes minutes, while module
+// startup runs under a 30s deadline shared by every step — so building it inline
+// would blow the deadline, fail the critical "database" module, and abort the
+// process. Worse, the aborted DDL rolls back, so the next start would attempt it
+// again: a permanent crash loop triggered purely by having a populated catalog.
+//
+// Deferring is safe because the query side treats this index as optional:
+// HubEmbedRepository.categoryIndexReady re-checks for it periodically and uses
+// the older LIKE-only plan until it appears. So the catalog stays browsable
+// (just slower on category filters) while the build runs, and speeds up on its
+// own once it finishes — no restart needed.
+var deferredIndexes = []struct{ table, index, sql string }{
+	{"hub_embeds", "ft_hub_embeds_categories",
+		"ALTER TABLE hub_embeds ADD FULLTEXT INDEX ft_hub_embeds_categories (categories)"},
+}
+
+// startDeferredIndexBuilds kicks off the deferred index builds in the background
+// and returns immediately.
+//
+// Failures are logged and never propagated: a missing optional index degrades
+// performance, and taking the server down for that would be a far worse outcome
+// than the slow query it is meant to avoid.
+func (m *Module) startDeferredIndexBuilds() {
+	pending := slices.Clone(deferredIndexes)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), deferredIndexTimeout)
+		defer cancel()
+		for _, idx := range pending {
+			present, err := m.indexExists(ctx, idx.table, idx.index)
+			if err != nil {
+				m.log.Warn("Deferred index %s: existence check failed (non-fatal): %v", idx.index, err)
+				continue
+			}
+			if present {
+				continue
+			}
+			m.log.Info("Building index %s on %s in the background; %s stays available meanwhile",
+				idx.index, idx.table, idx.table)
+			started := time.Now()
+			if _, err := m.sqlDB.ExecContext(ctx, idx.sql); err != nil {
+				m.log.Warn("Deferred index %s failed to build (non-fatal, will retry next start): %v",
+					idx.index, err)
+				continue
+			}
+			m.log.Info("Index %s built in %s", idx.index, time.Since(started).Round(time.Second))
+		}
+	}()
+}
+
+// indexExists reports whether an index is present, using the same
+// information_schema check as ensureIndex.
+func (m *Module) indexExists(ctx context.Context, table, index string) (bool, error) {
+	if !validIdent.MatchString(table) || !validIdent.MatchString(index) {
+		return false, fmt.Errorf("invalid table or index name: %q.%q", table, index)
+	}
+	var present bool
+	err := m.sqlDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) > 0 FROM information_schema.STATISTICS
+		 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+		table, index).Scan(&present)
+	if err != nil {
+		return false, err
+	}
+	return present, nil
 }
 
 // backfillMediaDuration copies duration values from validation_results into media_metadata

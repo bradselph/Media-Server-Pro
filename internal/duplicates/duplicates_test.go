@@ -1,6 +1,7 @@
 package duplicates
 
 import (
+	"context"
 	"testing"
 
 	"media-server-pro/internal/repositories"
@@ -185,14 +186,18 @@ func TestDuplicateItemSource(t *testing.T) {
 // ClearForSlave / ClearPendingForSlave with nil repo (no panic)
 // ---------------------------------------------------------------------------
 
-func TestClearForSlave_NilRepo(_ *testing.T) {
+func TestClearForSlave_NilRepo(t *testing.T) {
 	m := &Module{}
-	m.ClearForSlave("slave1") // should not panic
+	if err := m.ClearForSlave(context.Background(), "slave1"); err != nil {
+		t.Fatalf("ClearForSlave with a nil repo should be a no-op, got %v", err)
+	}
 }
 
-func TestClearPendingForSlave_NilRepo(_ *testing.T) {
+func TestClearPendingForSlave_NilRepo(t *testing.T) {
 	m := &Module{}
-	m.ClearPendingForSlave("slave1") // should not panic
+	if err := m.ClearPendingForSlave(context.Background(), "slave1"); err != nil {
+		t.Fatalf("ClearPendingForSlave with a nil repo should be a no-op, got %v", err)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -238,10 +243,14 @@ func TestResolveDuplicate_NilRepo(t *testing.T) {
 // RecordDuplicatesFromSlave disabled
 // ---------------------------------------------------------------------------
 
-func TestRecordDuplicatesFromSlave_Disabled(_ *testing.T) {
+func TestRecordDuplicatesFromSlave_Disabled(t *testing.T) {
 	m := &Module{}
-	// Should not panic when disabled
-	m.RecordDuplicatesFromSlave("slave1", []ReceiverItemRef{
+	// Disabled means "do nothing quietly", not "fail" — a slave pushing a
+	// catalog must not be rejected just because detection is off.
+	err := m.RecordDuplicatesFromSlave(context.Background(), "slave1", []ReceiverItemRef{
 		{OpaqueID: "id1", Name: "file.mp4", ContentFingerprint: "fp1"},
 	})
+	if err != nil {
+		t.Fatalf("RecordDuplicatesFromSlave when disabled should be a no-op, got %v", err)
+	}
 }

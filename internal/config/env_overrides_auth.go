@@ -51,6 +51,9 @@ func (m *Manager) applyAdminEnvOverrides() {
 	if val, ok := envGetDuration(time.Hour, "ADMIN_SESSION_TIMEOUT_HOURS"); ok {
 		m.config.Admin.SessionTimeout = val
 	}
+	if val, ok := envGetDuration(time.Second, "ADMIN_QUERY_TIMEOUT_SECONDS"); ok {
+		m.config.Admin.QueryTimeout = val
+	}
 }
 
 func (m *Manager) applyAdminPasswordOverride() error {

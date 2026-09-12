@@ -24,6 +24,20 @@ import (
 	"media-server-pro/pkg/models"
 )
 
+// Resolution errors callers can classify. Without these every failure from
+// ResolveDuplicate — including a database outage — is indistinguishable from an
+// operator typo, so the HTTP layer cannot tell a 4xx from a 5xx.
+var (
+	// ErrUnavailable means duplicate detection is disabled or has no repository.
+	ErrUnavailable = errors.New("duplicate detection is not available")
+	// ErrInvalidAction means the requested resolution action is not recognised.
+	ErrInvalidAction = errors.New("unknown action")
+	// ErrNotFound means no duplicate record exists for the given id.
+	ErrNotFound = errors.New("duplicate not found")
+	// ErrAlreadyResolved means the duplicate already has a conflicting terminal status.
+	ErrAlreadyResolved = errors.New("duplicate already resolved")
+)
+
 // DuplicateItem represents one side of a detected duplicate pair.
 type DuplicateItem struct {
 	ID      string `json:"id"`
@@ -316,7 +330,7 @@ func (m *Module) RecordDuplicatesFromSlave(ctx context.Context, slaveID string, 
 		matches := fpIndex[item.ContentFingerprint]
 		for _, existing := range matches {
 			if _, err := m.tryRecordReceiverPair(ctx, slaveID, item, existing); err != nil {
-			detectionErrs = append(detectionErrs, err)
+				detectionErrs = append(detectionErrs, err)
 			}
 		}
 	}
@@ -502,13 +516,13 @@ type ResolveDuplicateInput struct {
 // Action must be one of: "remove_a", "remove_b", "keep_both", "ignore".
 func (m *Module) ResolveDuplicate(in ResolveDuplicateInput) error {
 	if m.dupRepo == nil {
-		return fmt.Errorf("duplicate detection is not available")
+		return ErrUnavailable
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	if in.Action != "remove_a" && in.Action != "remove_b" && in.Action != "keep_both" && in.Action != "ignore" {
-		return fmt.Errorf("unknown action %q — must be remove_a, remove_b, keep_both, or ignore", in.Action)
+		return fmt.Errorf("%w %q — must be remove_a, remove_b, keep_both, or ignore", ErrInvalidAction, in.Action)
 	}
 
 	rec, err := m.getDuplicateForResolution(ctx, in.ID, in.Action)
@@ -544,10 +558,10 @@ func (m *Module) getDuplicateForResolution(ctx context.Context, id, action strin
 		return nil, fmt.Errorf("failed to fetch duplicate: %w", err)
 	}
 	if rec == nil {
-		return nil, fmt.Errorf("duplicate not found: %s", id)
+		return nil, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	if rec.Status != "pending" && rec.Status != action {
-		return nil, fmt.Errorf("duplicate %s is already resolved as %s", id, rec.Status)
+		return nil, fmt.Errorf("%w: %s is already resolved as %s", ErrAlreadyResolved, id, rec.Status)
 	}
 	return rec, nil
 }
