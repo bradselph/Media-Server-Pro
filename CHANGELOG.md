@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+- fix(auth): logging in no longer lands on a blank page that needs a manual
+  refresh. The home page fires a dozen session-scoped requests right after
+  login; a 401 on any one of them bounced the browser to `/login`, which found a
+  perfectly valid session and sent it straight back — an unbounded hard-reload
+  loop (99 full page loads observed from a single login click) that rendered as
+  a blank, flashing screen. `useApi` now re-checks `/api/auth/session` before
+  acting on a 401 and only redirects when the server agrees the session is gone,
+  which is exactly the condition under which `/login` will not bounce back. A
+  sessionStorage-backed budget caps repeat redirects as a backstop, since an
+  in-memory guard cannot survive the reload it is meant to detect
+- fix(auth): a transient session-store failure now answers 503 + `Retry-After`
+  instead of 401. `sessionAuth` deliberately preserves the cookie when
+  `ValidateSession` fails for a non-session reason (DB timeout, exhausted pool)
+  so an outage does not log anyone out — but it then left the request with no
+  session, so every `requireAuth`/`adminAuth` route replied 401 and every client
+  read that as "logged out", undoing the intent and triggering the redirect loop
+  above. 503 says what actually happened
 - feat(database): added a liveness heartbeat that pings the pool every
   `DATABASE_HEARTBEAT_INTERVAL` (30s default). Previously nothing probed the
   connection on its own, so a link dropped while the server was idle was not
