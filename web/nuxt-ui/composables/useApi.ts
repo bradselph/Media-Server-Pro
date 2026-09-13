@@ -33,9 +33,54 @@ class ApiError extends Error {
 }
 
 let _redirecting = false
+let _revalidating = false
+
+// A forced-logout redirect is a full page load, so an in-memory flag cannot see
+// what the page before it did. These bound how many times we are willing to
+// bounce a browser to /login before concluding we are in a loop.
+const REDIRECT_LOG_KEY = 'msp-auth-redirects'
+const REDIRECT_WINDOW_MS = 15_000
+const REDIRECT_MAX = 2
+
+/**
+ * Record this redirect and report whether it should go ahead.
+ *
+ * The counter lives in sessionStorage so it survives the reload. Without it,
+ * /login sending an already-authenticated user straight back to the page that
+ * 401'd is an unbounded hard-reload loop, and all the user sees is a blank,
+ * flashing screen.
+ */
+function redirectAllowed(): boolean {
+    try {
+        const now = Date.now()
+        const raw = globalThis.sessionStorage.getItem(REDIRECT_LOG_KEY)
+        const recent = (raw ? JSON.parse(raw) as number[] : [])
+            .filter(t => typeof t === 'number' && now - t < REDIRECT_WINDOW_MS)
+        if (recent.length >= REDIRECT_MAX) {
+            console.warn('[auth] suppressing repeated redirects to /login — a session-scoped request keeps returning 401. Staying put instead of reload-looping.')
+            return false
+        }
+        recent.push(now)
+        globalThis.sessionStorage.setItem(REDIRECT_LOG_KEY, JSON.stringify(recent))
+        return true
+    } catch {
+        // sessionStorage blocked (private mode / cookies off) — keep the old behaviour.
+        return true
+    }
+}
+
+/** Clears the loop guard. Called once a request succeeds, so an ordinary
+ *  expiry later in the session still gets its full redirect budget. */
+function clearRedirectGuard(): void {
+    try {
+        globalThis.sessionStorage.removeItem(REDIRECT_LOG_KEY)
+    } catch { /* ignore */
+    }
+}
 
 export function redirectToLogin(): void {
     if (_redirecting || !import.meta.client) return
+    if (!redirectAllowed()) return
     _redirecting = true
     setTimeout(() => {
         _redirecting = false
@@ -46,6 +91,63 @@ export function redirectToLogin(): void {
         ? `/login?redirect=${encodeURIComponent(redirect)}`
         : '/login'
     globalThis.location.replace(target)
+}
+
+/**
+ * Ask the server whether it still recognises our session.
+ *
+ * Plain fetch on purpose: useApi is imported at module level by
+ * useApiEndpoints, so it must not reach for Nuxt composables (same reason
+ * redirectToLogin uses location.replace rather than navigateTo).
+ */
+async function sessionStillValid(): Promise<boolean> {
+    try {
+        const res = await fetch('/api/auth/session', {
+            credentials: 'include',
+            headers: {Accept: 'application/json'},
+        })
+        // Only a definitive answer may log someone out. A 401 is one; a 5xx
+        // (e.g. the backend's "session store temporarily unavailable") is the
+        // server saying it could not tell us, and an outage must not read as a
+        // logout.
+        if (res.status === 401) return false
+        if (!res.ok) return true
+        const envelope = await res.json() as GoEnvelope<{ authenticated?: boolean }>
+        return (envelope.data ?? envelope as { authenticated?: boolean })?.authenticated === true
+    } catch {
+        // An unreachable server proves nothing about the session — don't log
+        // someone out over a dropped connection.
+        return true
+    }
+}
+
+/**
+ * Decide what a 401 means for a request made while a session was believed active.
+ *
+ * A 401 on its own does NOT prove the session is gone. The backend's sessionAuth
+ * middleware only attaches the session to the request when ValidateSession
+ * succeeds, and a *transient* failure there — a database blip, an exhausted
+ * connection pool — takes the same path as a missing cookie. Every requireAuth
+ * route then answers 401 while the session is in fact still valid.
+ *
+ * Redirecting on that turned a hiccup into a hard-reload loop: the home page
+ * fires a dozen session-scoped requests at once, one 401s, we bounce to /login,
+ * /login sees a valid session and bounces straight back, and round it goes. The
+ * user sees a blank page until they interrupt it with a manual reload.
+ *
+ * So confirm with the server first. /api/auth/session reads the same request
+ * context requireAuth does and is the same endpoint the login page checks, so
+ * only redirecting when it reports "not authenticated" guarantees /login will
+ * not bounce us back.
+ */
+async function handleUnauthorized(): Promise<void> {
+    if (_revalidating || !import.meta.client) return
+    _revalidating = true
+    try {
+        if (!await sessionStillValid()) redirectToLogin()
+    } finally {
+        _revalidating = false
+    }
 }
 
 async function parseEnvelope<T>(res: Response): Promise<T> {
@@ -62,21 +164,26 @@ async function parseEnvelope<T>(res: Response): Promise<T> {
 
     const envelope = await res.json() as GoEnvelope<T>
     if (!res.ok || envelope.success === false) {
-        // On 401, redirect to login ONLY when a session was actually active — i.e.
-        // a logged-in user whose session expired or was revoked. Guests on public
-        // pages (player, browse, …) routinely touch auth-only optional endpoints
-        // (HLS availability, playback position); those 401s must be handled by the
-        // caller's catch and fall back gracefully, NOT bounce the guest to /login.
-        // NOTE: use window.location.replace (not navigateTo) — useApi is imported at module
-        // level in useApiEndpoints.ts so it must not reference Nuxt composables which require
-        // the Nuxt app context; doing so creates a TDZ error in the production bundle.
-        if (res.status === 401 && isAuthenticated()) redirectToLogin()
+        // On 401, consider redirecting to login ONLY when a session was actually
+        // active — i.e. a logged-in user whose session expired or was revoked.
+        // Guests on public pages (player, browse, …) routinely touch auth-only
+        // optional endpoints (HLS availability, playback position); those 401s
+        // must be handled by the caller's catch and fall back gracefully, NOT
+        // bounce the guest to /login.
+        //
+        // handleUnauthorized re-checks with the server before bouncing, because a
+        // 401 can also mean "the backend could not load the session this time"
+        // rather than "you are logged out" — see its doc comment.
+        if (res.status === 401 && isAuthenticated()) void handleUnauthorized()
         throw new ApiError(
             envelope.message ?? envelope.error ?? `HTTP ${res.status}`,
             res.status,
             envelope,
         )
     }
+    // A successful session-scoped call means we are not in a redirect loop, so
+    // give a genuine expiry later in this session its full redirect budget back.
+    if (isAuthenticated()) clearRedirectGuard()
     return (envelope.data ?? envelope) as T
 }
 

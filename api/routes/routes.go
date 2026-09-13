@@ -83,6 +83,13 @@ const (
 	routeThumbnail    = "/thumbnail"
 	routePlaylistByID = "/playlists/:id"
 	routeUserByName   = "/users/:username"
+
+	// ctxSessionUnavailable is set by sessionAuth when the session store could
+	// not be reached, to distinguish "we don't know who you are" from "you are
+	// not logged in". See abortSessionUnavailable.
+	ctxSessionUnavailable = "session_unavailable"
+
+	headerRetryAfter = "Retry-After"
 )
 
 // sessionAuth loads session/user context from the session_id cookie (or a Bearer
@@ -122,6 +129,14 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 					Secure:   secure,
 					SameSite: http.SameSiteStrictMode,
 				})
+			} else {
+				// Transient failure (DB timeout, exhausted pool): we could not
+				// determine whether this session is valid. The cookie is kept
+				// above precisely so the user is not logged out by an outage —
+				// but leaving the request with no session made requireAuth answer
+				// 401, which reads as "logged out" to every client and undid that
+				// intent. Flag it so requireAuth can say "try again" instead.
+				c.Set(ctxSessionUnavailable, true)
 			}
 			c.Next()
 			return
@@ -156,6 +171,10 @@ func adminAuth(_ *auth.Module) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userVal, exists := c.Get("user")
 		if !exists {
+			if _, unavailable := c.Get(ctxSessionUnavailable); unavailable {
+				abortSessionUnavailable(c)
+				return
+			}
 			c.JSON(http.StatusUnauthorized, gin.H{"success": false, "error": "Unauthorized"})
 			c.Abort()
 			return
@@ -175,11 +194,33 @@ func adminAuth(_ *auth.Module) gin.HandlerFunc {
 	}
 }
 
+// abortSessionUnavailable reports a transient session-store failure as 503 rather
+// than 401.
+//
+// The distinction matters to clients: a 401 means "you are logged out", and the
+// web client acts on it by bouncing to /login. During a database blip every
+// requireAuth route would answer 401 while the session was in fact still valid,
+// so the client redirected, /login found a valid session and sent the user
+// straight back, and the two ping-ponged in a hard-reload loop that rendered a
+// blank page. 503 + Retry-After says what actually happened: ask again shortly.
+func abortSessionUnavailable(c *gin.Context) {
+	c.Header(headerRetryAfter, "2")
+	c.JSON(http.StatusServiceUnavailable, gin.H{
+		"success": false,
+		"error":   "Session store temporarily unavailable, please retry",
+	})
+	c.Abort()
+}
+
 // requireAuth requires an authenticated, non-expired session with an enabled user.
 func requireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionVal, exists := c.Get("session")
 		if !exists {
+			if _, unavailable := c.Get(ctxSessionUnavailable); unavailable {
+				abortSessionUnavailable(c)
+				return
+			}
 			errMsg := "Unauthorized"
 			if bearerErr, ok := c.Get("bearer_error"); ok {
 				if s, ok := bearerErr.(string); ok && s != "" {
