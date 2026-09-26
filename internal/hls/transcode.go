@@ -99,6 +99,7 @@ func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 		m.log.Debug("Media duration for %s: %.1fs", job.ID, totalDuration)
 	}
 
+	cfg := m.config.Get()
 	qualitiesToTranscode := m.resolveQualitiesToTranscode(job)
 	runParams := &qualityRunParams{
 		JobID: job.ID, TotalQualities: len(qualitiesToTranscode), TotalDuration: totalDuration,
@@ -107,9 +108,10 @@ func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 	// completed accumulates qualities in ladder order as each one finishes, so
 	// publishMasterPlaylist always (re)writes master.m3u8 with exactly the set
 	// that is genuinely on disk right now — never more (C01's invariant: the
-	// master must only advertise variants whose playlist actually exists;
-	// lazy-transcode mode, which intentionally advertises ahead of what's on
-	// disk, is unaffected — see resolveQualitiesToTranscode/H4).
+	// master must only advertise variants whose playlist actually exists).
+	// This invariant is unchanged even in lazy-transcode mode: publishLazyLadder
+	// below is a separate, deliberate re-publish that advertises the rest of
+	// the ladder ahead of what's on disk — see resolveQualitiesToTranscode.
 	completed := make([]string, 0, len(qualitiesToTranscode))
 	for i, quality := range qualitiesToTranscode {
 		runParams.CurrentQuality = i + 1
@@ -124,10 +126,64 @@ func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 		if len(completed) == 1 {
 			m.markJobPlayable(job)
 		}
+		if cfg.HLS.LazyTranscode && len(completed) < len(job.Qualities) {
+			m.publishLazyLadder(job, completed)
+		}
 	}
 
 	m.finalizeJobCompleted(job)
 	m.log.Info("HLS generation completed for job %s", job.ID)
+}
+
+// lazyMasterVariants returns the master-playlist variant list for a
+// lazy-transcode job once its eager quality/qualities have finished: every
+// quality in completed (already on disk, in the order each finished) first,
+// followed by the rest of job.Qualities — the originally requested ladder —
+// that hasn't been transcoded yet, in ladder order.
+//
+// Order matters: hls.js's LevelController takes the FIRST #EXT-X-STREAM-INF
+// entry in the master playlist as the manifest's "first level", which
+// firstAutoLevel falls back to before any real bandwidth estimate exists (see
+// LevelController.onManifestLoaded / AbrController.firstAutoLevel in
+// hls.js/src|dist). Listing the already-transcoded quality first is what
+// makes playback actually start on it, instead of on a quality that will 503
+// until its own on-demand transcode finishes — see
+// ensureVariantPlaylistExists/triggerLazyTranscode.
+func lazyMasterVariants(job *models.HLSJob, completed []string) []string {
+	done := make(map[string]bool, len(completed))
+	for _, q := range completed {
+		done[q] = true
+	}
+	variants := make([]string, 0, len(job.Qualities))
+	variants = append(variants, completed...)
+	for _, q := range job.Qualities {
+		if !done[q] {
+			variants = append(variants, q)
+		}
+	}
+	return variants
+}
+
+// publishLazyLadder re-publishes master.m3u8 to additionally advertise the
+// rest of a lazy-transcode job's ladder that resolveQualitiesToTranscode
+// truncated out of the eager transcode loop above. Without this, master.m3u8
+// would only ever list the eagerly-transcoded quality/qualities, hls.js would
+// never learn any other quality exists, and ensureVariantPlaylistExists /
+// triggerLazyTranscode's on-demand path — the entire point of Lazy Transcode
+// — could never be reached by a client (C01).
+//
+// A failure here is not fatal to the job: publishMasterPlaylist already
+// published completed's exact subset moments ago (see generateMasterPlaylist's
+// atomic temp-file-then-rename), so the job stays Available and playable on
+// that subset; only the extra advertisement is missed until the next call
+// (there won't be one, since qualitiesToTranscode is exhausted after this —
+// see resolveQualitiesToTranscode), so this is logged rather than failing the
+// job outright.
+func (m *Module) publishLazyLadder(job *models.HLSJob, completed []string) {
+	variants := lazyMasterVariants(job, completed)
+	if err := m.generateMasterPlaylist(&generateMasterPlaylistParams{OutputDir: job.OutputDir, Variants: variants}); err != nil {
+		m.log.Warn("Failed to publish full lazy-transcode ladder in master playlist for job %s: %v; only %d of %d configured qualities are advertised", job.ID, err, len(completed), len(job.Qualities))
+	}
 }
 
 // publishMasterPlaylist atomically (re)writes master.m3u8 to advertise every
@@ -504,70 +560,107 @@ func (m *Module) isTranscodeCancelled(ctx context.Context, stderrStr string) boo
 	return ctx.Err() != nil || m.stopping.Load() || signalKilled
 }
 
-// lazyTranscodeQuality transcodes a single quality on-demand with per-quality locking.
-// M-16: semaphore is acquired BEFORE the per-quality mutex to prevent deadlock.
-// Holding qMu while blocking on the semaphore could deadlock when all slots are
-// occupied by goroutines that are also waiting to acquire qMu for the same quality.
-func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, quality string) error {
-	playlistPath := filepath.Join(job.OutputDir, quality, "playlist.m3u8")
-
-	// Fast path: avoid semaphore contention if already done (racy read, re-checked under lock below).
-	if _, err := os.Stat(playlistPath); err == nil {
-		return nil
+// triggerLazyTranscode starts a background, low-priority transcode of a
+// single quality when a lazy-transcode variant request finds it missing on
+// disk, and returns immediately without waiting for it — this is what keeps
+// ensureVariantPlaylistExists from blocking the HTTP request for the whole
+// encode (X01).
+//
+// Deduped per job/quality via qualityLocks' mutex TryLock: TryLock never
+// blocks, so at most one goroutine ever wins it for a given "jobID/quality"
+// key. A caller that loses (another dispatch is already in flight, or the
+// eager first-quality encode happens to hold the same key) is a no-op —
+// nothing more to start, the caller's own fast os.Stat retry will observe the
+// result once whichever goroutine owns it finishes. This also removes the old
+// M-16 deadlock concern entirely: TryLock cannot block waiting for a slot
+// another goroutine holds, unlike the previous Lock()-after-semaphore design.
+//
+// The encode runs under a context derived from the module's own lifecycle
+// (m.ctx), not the caller's request context — a client disconnecting or
+// retrying must not abort an encode another viewer's retry may also resolve.
+// It is registered on lazyWg/lazyCancels exactly like before so
+// DeleteJob/cleanInactiveJob still drain or cancel it before removing the
+// job's output directory. lazyWg.Add and the lazyCancels registration happen
+// synchronously here, before the goroutine is spawned, so a concurrent
+// DeleteJob can never observe this dispatch as "not yet started".
+func (m *Module) triggerLazyTranscode(job *models.HLSJob, quality string) {
+	lockKey := job.ID + "/" + quality
+	rawMu, _ := m.qualityLocks.LoadOrStore(lockKey, &sync.Mutex{})
+	qMu, ok := rawMu.(*sync.Mutex)
+	if !ok {
+		m.log.Error("internal lock type error for key %s", lockKey)
+		return
+	}
+	if !qMu.TryLock() {
+		// Already being transcoded by an earlier dispatch — nothing to start.
+		return
 	}
 
-	// Register this in-flight lazy transcode on the per-job WaitGroup BEFORE the
-	// semaphore wait, so DeleteJob/cleanInactiveJob drain queued-and-running lazy
-	// transcodes (which hold no jobDone entry) before os.RemoveAll deletes the
-	// output directory out from under an active ffmpeg write.
 	rawWg, _ := m.lazyWg.LoadOrStore(job.ID, new(sync.WaitGroup))
 	lWg := rawWg.(*sync.WaitGroup)
 	lWg.Add(1)
-	defer lWg.Done()
 
-	// Derive a context DeleteJob/cleanInactiveJob can cancel (via cancelLazyTranscodes)
-	// so a delete aborts this on-demand encode — killing ffmpeg — instead of blocking
-	// the lazyWg drain until it finishes on its own. Register the cancel under a unique
-	// key so concurrent transcodes of the same job (different qualities) each get their
-	// own entry.
-	lazyCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	base := m.ctx
+	if base == nil {
+		// Defensive fallback for a Module built directly in tests without
+		// Start() (which sets m.ctx); production always has m.ctx set.
+		base = context.Background()
+	}
+	lazyCtx, cancel := context.WithCancel(base)
 	rawSet, _ := m.lazyCancels.LoadOrStore(job.ID, &sync.Map{})
 	cancelSet := rawSet.(*sync.Map)
 	cancelKey := new(int)
 	cancelSet.Store(cancelKey, cancel)
-	defer cancelSet.Delete(cancelKey)
 
-	// Acquire dynamic semaphore with context awareness. Lazy transcodes are
-	// always a live, user-triggered request (a viewer's player asked for a
-	// quality on demand), so this always spins as high priority.
-	if !m.waitForTranscodeSlot(lazyCtx, func() bool { return true }) {
-		return lazyCtx.Err()
+	m.activeJobs.Add(1)
+	go func() {
+		defer qMu.Unlock()
+		defer lWg.Done()
+		defer cancelSet.Delete(cancelKey)
+		defer cancel()
+		defer m.activeJobs.Done()
+		m.runLazyTranscode(lazyCtx, job, quality)
+	}()
+}
+
+// runLazyTranscode performs the actual on-demand encode of a single quality
+// once triggerLazyTranscode has exclusively claimed it (via qualityLocks'
+// TryLock). Always low priority — see waitForTranscodeSlot below — since no
+// HTTP request blocks synchronously on this goroutine; it must not preempt an
+// actively-waited-on transcode for a slot.
+func (m *Module) runLazyTranscode(ctx context.Context, job *models.HLSJob, quality string) {
+	playlistPath := filepath.Join(job.OutputDir, quality, "playlist.m3u8")
+	// Re-check: another dispatch may have already finished this quality
+	// between ensureVariantPlaylistExists' fast os.Stat and this goroutine
+	// actually running.
+	if _, err := os.Stat(playlistPath); err == nil {
+		return
+	}
+
+	if !m.waitForTranscodeSlot(ctx, func() bool { return false }) {
+		return
 	}
 	defer m.releaseTranscode()
 
-	m.activeJobs.Add(1)
-	defer m.activeJobs.Done()
-
-	lockKey := job.ID + "/" + quality
-	mu, _ := m.qualityLocks.LoadOrStore(lockKey, &sync.Mutex{})
-	qMu, ok := mu.(*sync.Mutex)
-	if !ok {
-		return fmt.Errorf("internal lock type error for key %s", lockKey)
-	}
-	qMu.Lock()
-	defer qMu.Unlock()
-
-	// Re-check under lock — another goroutine may have completed while we waited for semaphore.
-	if _, err := os.Stat(playlistPath); err == nil {
-		return nil
-	}
-
 	m.log.Info("On-demand lazy transcode of quality %s for job %s", quality, job.ID)
 
-	totalDuration := m.getMediaDuration(lazyCtx, job.MediaPath)
+	encode := m.lazyEncode
+	if encode == nil {
+		encode = m.defaultLazyEncode
+	}
+	if err := encode(ctx, job, quality); err != nil {
+		m.log.Warn("Background lazy transcode of quality %s failed for job %s: %v", quality, job.ID, err)
+	}
+}
+
+// defaultLazyEncode runs the real ffmpeg-backed transcode for a single
+// on-demand quality. Split out from runLazyTranscode so tests can substitute
+// Module.lazyEncode to exercise triggerLazyTranscode's dispatch/dedup
+// behavior without invoking ffmpeg.
+func (m *Module) defaultLazyEncode(ctx context.Context, job *models.HLSJob, quality string) error {
+	totalDuration := m.getMediaDuration(ctx, job.MediaPath)
 	run := &qualityRunParams{JobID: job.ID, TotalQualities: 1, CurrentQuality: 1, TotalDuration: totalDuration}
-	return m.transcodeQuality(lazyCtx, job, quality, run)
+	return m.transcodeQuality(ctx, job, quality, run)
 }
 
 // scanFFmpegLines is like bufio.ScanLines but also splits on a bare '\r',

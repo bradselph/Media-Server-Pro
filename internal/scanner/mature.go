@@ -899,16 +899,54 @@ func (s *MatureScanner) ScanDirectory(dir string) ([]*ScanResult, error) {
 	return results, walkErr
 }
 
+// shippedDefaultAllowedExtensions mirrors config.defaultUploadsConfig()'s
+// AllowedExtensions (internal/config/defaults.go) and internal/upload's
+// identical constant of the same name. config.Manager.Load() starts every
+// install from that default and only overwrites keys present in a saved
+// config.json, so an admin who has never opened
+// Settings -> Uploads -> Allowed Extensions ends up with exactly this slice
+// at runtime -- indistinguishable, from here, from an admin who deliberately
+// re-entered the same 13 extensions. isAllowedExtension treats that case the
+// same as "unconfigured" (see isShippedDefault) so the periodic scan keeps
+// covering every extension internal/upload accepts by default (.ts, .opus,
+// ...), rather than silently drifting out of sync with it.
+var shippedDefaultAllowedExtensions = map[string]bool{
+	".mp4": true, ".mkv": true, ".avi": true, ".mov": true, ".wmv": true,
+	".flv": true, ".webm": true, ".mp3": true, ".wav": true, ".flac": true,
+	".aac": true, ".ogg": true, ".m4a": true,
+}
+
+// isShippedDefault reports whether allowed, once normalized, is exactly the
+// shippedDefaultAllowedExtensions set -- same size, no extras, no misses.
+// Kept in sync with internal/upload's identical helper since both packages
+// read the same uploads.allowed_extensions config.
+func isShippedDefault(allowed []string) bool {
+	if len(allowed) != len(shippedDefaultAllowedExtensions) {
+		return false
+	}
+	seen := make(map[string]bool, len(allowed))
+	for _, ext := range allowed {
+		norm := strings.ToLower(normalizeExtension(ext))
+		if !shippedDefaultAllowedExtensions[norm] || seen[norm] {
+			return false
+		}
+		seen[norm] = true
+	}
+	return true
+}
+
 // isAllowedExtension checks if a file extension is eligible for the periodic
 // mature-content scan. This mirrors internal/upload's upload-time gate so the
 // scan always covers every extension uploads can accept: a non-empty
 // uploads.allowed_extensions config is authoritative, and the built-in
-// video/audio extension set (helpers.IsMediaExtension) is only used as the
-// fallback when no list has been configured at all.
+// video/audio extension set (helpers.IsMediaExtension) is used as the
+// fallback both when no list has been configured at all and when the
+// configured list is still exactly the shipped default (see
+// isShippedDefault).
 func (s *MatureScanner) isAllowedExtension(ext string) bool {
 	cfg := s.config.Get()
 
-	if len(cfg.Uploads.AllowedExtensions) == 0 {
+	if len(cfg.Uploads.AllowedExtensions) == 0 || isShippedDefault(cfg.Uploads.AllowedExtensions) {
 		return helpers.IsMediaExtension(ext)
 	}
 

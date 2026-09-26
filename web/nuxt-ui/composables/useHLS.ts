@@ -322,6 +322,7 @@ export function useHLS(
             hlsActivated.value = false
             hlsError.value = 'HLS not supported in this browser'
             hlsLoading.value = false
+            scheduleResume(el, preSwitch)
             return
         }
 

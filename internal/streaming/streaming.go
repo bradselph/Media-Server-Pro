@@ -55,6 +55,19 @@ const staleSessionTimeout = 30 * time.Minute
 // stream longer than staleSessionTimeout would be wrongly evicted mid-transfer.
 const keepaliveInterval = staleSessionTimeout / 3
 
+// maxSessionsPerMedia bounds how many concurrent session rows a single
+// (userID, mediaID) pair may hold at once. Sessions for media the caller is
+// already streaming are exempt from the per-user distinct-media cap (see
+// countUserStreamsLocked) so ordinary seeking — which aborts the in-flight
+// Range request and opens a new one for the very same video — doesn't trip a
+// low cap. But that exemption must stay bounded: without a ceiling, flooding
+// a single media ID with concurrent requests would be admitted unconditionally
+// forever, defeating the cap entirely instead of merely tolerating a seek's
+// transient overlap. 2 allows one stale-but-not-yet-reaped row plus the new
+// request that superseded it; a third concurrent request for the same media
+// is rejected like any other cap overflow.
+const maxSessionsPerMedia = 2
+
 // Module implements media streaming
 type Module struct {
 	config         *config.Manager
@@ -880,8 +893,8 @@ func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end,
 }
 
 // countUserStreamsLocked returns the number of distinct media currently counted
-// against userID's concurrent-stream cap, and reports whether matchMediaID (when
-// non-empty) already has an active session for this user. Callers must hold
+// against userID's concurrent-stream cap, and the number of active sessions (if
+// any) that already match matchMediaID for this user. Callers must hold
 // sessionMu (read or write lock).
 //
 // Sessions are deduped by MediaID because a single logical playback can produce
@@ -890,13 +903,15 @@ func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end,
 // element's connection) starts its own session, and the old row isn't reaped
 // until its next Write() fails — see Stream()/streamContent. Charging the cap
 // once per Range request instead of once per distinct video is exactly the bug
-// this dedup closes.
+// this dedup closes. sameMediaCount is separately bounded by maxSessionsPerMedia
+// (see callers) so that exemption can't be exploited to admit unlimited
+// concurrent rows for one media item.
 //
 // Sessions with no MediaID (currently only TrackProxyStream's receiver-proxy
 // sessions, which have no media identity to dedupe against) are never coalesced
 // together — doing so would let a single user hold unlimited proxy streams under
 // one counted slot.
-func (m *Module) countUserStreamsLocked(userID, matchMediaID string) (distinct int, alreadyStreaming bool) {
+func (m *Module) countUserStreamsLocked(userID, matchMediaID string) (distinct, sameMediaCount int) {
 	seenMedia := make(map[string]struct{})
 	anonymous := 0
 	for _, s := range m.activeSessions {
@@ -908,11 +923,11 @@ func (m *Module) countUserStreamsLocked(userID, matchMediaID string) (distinct i
 			continue
 		}
 		if matchMediaID != "" && s.MediaID == matchMediaID {
-			alreadyStreaming = true
+			sameMediaCount++
 		}
 		seenMedia[s.MediaID] = struct{}{}
 	}
-	return len(seenMedia) + anonymous, alreadyStreaming
+	return len(seenMedia) + anonymous, sameMediaCount
 }
 
 // startSession creates and tracks a new streaming session
@@ -936,13 +951,21 @@ func (m *Module) startSession(req StreamRequest, position int64) *models.StreamS
 	// Enforce the per-user cap inside the same critical section as the insert so
 	// concurrent requests can't both pass a separate pre-check and over-fill. The
 	// cap counts DISTINCT media (see countUserStreamsLocked), and a request for
-	// media the user is already streaming always bypasses it: ordinary seeking
-	// aborts the in-flight HTTP connection and opens a new one for the same
-	// video, which would otherwise look like a second concurrent stream until the
-	// old session's next failed Write() reaps it.
+	// media the user is already streaming bypasses it up to maxSessionsPerMedia:
+	// ordinary seeking aborts the in-flight HTTP connection and opens a new one
+	// for the same video, which would otherwise look like a second concurrent
+	// stream until the old session's next failed Write() reaps it. Beyond that
+	// small bound, additional concurrent requests for the same media are subject
+	// to the cap like any other request — otherwise a single media ID could be
+	// flooded with unlimited concurrent sessions once any one of them exists.
 	if req.MaxStreams > 0 {
-		distinct, alreadyStreaming := m.countUserStreamsLocked(req.UserID, mediaID)
-		if !alreadyStreaming && distinct >= req.MaxStreams {
+		distinct, sameMediaCount := m.countUserStreamsLocked(req.UserID, mediaID)
+		if sameMediaCount > 0 {
+			if sameMediaCount >= maxSessionsPerMedia {
+				m.sessionMu.Unlock()
+				return nil
+			}
+		} else if distinct >= req.MaxStreams {
 			m.sessionMu.Unlock()
 			return nil
 		}
@@ -1097,19 +1120,24 @@ func (m *Module) CanStartStream(userID string, maxStreams int) bool {
 	return m.GetActiveStreamCount(userID) < maxStreams
 }
 
-// CanStartStreamForMedia is like CanStartStream but never counts a stream against
-// the cap when the user already has an active session for the exact same media,
-// so a pre-flight check performed before a Range request for media already in
-// progress (e.g. a seek) never rejects it merely because the cap is otherwise
-// full. maxStreams<=0 disables the cap.
+// CanStartStreamForMedia is like CanStartStream but doesn't count a stream
+// against the cap when the user already has an active session for the exact
+// same media, up to maxSessionsPerMedia, so a pre-flight check performed
+// before a Range request for media already in progress (e.g. a seek) doesn't
+// reject it merely because the cap is otherwise full. Beyond that bound,
+// further concurrent requests for the same media are subject to the cap like
+// any other request. maxStreams<=0 disables the cap.
 func (m *Module) CanStartStreamForMedia(userID, mediaID string, maxStreams int) bool {
 	if maxStreams <= 0 {
 		return true
 	}
 	m.sessionMu.RLock()
 	defer m.sessionMu.RUnlock()
-	distinct, alreadyStreaming := m.countUserStreamsLocked(userID, mediaID)
-	return alreadyStreaming || distinct < maxStreams
+	distinct, sameMediaCount := m.countUserStreamsLocked(userID, mediaID)
+	if sameMediaCount > 0 {
+		return sameMediaCount < maxSessionsPerMedia
+	}
+	return distinct < maxStreams
 }
 
 // TrackProxyStream atomically enforces the per-user/per-IP concurrent-stream cap and,
@@ -1138,8 +1166,13 @@ func (m *Module) TrackProxyStreamForMedia(userID, mediaID string, maxStreams int
 	}
 	m.sessionMu.Lock()
 	if maxStreams > 0 {
-		distinct, alreadyStreaming := m.countUserStreamsLocked(userID, mediaID)
-		if !alreadyStreaming && distinct >= maxStreams {
+		distinct, sameMediaCount := m.countUserStreamsLocked(userID, mediaID)
+		if sameMediaCount > 0 {
+			if sameMediaCount >= maxSessionsPerMedia {
+				m.sessionMu.Unlock()
+				return nil, false
+			}
+		} else if distinct >= maxStreams {
 			m.sessionMu.Unlock()
 			return nil, false
 		}

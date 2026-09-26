@@ -3,6 +3,7 @@ package streaming
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -17,6 +18,15 @@ import (
 // a cap as low as 1 (the "basic"/"guest" default), aborting playback with 429.
 // See countUserStreamsLocked, startSession, GetActiveStreamCount, and
 // CanStartStreamForMedia.
+//
+// Regression tests below also cover the follow-up fix: the same-media
+// exemption from R00 is bounded by maxSessionsPerMedia, not unconditional.
+// Without a bound, once any session existed for a (user, mediaID) pair, every
+// subsequent request for that exact media was admitted forever regardless of
+// how many rows already existed — an unbounded resource-exhaustion vector on
+// routes exempt from the general rate limiter (see api/handlers/media.go's
+// StreamMedia). The bound still tolerates one stale-but-not-yet-reaped row
+// from an ordinary seek.
 
 // TestStartSession_SameMediaNeverCountsTwiceAtCapOne verifies that a second
 // session for media the user is already streaming is admitted even when the cap
@@ -147,26 +157,62 @@ func TestStream_OverlappingRangeRequestsSameMedia_BothSucceedAtCapOne(t *testing
 }
 
 // TestCanStartStreamForMedia_AlreadyStreamingBypassesCap verifies the exported
-// pre-flight helper: a request for media the user is already streaming is never
-// rejected, even when the cap is exhausted by that same media, but a different
-// media is rejected as expected.
+// pre-flight helper: a request for media the user is already streaming is
+// allowed even when the cap is exhausted by that same media, but only up to
+// maxSessionsPerMedia concurrent rows — beyond that bound the same media is
+// rejected too, so a single media ID can't be flooded with unlimited
+// concurrent sessions once any one of them exists. A different media is
+// rejected as expected once the (unrelated) cap is reached.
 func TestCanStartStreamForMedia_AlreadyStreamingBypassesCap(t *testing.T) {
 	m := newTestModule(t)
-	s := m.startSession(StreamRequest{
-		Path: "/v.mp4", MediaID: "media-1", UserID: testUser1, SessionID: "s1", MaxStreams: 1,
-	}, 0)
-	if s == nil {
-		t.Fatal("setup: session should start")
+
+	for i := 0; i < maxSessionsPerMedia; i++ {
+		if !m.CanStartStreamForMedia(testUser1, "media-1", 1) {
+			t.Fatalf("setup: same media should be allowed while under maxSessionsPerMedia (row %d)", i)
+		}
+		s := m.startSession(StreamRequest{
+			Path: "/v.mp4", MediaID: "media-1", UserID: testUser1, SessionID: fmt.Sprintf("s%d", i), MaxStreams: 1,
+		}, 0)
+		if s == nil {
+			t.Fatalf("setup: session %d for media-1 should start (within maxSessionsPerMedia)", i)
+		}
 	}
 
-	if !m.CanStartStreamForMedia(testUser1, "media-1", 1) {
-		t.Error("same media should always be allowed regardless of cap")
+	if m.CanStartStreamForMedia(testUser1, "media-1", 1) {
+		t.Error("same media beyond maxSessionsPerMedia must be rejected, not bypassed forever")
 	}
 	if m.CanStartStreamForMedia(testUser1, "media-2", 1) {
 		t.Error("a different media at cap=1 should not be allowed")
 	}
 	if !m.CanStartStreamForMedia(testUser1, "media-2", 0) {
 		t.Error("maxStreams=0 should always allow")
+	}
+}
+
+// TestStartSession_SameMediaFloodIsBounded is the direct regression test for
+// the unbounded-bypass bug: flooding a single (user, mediaID) pair with far
+// more concurrent requests than maxSessionsPerMedia must not admit them all —
+// only maxSessionsPerMedia rows may ever be concurrently active for one media,
+// even though same-media requests are otherwise exempt from the distinct-media
+// cap.
+func TestStartSession_SameMediaFloodIsBounded(t *testing.T) {
+	m := newTestModule(t)
+
+	const floodAttempts = maxSessionsPerMedia + 10
+	admitted := 0
+	for i := 0; i < floodAttempts; i++ {
+		s := m.startSession(StreamRequest{
+			Path: "/v.mp4", MediaID: "media-1", UserID: testUser1, SessionID: fmt.Sprintf("flood-%d", i), MaxStreams: 1,
+		}, 0)
+		if s != nil {
+			admitted++
+		}
+	}
+	if admitted != maxSessionsPerMedia {
+		t.Fatalf("admitted %d concurrent sessions for one media, want exactly maxSessionsPerMedia (%d)", admitted, maxSessionsPerMedia)
+	}
+	if got := len(m.activeSessions); got != maxSessionsPerMedia {
+		t.Fatalf("active session rows = %d, want %d", got, maxSessionsPerMedia)
 	}
 }
 
@@ -181,11 +227,19 @@ func TestTrackProxyStreamForMedia_DedupesByMedia(t *testing.T) {
 	if !ok {
 		t.Fatal("first proxy stream for media-1 should be allowed")
 	}
-	if _, ok := m.TrackProxyStreamForMedia(testUser1, "media-1", 1); !ok {
+	rel2, ok := m.TrackProxyStreamForMedia(testUser1, "media-1", 1)
+	if !ok {
 		t.Error("a second overlapping proxy request for the SAME media should be allowed at cap=1")
+	}
+	// A third concurrent proxy request for the SAME media exceeds
+	// maxSessionsPerMedia and must be rejected — the same-media exemption is
+	// bounded, not unlimited.
+	if _, ok := m.TrackProxyStreamForMedia(testUser1, "media-1", 1); ok {
+		t.Error("a proxy request for the SAME media beyond maxSessionsPerMedia should be rejected")
 	}
 	if _, ok := m.TrackProxyStreamForMedia(testUser1, "media-2", 1); ok {
 		t.Error("a proxy request for a DIFFERENT media at cap=1 should be rejected")
 	}
 	rel1()
+	rel2()
 }

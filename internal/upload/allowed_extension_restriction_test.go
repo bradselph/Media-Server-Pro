@@ -75,3 +75,64 @@ func TestIsAllowedExtension_ConfiguredEntryCaseInsensitive(t *testing.T) {
 		t.Error(".mp4 should match a configured entry regardless of case")
 	}
 }
+
+// TestIsAllowedExtension_ShippedDefaultConfigFallsBackToBuiltins pins the
+// regression a reviewer flagged in the R05 fix: config.NewManager (and every
+// existing config.json that predates a custom setting) starts from
+// defaultUploadsConfig's non-empty 13-extension list, not an empty one. Using
+// newTestModule directly, with no override at all, reproduces exactly that
+// "fresh/existing install, admin never touched the setting" state. Extensions
+// that the built-in fallback has always accepted, but that are missing from
+// the shipped default list, must still be allowed -- otherwise every install
+// silently rejects .ts/.opus/etc. uploads that worked before the R05 fix.
+func TestIsAllowedExtension_ShippedDefaultConfigFallsBackToBuiltins(t *testing.T) {
+	m := newTestModule(t) // no setAllowedExtensions call: exercises the real shipped default
+
+	previouslyWorking := []string{
+		".ts", ".m4v", ".mpg", ".mpeg", ".3gp", ".m2ts", ".vob", ".ogv",
+		".opus", ".wma", ".alac", ".ape", ".aiff", ".mka",
+	}
+	for _, ext := range previouslyWorking {
+		if !m.isAllowedExtension(ext) {
+			t.Errorf("%s should be allowed under the shipped default config, as it was before the R05 fix", ext)
+		}
+	}
+	if m.isAllowedExtension(".exe") {
+		t.Error(".exe should still be rejected: not a recognized media extension")
+	}
+}
+
+// TestIsAllowedExtension_ReconfiguredShippedDefaultFallsBackToBuiltins covers
+// an admin who saves the settings form without changing the shipped default
+// list (so it round-trips through config.json unchanged): behavior must stay
+// identical to leaving the setting untouched.
+func TestIsAllowedExtension_ReconfiguredShippedDefaultFallsBackToBuiltins(t *testing.T) {
+	m := newTestModule(t)
+	setAllowedExtensions(t, m, []string{
+		".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm",
+		".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a",
+	})
+
+	if !m.isAllowedExtension(".ts") {
+		t.Error(".ts should be allowed: the configured list is still exactly the shipped default")
+	}
+	if !m.isAllowedExtension(".opus") {
+		t.Error(".opus should be allowed: the configured list is still exactly the shipped default")
+	}
+}
+
+// TestIsAllowedExtension_NarrowerThanShippedDefaultStillNarrows guards against
+// the shipped-default detection from over-firing: a genuinely narrower list
+// (fewer entries than the shipped default) must still be treated as an
+// authoritative, restrictive allow-list, not mistaken for "unconfigured".
+func TestIsAllowedExtension_NarrowerThanShippedDefaultStillNarrows(t *testing.T) {
+	m := newTestModule(t)
+	setAllowedExtensions(t, m, []string{".mp4", ".mkv"})
+
+	if !m.isAllowedExtension(".mp4") {
+		t.Error(".mp4 should be allowed: it is in the configured list")
+	}
+	if m.isAllowedExtension(".mp3") {
+		t.Error(".mp3 should be rejected: configured list is non-empty and narrower than the shipped default")
+	}
+}

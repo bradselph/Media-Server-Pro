@@ -1624,6 +1624,23 @@ step_write_env_file() {
   a_temp=$(_abs "$DIR_TEMP")
   a_backup=$(_abs "$DIR_BACKUP")
 
+  # BACKUP_DIR is about to be (re)written below. If it points somewhere other
+  # than the historical default (<data>/backups — where every backup landed
+  # before BACKUP_DIR was honored) and that default still holds archives,
+  # warn now rather than let them silently stop showing up in restore/cleanup.
+  # This can bite an existing install on any --resume run: the "Backups dir"
+  # prompt has always been asked and saved to install.answers, so an unrelated
+  # change (e.g. SERVER_PORT) can be the first time that saved answer actually
+  # gets written into .env. The backup module logs the same warning at server
+  # startup as a second line of defense in case .env is edited by hand.
+  if [[ "$a_backup" != "$a_data/backups" ]]; then
+    local legacy_backup_count
+    legacy_backup_count=$(find "$a_data/backups" -maxdepth 1 -name '*.zip' -type f 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "${legacy_backup_count:-0}" -gt 0 ]]; then
+      log_warn "BACKUP_DIR is changing to $a_backup, but $legacy_backup_count backup archive(s) still exist in the previous default location ($a_data/backups). They will not be reachable via restore/cleanup until moved there."
+    fi
+  fi
+
   # If we couldn't hash the admin password locally, drop it into the .env as
   # ADMIN_PASSWORD so the server hashes it on first boot (and then clears it).
   local admin_hash_block=""

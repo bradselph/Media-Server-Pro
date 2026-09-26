@@ -33,6 +33,13 @@ func (m *Module) GenerateHLS(ctx context.Context, params *GenerateHLSParams) (*m
 	jobID := params.MediaID
 	outputDir := filepath.Join(m.cacheDir, jobID)
 	resolved := m.resolveHLSQualities(ctx, &resolveQualitiesParams{MediaPath: params.MediaPath, Qualities: params.Qualities})
+	if len(resolved) == 0 {
+		// No quality profile survived resolution (none enabled in config, or
+		// filterQualitiesBySourceHeight/resolveHLSQualities otherwise emptied
+		// the list) — fail clearly before touching job state (C23) instead of
+		// producing a "completed" job whose master.m3u8 has zero variants.
+		return nil, fmt.Errorf("no enabled HLS quality profiles configured")
+	}
 
 	m.jobsMu.Lock()
 	defer m.jobsMu.Unlock()

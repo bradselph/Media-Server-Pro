@@ -102,7 +102,22 @@ func (r *MediaReportRepository) UpdateStatus(ctx context.Context, id, status, re
 		return fmt.Errorf("update media report status: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("%w: %s", repositories.ErrMediaReportNotFound, id)
+		// MySQL reports changed rows (not matched rows) for this project's DSN
+		// (no CLIENT_FOUND_ROWS), so RowsAffected==0 here means either the id
+		// doesn't exist or the row already had these exact status/resolved_by/
+		// resolved_at values (e.g. a retried PATCH). Only the former should be
+		// ErrMediaReportNotFound, so check existence directly instead of
+		// inferring it from the update's affected-row count.
+		var exists int64
+		if err := r.db.WithContext(ctx).
+			Model(&mediaReportRow{}).
+			Where("id = ?", id).
+			Count(&exists).Error; err != nil {
+			return fmt.Errorf("verify media report exists: %w", err)
+		}
+		if exists == 0 {
+			return fmt.Errorf("%w: %s", repositories.ErrMediaReportNotFound, id)
+		}
 	}
 	return nil
 }

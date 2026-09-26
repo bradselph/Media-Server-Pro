@@ -35,6 +35,23 @@ var (
 
 	// Dangerous patterns in filenames (include backslash for Windows path traversal)
 	dangerousPatterns = regexp.MustCompile(`[<>:"|?*\\\x00-\x1f]`)
+
+	// shippedDefaultAllowedExtensions mirrors config.defaultUploadsConfig()'s
+	// AllowedExtensions (internal/config/defaults.go). config.Manager.Load()
+	// starts every install from that default and only overwrites keys present
+	// in a saved config.json, so an admin who has never opened
+	// Settings -> Uploads -> Allowed Extensions ends up with exactly this
+	// slice at runtime -- indistinguishable, from here, from an admin who
+	// deliberately re-entered the same 13 extensions. isAllowedExtension
+	// treats that case the same as "unconfigured" (see isShippedDefault)
+	// so previously-supported types like .ts and .opus keep working out of
+	// the box for every existing and fresh install, not just ones where an
+	// admin has actually customized the list.
+	shippedDefaultAllowedExtensions = map[string]bool{
+		".mp4": true, ".mkv": true, ".avi": true, ".mov": true, ".wmv": true,
+		".flv": true, ".webm": true, ".mp3": true, ".wav": true, ".flac": true,
+		".aac": true, ".ogg": true, ".m4a": true,
+	}
 )
 
 // UploadStatus represents the state of an upload (replaces primitive string).
@@ -614,12 +631,27 @@ func (m *Module) sanitizeCategory(category string) string {
 // uploads.allowed_extensions config is authoritative: it is the only
 // gate consulted, so an admin can narrow accepted types below the
 // built-in lists (not just add to them). The built-in video/audio
-// lists are only used as the default when no list has been configured
-// at all, matching the shipped default (see defaultUploadsConfig).
+// lists are used as the default both when no list has been configured
+// at all (len == 0) and when the configured list is still exactly the
+// shipped default (see isShippedDefault) -- otherwise every existing and
+// fresh install, which starts with that non-empty default, would silently
+// lose previously-supported types (.ts, .opus, ...) the moment the process
+// starts, without any admin ever touching the setting.
+//
+// NOTE on the len == 0 branch: clearing the Allowed Extensions textarea in
+// the admin UI posts an empty list, which still falls back to the permissive
+// built-in lists here rather than rejecting everything. That is a known,
+// separate scoping decision (not addressed by this change): treating an
+// explicit empty list as "reject all uploads" would need a distinct
+// "use defaults" sentinel so it can be told apart from a list that is empty
+// because it was never configured, plus corresponding admin-UI and docs
+// changes, both outside this fix's scope. See allowed_extension_restriction_test.go's
+// TestIsAllowedExtension_EmptyConfigFallsBackToBuiltins, which pins the
+// current, intentional behavior.
 func (m *Module) isAllowedExtension(ext string) bool {
 	cfg := m.config.Get()
 
-	if len(cfg.Uploads.AllowedExtensions) == 0 {
+	if len(cfg.Uploads.AllowedExtensions) == 0 || isShippedDefault(cfg.Uploads.AllowedExtensions) {
 		return videoExtensions[ext] || helpers.IsAudioExtension(ext)
 	}
 
@@ -629,6 +661,29 @@ func (m *Module) isAllowedExtension(ext string) bool {
 		}
 	}
 	return false
+}
+
+// isShippedDefault reports whether allowed, once normalized, is exactly the
+// shippedDefaultAllowedExtensions set -- same size, no extras, no misses. It
+// is how isAllowedExtension distinguishes "admin never configured anything"
+// from "admin deliberately configured a narrower list": since the config
+// loader cannot tell those two apart (both produce the same non-empty
+// slice), an admin who happens to re-enter exactly the 13 shipped-default
+// extensions (and no others) will also get the permissive built-in fallback
+// rather than a narrowed list. That is an accepted, narrow edge case.
+func isShippedDefault(allowed []string) bool {
+	if len(allowed) != len(shippedDefaultAllowedExtensions) {
+		return false
+	}
+	seen := make(map[string]bool, len(allowed))
+	for _, ext := range allowed {
+		norm := strings.ToLower(normalizeExtension(ext))
+		if !shippedDefaultAllowedExtensions[norm] || seen[norm] {
+			return false
+		}
+		seen[norm] = true
+	}
+	return true
 }
 
 // normalizeExtension ensures ext has a leading dot so admin-entered values

@@ -2,7 +2,6 @@ package hls
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -21,9 +20,14 @@ const headerCacheControl = "Cache-Control"
 // so HLS-aware clients know to retry.
 var ErrNotReady = errors.New("HLS job not yet ready")
 
-// ensureVariantPlaylistExists ensures the variant playlist exists, performing
-// lazy transcode if enabled when the playlist is missing.
-func (m *Module) ensureVariantPlaylistExists(ctx context.Context, job *models.HLSJob, quality string) (string, error) {
+// ensureVariantPlaylistExists ensures the variant playlist exists. In lazy
+// transcode mode, when the playlist is missing it dispatches (or joins) a
+// background on-demand transcode of that quality and returns ErrNotReady
+// immediately — it never blocks the caller for the encode (X01). The caller
+// (ServeVariantPlaylist) maps ErrNotReady to a 503 so the player retries
+// shortly; by the time it does, either the background encode has finished
+// (the fast os.Stat path below succeeds) or it is still running (another 503).
+func (m *Module) ensureVariantPlaylistExists(job *models.HLSJob, quality string) (string, error) {
 	// Reject quality values that contain path traversal components. The router
 	// splits on '/' so a literal slash cannot appear, but a single ".." is
 	// enough to escape the job directory. This mirrors the guard in ServeSegment.
@@ -47,14 +51,11 @@ func (m *Module) ensureVariantPlaylistExists(ctx context.Context, job *models.HL
 		return "", fmt.Errorf("variant playlist not found: %s", quality)
 	}
 
-	if err := m.lazyTranscodeQuality(ctx, job, quality); err != nil {
-		return "", fmt.Errorf("on-demand transcode failed for %s: %w", quality, err)
-	}
-
-	if _, err := os.Stat(playlistPath); err != nil {
-		return "", fmt.Errorf("variant playlist not found after on-demand transcode: %s", quality)
-	}
-	return playlistPath, nil
+	// Never block this request for the encode: kick off (or join, via
+	// triggerLazyTranscode's TryLock-based dedup) a background, low-priority
+	// transcode of this quality and tell the caller to retry shortly.
+	m.triggerLazyTranscode(job, quality)
+	return "", fmt.Errorf("%w: quality %s is being transcoded on demand", ErrNotReady, quality)
 }
 
 // rewritePlaylistLines rewrites non-comment, non-empty lines to absolute CDN URLs.
@@ -181,14 +182,16 @@ type VariantPlaylistParams struct {
 }
 
 // ServeVariantPlaylist serves a variant HLS playlist.
-// In lazy transcode mode, if the requested quality hasn't been transcoded yet, it will be transcoded on-demand.
+// In lazy transcode mode, if the requested quality hasn't been transcoded yet,
+// a background on-demand transcode is dispatched and this returns ErrNotReady
+// (503) immediately — see ensureVariantPlaylistExists/triggerLazyTranscode.
 func (m *Module) ServeVariantPlaylist(w http.ResponseWriter, r *http.Request, p VariantPlaylistParams) error {
 	job, err := m.GetJobStatus(p.JobID)
 	if err != nil {
 		return err
 	}
 
-	playlistPath, err := m.ensureVariantPlaylistExists(r.Context(), job, p.Quality)
+	playlistPath, err := m.ensureVariantPlaylistExists(job, p.Quality)
 	if err != nil {
 		return err
 	}

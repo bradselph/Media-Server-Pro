@@ -1,7 +1,9 @@
 package backup
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"media-server-pro/internal/config"
@@ -103,5 +105,80 @@ func TestResolveBackupPath_UsesConfiguredBackupDir(t *testing.T) {
 	want := filepath.Join(custom, "backup_123.zip")
 	if got != want {
 		t.Errorf("resolveBackupPath() = %q, want %q", got, want)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// BackupDir
+// ---------------------------------------------------------------------------
+
+func TestModule_BackupDir_ReturnsResolvedDir(t *testing.T) {
+	custom := filepath.Join(t.TempDir(), "custom-backups")
+	m := &Module{backupDir: custom}
+
+	if got := m.BackupDir(); got != custom {
+		t.Errorf("BackupDir() = %q, want %q", got, custom)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// legacyBackupOrphanWarning
+//
+// Regression coverage for the R02 follow-up: once BACKUP_DIR redirects
+// storage, archives left behind at the historical <dataDir>/backups location
+// (e.g. from before BACKUP_DIR was set) must not go unnoticed.
+// ---------------------------------------------------------------------------
+
+func TestLegacyBackupOrphanWarning_NoWarningWhenDirsMatch(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := legacyBackupDir(dataDir)
+
+	if got := legacyBackupOrphanWarning(dataDir, backupDir); got != "" {
+		t.Errorf("legacyBackupOrphanWarning() = %q, want empty (backupDir is the legacy default)", got)
+	}
+}
+
+func TestLegacyBackupOrphanWarning_NoWarningWhenLegacyDirEmpty(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := filepath.Join(t.TempDir(), "offsite-backups")
+
+	if got := legacyBackupOrphanWarning(dataDir, backupDir); got != "" {
+		t.Errorf("legacyBackupOrphanWarning() = %q, want empty (legacy dir has no archives)", got)
+	}
+}
+
+func TestLegacyBackupOrphanWarning_WarnsWhenLegacyDirHasArchives(t *testing.T) {
+	dataDir := t.TempDir()
+	legacy := legacyBackupDir(dataDir)
+	if err := os.MkdirAll(legacy, 0o750); err != nil {
+		t.Fatalf("failed to create legacy dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "backup_20240101_000000.zip"), []byte("x"), 0o640); err != nil {
+		t.Fatalf("failed to write fake archive: %v", err)
+	}
+	backupDir := filepath.Join(t.TempDir(), "offsite-backups")
+
+	got := legacyBackupOrphanWarning(dataDir, backupDir)
+	if got == "" {
+		t.Fatal("legacyBackupOrphanWarning() = \"\", want a non-empty warning")
+	}
+	if !strings.Contains(got, legacy) || !strings.Contains(got, backupDir) {
+		t.Errorf("legacyBackupOrphanWarning() = %q, want it to mention both %q and %q", got, legacy, backupDir)
+	}
+}
+
+func TestLegacyBackupOrphanWarning_IgnoresNonZipFiles(t *testing.T) {
+	dataDir := t.TempDir()
+	legacy := legacyBackupDir(dataDir)
+	if err := os.MkdirAll(legacy, 0o750); err != nil {
+		t.Fatalf("failed to create legacy dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, ".gitkeep"), []byte(""), 0o640); err != nil {
+		t.Fatalf("failed to write placeholder file: %v", err)
+	}
+	backupDir := filepath.Join(t.TempDir(), "offsite-backups")
+
+	if got := legacyBackupOrphanWarning(dataDir, backupDir); got != "" {
+		t.Errorf("legacyBackupOrphanWarning() = %q, want empty (no .zip archives present)", got)
 	}
 }

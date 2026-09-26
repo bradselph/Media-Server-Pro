@@ -73,7 +73,7 @@ type Module struct {
 	jobsMu             sync.RWMutex
 	transMu            sync.Mutex   // guards transActive for dynamic concurrency limit
 	transActive        int          // current number of active transcodes
-	waitingHigh        atomic.Int32 // count of high-priority acquireTranscodeSem/lazyTranscodeQuality spins currently waiting for a slot; tryAcquireTranscode makes low-priority callers yield while this is > 0 so a viewer's request always wins the next free slot, even when EffectiveConcurrentLimit() == 1
+	waitingHigh        atomic.Int32 // count of high-priority acquireTranscodeSem spins currently waiting for a slot; tryAcquireTranscode makes low-priority callers yield while this is > 0 so a viewer's request always wins the next free slot, even when EffectiveConcurrentLimit() == 1. Background lazy-transcode dispatch (runLazyTranscode) always spins low priority and never contributes here.
 	healthy            bool
 	healthMsg          string
 	healthStatus       string // tri-state for Health(): healthy | degraded | unhealthy
@@ -84,13 +84,16 @@ type Module struct {
 	hwEncoder          string // resolved hardware video encoder (e.g. "h264_nvenc"); "" = software libx264
 	hwDevice           string // VAAPI render device path when hwEncoder is "h264_vaapi"
 	accessTracker      *AccessTracker
-	activeJobs         sync.WaitGroup     // Tracks active transcoding jobs for graceful shutdown
-	stopping           atomic.Bool        // Set to true during Stop() to distinguish cancellation from real failures
-	qualityLocks       sync.Map           // Per-quality locks for lazy transcoding (key: "jobID/quality" → *sync.Mutex)
-	lazyWg             sync.Map           // Per-job WaitGroup for in-flight lazy transcodes (key: jobID → *sync.WaitGroup)
-	lazyCancels        sync.Map           // Per-job cancel funcs for in-flight lazy transcodes (key: jobID → *sync.Map of unique-key → context.CancelFunc)
-	jobPriority        sync.Map           // Per-job transcode priority (key: jobID → *atomic.Bool; true = high/user-triggered). Read on every acquireTranscodeSem/lazyTranscodeQuality tick so a job queued at low priority (background pre-generation) can be upgraded mid-spin — see upgradeJobPriority.
-	mediaInputResolver MediaInputResolver // resolves S3 media keys to ffmpeg-readable URLs
+	activeJobs         sync.WaitGroup                                                      // Tracks active transcoding jobs for graceful shutdown
+	stopping           atomic.Bool                                                         // Set to true during Stop() to distinguish cancellation from real failures
+	qualityLocks       sync.Map                                                            // Per-quality locks for lazy transcoding, deduping triggerLazyTranscode via TryLock (key: "jobID/quality" → *sync.Mutex)
+	lazyWg             sync.Map                                                            // Per-job WaitGroup for in-flight lazy transcodes (key: jobID → *sync.WaitGroup)
+	lazyCancels        sync.Map                                                            // Per-job cancel funcs for in-flight lazy transcodes (key: jobID → *sync.Map of unique-key → context.CancelFunc)
+	jobPriority        sync.Map                                                            // Per-job transcode priority (key: jobID → *atomic.Bool; true = high/user-triggered). Read on every acquireTranscodeSem tick so a job queued at low priority (background pre-generation) can be upgraded mid-spin — see upgradeJobPriority.
+	lazyEncode         func(ctx context.Context, job *models.HLSJob, quality string) error // overridable in tests; nil means runLazyTranscode uses defaultLazyEncode (real ffmpeg)
+	mediaInputResolver MediaInputResolver                                                  // resolves S3 media keys to ffmpeg-readable URLs
+	ctx                context.Context                                                     // module-lifecycle context for background work not tied to any one HTTP request (e.g. triggerLazyTranscode); set in Start(), canceled in Stop()
+	cancel             context.CancelFunc
 }
 
 // MediaInputResolver converts a stored media path (possibly an S3 key) to a
@@ -166,7 +169,7 @@ func (m *Module) LowPriorityCapacity() int {
 // EffectiveConcurrentLimit(). Low-priority (background pre-generation)
 // callers are capped at LowPriorityCapacity() and, on top of that, yield
 // outright while any high-priority caller is actively spinning for a slot
-// (waitingHigh > 0) — see acquireTranscodeSem/lazyTranscodeQuality — so a
+// (waitingHigh > 0) — see acquireTranscodeSem — so a
 // viewer's request always wins the next free slot even at
 // EffectiveConcurrentLimit() == 1, where there's no spare slot to reserve.
 func (m *Module) tryAcquireTranscode(highPriority bool) bool {
@@ -192,9 +195,9 @@ func (m *Module) releaseTranscode() {
 
 // setJobPriority records jobID's transcode priority when its goroutine is
 // first created (enqueueNewHLSJobLocked, resumeInterruptedJobs).
-// acquireTranscodeSem/lazyTranscodeQuality re-read this on every spin-loop
-// tick, so a background pre-generation job (created low priority) can later
-// be promoted without recreating its goroutine — see upgradeJobPriority.
+// acquireTranscodeSem re-reads this on every spin-loop tick, so a background
+// pre-generation job (created low priority) can later be promoted without
+// recreating its goroutine — see upgradeJobPriority.
 func (m *Module) setJobPriority(jobID string, highPriority bool) {
 	flag := new(atomic.Bool)
 	flag.Store(highPriority)
@@ -239,6 +242,14 @@ func (m *Module) Start(_ context.Context) error {
 
 	m.repo = mysqlrepo.NewHLSJobRepository(m.dbModule.GORM())
 	cfg := m.config.Get()
+
+	// Background lifecycle context for work not tied to any single HTTP
+	// request — currently just triggerLazyTranscode's on-demand dispatch.
+	// Set unconditionally (even in disabled/degraded mode below) so it is
+	// never nil for the lifetime of the module; canceled in Stop().
+	bgCtx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel stored in m.cancel, called by Stop()
+	m.ctx = bgCtx
+	m.cancel = cancel
 
 	if m.applyStartupHealthDisabled(cfg) {
 		return nil
@@ -465,6 +476,14 @@ func (m *Module) Stop(ctx context.Context) error {
 	m.log.Info("Stopping HLS module...")
 
 	m.stopping.Store(true)
+	// Cancel the module-lifecycle context so any in-flight background lazy
+	// transcodes (triggerLazyTranscode/runLazyTranscode — not covered by the
+	// per-job jobCancels loop below, since they have no job-level entry) abort
+	// their ffmpeg processes instead of running to completion. activeJobs.Wait()
+	// below already accounts for them (runLazyTranscode's dispatch increments it).
+	if m.cancel != nil {
+		m.cancel()
+	}
 
 	m.jobsMu.Lock()
 	for _, job := range m.jobs {

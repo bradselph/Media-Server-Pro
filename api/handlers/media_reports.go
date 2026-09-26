@@ -3,6 +3,7 @@ package handlers
 import (
 	cryptorand "crypto/rand"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -214,6 +215,10 @@ func (h *Handler) UpdateMediaReportStatus(c *gin.Context) {
 		}
 	}
 	if err := h.mediaReports.UpdateStatus(c.Request.Context(), id, status, resolvedBy); err != nil {
+		if errors.Is(err, repositories.ErrMediaReportNotFound) {
+			writeError(c, http.StatusNotFound, "Report not found")
+			return
+		}
 		h.log.Error("UpdateMediaReportStatus: %v", err)
 		writeError(c, http.StatusInternalServerError, "Failed to update report")
 		return

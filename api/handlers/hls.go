@@ -298,6 +298,11 @@ func (h *Handler) withResolvedHLSJob(c *gin.Context, jobID, notFoundMsg string, 
 		}
 		switch {
 		case errors.Is(err, hls.ErrNotReady):
+			// Covers both the master-playlist "not Available yet" case and a
+			// lazy-transcode variant/segment whose on-demand encode was just
+			// dispatched in the background (see ensureVariantPlaylistExists) —
+			// either way the player should retry shortly rather than give up.
+			c.Header(headerRetryAfter, "5")
 			writeError(c, http.StatusServiceUnavailable, "HLS transcoding in progress, retry shortly")
 		case errors.Is(err, os.ErrNotExist):
 			writeError(c, http.StatusNotFound, notFoundMsg)

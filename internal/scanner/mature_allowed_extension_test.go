@@ -86,3 +86,39 @@ func TestMatureIsAllowedExtension_ConfiguredEntryCaseInsensitive(t *testing.T) {
 		t.Error(".mp4 should match a configured entry regardless of case")
 	}
 }
+
+// TestMatureIsAllowedExtension_ShippedDefaultConfigFallsBackToBuiltins pins
+// the same regression as internal/upload's identical test: newTestScanner,
+// with no override, starts from defaultUploadsConfig's non-empty
+// 13-extension list (internal/config/defaults.go), not an empty one -- the
+// real state of every fresh or pre-existing install. The periodic scan must
+// still cover every extension internal/upload accepts by default, or the two
+// silently drift apart again (the exact divergence R12 fixed).
+func TestMatureIsAllowedExtension_ShippedDefaultConfigFallsBackToBuiltins(t *testing.T) {
+	s := newTestScanner(t) // no override: exercises the real shipped default
+
+	previouslyScanned := []string{
+		".ts", ".m4v", ".mpg", ".mpeg", ".3gp", ".m2ts", ".vob", ".ogv",
+		".opus", ".wma", ".alac", ".ape", ".aiff", ".mka",
+	}
+	for _, ext := range previouslyScanned {
+		if !s.isAllowedExtension(ext) {
+			t.Errorf("%s should be scannable under the shipped default config", ext)
+		}
+	}
+}
+
+// TestMatureIsAllowedExtension_NarrowerThanShippedDefaultStillNarrows guards
+// against the shipped-default detection over-firing: a genuinely narrower
+// configured list must still be authoritative.
+func TestMatureIsAllowedExtension_NarrowerThanShippedDefaultStillNarrows(t *testing.T) {
+	s := newTestScanner(t)
+	setScannerAllowedExtensions(t, s, []string{".mp4", ".mkv"})
+
+	if !s.isAllowedExtension(".mp4") {
+		t.Error(".mp4 should be scannable: it is in the configured list")
+	}
+	if s.isAllowedExtension(".mp3") {
+		t.Error(".mp3 should not be scannable: configured list is non-empty and narrower than the shipped default")
+	}
+}
