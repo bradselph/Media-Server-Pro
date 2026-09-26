@@ -127,14 +127,43 @@ func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 }
 
 func (m *Module) acquireTranscodeSem(ctx context.Context, job *models.HLSJob) bool {
-	// Spin-wait with context check — the dynamic semaphore doesn't support channel-based select.
+	// Re-read job.ID's tracked priority on every tick (rather than capturing it
+	// once) so a job queued at low priority (background pre-generation) that
+	// gets upgraded mid-spin by upgradeJobPriority immediately starts
+	// contending for a slot as high priority.
+	if m.waitForTranscodeSlot(ctx, func() bool { return m.isJobHighPriority(job.ID) }) {
+		return true
+	}
+	m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusCanceled, ErrorMsg: "Context canceled", Progress: 0})
+	return false
+}
+
+// waitForTranscodeSlot spin-waits (the dynamic semaphore doesn't support
+// channel-based select) until a transcode slot is available or ctx is done.
+// priorityFn is re-evaluated on every tick, not just once, so a caller whose
+// priority is upgraded while it's already spinning (see upgradeJobPriority)
+// picks that up immediately. While priorityFn reports high priority, the
+// caller is registered on m.waitingHigh for the entire remaining spin (not
+// just the tick that observed it) so low-priority acquisitions yield to it —
+// see tryAcquireTranscode.
+func (m *Module) waitForTranscodeSlot(ctx context.Context, priorityFn func() bool) bool {
+	markedHigh := false
+	defer func() {
+		if markedHigh {
+			m.waitingHigh.Add(-1)
+		}
+	}()
 	for {
-		if m.tryAcquireTranscode() {
+		highPriority := priorityFn()
+		if highPriority && !markedHigh {
+			m.waitingHigh.Add(1)
+			markedHigh = true
+		}
+		if m.tryAcquireTranscode(highPriority) {
 			return true
 		}
 		select {
 		case <-ctx.Done():
-			m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusCanceled, ErrorMsg: "Context canceled", Progress: 0})
 			return false
 		case <-time.After(250 * time.Millisecond):
 			// retry
@@ -401,13 +430,11 @@ func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, q
 	cancelSet.Store(cancelKey, cancel)
 	defer cancelSet.Delete(cancelKey)
 
-	// Acquire dynamic semaphore with context awareness.
-	for !m.tryAcquireTranscode() {
-		select {
-		case <-lazyCtx.Done():
-			return lazyCtx.Err()
-		case <-time.After(250 * time.Millisecond):
-		}
+	// Acquire dynamic semaphore with context awareness. Lazy transcodes are
+	// always a live, user-triggered request (a viewer's player asked for a
+	// quality on demand), so this always spins as high priority.
+	if !m.waitForTranscodeSlot(lazyCtx, func() bool { return true }) {
+		return lazyCtx.Err()
 	}
 	defer m.releaseTranscode()
 

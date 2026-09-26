@@ -15,6 +15,10 @@ type GenerateHLSParams struct {
 	MediaPath string
 	MediaID   string
 	Qualities []string
+	// HighPriority marks this as a live, user-triggered request (e.g. a viewer's
+	// player) rather than background pre-generation, so its transcode goroutine
+	// competes for a slot ahead of low-priority callers — see tryAcquireTranscode.
+	HighPriority bool
 }
 
 // GenerateHLS starts HLS transcoding for a media file.
@@ -33,11 +37,12 @@ func (m *Module) GenerateHLS(ctx context.Context, params *GenerateHLSParams) (*m
 	m.jobsMu.Lock()
 	defer m.jobsMu.Unlock()
 	return m.createOrReuseHLSJobLocked(&createOrReuseHLSJobParams{
-		Ctx:       ctx,
-		JobID:     jobID,
-		MediaPath: params.MediaPath,
-		OutputDir: outputDir,
-		Qualities: resolved,
+		Ctx:          ctx,
+		JobID:        jobID,
+		MediaPath:    params.MediaPath,
+		OutputDir:    outputDir,
+		Qualities:    resolved,
+		HighPriority: params.HighPriority,
 	})
 }
 
@@ -157,6 +162,9 @@ func (m *Module) tryResolveExistingJob(mediaID string) (*models.HLSJob, bool) {
 type CheckOrGenerateHLSParams struct {
 	MediaPath string
 	MediaID   string
+	// HighPriority marks this as a live, user-triggered request — see
+	// GenerateHLSParams.HighPriority.
+	HighPriority bool
 }
 
 // CheckOrGenerateHLS checks if HLS exists for media path, auto-generates if configured.
@@ -165,6 +173,12 @@ func (m *Module) CheckOrGenerateHLS(ctx context.Context, params *CheckOrGenerate
 		return nil, fmt.Errorf("CheckOrGenerateHLSParams cannot be nil")
 	}
 	if job, ok := m.tryResolveExistingJob(params.MediaID); ok {
+		// A background pre-generation cycle may have already queued this item at
+		// low priority; a viewer requesting it now should not wait behind the
+		// rest of that batch, so promote the still-pending job in place.
+		if params.HighPriority && job.Status == models.HLSStatusPending {
+			m.upgradeJobPriority(job.ID)
+		}
 		return job, nil
 	}
 	cfg := m.config.Get()
@@ -172,7 +186,7 @@ func (m *Module) CheckOrGenerateHLS(ctx context.Context, params *CheckOrGenerate
 		return nil, fmt.Errorf("HLS not available and auto-generation is disabled")
 	}
 	m.log.Info("Auto-generating HLS for: %s", params.MediaPath)
-	job, err := m.GenerateHLS(ctx, &GenerateHLSParams{MediaPath: params.MediaPath, MediaID: params.MediaID, Qualities: nil})
+	job, err := m.GenerateHLS(ctx, &GenerateHLSParams{MediaPath: params.MediaPath, MediaID: params.MediaID, Qualities: nil, HighPriority: params.HighPriority})
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HLS generation: %w", err)
 	}

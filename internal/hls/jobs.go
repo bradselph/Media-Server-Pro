@@ -41,6 +41,9 @@ type createOrReuseHLSJobParams struct {
 	MediaPath string
 	OutputDir string
 	Qualities []string
+	// HighPriority marks this as a live, user-triggered request — see
+	// GenerateHLSParams.HighPriority.
+	HighPriority bool
 }
 
 // updateJobStatusParams holds arguments for updating an HLS job's status.
@@ -95,6 +98,12 @@ func (m *Module) existingJobOrRetryErrorLocked(p *createOrReuseHLSJobParams) (*m
 		// Job is already queued with an active goroutine. Return it directly to
 		// avoid spawning a second goroutine that would overwrite jobCancels/jobDone
 		// and race against the original transcoding to the same output directory.
+		// If this caller is high priority (e.g. a viewer's GenerateHLS request hit
+		// a job a background pregen cycle already queued at low priority), promote
+		// it so its spin loop starts contending for a slot as high priority.
+		if p.HighPriority {
+			m.upgradeJobPriority(existing.ID)
+		}
 		return existing, true, nil
 	case models.HLSStatusFailed:
 		if existing.FailCount >= m.maxFailures() {
@@ -162,6 +171,9 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 	}
 	jobCtx, jobCancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.jobCancels for external cancellation
 	doneCh := make(chan struct{})
+	// Register the job's transcode priority before its goroutine can possibly
+	// call acquireTranscodeSem, so isJobHighPriority never misses on a race.
+	m.setJobPriority(p.JobID, p.HighPriority)
 	m.jobs[p.JobID] = job
 	m.jobCancels[p.JobID] = jobCancel
 	m.jobDone[p.JobID] = doneCh

@@ -52,7 +52,9 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 		}
 	}
 
-	job, err := h.hls.CheckOrGenerateHLS(c.Request.Context(), &hls.CheckOrGenerateHLSParams{MediaPath: absPath, MediaID: id})
+	// User-facing: the viewer is waiting on this stream, so it must not queue
+	// behind background pre-generation — see hls.GenerateHLSParams.HighPriority.
+	job, err := h.hls.CheckOrGenerateHLS(c.Request.Context(), &hls.CheckOrGenerateHLSParams{MediaPath: absPath, MediaID: id, HighPriority: true})
 	if err != nil {
 		h.log.Debug("HLS check/generate failed for media %s: %v", id, err)
 		writeError(c, http.StatusNotFound, "HLS stream not available")
@@ -162,7 +164,9 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 			return
 		}
 	}
-	job, err := h.hls.GenerateHLS(c.Request.Context(), &hls.GenerateHLSParams{MediaPath: absPath, MediaID: id, Qualities: qualities})
+	// User-facing: the viewer explicitly requested this, so it must not queue
+	// behind background pre-generation — see hls.GenerateHLSParams.HighPriority.
+	job, err := h.hls.GenerateHLS(c.Request.Context(), &hls.GenerateHLSParams{MediaPath: absPath, MediaID: id, Qualities: qualities, HighPriority: true})
 	if err != nil {
 		h.log.Error("%v", err)
 		// Track HLS request errors so dashboards surface a transcoder problem
