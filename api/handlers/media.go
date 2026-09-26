@@ -613,7 +613,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 					maxStreams := h.getUserStreamLimit(user.Type)
 					// Atomically enforce the per-user cap and register the proxy stream
 					// so the counter is decremented when the stream ends.
-					release, ok := h.streaming.TrackProxyStream(streamKey, maxStreams)
+					release, ok := h.streaming.TrackProxyStreamForMedia(streamKey, id, maxStreams)
 					if !ok {
 						writeError(c, http.StatusTooManyRequests, msgMaxStreams)
 						return
@@ -621,7 +621,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 					defer release()
 				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
 					ipKey := "ip:" + c.ClientIP()
-					release, ok := h.streaming.TrackProxyStream(ipKey, limit)
+					release, ok := h.streaming.TrackProxyStreamForMedia(ipKey, id, limit)
 					if !ok {
 						writeError(c, http.StatusTooManyRequests, msgMaxStreamsConn)
 						return
@@ -683,13 +683,13 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 						return
 					}
 					maxStreams := h.getUserStreamLimit(user.Type)
-					if maxStreams > 0 && !h.streaming.CanStartStream(session.UserID, maxStreams) {
+					if maxStreams > 0 && !h.streaming.CanStartStreamForMedia(session.UserID, id, maxStreams) {
 						writeError(c, http.StatusTooManyRequests, msgMaxStreams)
 						return
 					}
 				} else if limit := streamCfg.UnauthStreamLimit; limit > 0 {
 					ipKey := "ip:" + c.ClientIP()
-					if !h.streaming.CanStartStream(ipKey, limit) {
+					if !h.streaming.CanStartStreamForMedia(ipKey, id, limit) {
 						writeError(c, http.StatusTooManyRequests, msgMaxStreamsConn)
 						return
 					}
@@ -729,7 +729,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 			return
 		}
 		maxStreams := h.getUserStreamLimit(user.Type)
-		if maxStreams > 0 && !h.streaming.CanStartStream(userID, maxStreams) {
+		if maxStreams > 0 && !h.streaming.CanStartStreamForMedia(userID, id, maxStreams) {
 			writeError(c, http.StatusTooManyRequests, msgMaxStreams)
 			return
 		}
@@ -741,7 +741,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 		// was in place and streaming.Stream() does not check the limit internally.
 		userID = "ip:" + c.ClientIP()
 		if limit := streamCfg.UnauthStreamLimit; limit > 0 {
-			if !h.streaming.CanStartStream(userID, limit) {
+			if !h.streaming.CanStartStreamForMedia(userID, id, limit) {
 				writeError(c, http.StatusTooManyRequests, msgMaxStreamsConn)
 				return
 			}
