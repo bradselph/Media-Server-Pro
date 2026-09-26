@@ -899,14 +899,33 @@ func (s *MatureScanner) ScanDirectory(dir string) ([]*ScanResult, error) {
 	return results, walkErr
 }
 
-// isAllowedExtension checks if a file extension is in the configured AllowedExtensions list.
-// This ensures consistency with config.UploadsConfig.AllowedExtensions rather than
-// relying on a hardcoded list.
+// isAllowedExtension checks if a file extension is eligible for the periodic
+// mature-content scan. This mirrors internal/upload's upload-time gate so the
+// scan always covers every extension uploads can accept: a non-empty
+// uploads.allowed_extensions config is authoritative, and the built-in
+// video/audio extension set (helpers.IsMediaExtension) is only used as the
+// fallback when no list has been configured at all.
 func (s *MatureScanner) isAllowedExtension(ext string) bool {
 	cfg := s.config.Get()
+
+	if len(cfg.Uploads.AllowedExtensions) == 0 {
+		return helpers.IsMediaExtension(ext)
+	}
+
 	return slices.ContainsFunc(cfg.Uploads.AllowedExtensions, func(allowed string) bool {
-		return strings.EqualFold(ext, allowed)
+		return strings.EqualFold(ext, normalizeExtension(allowed))
 	})
+}
+
+// normalizeExtension ensures ext has a leading dot so admin-entered values
+// like "mp4" (missing the dot) still match the "." + extension form that
+// filepath.Ext produces. Kept in sync with internal/upload's identical helper
+// since both packages read the same uploads.allowed_extensions config.
+func normalizeExtension(ext string) string {
+	if ext == "" || strings.HasPrefix(ext, ".") {
+		return ext
+	}
+	return "." + ext
 }
 
 // stableReviewID returns a deterministic UUID v5 derived from the file path,

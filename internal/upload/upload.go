@@ -610,19 +610,36 @@ func (m *Module) sanitizeCategory(category string) string {
 	return category
 }
 
-// isAllowedExtension checks if extension is allowed
+// isAllowedExtension checks if extension is allowed. A non-empty
+// uploads.allowed_extensions config is authoritative: it is the only
+// gate consulted, so an admin can narrow accepted types below the
+// built-in lists (not just add to them). The built-in video/audio
+// lists are only used as the default when no list has been configured
+// at all, matching the shipped default (see defaultUploadsConfig).
 func (m *Module) isAllowedExtension(ext string) bool {
 	cfg := m.config.Get()
 
-	// Check against configured allowed extensions
+	if len(cfg.Uploads.AllowedExtensions) == 0 {
+		return videoExtensions[ext] || helpers.IsAudioExtension(ext)
+	}
+
 	for _, allowed := range cfg.Uploads.AllowedExtensions {
-		if strings.EqualFold(ext, allowed) {
+		if strings.EqualFold(ext, normalizeExtension(allowed)) {
 			return true
 		}
 	}
+	return false
+}
 
-	// Fall back to built-in lists
-	return videoExtensions[ext] || helpers.IsAudioExtension(ext)
+// normalizeExtension ensures ext has a leading dot so admin-entered values
+// like "mp4" (missing the dot) still match the "." + extension form that
+// filepath.Ext produces. Comparison is otherwise left to strings.EqualFold
+// for case-insensitivity.
+func normalizeExtension(ext string) string {
+	if ext == "" || strings.HasPrefix(ext, ".") {
+		return ext
+	}
+	return "." + ext
 }
 
 // isContentTypeAllowed checks that the detected MIME type is compatible with the expected media type.

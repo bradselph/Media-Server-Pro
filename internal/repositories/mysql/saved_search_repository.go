@@ -66,6 +66,18 @@ func (r *SavedSearchRepository) Delete(ctx context.Context, id, userID string) e
 	return nil
 }
 
+// DeleteAllByUser removes every saved search owned by userID. Used by
+// GDPR-style account deletion: saved_searches has no FK to users(id), so
+// nothing removes these rows unless called explicitly.
+func (r *SavedSearchRepository) DeleteAllByUser(ctx context.Context, userID string) error {
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Delete(&savedSearchRow{}).Error; err != nil {
+		return fmt.Errorf("delete saved searches for user: %w", err)
+	}
+	return nil
+}
+
 func (r *SavedSearchRepository) List(ctx context.Context, userID string) ([]*repositories.SavedSearchRecord, error) {
 	var rows []savedSearchRow
 	if err := r.db.WithContext(ctx).

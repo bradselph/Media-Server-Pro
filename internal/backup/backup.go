@@ -66,14 +66,40 @@ func defaultBackupVersion(v string) string {
 	return defaultVersionFallback
 }
 
+// backupDirEnvVar redirects backup archive storage to a directory other than
+// the default <Directories.Data>/backups. It is the name setup.sh writes into
+// its generated .env (BACKUP_DIR=./backups) and the value the installer's
+// "Backups dir" (DIR_BACKUP) prompt is intended to produce, so honoring it
+// here — rather than adding a dedicated DirectoriesConfig field — lets an
+// admin who already set it (e.g. to point backups at a separate disk/mount
+// for redundancy, or a path an off-box rsync/monitoring job watches) get the
+// directory they asked for without a config schema change.
+const backupDirEnvVar = "BACKUP_DIR"
+
+// resolveBackupDir determines where backup archives are stored. It honors
+// backupDirEnvVar when set (made absolute so behavior does not depend on the
+// process's working directory, matching how config.Directories paths are
+// resolved); otherwise it falls back to the historical default of
+// <dataDir>/backups so existing installs that never set the var are unaffected.
+func resolveBackupDir(dataDir string) string {
+	if val := strings.TrimSpace(os.Getenv(backupDirEnvVar)); val != "" {
+		if abs, err := filepath.Abs(val); err == nil {
+			return abs
+		}
+		return val
+	}
+	return filepath.Join(dataDir, "backups")
+}
+
 // NewModule creates a new backup module
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
+	dataDir := cfg.Get().Directories.Data
 	return &Module{
 		config:    cfg,
 		log:       logger.New("backup"),
 		dbModule:  dbModule,
-		backupDir: filepath.Join(cfg.Get().Directories.Data, "backups"),
-		dataDir:   cfg.Get().Directories.Data,
+		backupDir: resolveBackupDir(dataDir),
+		dataDir:   dataDir,
 	}
 }
 

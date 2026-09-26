@@ -11,6 +11,7 @@ import (
 	"media-server-pro/internal/media"
 	"media-server-pro/internal/suggestions"
 	"media-server-pro/internal/thumbnails"
+	"media-server-pro/pkg/models"
 )
 
 // enrichSuggestionCategoryNames replaces each suggestion's Category field — which
@@ -377,6 +378,9 @@ func (h *Handler) GetMyRatings(c *gin.Context) {
 // GetRecentContent returns media items added within the last N days (default 14).
 // Intended for the "Recently Added" home-page row.
 func (h *Handler) GetRecentContent(c *gin.Context) {
+	if !h.requireSuggestions(c) {
+		return
+	}
 	days := 14
 	if d, err := strconv.Atoi(c.Query("days")); err == nil && d > 0 && d <= 365 {
 		days = d
@@ -388,11 +392,37 @@ func (h *Handler) GetRecentContent(c *gin.Context) {
 
 	cutoff := time.Now().AddDate(0, 0, -days)
 	all := h.mergedMediaList(media.Filter{SortBy: "date_added", SortDesc: true}) // include federated media
+	canViewMature := h.canViewMatureContent(c)
 
+	results := buildRecentItems(all, cutoff, limit, canViewMature, h.recentItemThumbnailURL)
+
+	writeSuccess(c, results)
+}
+
+// recentItemThumbnailURL resolves a media ID to a thumbnail URL for the
+// recent/new-since-visit rows, or "" if the thumbnails module isn't available.
+func (h *Handler) recentItemThumbnailURL(id string) string {
+	if h.thumbnails == nil || id == "" {
+		return ""
+	}
+	return h.thumbnails.GetThumbnailURL(thumbnails.MediaID(id))
+}
+
+// buildRecentItems converts a newest-first sorted media list into the
+// mediaRecentItem response shape, stopping once items fall before cutoff or
+// limit results have been collected. Mature-flagged items are skipped when
+// canViewMature is false — the same policy every other suggestions endpoint
+// in this file enforces via canViewMatureContent — so the "Recently added" /
+// "New since last visit" rows never leak mature titles/thumbnails to viewers
+// who can't view mature content.
+func buildRecentItems(all []*models.MediaItem, cutoff time.Time, limit int, canViewMature bool, thumbURL func(id string) string) []*mediaRecentItem {
 	results := make([]*mediaRecentItem, 0, limit)
 	for _, item := range all {
 		if item.DateAdded.Before(cutoff) {
 			break // items are sorted newest-first; once past cutoff we can stop
+		}
+		if item.IsMature && !canViewMature {
+			continue
 		}
 		ri := &mediaRecentItem{
 			ID:        item.ID,
@@ -402,16 +432,15 @@ func (h *Handler) GetRecentContent(c *gin.Context) {
 			Duration:  item.Duration,
 			DateAdded: item.DateAdded,
 		}
-		if h.thumbnails != nil && item.ID != "" {
-			ri.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
+		if thumbURL != nil {
+			ri.ThumbnailURL = thumbURL(item.ID)
 		}
 		results = append(results, ri)
 		if len(results) >= limit {
 			break
 		}
 	}
-
-	writeSuccess(c, results)
+	return results
 }
 
 // mediaRecentItem is the response shape for GetRecentContent.
@@ -430,6 +459,9 @@ type mediaRecentItem struct {
 // GetNewSinceLastVisit returns media added since the user's previous login.
 // Requires auth. Falls back to a 7-day window if previous_last_login is not set.
 func (h *Handler) GetNewSinceLastVisit(c *gin.Context) {
+	if !h.requireSuggestions(c) {
+		return
+	}
 	session := RequireSession(c)
 	if session == nil {
 		return
@@ -445,28 +477,9 @@ func (h *Handler) GetNewSinceLastVisit(c *gin.Context) {
 	}
 
 	all := h.mergedMediaList(media.Filter{SortBy: "date_added", SortDesc: true}) // include federated media
+	canViewMature := h.canViewMatureContent(c)
 
-	results := make([]*mediaRecentItem, 0, limit)
-	for _, item := range all {
-		if item.DateAdded.Before(cutoff) {
-			break // sorted newest-first; stop once past cutoff
-		}
-		ri := &mediaRecentItem{
-			ID:        item.ID,
-			Name:      item.Name,
-			Type:      string(item.Type),
-			Category:  item.Category,
-			Duration:  item.Duration,
-			DateAdded: item.DateAdded,
-		}
-		if h.thumbnails != nil && item.ID != "" {
-			ri.ThumbnailURL = h.thumbnails.GetThumbnailURL(thumbnails.MediaID(item.ID))
-		}
-		results = append(results, ri)
-		if len(results) >= limit {
-			break
-		}
-	}
+	results := buildRecentItems(all, cutoff, limit, canViewMature, h.recentItemThumbnailURL)
 
 	writeSuccess(c, map[string]any{
 		"items": results,

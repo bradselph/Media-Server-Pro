@@ -23,6 +23,7 @@ var (
 	ErrPathNotFound              = errors.New("path not found")
 	ErrMetadataNotFound          = errors.New("media metadata not found")
 	ErrBackupManifestNotFound    = errors.New("backup manifest not found")
+	ErrMediaReportNotFound       = errors.New("media report not found")
 )
 
 // UserRepository provides user data access methods
@@ -173,6 +174,11 @@ type AnalyticsRepository interface {
 	List(ctx context.Context, filter AnalyticsFilter) ([]*models.AnalyticsEvent, error)
 	DeleteOlderThan(ctx context.Context, before string) error
 	DeleteByMediaID(ctx context.Context, mediaID string) error
+	// DeleteByUserID deletes all analytics events attributed to a user. Called
+	// when an approved data-deletion request erases the account, since
+	// analytics_events carries PII (ip_address, user_agent) and has no FK
+	// cascade tying it to users(id).
+	DeleteByUserID(ctx context.Context, userID string) error
 	Count(ctx context.Context, filter AnalyticsFilter) (int64, error)
 	CountByType(ctx context.Context) (map[string]int64, error)
 
@@ -620,6 +626,10 @@ type SavedSearchRepository interface {
 	List(ctx context.Context, userID string) ([]*SavedSearchRecord, error)
 	Get(ctx context.Context, id, userID string) (*SavedSearchRecord, error)
 	UpdateLastSeen(ctx context.Context, id, userID string, seenAt time.Time) error
+	// DeleteAllByUser removes every saved search owned by userID in one call.
+	// Called when an approved data-deletion request erases the account, since
+	// saved_searches has no FK cascade tying it to users(id).
+	DeleteAllByUser(ctx context.Context, userID string) error
 }
 
 // SavedSearchRecord represents a single user-saved search.
@@ -683,8 +693,15 @@ type APITokenRecord struct {
 type MediaReportRepository interface {
 	Create(ctx context.Context, rec *MediaReportRecord) error
 	List(ctx context.Context, status string, limit, offset int) ([]*MediaReportRecord, error)
+	// UpdateStatus returns ErrMediaReportNotFound if no report matches id.
 	UpdateStatus(ctx context.Context, id, status, resolvedBy string) error
 	CountByStatus(ctx context.Context, status string) (int64, error)
+	// AnonymizeReporter clears reporter_id and ip_address on every report filed
+	// by userID, keeping the report itself (moderation history) while erasing
+	// the deleted user's identity. Called when an approved data-deletion
+	// request erases the account, since media_reports.reporter_id has no FK
+	// cascade tying it to users(id).
+	AnonymizeReporter(ctx context.Context, userID string) error
 }
 
 // MediaReportRecord captures one report. Status values: "open",
