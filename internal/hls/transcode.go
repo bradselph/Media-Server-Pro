@@ -75,7 +75,13 @@ func (t *stderrTailBuffer) String() string {
 	return string(t.buf)
 }
 
-// transcode performs the actual transcoding
+// transcode performs the actual transcoding. Qualities are encoded
+// sequentially in ladder order; after EACH one finishes, master.m3u8 is
+// atomically (re)published (see publishMasterPlaylist) to list every quality
+// done so far, and the job is flagged Available (see markJobPlayable) the
+// instant the FIRST quality finishes. This is what makes the stream playable
+// well before the whole ladder completes, instead of only once every
+// configured quality has been transcoded.
 func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 	if !m.acquireTranscodeSem(ctx, job) {
 		return
@@ -97,33 +103,118 @@ func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 	runParams := &qualityRunParams{
 		JobID: job.ID, TotalQualities: len(qualitiesToTranscode), TotalDuration: totalDuration,
 	}
+
+	// completed accumulates qualities in ladder order as each one finishes, so
+	// publishMasterPlaylist always (re)writes master.m3u8 with exactly the set
+	// that is genuinely on disk right now — never more (C01's invariant: the
+	// master must only advertise variants whose playlist actually exists;
+	// lazy-transcode mode, which intentionally advertises ahead of what's on
+	// disk, is unaffected — see resolveQualitiesToTranscode/H4).
+	completed := make([]string, 0, len(qualitiesToTranscode))
 	for i, quality := range qualitiesToTranscode {
 		runParams.CurrentQuality = i + 1
 		if err := m.transcodeQuality(ctx, job, quality, runParams); err != nil {
+			m.finalizeAfterQualityFailure(ctx, job, quality, completed)
 			return
 		}
-	}
-
-	// Use qualitiesToTranscode (not job.Qualities) so the master playlist only
-	// advertises qualities that were actually transcoded. With lazy transcode
-	// enabled, job.Qualities is the full list but only the first quality exists
-	// on disk — listing all would cause 404s for any non-first quality variant.
-	if err := m.generateMasterPlaylist(&generateMasterPlaylistParams{OutputDir: job.OutputDir, Variants: qualitiesToTranscode}); err != nil {
-		// Clean up the per-variant directories already written: without the master
-		// playlist they're unservable, and the failure path otherwise leaks .ts
-		// segments on disk until the job is evicted. Mirrors handleTranscodeWaitError.
-		for _, quality := range qualitiesToTranscode {
-			variantDir := filepath.Join(job.OutputDir, quality)
-			if removeErr := os.RemoveAll(variantDir); removeErr != nil {
-				m.log.Warn("Failed to clean up variant dir %s after master playlist failure: %v", variantDir, removeErr)
-			}
+		completed = append(completed, quality)
+		if !m.publishMasterPlaylist(job, completed) {
+			return
 		}
-		m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusFailed, ErrorMsg: fmt.Sprintf("Failed to create master playlist: %v", err), Progress: 0})
-		return
+		if len(completed) == 1 {
+			m.markJobPlayable(job)
+		}
 	}
 
 	m.finalizeJobCompleted(job)
 	m.log.Info("HLS generation completed for job %s", job.ID)
+}
+
+// publishMasterPlaylist atomically (re)writes master.m3u8 to advertise every
+// quality in completed (see generateMasterPlaylist). Called by transcode()
+// after each quality finishes so the stream becomes playable incrementally
+// (see markJobPlayable) instead of only once the whole ladder is done.
+// Returns false when the job has already been finalized (Failed or
+// Completed) as a result of a publish failure, telling the caller's loop to
+// stop; true means the caller should proceed to the next quality.
+func (m *Module) publishMasterPlaylist(job *models.HLSJob, completed []string) bool {
+	err := m.generateMasterPlaylist(&generateMasterPlaylistParams{OutputDir: job.OutputDir, Variants: completed})
+	if err == nil {
+		return true
+	}
+
+	failedQuality := completed[len(completed)-1]
+	variantDir := filepath.Join(job.OutputDir, failedQuality)
+	if removeErr := os.RemoveAll(variantDir); removeErr != nil {
+		m.log.Warn("Failed to clean up variant dir %s after master playlist failure: %v", variantDir, removeErr)
+	}
+
+	if len(completed) == 1 {
+		// Nothing was ever published (this was the first quality) — same
+		// unrecoverable-loss outcome as failing to write the master playlist
+		// used to be for the whole job.
+		m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusFailed, ErrorMsg: fmt.Sprintf("Failed to create master playlist: %v", err), Progress: 0})
+		return false
+	}
+
+	// A later quality's own encode succeeded, but publishing the updated master
+	// failed. generateMasterPlaylist writes to a temp file and renames it into
+	// place, so the previous, already-published master — listing
+	// completed[:len(completed)-1], already playable — is untouched on disk.
+	// There's no reason to tear down an in-progress viewer's stream over a
+	// transient publish error, so finalize with that last-known-good subset
+	// instead of failing the whole job.
+	m.log.Warn("Failed to publish updated master playlist for job %s after quality %s: %v; finalizing with the last published subset", job.ID, failedQuality, err)
+	m.finalizeJobCompletedWithSubset(job, completed[:len(completed)-1])
+	return false
+}
+
+// finalizeAfterQualityFailure decides how to conclude a job when
+// transcodeQuality has already returned an error for `quality` (and has
+// already recorded Failed/Canceled status and cleaned up its own partial
+// output — see handleTranscodeWaitError). completed is every quality that
+// published successfully before this failure, in ladder order.
+//
+//   - First quality (completed empty): nothing usable exists yet. Leave the
+//     Failed/Canceled status transcodeQuality already recorded, exactly as
+//     before this feature.
+//   - Later quality, canceled (server shutdown or an explicit CancelJob call):
+//     keep the job exactly as transcodeQuality left it — Canceled, but still
+//     Available and playable from the earlier subset. Do not relabel it
+//     Completed: master.m3u8 already only lists `completed`, so there is
+//     nothing to fix up, and DeleteJob/cleanup still remove everything
+//     eventually.
+//   - Later quality, genuinely failed (not canceled): the earlier subset is
+//     already playable and is already the only thing master.m3u8 advertises,
+//     so finalize the job as Completed with that subset instead of leaving it
+//     stuck Failed.
+func (m *Module) finalizeAfterQualityFailure(ctx context.Context, job *models.HLSJob, quality string, completed []string) {
+	if len(completed) == 0 {
+		return
+	}
+	if ctx.Err() != nil || m.stopping.Load() {
+		m.log.Warn("HLS job %s canceled after %d/%d qualities completed; keeping the completed subset usable", job.ID, len(completed), len(job.Qualities))
+		return
+	}
+	m.log.Warn("HLS quality %s failed for job %s after %d earlier quality/qualities succeeded; finalizing with the completed subset", quality, job.ID, len(completed))
+	m.finalizeJobCompletedWithSubset(job, completed)
+}
+
+// markJobPlayable flips a job's Available flag and stamps HLSUrl once its
+// first quality has finished transcoding and been published to master.m3u8
+// (see publishMasterPlaylist). From this point the stream is playable even
+// though Status stays "running" while later qualities keep transcoding —
+// applyHLSCompletionFields (api/handlers/hls.go) is what surfaces this to
+// /api/hls/check and /api/hls/status.
+func (m *Module) markJobPlayable(job *models.HLSJob) {
+	m.jobsMu.Lock()
+	job.Available = true
+	job.HLSUrl = hlsURLForJob(job.ID)
+	jobCopy := copyHLSJob(job)
+	m.jobsMu.Unlock()
+	if err := m.saveJob(jobCopy); err != nil {
+		m.log.Warn("Failed to persist HLS job %s availability after first quality completed: %v", job.ID, err)
+	}
 }
 
 func (m *Module) acquireTranscodeSem(ctx context.Context, job *models.HLSJob) bool {
@@ -209,6 +300,23 @@ func (m *Module) finalizeJobCompleted(job *models.HLSJob) {
 	if err := m.saveJob(jobCopy); err != nil {
 		m.log.Warn("Failed to save job state after completion: %v", err)
 	}
+}
+
+// finalizeJobCompletedWithSubset finalizes job as Completed via
+// finalizeJobCompleted, first truncating job.Qualities to actualQualities —
+// the subset that is genuinely servable (what master.m3u8 actually lists) —
+// so API responses (job.Qualities is returned as-is by GetHLSStatus/
+// CheckHLSAvailability) never advertise more qualities than actually exist on
+// disk. Used when a later quality's transcode, or publishing the updated
+// master playlist, fails partway through the ladder (see
+// finalizeAfterQualityFailure/publishMasterPlaylist); the normal end-of-ladder
+// success path calls finalizeJobCompleted directly since job.Qualities is
+// already exactly what was transcoded in that case.
+func (m *Module) finalizeJobCompletedWithSubset(job *models.HLSJob, actualQualities []string) {
+	m.jobsMu.Lock()
+	job.Qualities = actualQualities
+	m.jobsMu.Unlock()
+	m.finalizeJobCompleted(job)
 }
 
 // transcodeQuality transcodes a single quality variant for a job.

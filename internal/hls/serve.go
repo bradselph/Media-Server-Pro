@@ -37,6 +37,13 @@ func (m *Module) ensureVariantPlaylistExists(ctx context.Context, job *models.HL
 
 	cfg := m.config.Get()
 	if !cfg.HLS.LazyTranscode {
+		if job.Status != models.HLSStatusCompleted {
+			// Still transcoding the ladder in order (see transcode()): this
+			// quality just hasn't been reached yet. 503 tells the player to
+			// retry shortly instead of treating it as a permanent 404 — the same
+			// signal ServeMasterPlaylist gives before the job is even Available.
+			return "", fmt.Errorf("%w: quality %s not yet transcoded", ErrNotReady, quality)
+		}
 		return "", fmt.Errorf("variant playlist not found: %s", quality)
 	}
 
@@ -147,7 +154,13 @@ func (m *Module) ServeMasterPlaylist(w http.ResponseWriter, r *http.Request, job
 		return err
 	}
 
-	if job.Status != models.HLSStatusCompleted {
+	// Available (not Status=="completed") is the servability gate: a job
+	// becomes playable as soon as its first quality finishes — see
+	// markJobPlayable — and stays servable afterward even if it later ends up
+	// Canceled (e.g. a server shutdown after already becoming playable — see
+	// finalizeAfterQualityFailure) as long as master.m3u8 still lists a real,
+	// completed subset.
+	if !job.Available {
 		return fmt.Errorf("%w: status=%s", ErrNotReady, job.Status)
 	}
 
@@ -214,6 +227,16 @@ func (m *Module) ServeSegment(w http.ResponseWriter, r *http.Request, p SegmentP
 	}
 	if strings.Contains(p.Segment, "..") || strings.ContainsAny(p.Segment, "/\\") {
 		return fmt.Errorf("invalid segment name: %q", p.Segment)
+	}
+
+	// Reject a quality whose own playlist.m3u8 doesn't exist yet: ffmpeg only
+	// writes it once that quality's whole encode finishes (hls_playlist_type=
+	// vod in buildFFmpegTranscodeCmd), so a missing playlist here means the
+	// variant dir is still mid-encode and must not be served even if some
+	// segments already exist on disk — mirrors the completed-variant gate in
+	// ensureVariantPlaylistExists.
+	if _, err := os.Stat(filepath.Join(job.OutputDir, p.Quality, "playlist.m3u8")); err != nil {
+		return fmt.Errorf("%w: quality %s not yet ready", ErrNotReady, p.Quality)
 	}
 
 	segmentPath := filepath.Join(job.OutputDir, p.Quality, p.Segment)

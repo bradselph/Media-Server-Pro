@@ -124,9 +124,16 @@ func buildGenerateHLSResponse(job *models.HLSJob) map[string]any {
 // applyHLSCompletionFields stamps the shared completion-related fields onto an
 // HLS job response map: availability, the master playlist URL, and (when the
 // job has finished) the completion timestamp.
+//
+// Available (not Status=="completed") drives this: a job becomes playable as
+// soon as its first quality finishes transcoding (see
+// internal/hls.markJobPlayable), so /api/hls/check and /api/hls/status report
+// available=true + a real hls_url while status is still "running" and
+// progress keeps climbing as the rest of the ladder transcodes in the
+// background, instead of only once every quality is done.
 func applyHLSCompletionFields(resp map[string]any, job *models.HLSJob) {
-	resp["available"] = job.Status == models.HLSStatusCompleted
-	if job.Status == models.HLSStatusCompleted {
+	resp["available"] = job.Available
+	if job.Available {
 		resp["hls_url"] = fmt.Sprintf(fmtHLSMasterURL, job.ID)
 	} else {
 		resp["hls_url"] = ""

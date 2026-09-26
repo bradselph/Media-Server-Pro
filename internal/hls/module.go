@@ -30,7 +30,18 @@ const (
 	masterPlaylistName    = "master.m3u8"
 	errJobNotFoundFmt     = "job not found: %s"
 	defaultMaxHLSFailures = 3 // fallback when HLSConfig.MaxConsecutiveFailures is unset
+	// hlsMasterURLFmt is the client-facing master playlist URL pattern, stamped
+	// onto HLSJob.HLSUrl once a job becomes Available (see markJobPlayable).
+	// Must match api/routes/routes.go's "/hls/:id/master.m3u8" route and
+	// api/handlers/hls.go's identical fmtHLSMasterURL — kept in sync manually
+	// since this lower-layer package cannot import api/handlers.
+	hlsMasterURLFmt = "/hls/%s/master.m3u8"
 )
+
+// hlsURLForJob returns the client-facing master playlist URL for jobID.
+func hlsURLForJob(jobID string) string {
+	return fmt.Sprintf(hlsMasterURLFmt, jobID)
+}
 
 // Capabilities holds information about what the HLS module can do
 type Capabilities struct {

@@ -10,11 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"media-server-pro/pkg/models"
 )
 
-// VariantDownloadPath validates that a completed HLS variant exists on disk for
+// VariantDownloadPath validates that a playable HLS variant exists on disk for
 // the given media ID and quality, returning that variant's playlist path. It has
 // no side effects and returns an error when HLS/ffmpeg is unavailable or the
 // variant isn't ready — letting the caller fall back to the original file.
@@ -35,7 +33,12 @@ func (m *Module) VariantDownloadPath(mediaID, quality string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if job.Status != models.HLSStatusCompleted {
+	// Available (not Status=="completed") matches the serve-path gate in
+	// serve.go: a quality that finished earlier in the ladder stays
+	// downloadable even while later ones are still transcoding — see
+	// markJobPlayable. The playlist.Stat below still guards the specific
+	// requested quality.
+	if !job.Available {
 		return "", fmt.Errorf("HLS not ready for media %s (status %s)", mediaID, job.Status)
 	}
 	playlistPath := filepath.Join(job.OutputDir, quality, "playlist.m3u8")
