@@ -45,11 +45,13 @@ async function saveDownloadConfig(key: 'enabled' | 'require_auth', value: boolea
       ...fullConfig.value,
       download: {...asRecord(fullConfig.value.download), [key]: value},
     }
-    await adminApi.updateConfig(updated)
+    const resp = await adminApi.updateConfig(updated)
     fullConfig.value = updated
     if (key === 'enabled') downloadEnabled.value = value
     else downloadRequireAuth.value = value
-    notifySuccess('Download settings saved')
+    notifySuccess(resp?.restart_required
+        ? 'Download settings saved — restart required for some changes'
+        : 'Download settings saved')
   } catch (e: unknown) {
     notifyError(e, 'Failed to save')
     // Reload config from server to revert UI to actual state

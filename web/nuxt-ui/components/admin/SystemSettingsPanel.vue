@@ -1025,11 +1025,9 @@ onMounted(async () => {
             </div>
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Enabled</span>
-              <USwitch :model-value="get('uploads', 'enabled')"
-                       @update:model-value="set('uploads', 'enabled', $event)"/>
-            </div>
+            <!-- Enabled is controlled by Features > Enable Uploads above; uploads.enabled
+                 is derived from that flag on every save (syncFeatureToggles), so no
+                 independent switch is shown here. -->
             <div class="flex items-center justify-between">
               <span class="text-sm">Require Auth</span>
               <USwitch :model-value="get('uploads', 'require_auth')"
@@ -1115,10 +1113,9 @@ onMounted(async () => {
             </div>
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Enabled</span>
-              <USwitch :model-value="get('hls', 'enabled')" @update:model-value="set('hls', 'enabled', $event)"/>
-            </div>
+            <!-- Enabled is controlled by Features > Enable HLS above; hls.enabled is
+                 derived from that flag on every save (syncFeatureToggles), so no
+                 independent switch is shown here. -->
             <div class="flex items-center justify-between">
               <span class="text-sm">Lazy Transcode</span>
               <USwitch :model-value="get('hls', 'lazy_transcode')"
@@ -1167,10 +1164,11 @@ onMounted(async () => {
               <UInput :model-value="get('hls', 'cdn_base_url')" @update:model-value="set('hls', 'cdn_base_url', $event)"
                       placeholder="https://cdn.example.com (optional)"/>
             </UFormField>
-            <UFormField label="Playlist Length (segments)">
-              <UInput type="number" :model-value="get('hls', 'playlist_length')"
-                      @update:model-value="set('hls', 'playlist_length', Number($event))"/>
-            </UFormField>
+            <!-- Playlist Length control intentionally removed: HLS playlists are
+                 always generated as VOD (hls_playlist_type=vod, hls_list_size=0,
+                 internal/hls/transcode.go), so every segment is always listed and
+                 hls.playlist_length has no effect on output. The field is kept in
+                 config for compatibility (see internal/config/types.go). -->
             <UFormField label="Max Consecutive Failures">
               <UInput type="number" :model-value="get('hls', 'max_consecutive_failures')"
                       @update:model-value="set('hls', 'max_consecutive_failures', Number($event))"/>
@@ -1218,11 +1216,9 @@ onMounted(async () => {
             </div>
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl">
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Enabled</span>
-              <USwitch :model-value="get('analytics', 'enabled')"
-                       @update:model-value="set('analytics', 'enabled', $event)"/>
-            </div>
+            <!-- Enabled is controlled by Features > Enable Analytics above;
+                 analytics.enabled is derived from that flag on every save
+                 (syncFeatureToggles), so no independent switch is shown here. -->
             <div class="flex items-center justify-between">
               <span class="text-sm">Track Playback</span>
               <USwitch :model-value="get('analytics', 'track_playback')"
@@ -1256,11 +1252,9 @@ onMounted(async () => {
             </div>
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Enabled</span>
-              <USwitch :model-value="get('mature_scanner', 'enabled')"
-                       @update:model-value="set('mature_scanner', 'enabled', $event)"/>
-            </div>
+            <!-- Enabled is controlled by Features > Enable Mature Scanner above;
+                 mature_scanner.enabled is derived from that flag on every save
+                 (syncFeatureToggles), so no independent switch is shown here. -->
             <div class="flex items-center justify-between">
               <span class="text-sm">Auto Flag</span>
               <USwitch :model-value="get('mature_scanner', 'auto_flag')"
@@ -1309,11 +1303,9 @@ onMounted(async () => {
             </div>
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Enabled</span>
-              <USwitch :model-value="get('huggingface', 'enabled')"
-                       @update:model-value="set('huggingface', 'enabled', $event)"/>
-            </div>
+            <!-- Enabled is controlled by Features > Enable HuggingFace AI above;
+                 huggingface.enabled is derived from that flag on every save
+                 (syncFeatureToggles), so no independent switch is shown here. -->
             <div class="flex items-center justify-between col-span-1 sm:col-span-2">
               <span class="text-sm">API Key</span>
               <UBadge :color="get('huggingface', 'api_key_set') ? 'success' : 'error'" variant="subtle" size="sm">
@@ -1420,11 +1412,10 @@ onMounted(async () => {
             </div>
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-3xl">
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Enabled</span>
-              <USwitch :model-value="get('remote_media', 'enabled')"
-                       @update:model-value="set('remote_media', 'enabled', $event)"/>
-            </div>
+            <!-- Enabled is controlled by Features > Enable Remote Media above (this
+                 card is only shown while that flag is on); remote_media.enabled is
+                 derived from it on every save (syncFeatureToggles), so no
+                 independent switch is shown here. -->
             <div class="flex items-center justify-between">
               <span class="text-sm">Cache Enabled</span>
               <USwitch :model-value="get('remote_media', 'cache_enabled')"
@@ -1452,11 +1443,10 @@ onMounted(async () => {
             </div>
           </template>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl">
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Enabled</span>
-              <USwitch :model-value="get('extractor', 'enabled')"
-                       @update:model-value="set('extractor', 'enabled', $event)"/>
-            </div>
+            <!-- Enabled is controlled by Features > Enable Extractor above (this card
+                 is only shown while that flag is on); extractor.enabled is derived
+                 from it on every save (syncFeatureToggles), so no independent switch
+                 is shown here. -->
             <UFormField label="Max Items">
               <UInput type="number" :model-value="get('extractor', 'max_items')"
                       @update:model-value="set('extractor', 'max_items', Number($event))"/>
@@ -1601,11 +1591,10 @@ onMounted(async () => {
               <UInput :model-value="get('downloader', 'import_dir')"
                       @update:model-value="set('downloader', 'import_dir', $event)" placeholder="/path/to/import"/>
             </UFormField>
-            <div class="flex items-center justify-between">
-              <span class="text-sm">Enabled</span>
-              <USwitch :model-value="get('downloader', 'enabled')"
-                       @update:model-value="set('downloader', 'enabled', $event)"/>
-            </div>
+            <!-- Enabled is controlled by Features > Enable Downloader above (this card
+                 is only shown while that flag is on); downloader.enabled is derived
+                 from it on every save (syncFeatureToggles), so no independent switch
+                 is shown here. -->
           </div>
           <p class="text-xs text-muted mt-3">Health-check interval and request timeout are durations (ns) — edit
             via raw JSON if needed.</p>
@@ -1702,8 +1691,10 @@ onMounted(async () => {
             </div>
           </template>
           <p class="text-sm text-muted mb-3">
-            The following settings cannot be changed at runtime for security reasons. They must be configured via
-            environment variables or by editing config.json directly.
+            The following settings cannot be changed at runtime for security reasons. Environment variables only
+            seed them once — on a brand-new install, or during a one-time upgrade of an existing one — after which
+            config.json is authoritative and changing the environment variable and redeploying has no further
+            effect. To change one of these afterward, edit config.json directly on the server and restart.
           </p>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
             <div>
@@ -1712,7 +1703,7 @@ onMounted(async () => {
                 <li>Session timeout</li>
                 <li>Secure cookies</li>
                 <li>Login attempts / lockout</li>
-                <li>Registration / guests</li>
+                <li>Registration / guests (env vars seed on first boot only)</li>
                 <li>User type definitions</li>
               </ul>
             </div>

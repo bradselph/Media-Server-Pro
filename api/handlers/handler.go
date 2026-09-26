@@ -385,6 +385,54 @@ func getSession(c *gin.Context) *models.Session {
 	return nil
 }
 
+// CtxSessionUnavailable is the gin-context key api/routes' sessionAuth sets
+// when the session store could not be reached, so a nil session can be told
+// apart from a genuinely absent one. Exported here (rather than in
+// api/routes) so handlers that gate their own auth outside requireAuth —
+// media streaming, downloads, HLS serving — can share the same signal
+// without api/handlers importing api/routes (which would be a cycle, since
+// routes already imports handlers).
+const CtxSessionUnavailable = "session_unavailable"
+
+// AbortSessionUnavailable reports a transient session-store failure as 503
+// with Retry-After instead of 401, mirroring api/routes' requireAuth/adminAuth.
+// A 401 here reads as "you are logged out" to the client; during a session-store
+// blip that is wrong and — for browser-driven requireAuth routes — was observed
+// to cause a login/blank-page redirect loop (see commit 97ccdf50). Handlers that
+// check CtxSessionUnavailable before treating a nil session as "not logged in"
+// should call this instead of writing their usual 401.
+func AbortSessionUnavailable(c *gin.Context) {
+	c.Header(headerRetryAfter, "2")
+	c.JSON(http.StatusServiceUnavailable, gin.H{
+		"success": false,
+		"error":   "Session store temporarily unavailable, please retry",
+	})
+	c.Abort()
+}
+
+// checkStreamingAuth is the shared requireAuth-gated session check for the
+// media byte-serving handlers that cannot use the requireAuth() middleware
+// (StreamMedia, DownloadMedia, resolveHLSJobForServe) — their routes carry no
+// auth middleware so anonymous access is allowed unless the relevant
+// RequireAuth config flag is set. Returns true when the caller may proceed.
+//
+// When session is nil and requireAuth is true, a session-store outage
+// (CtxSessionUnavailable) is reported as 503+Retry-After rather than the
+// unauthMsg 401 — see AbortSessionUnavailable — so these paths fail the same
+// way requireAuth()/adminAuth() do during the same outage instead of reading
+// as a logout.
+func checkStreamingAuth(c *gin.Context, session *models.Session, requireAuth bool, unauthMsg string) bool {
+	if session != nil || !requireAuth {
+		return true
+	}
+	if _, unavailable := c.Get(CtxSessionUnavailable); unavailable {
+		AbortSessionUnavailable(c)
+		return false
+	}
+	writeError(c, http.StatusUnauthorized, unauthMsg)
+	return false
+}
+
 // isPrivateSession returns true when the caller has opted into a private
 // session for this request via the X-MSP-Private header. Handlers that
 // touch persistent history (watch history, playback positions, analytics
@@ -625,7 +673,14 @@ func isSecureRequest(r *http.Request) bool {
 
 // clearSessionCookie clears the session_id cookie with consistent Path, HttpOnly, Secure, SameSite
 // so logout and account-deletion paths invalidate the cookie reliably across browsers.
-func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+//
+// Secure is forced on whenever auth.secure_cookies is set, even if this particular
+// request was not auto-detected as HTTPS (isSecureRequest) — an operator who knows
+// their deployment is always served over TLS (e.g. behind a TLS-terminating proxy
+// that isn't in TrustedProxyCIDRs) can opt in explicitly rather than relying on
+// auto-detection. Must match setSessionCookie's Secure computation, or the browser
+// treats the two as different cookies and never clears the one it actually holds.
+func (h *Handler) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_id",
 		Value:    "",
@@ -634,13 +689,17 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   isSecureRequest(r),
+		Secure:   isSecureRequest(r) || h.config.Get().Auth.SecureCookies,
 	})
 }
 
 // setSessionCookie sets the session_id cookie with the standard security
 // attributes shared by the login and registration paths.
-func setSessionCookie(w http.ResponseWriter, r *http.Request, session *models.Session) {
+//
+// Secure is true when the request is auto-detected as HTTPS (isSecureRequest)
+// OR the operator has explicitly forced it via auth.secure_cookies — see
+// clearSessionCookie for why the two must stay in sync.
+func (h *Handler) setSessionCookie(w http.ResponseWriter, r *http.Request, session *models.Session) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_id",
 		Value:    session.ID,
@@ -648,7 +707,7 @@ func setSessionCookie(w http.ResponseWriter, r *http.Request, session *models.Se
 		Expires:  session.ExpiresAt,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   isSecureRequest(r),
+		Secure:   isSecureRequest(r) || h.config.Get().Auth.SecureCookies,
 	})
 }
 

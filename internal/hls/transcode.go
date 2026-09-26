@@ -45,6 +45,36 @@ type transcodeErrorContext struct {
 	StderrStr  string
 }
 
+// maxStderrTailBytes bounds the ffmpeg stderr tail kept for error reporting.
+// handleTranscodeWaitError only ever logs the last ~1000 chars, and
+// isTranscodeCancelled only substring-matches ffmpeg's "Exiting normally,
+// received signal" line near the end of output — so there's no need to retain
+// an entire transcode's worth of stderr, which (once monitorProgress splits
+// on every '\r'-refreshed progress line) can otherwise grow unbounded over a
+// long encode.
+const maxStderrTailBytes = 64 * 1024
+
+// stderrTailBuffer is an io.Writer that retains only the most recently
+// written maxStderrTailBytes, discarding older bytes as new ones arrive. It
+// is used to tee ffmpeg's stderr for error reporting without buffering the
+// entire (potentially unbounded) stream in memory.
+type stderrTailBuffer struct {
+	buf []byte
+}
+
+func (t *stderrTailBuffer) Write(p []byte) (int, error) {
+	t.buf = append(t.buf, p...)
+	if excess := len(t.buf) - maxStderrTailBytes; excess > 0 {
+		n := copy(t.buf, t.buf[excess:])
+		t.buf = t.buf[:n]
+	}
+	return len(p), nil
+}
+
+func (t *stderrTailBuffer) String() string {
+	return string(t.buf)
+}
+
 // transcode performs the actual transcoding
 func (m *Module) transcode(ctx context.Context, job *models.HLSJob) {
 	if !m.acquireTranscodeSem(ctx, job) {
@@ -171,7 +201,7 @@ func (m *Module) transcodeQuality(ctx context.Context, job *models.HLSJob, quali
 	paths := &transcodePaths{MediaPath: job.MediaPath, PlaylistPath: playlistPath, SegmentPattern: segmentPattern}
 	cmdWithContext := m.buildFFmpegTranscodeCmd(ctx, paths, profile)
 
-	var stderrBuf bytes.Buffer
+	var stderrBuf stderrTailBuffer
 	stderrPipe, err := cmdWithContext.StderrPipe()
 	if err != nil {
 		m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusFailed, ErrorMsg: fmt.Sprintf("Failed to create stderr pipe: %v", err), Progress: 0})
@@ -405,9 +435,36 @@ func (m *Module) lazyTranscodeQuality(ctx context.Context, job *models.HLSJob, q
 	return m.transcodeQuality(lazyCtx, job, quality, run)
 }
 
+// scanFFmpegLines is like bufio.ScanLines but also splits on a bare '\r',
+// matching ffmpeg's periodic "frame=... time=..." stats, which it refreshes
+// with '\r' (no trailing '\n') rather than emitting a full new line. '\r\n'
+// is still treated as a single terminator.
+func scanFFmpegLines(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if i := bytes.IndexAny(data, "\r\n"); i >= 0 {
+		if data[i] == '\r' && i+1 < len(data) && data[i+1] == '\n' {
+			return i + 2, data[:i], nil
+		}
+		return i + 1, data[:i], nil
+	}
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}
+
 // monitorProgress monitors ffmpeg progress output and parses time= for progress tracking.
+// ffmpeg refreshes its periodic "frame=... time=..." stats line using a bare
+// '\r' rather than a trailing '\n'; the default bufio.ScanLines split only
+// breaks on '\n', which would otherwise coalesce every refresh for the whole
+// encode into one giant token that never surfaces a progress update and can
+// exceed bufio.MaxScanTokenSize. scanFFmpegLines treats '\r', '\n', and
+// '\r\n' as line terminators so each refresh becomes its own token.
 func (m *Module) monitorProgress(jobID string, stderr io.Reader, run *qualityRunParams) {
 	scanner := bufio.NewScanner(stderr)
+	scanner.Split(scanFFmpegLines)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if _, after, ok := strings.Cut(line, "time="); ok {
@@ -417,6 +474,10 @@ func (m *Module) monitorProgress(jobID string, stderr io.Reader, run *qualityRun
 	if err := scanner.Err(); err != nil {
 		m.log.Warn("Progress monitoring error for job %s: %v", jobID, err)
 	}
+	// Drain any remainder to EOF even if scanning above stopped early (e.g. a
+	// scanner error), so ffmpeg can never block writing to a full stderr pipe
+	// with nothing left reading from it.
+	_, _ = io.Copy(io.Discard, stderr)
 }
 
 // handleProgressUpdate processes a single ffmpeg progress line and updates job progress.
@@ -432,6 +493,13 @@ func (m *Module) handleProgressUpdate(jobID, rawTimeStr string, run *qualityRunP
 	m.updateJobStatus(&updateJobStatusParams{JobID: jobID, Status: models.HLSStatusRunning, Progress: baseProgress + qualityProgress*variantPct})
 }
 
+// unknownDurationAssumedSecs is the heuristic assumed total duration used to
+// estimate progress when the real media duration is unknown (e.g. ffprobe
+// failed). Progress rises smoothly from 0% toward maxPct as currentSecs
+// approaches this assumed ceiling, rather than jumping to a mid-point on the
+// very first sample.
+const unknownDurationAssumedSecs = 7200.0 // assume up to 2 hours
+
 func calculateVariantProgress(currentSecs, totalDuration float64) float64 {
 	if currentSecs <= 0 {
 		return 0
@@ -441,7 +509,7 @@ func calculateVariantProgress(currentSecs, totalDuration float64) float64 {
 		pct = currentSecs / totalDuration
 		maxPct = 0.99
 	} else {
-		pct = 0.5 + (currentSecs/7200.0)*0.45
+		pct = currentSecs / unknownDurationAssumedSecs
 		maxPct = 0.95
 	}
 	return math.Min(pct, maxPct)

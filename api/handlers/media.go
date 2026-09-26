@@ -572,8 +572,7 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 
 	session := getSession(c)
 	streamCfg := h.config.Get().Streaming
-	if session == nil && streamCfg.RequireAuth {
-		writeError(c, http.StatusUnauthorized, "Authentication required to stream media")
+	if !checkStreamingAuth(c, session, streamCfg.RequireAuth, "Authentication required to stream media") {
 		return
 	}
 	// NOTE: unauthenticated IP-based stream limiting is enforced later, at the
@@ -830,8 +829,7 @@ func (h *Handler) DownloadMedia(c *gin.Context) {
 	}
 	session := getSession(c)
 
-	if cfg.Download.RequireAuth && session == nil {
-		writeError(c, http.StatusUnauthorized, errNotAuthenticated)
+	if !checkStreamingAuth(c, session, cfg.Download.RequireAuth, errNotAuthenticated) {
 		return
 	}
 

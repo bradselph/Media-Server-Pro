@@ -56,7 +56,7 @@ func (h *Handler) Login(c *gin.Context) {
 			return
 		}
 	} else {
-		setSessionCookie(c.Writer, c.Request, adminSession)
+		h.setSessionCookie(c.Writer, c.Request, adminSession)
 		h.trackServerEventAs(c, analytics.EventLogin, adminSession.UserID, adminSession.Username, adminSession.ID,
 			map[string]any{"username": adminSession.Username, "role": string(adminSession.Role)})
 		writeSuccess(c, map[string]any{
@@ -86,7 +86,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	setSessionCookie(c.Writer, c.Request, session)
+	h.setSessionCookie(c.Writer, c.Request, session)
 
 	// Track successful login for traffic analytics (also mirrored into audit_log).
 	h.trackServerEventAs(c, analytics.EventLogin, session.UserID, session.Username, session.ID,
@@ -127,7 +127,7 @@ func (h *Handler) Logout(c *gin.Context) {
 	}
 	h.trackServerEventAs(c, analytics.EventLogout, uid, uname, sid, nil)
 
-	clearSessionCookie(c.Writer, c.Request)
+	h.clearSessionCookie(c.Writer, c.Request)
 	writeSuccess(c, nil)
 }
 
@@ -263,7 +263,7 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	setSessionCookie(c.Writer, c.Request, session)
+	h.setSessionCookie(c.Writer, c.Request, session)
 
 	// Track registration for traffic analytics (also mirrored into audit_log).
 	h.trackServerEventAs(c, analytics.EventRegister, session.UserID, req.Username, session.ID,
@@ -748,7 +748,7 @@ func (h *Handler) DeleteAccount(c *gin.Context) {
 	// Clear the session cookie. DeleteUser already evicts all sessions from cache
 	// and DB via evictSessionsForUser, so an explicit Logout call is unnecessary
 	// and would always fail with ErrSessionNotFound.
-	clearSessionCookie(c.Writer, c.Request)
+	h.clearSessionCookie(c.Writer, c.Request)
 
 	h.log.Info("User %s deleted their account", deletedUsername)
 	writeSuccess(c, map[string]string{"status": "account_deleted", "message": "Your account has been permanently deleted"})

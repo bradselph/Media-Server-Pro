@@ -175,7 +175,17 @@ func GinSecurityHeaders(getCfg func() (csp string, hstsMaxAge int)) gin.HandlerF
 		// When behind Cloudflare (CF-Ray present), skip the headers CF adds
 		// automatically to avoid duplicate/conflicting values in the response.
 		// On direct connections (no CF-Ray) we set them ourselves.
-		behindCloudflare := c.GetHeader("CF-Ray") != ""
+		//
+		// CF-Ray is a plain request header, so a direct client could spoof it to
+		// make the server skip its own headers. As with isHTTPS's handling of
+		// X-Forwarded-Proto, only honor it when the immediate peer is a trusted
+		// proxy — a spoofed CF-Ray from an untrusted, directly-connected client no
+		// longer suppresses the self-set headers.
+		remoteIP, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+		if err != nil {
+			remoteIP = c.Request.RemoteAddr
+		}
+		behindCloudflare := c.GetHeader("CF-Ray") != "" && IsTrustedProxy(remoteIP)
 		if !behindCloudflare {
 			c.Header("X-Content-Type-Options", "nosniff")
 			c.Header("X-Frame-Options", "DENY")

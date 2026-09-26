@@ -179,9 +179,11 @@ async function saveScannerThresholds() {
         medium_confidence_threshold: mediumConfidenceThreshold.value,
       },
     }
-    await adminApi.updateConfig(updated)
+    const resp = await adminApi.updateConfig(updated)
     scannerFullConfig.value = updated
-    notifySuccess('Scanner thresholds saved')
+    notifySuccess(resp?.restart_required
+        ? 'Scanner thresholds saved — restart required for some changes'
+        : 'Scanner thresholds saved')
   } catch (e: unknown) {
     notifyError(e, 'Failed to save')
   } finally {

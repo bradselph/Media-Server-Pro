@@ -150,14 +150,19 @@ func (m *Module) corsOrigin(r *http.Request) string {
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting extractor module...")
 
+	// Initialize the repo unconditionally (before the enabled check), mirroring
+	// internal/receiver and internal/remote. Extractor.Enabled can be hot-toggled
+	// via the admin panel without a restart, and AddItem/RemoveItem only persist
+	// to MySQL when m.repo is non-nil — leaving this behind the early return would
+	// silently drop persistence for items added during a disabled-at-boot session.
+	m.repo = mysqlrepo.NewExtractorItemRepository(m.dbModule.GORM())
+
 	cfg := m.config.Get()
 	if !cfg.Extractor.Enabled {
 		m.log.Info("Extractor is disabled")
 		m.setHealth(true, "Disabled")
 		return nil
 	}
-
-	m.repo = mysqlrepo.NewExtractorItemRepository(m.dbModule.GORM())
 
 	// Load items from DB
 	records, err := m.repo.List(context.Background())

@@ -317,8 +317,13 @@ type UserType struct {
 
 // HLSConfig holds HLS streaming settings
 type HLSConfig struct {
-	Enabled                  bool          `json:"enabled"`
-	SegmentDuration          int           `json:"segment_duration"`
+	Enabled         bool `json:"enabled"`
+	SegmentDuration int  `json:"segment_duration"`
+	// PlaylistLength is deprecated and currently has no effect: HLS playlists
+	// are always generated as VOD (hls_playlist_type=vod, hls_list_size=0 in
+	// internal/hls/transcode.go), so the manifest always lists every segment
+	// regardless of this value. Kept for config/env/validation compatibility;
+	// removed from the admin UI.
 	PlaylistLength           int           `json:"playlist_length"`
 	CleanupEnabled           bool          `json:"cleanup_enabled"`
 	CleanupInterval          time.Duration `json:"cleanup_interval"`
