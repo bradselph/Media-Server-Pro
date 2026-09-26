@@ -1674,6 +1674,7 @@ ANALYTICS_DIR=$a_analy
 DATA_DIR=$a_data
 LOGS_DIR=$a_logs
 TEMP_DIR=$a_temp
+BACKUP_DIR=$a_backup
 
 # ── Database (MySQL / MariaDB) ───────────────────────────────────────────
 DATABASE_ENABLED=true
