@@ -311,3 +311,59 @@ func TestGenerateHLS_NoEnabledQualityProfiles_ErrorsBeforeCreatingJob(t *testing
 		t.Error("GenerateHLS must not create a job when no qualities resolve (C23: fail before touching job state)")
 	}
 }
+
+// A panic inside the background lazy encode must be recovered (an unrecovered
+// goroutine panic kills the whole server) and must release the per-quality lock
+// and dedup state so a later request can re-trigger the encode.
+func TestTriggerLazyTranscode_PanicIsRecoveredAndRetriggerable(t *testing.T) {
+	m := newLazyTestModule(t)
+	outputDir := t.TempDir()
+	job := &models.HLSJob{ID: "job1", OutputDir: outputDir, Status: models.HLSStatusRunning, Qualities: []string{"720p", "360p"}}
+
+	var calls int32
+	done := make(chan struct{}, 4)
+	m.lazyEncode = func(_ context.Context, job *models.HLSJob, quality string) error {
+		n := atomic.AddInt32(&calls, 1)
+		defer func() { done <- struct{}{} }()
+		if n == 1 {
+			panic("simulated encoder panic")
+		}
+		variantDir := filepath.Join(job.OutputDir, quality)
+		if err := os.MkdirAll(variantDir, 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(variantDir, "playlist.m3u8"), []byte("#EXTM3U\n#EXT-X-ENDLIST\n"), 0o644)
+	}
+
+	waitDone := func() {
+		t.Helper()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("background lazy encode did not run")
+		}
+	}
+
+	if _, err := m.ensureVariantPlaylistExists(job, "720p"); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("first call err = %v, want ErrNotReady", err)
+	}
+	waitDone()
+
+	// The panicking goroutine's deferred cleanup (lock release, dedup entry
+	// removal) runs after the encode returns; retry until it re-dispatches.
+	deadline := time.Now().Add(2 * time.Second)
+	for atomic.LoadInt32(&calls) < 2 && time.Now().Before(deadline) {
+		if _, err := m.ensureVariantPlaylistExists(job, "720p"); err != nil && !errors.Is(err, ErrNotReady) {
+			t.Fatalf("retry err = %v, want ErrNotReady", err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := atomic.LoadInt32(&calls); got < 2 {
+		t.Fatalf("lazy encode ran %d time(s) after a panic, want a re-trigger (lock/dedup state leaked)", got)
+	}
+	waitDone()
+
+	if _, err := os.Stat(filepath.Join(outputDir, "720p", "playlist.m3u8")); err != nil {
+		t.Errorf("retried encode did not produce the playlist: %v", err)
+	}
+}

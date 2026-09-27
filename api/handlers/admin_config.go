@@ -121,13 +121,15 @@ func filterDeniedConfigKeys(updates map[string]any) []string {
 //   - age_gate,
 //     cookie_consent  → cmd/server/main.go reloads the middleware live via
 //     UpdateConfig on every config change
+//   - uploads         → every uploads.* field is read via config.Get() per
+//     request (api/handlers/upload.go, internal/upload); nothing is cached
 //
 // "server" is deliberately NOT listed here: internal/server/server.go builds
 // s.httpServer exactly once in Start() and never rebuilds it, so host/port/
 // TLS/timeout changes all require a restart. The one exception
 // (memory_limit_percent) is carried in hotReloadFieldOverrides instead.
 //
-// Sections NOT listed here (storage, directories, database, auth, uploads, …)
+// Sections NOT listed here (storage, directories, database, auth, …)
 // are persisted but only take effect on restart. NOTE: this is section-level —
 // hotReloadFieldOverrides below corrects the few individual fields whose
 // live-reload behavior disagrees with their section's default classification,
@@ -140,6 +142,7 @@ var hotReloadKeys = map[string]bool{
 	"age_gate":       true,
 	"cookie_consent": true,
 	"hub":            true, // hub.page_size / csv_path are read live per request / per import
+	"uploads":        true, // every uploads.* field is read via config.Get() per request (api/handlers/upload.go, internal/upload)
 }
 
 // hotReloadFieldOverrides lists dot-notation "section.field" paths (lowercase,

@@ -104,6 +104,10 @@ watch(statusFilter, () => load())
 
 <template>
   <div class="space-y-4">
+    <p class="text-xs text-muted">
+      Resolve and Dismiss only record your decision on the report — they do not hide or change the media.
+      Open the media link to act on it (edit, mark mature, or delete it from the Media library).
+    </p>
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div class="flex items-center gap-2">
         <UIcon name="i-lucide-flag" class="size-4 text-primary"/>

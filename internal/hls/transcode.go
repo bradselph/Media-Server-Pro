@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -619,6 +620,14 @@ func (m *Module) triggerLazyTranscode(job *models.HLSJob, quality string) {
 		defer cancelSet.Delete(cancelKey)
 		defer cancel()
 		defer m.activeJobs.Done()
+		// Recover like the job goroutine in jobs.go: an unrecovered panic here would
+		// take down the whole server. Only this quality's encode is lost — the job
+		// stays playable on its other variants and a later request re-triggers it.
+		defer func() {
+			if r := recover(); r != nil {
+				m.log.Error("Panic in lazy HLS transcode for job %s quality %s: %v\n%s", job.ID, quality, r, debug.Stack())
+			}
+		}()
 		m.runLazyTranscode(lazyCtx, job, quality)
 	}()
 }

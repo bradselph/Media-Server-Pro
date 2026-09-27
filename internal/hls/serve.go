@@ -15,6 +15,11 @@ import (
 
 const headerCacheControl = "Cache-Control"
 
+// headerXAccelBuffering disables response buffering on nginx (or any
+// X-Accel-capable proxy) in front of the server, matching the direct-play
+// headers in internal/streaming, so segments reach the player as they are read.
+const headerXAccelBuffering = "X-Accel-Buffering"
+
 // ErrNotReady is returned by ServeMasterPlaylist when the HLS job exists but
 // transcoding has not yet completed. Callers should respond with 503 (not 404)
 // so HLS-aware clients know to retry.
@@ -126,6 +131,7 @@ func servePlaylist(w http.ResponseWriter, _ *http.Request, opts servePlaylistOpt
 		return fmt.Errorf("failed to read playlist: %w", err)
 	}
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Header().Set(headerXAccelBuffering, "no")
 	// Omit the CORS header when empty: hlsCORSOrigin returns "" only to DENY a
 	// configured-but-non-matching Origin. Defaulting to "*" would turn that deny
 	// into allow-all and defeat the operator's CORS allow-list.
@@ -254,6 +260,7 @@ func (m *Module) ServeSegment(w http.ResponseWriter, r *http.Request, p SegmentP
 	}
 
 	w.Header().Set("Content-Type", "video/mp2t")
+	w.Header().Set(headerXAccelBuffering, "no")
 	w.Header().Set(headerCacheControl, "public, max-age=31536000")
 	if origin := m.hlsCORSOrigin(r); origin != "" {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
