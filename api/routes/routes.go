@@ -86,15 +86,18 @@ const (
 
 	// ctxSessionUnavailable is set by sessionAuth when the session store could
 	// not be reached, to distinguish "we don't know who you are" from "you are
-	// not logged in". See abortSessionUnavailable.
-	ctxSessionUnavailable = "session_unavailable"
+	// not logged in". Aliased to handlers.CtxSessionUnavailable so handlers
+	// that gate their own auth outside requireAuth (media streaming,
+	// downloads, HLS serving) can read the same flag without api/handlers
+	// importing api/routes. See handlers.AbortSessionUnavailable.
+	ctxSessionUnavailable = handlers.CtxSessionUnavailable
 
 	headerRetryAfter = "Retry-After"
 )
 
 // sessionAuth loads session/user context from the session_id cookie (or a Bearer
 // API token) and stores both on the gin context so downstream handlers can read them.
-func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
+func sessionAuth(authModule *auth.Module, cfg *config.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Cookie-based session (browser clients)
 		cookie, err := c.Cookie("session_id")
@@ -108,7 +111,9 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 				// DB/transient errors are NOT treated as invalid sessions — the cookie is
 				// preserved so the user is not silently logged out during a DB outage.
 				// Only trust proxy headers (X-Forwarded-Proto, Cf-Visitor) from
-				// trusted proxy IPs to prevent clients from spoofing HTTPS.
+				// trusted proxy IPs to prevent clients from spoofing HTTPS. auth.secure_cookies
+				// forces Secure on regardless, matching setSessionCookie/clearSessionCookie in
+				// api/handlers so a stale cookie clears with the same attributes it was set with.
 				secure := c.Request.TLS != nil
 				if !secure {
 					remoteIP, _, splitErr := net.SplitHostPort(c.Request.RemoteAddr)
@@ -120,6 +125,7 @@ func sessionAuth(authModule *auth.Module) gin.HandlerFunc {
 							strings.Contains(c.GetHeader("Cf-Visitor"), `"scheme":"https"`)
 					}
 				}
+				secure = secure || cfg.Get().Auth.SecureCookies
 				http.SetCookie(c.Writer, &http.Cookie{
 					Name:     "session_id",
 					Value:    "",
@@ -203,13 +209,12 @@ func adminAuth(_ *auth.Module) gin.HandlerFunc {
 // so the client redirected, /login found a valid session and sent the user
 // straight back, and the two ping-ponged in a hard-reload loop that rendered a
 // blank page. 503 + Retry-After says what actually happened: ask again shortly.
+//
+// Delegates to handlers.AbortSessionUnavailable so the streaming/download/HLS
+// serve paths in api/handlers, which cannot import this package, respond
+// identically during the same outage.
 func abortSessionUnavailable(c *gin.Context) {
-	c.Header(headerRetryAfter, "2")
-	c.JSON(http.StatusServiceUnavailable, gin.H{
-		"success": false,
-		"error":   "Session store temporarily unavailable, please retry",
-	})
-	c.Abort()
+	handlers.AbortSessionUnavailable(c)
 }
 
 // requireAuth requires an authenticated, non-expired session with an enabled user.
@@ -485,7 +490,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	r.Use(securityModule.GinMiddleware())
 
 	// Apply session middleware to all routes
-	r.Use(sessionAuth(authModule))
+	r.Use(sessionAuth(authModule, cfg))
 
 	// Track 5xx responses as server_error analytics events. Mounted here so
 	// it sees the final response status from every downstream handler. No-op

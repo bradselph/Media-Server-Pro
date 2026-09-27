@@ -436,9 +436,11 @@ func TestParseProbeHeight_InvalidJSON(t *testing.T) {
 }
 
 // TestHasHLSByID verifies the O(1) ID-keyed HLS presence check used by the
-// pre-generation sweep (which replaced an O(items x jobs) path scan): true only for
-// a Completed job whose master playlist exists on disk, false for a missing ID, a
-// non-completed job, or a completed job whose playlist is gone.
+// pre-generation sweep (which replaced an O(items x jobs) path scan): true for
+// any *Available* job whose master playlist exists on disk — Completed or
+// still Running a later quality (H3: playable after the first quality) —
+// false for a missing ID, a not-yet-playable job, or an Available job whose
+// playlist is gone.
 func TestHasHLSByID(t *testing.T) {
 	dir := t.TempDir()
 	completedDir := filepath.Join(dir, "done")
@@ -455,9 +457,10 @@ func TestHasHLSByID(t *testing.T) {
 
 	m := &Module{
 		jobs: map[string]*models.HLSJob{
-			"done":       {ID: "done", OutputDir: completedDir, Status: models.HLSStatusCompleted},
-			"running":    {ID: "running", OutputDir: completedDir, Status: models.HLSStatusRunning},
-			"noplaylist": {ID: "noplaylist", OutputDir: noPlaylistDir, Status: models.HLSStatusCompleted},
+			"done":             {ID: "done", OutputDir: completedDir, Status: models.HLSStatusCompleted, Available: true},
+			"running-playable": {ID: "running-playable", OutputDir: completedDir, Status: models.HLSStatusRunning, Available: true},
+			"running":          {ID: "running", OutputDir: completedDir, Status: models.HLSStatusRunning},
+			"noplaylist":       {ID: "noplaylist", OutputDir: noPlaylistDir, Status: models.HLSStatusCompleted, Available: true},
 		},
 		log: logger.New("test"),
 	}
@@ -465,13 +468,16 @@ func TestHasHLSByID(t *testing.T) {
 	if !m.HasHLSByID("done") {
 		t.Error("completed job with master playlist should report HLS present")
 	}
+	if !m.HasHLSByID("running-playable") {
+		t.Error("running-but-Available job with master playlist should report HLS present")
+	}
 	if m.HasHLSByID("missing") {
 		t.Error("unknown ID should report no HLS")
 	}
 	if m.HasHLSByID("running") {
-		t.Error("non-completed job should report no HLS")
+		t.Error("non-available job should report no HLS")
 	}
 	if m.HasHLSByID("noplaylist") {
-		t.Error("completed job without master playlist on disk should report no HLS")
+		t.Error("available job without master playlist on disk should report no HLS")
 	}
 }

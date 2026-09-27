@@ -67,7 +67,13 @@ All runtime config is supplied via environment variables read from
 - `SERVER_PORT`, `SERVER_HOST` — listening socket
 - `DATABASE_NAME`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` — app DB credentials
 - `LOG_LEVEL` — `debug` / `info` / `warn` / `error`
-- `AUTH_ALLOW_REGISTRATION`, `AUTH_ALLOW_GUESTS` — public exposure
+- `AUTH_ALLOW_REGISTRATION`, `AUTH_ALLOW_GUESTS` — public exposure. **Seed-only:**
+  only read on a brand-new `config.json` or the one-shot upgrade of an existing
+  one; after that `config.json`'s `auth.allow_registration` / `auth.allow_guests`
+  are authoritative and `auth.*` is denylisted from the admin config API, so
+  there is no admin-UI control either. Set these before the *first* deploy —
+  changing them and redeploying later does nothing to an already-seeded
+  server; edit `config.json` directly and restart instead.
 - `RECEIVER_ENABLED`, `RECEIVER_API_KEYS` — accept federated peers
 - `FEATURE_HUGGINGFACE`, `HUGGINGFACE_API_KEY` — visual classifier
 
@@ -155,5 +161,8 @@ snapshot before upgrading across major versions.
   `HUGGINGFACE_API_KEY`) are strong unique values.
 - [ ] `SERVER_HOST=127.0.0.1` when running behind a reverse proxy.
 - [ ] `AUTH_ALLOW_REGISTRATION=false` unless you intend an open community.
+  Seed-only — set it correctly **before the first deploy**; on an
+  already-seeded server this env var no longer has any effect, so verify (and
+  if needed hand-edit) `auth.allow_registration` in `config.json` and restart.
 - [ ] `.env` on the VPS is mode `600`, owned by the `mediaserver` system user.
 - [ ] `.deploy.env` is not committed (it is in `.gitignore`).

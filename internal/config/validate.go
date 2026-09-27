@@ -169,6 +169,21 @@ func (m *Manager) validateHLS() []error {
 	if hls.StaleLockThreshold < time.Minute {
 		errs = append(errs, fmt.Errorf("hls stale_lock_threshold must be at least 1 minute, got: %v", hls.StaleLockThreshold))
 	}
+	// C23: with zero enabled quality profiles, GenerateHLS would resolve an
+	// empty ladder and produce a "completed" job whose master.m3u8 has no
+	// variants at all — an unplayable stream reported as available. Catch it
+	// here too (not just in GenerateHLS) so AdminUpdateConfig can't bypass it
+	// by disabling every profile after startup.
+	hasEnabledProfile := false
+	for _, qp := range hls.QualityProfiles {
+		if qp.Enabled {
+			hasEnabledProfile = true
+			break
+		}
+	}
+	if !hasEnabledProfile {
+		errs = append(errs, fmt.Errorf("hls requires at least one enabled quality profile"))
+	}
 	return errs
 }
 

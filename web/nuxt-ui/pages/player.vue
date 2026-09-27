@@ -665,6 +665,7 @@ const {
   activateHLS,
   jobProgress,
   jobRunning,
+  jobSlow,
   recheck: recheckHls,
 } = useHLS(videoRef, mediaIdRef, {defaultQuality: () => userPrefs.value?.default_quality})
 
@@ -2031,8 +2032,8 @@ watch(mediaId, (id, oldId) => {
           <!-- HLS + media meta -->
           <UAlert
               v-if="jobRunning"
-              title="Generating HLS stream…"
-              :description="`Progress: ${jobProgress}%`"
+              :title="jobSlow ? 'Still generating HLS stream…' : 'Generating HLS stream…'"
+              :description="jobSlow ? `Taking longer than usual — still checking… (${jobProgress}%)` : `Progress: ${jobProgress}%`"
               color="info"
               variant="soft"
               icon="i-lucide-loader-2"

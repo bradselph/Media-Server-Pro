@@ -637,8 +637,8 @@ type HLSJob struct {
 	LastAccessedAt *time.Time `json:"last_accessed_at,omitempty"`
 	Error          string     `json:"error,omitempty"`
 	FailCount      int        `json:"fail_count,omitempty"` // Number of consecutive transcode failures; job is not retried after maxHLSFailures
-	HLSUrl         string     `json:"hls_url,omitempty"`
-	Available      bool       `json:"available"`
+	HLSUrl         string     `json:"hls_url,omitempty"`    // Master playlist URL once Available; see internal/hls markJobPlayable
+	Available      bool       `json:"available"`            // True once the first quality has finished — the job may still be Status=="running" while later qualities transcode; see internal/hls markJobPlayable
 }
 
 // HLSStatus represents the status of an HLS job

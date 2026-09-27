@@ -199,6 +199,12 @@ func parseInt(s string) int64 {
 
 // ListSmartPlaylists returns all smart playlists for the current user.
 func (h *Handler) ListSmartPlaylists(c *gin.Context) {
+	// Smart playlists are playlists too: honor the same Features.EnablePlaylists
+	// gate as the regular playlist handlers (e.g. ListPlaylists), so disabling
+	// playlists actually disables the whole feature, not just the non-smart half.
+	if !h.requirePlaylist(c) {
+		return
+	}
 	session := RequireSession(c)
 	if session == nil {
 		return
@@ -222,6 +228,9 @@ func (h *Handler) ListSmartPlaylists(c *gin.Context) {
 
 // CreateSmartPlaylist creates a new smart playlist.
 func (h *Handler) CreateSmartPlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	session := RequireSession(c)
 	if session == nil {
 		return
@@ -287,6 +296,9 @@ func (h *Handler) CreateSmartPlaylist(c *gin.Context) {
 
 // GetSmartPlaylist returns a single smart playlist by ID.
 func (h *Handler) GetSmartPlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	session := RequireSession(c)
 	if session == nil {
 		return
@@ -315,6 +327,9 @@ func (h *Handler) GetSmartPlaylist(c *gin.Context) {
 
 // UpdateSmartPlaylist updates a smart playlist's name, description, or rules.
 func (h *Handler) UpdateSmartPlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	session := RequireSession(c)
 	if session == nil {
 		return
@@ -387,6 +402,9 @@ func (h *Handler) UpdateSmartPlaylist(c *gin.Context) {
 
 // DeleteSmartPlaylist deletes a smart playlist.
 func (h *Handler) DeleteSmartPlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	session := RequireSession(c)
 	if session == nil {
 		return
@@ -420,6 +438,9 @@ func (h *Handler) DeleteSmartPlaylist(c *gin.Context) {
 // Filtering runs against the in-memory media module so results include all filesystem
 // metadata (type, tags, duration) that are not persisted to the DB as queryable columns.
 func (h *Handler) PreviewSmartPlaylist(c *gin.Context) {
+	if !h.requirePlaylist(c) {
+		return
+	}
 	session := RequireSession(c)
 	if session == nil {
 		return
@@ -452,10 +473,33 @@ func (h *Handler) PreviewSmartPlaylist(c *gin.Context) {
 	all := h.mergedMediaList(media.Filter{}) // include federated media as candidates
 	catMembers := h.buildSmartCategoryMembers(c.Request.Context(), rules)
 	items := applySmartRules(all, rules, catMembers)
+	// Strip mature-flagged matches for viewers without mature-content permission,
+	// consistent with every other media-listing surface (ListPublicPlaylists,
+	// GetSuggestions, etc.) — otherwise a smart playlist targeting is_mature=true
+	// becomes a way to enumerate/preview mature media the owner can't otherwise see.
+	items = filterMatureMediaItems(items, h.canViewMatureContent(c))
 	if items == nil {
 		items = []*models.MediaItem{}
 	}
 	writeSuccess(c, items)
+}
+
+// filterMatureMediaItems drops mature-flagged items when the viewer can't view
+// mature content, mirroring the pattern used by ListPublicPlaylists
+// (api/handlers/playlists.go) and the suggestions endpoints. Returns items
+// unchanged (no copy) when canViewMature is true.
+func filterMatureMediaItems(items []*models.MediaItem, canViewMature bool) []*models.MediaItem {
+	if canViewMature {
+		return items
+	}
+	kept := make([]*models.MediaItem, 0, len(items))
+	for _, item := range items {
+		if item.IsMature {
+			continue
+		}
+		kept = append(kept, item)
+	}
+	return kept
 }
 
 // buildSmartCategoryMembers pre-loads curated category membership for every

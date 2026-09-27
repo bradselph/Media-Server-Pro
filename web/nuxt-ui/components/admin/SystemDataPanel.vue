@@ -45,9 +45,11 @@ async function saveBackupRetention() {
       ...backupFullConfig.value,
       backup: {...asRecord(backupFullConfig.value.backup), retention_count: backupRetentionCount.value},
     }
-    await adminApi.updateConfig(updated)
+    const resp = await adminApi.updateConfig(updated)
     backupFullConfig.value = updated
-    notifySuccess('Backup settings saved')
+    notifySuccess(resp?.restart_required
+        ? 'Backup settings saved — restart required for some changes'
+        : 'Backup settings saved')
   } catch (e: unknown) {
     notifyError(e, 'Failed to save')
   } finally {

@@ -255,17 +255,26 @@ KNOB_SECTION[ADMIN_PASSWORD_HASH]="Admin login"
 KNOB_SENSITIVE[ADMIN_PASSWORD_HASH]="true"
 
 # ── Auth / public exposure ───────────────────────────────────────────
-KNOB_DESCRIPTION[AUTH_ENABLED]="Master switch for the user-auth system (true | false). Off = single-tenant mode."
+# SEED-ONLY: these three are only applied by the server on a brand-new
+# config.json, or once during the one-shot EnvSeedMigrated upgrade for an
+# existing one (internal/config/config.go). After that, config.json's
+# auth.enabled/allow_guests/allow_registration are authoritative and auth.*
+# is denylisted from the admin config API (api/handlers/admin_config.go), so
+# there is no admin-UI control for them either. Changing these knobs and
+# redeploying has NO effect on an already-seeded server — set them correctly
+# before the FIRST deploy, or hand-edit config.json's auth.* fields and
+# restart the service to change them afterward.
+KNOB_DESCRIPTION[AUTH_ENABLED]="Master switch for the user-auth system (true | false). Off = single-tenant mode. Seed-only: applied on first deploy / one-shot upgrade only, then config.json owns it — see the section comment above."
 KNOB_DEFAULT[AUTH_ENABLED]="true"
 KNOB_SCOPE[AUTH_ENABLED]="runtime"
 KNOB_SECTION[AUTH_ENABLED]="Auth"
 
-KNOB_DESCRIPTION[AUTH_ALLOW_GUESTS]="Allow unauthenticated browse access (true | false)."
+KNOB_DESCRIPTION[AUTH_ALLOW_GUESTS]="Allow unauthenticated browse access (true | false). Seed-only: applied on first deploy / one-shot upgrade only, then config.json owns it — see the section comment above."
 KNOB_DEFAULT[AUTH_ALLOW_GUESTS]="true"
 KNOB_SCOPE[AUTH_ALLOW_GUESTS]="runtime"
 KNOB_SECTION[AUTH_ALLOW_GUESTS]="Auth"
 
-KNOB_DESCRIPTION[AUTH_ALLOW_REGISTRATION]="Allow public sign-up (true | false). The binary defaults to OPEN; set false to close it."
+KNOB_DESCRIPTION[AUTH_ALLOW_REGISTRATION]="Allow public sign-up (true | false). The binary defaults to OPEN; set false to close it. Seed-only: applied on first deploy / one-shot upgrade only, then config.json owns it — see the section comment above."
 KNOB_DEFAULT[AUTH_ALLOW_REGISTRATION]="false"
 KNOB_SCOPE[AUTH_ALLOW_REGISTRATION]="runtime"
 KNOB_SECTION[AUTH_ALLOW_REGISTRATION]="Auth"

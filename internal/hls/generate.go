@@ -15,6 +15,10 @@ type GenerateHLSParams struct {
 	MediaPath string
 	MediaID   string
 	Qualities []string
+	// HighPriority marks this as a live, user-triggered request (e.g. a viewer's
+	// player) rather than background pre-generation, so its transcode goroutine
+	// competes for a slot ahead of low-priority callers — see tryAcquireTranscode.
+	HighPriority bool
 }
 
 // GenerateHLS starts HLS transcoding for a media file.
@@ -29,15 +33,23 @@ func (m *Module) GenerateHLS(ctx context.Context, params *GenerateHLSParams) (*m
 	jobID := params.MediaID
 	outputDir := filepath.Join(m.cacheDir, jobID)
 	resolved := m.resolveHLSQualities(ctx, &resolveQualitiesParams{MediaPath: params.MediaPath, Qualities: params.Qualities})
+	if len(resolved) == 0 {
+		// No quality profile survived resolution (none enabled in config, or
+		// filterQualitiesBySourceHeight/resolveHLSQualities otherwise emptied
+		// the list) — fail clearly before touching job state (C23) instead of
+		// producing a "completed" job whose master.m3u8 has zero variants.
+		return nil, fmt.Errorf("no enabled HLS quality profiles configured")
+	}
 
 	m.jobsMu.Lock()
 	defer m.jobsMu.Unlock()
 	return m.createOrReuseHLSJobLocked(&createOrReuseHLSJobParams{
-		Ctx:       ctx,
-		JobID:     jobID,
-		MediaPath: params.MediaPath,
-		OutputDir: outputDir,
-		Qualities: resolved,
+		Ctx:          ctx,
+		JobID:        jobID,
+		MediaPath:    params.MediaPath,
+		OutputDir:    outputDir,
+		Qualities:    resolved,
+		HighPriority: params.HighPriority,
 	})
 }
 
@@ -157,6 +169,9 @@ func (m *Module) tryResolveExistingJob(mediaID string) (*models.HLSJob, bool) {
 type CheckOrGenerateHLSParams struct {
 	MediaPath string
 	MediaID   string
+	// HighPriority marks this as a live, user-triggered request — see
+	// GenerateHLSParams.HighPriority.
+	HighPriority bool
 }
 
 // CheckOrGenerateHLS checks if HLS exists for media path, auto-generates if configured.
@@ -165,6 +180,12 @@ func (m *Module) CheckOrGenerateHLS(ctx context.Context, params *CheckOrGenerate
 		return nil, fmt.Errorf("CheckOrGenerateHLSParams cannot be nil")
 	}
 	if job, ok := m.tryResolveExistingJob(params.MediaID); ok {
+		// A background pre-generation cycle may have already queued this item at
+		// low priority; a viewer requesting it now should not wait behind the
+		// rest of that batch, so promote the still-pending job in place.
+		if params.HighPriority && job.Status == models.HLSStatusPending {
+			m.upgradeJobPriority(job.ID)
+		}
 		return job, nil
 	}
 	cfg := m.config.Get()
@@ -172,7 +193,7 @@ func (m *Module) CheckOrGenerateHLS(ctx context.Context, params *CheckOrGenerate
 		return nil, fmt.Errorf("HLS not available and auto-generation is disabled")
 	}
 	m.log.Info("Auto-generating HLS for: %s", params.MediaPath)
-	job, err := m.GenerateHLS(ctx, &GenerateHLSParams{MediaPath: params.MediaPath, MediaID: params.MediaID, Qualities: nil})
+	job, err := m.GenerateHLS(ctx, &GenerateHLSParams{MediaPath: params.MediaPath, MediaID: params.MediaID, Qualities: nil, HighPriority: params.HighPriority})
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HLS generation: %w", err)
 	}
@@ -243,29 +264,49 @@ type generateMasterPlaylistParams struct {
 	Variants  []string
 }
 
-// generateMasterPlaylist creates the master HLS playlist in outputDir for the given variants.
-func (m *Module) generateMasterPlaylist(p *generateMasterPlaylistParams) (retErr error) {
+// generateMasterPlaylist creates (or atomically replaces) the master HLS
+// playlist in outputDir for the given variants. transcode() calls this after
+// every quality finishes — not just once at the very end — so a stream
+// becomes playable as soon as the first quality is done (see
+// publishMasterPlaylist/markJobPlayable). The content is written to a
+// temporary sibling file first and renamed into place, so a reader (a player
+// request, or discoverExistingJobs/validateExistingHLS on restart) never
+// observes a half-written master.m3u8, and a failed write leaves whatever
+// master.m3u8 already existed completely untouched.
+func (m *Module) generateMasterPlaylist(p *generateMasterPlaylistParams) error {
 	if p == nil {
 		return fmt.Errorf("generateMasterPlaylistParams cannot be nil")
 	}
 	masterPath := filepath.Join(p.OutputDir, masterPlaylistName)
-	file, err := os.Create(masterPath)
+	file, err := os.CreateTemp(p.OutputDir, masterPlaylistName+".tmp-*")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create temp master playlist: %w", err)
 	}
+	tmpPath := file.Name()
+	// os.CreateTemp always uses mode 0600 regardless of umask; restore the
+	// world-readable mode the previous os.Create-based version produced (these
+	// files are served directly to players, like the 0o755 variant dirs in
+	// prepareVariantDir).
+	if chmodErr := os.Chmod(tmpPath, 0o644); chmodErr != nil { //nolint:gosec // G302: HLS playlists need world-read for serving
+		m.log.Warn("Failed to set master playlist permissions for %s: %v", tmpPath, chmodErr)
+	}
+	// published tracks whether the rename below ran. The deferred cleanup is a
+	// backstop for every other return path (a content-write or Sync/Close
+	// error returns before reaching the rename): it closes the file handle —
+	// ignoring the "already closed" error the success path's explicit Close
+	// below leaves behind — and removes the temp file so a failed write never
+	// leaves cache-dir litter or an unpublished master pointing nowhere.
+	published := false
 	defer func() {
-		// Sync + Close finalize the playlist; a failure here means the file may be
-		// incomplete on disk, so surface it (unless a write error already occurred)
-		// instead of reporting a successful generation.
-		if syncErr := file.Sync(); syncErr != nil && retErr == nil {
-			retErr = fmt.Errorf("failed to sync master playlist file: %w", syncErr)
-		}
-		if closeErr := file.Close(); closeErr != nil && retErr == nil {
-			retErr = fmt.Errorf("failed to close master playlist file: %w", closeErr)
+		_ = file.Close()
+		if !published {
+			if removeErr := os.Remove(tmpPath); removeErr != nil && !os.IsNotExist(removeErr) {
+				m.log.Warn("Failed to remove temp master playlist %s: %v", tmpPath, removeErr)
+			}
 		}
 	}()
 
-	plOpts := &writePlaylistLineOpts{MasterPath: masterPath, WrapMsg: "failed to write playlist header"}
+	plOpts := &writePlaylistLineOpts{MasterPath: tmpPath, WrapMsg: "failed to write playlist header"}
 	if err := m.writePlaylistLine(plOpts, func() error {
 		_, err := fmt.Fprintln(file, "#EXTM3U")
 		return err
@@ -285,10 +326,25 @@ func (m *Module) generateMasterPlaylist(p *generateMasterPlaylistParams) (retErr
 		if profile == nil {
 			continue
 		}
-		if err := m.writeVariantEntry(file, &writeVariantEntryOpts{MasterPath: masterPath, Variant: variant}, profile); err != nil {
+		if err := m.writeVariantEntry(file, &writeVariantEntryOpts{MasterPath: tmpPath, Variant: variant}, profile); err != nil {
 			return err
 		}
 	}
 
+	// Sync + Close finalize the temp file's content before it is renamed into
+	// place — a failure here means the content may be incomplete on disk, so
+	// surface it instead of publishing a possibly truncated file over the real
+	// master.m3u8.
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync master playlist file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("failed to close master playlist file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, masterPath); err != nil {
+		return fmt.Errorf("failed to publish master playlist: %w", err)
+	}
+	published = true
 	return nil
 }

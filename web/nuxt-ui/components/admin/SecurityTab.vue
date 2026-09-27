@@ -5,7 +5,7 @@ import {useAdminFeedback} from '~/composables/useAdminFeedback'
 
 const adminApi = useAdminApi()
 const toast = useToast()
-const {notifyError, notifySuccess} = useAdminFeedback()
+const {notifyError, notifySuccess, notifyWarning} = useAdminFeedback()
 
 const subTab = ref('audit')
 const subTabs = [
@@ -72,9 +72,11 @@ async function saveSecurityDetails() {
       server: {...asRecord(fullConfig.value.server), cert_file: certFile.value, key_file: keyFile.value},
       security: {...asRecord(fullConfig.value.security), hsts_max_age: hstsMaxAge.value, cors_origins: origins},
     }
-    await adminApi.updateConfig(updated)
+    const resp = await adminApi.updateConfig(updated)
     fullConfig.value = updated
-    notifySuccess('Security settings saved')
+    notifySuccess(resp?.restart_required
+        ? 'Security settings saved — restart required for some changes'
+        : 'Security settings saved')
   } catch (e: unknown) {
     notifyError(e, 'Failed to save')
     try {
@@ -99,7 +101,7 @@ async function saveSecurityToggle(
     } else {
       updated.server = {...asRecord(fullConfig.value.server), [key]: value}
     }
-    await adminApi.updateConfig(updated)
+    const resp = await adminApi.updateConfig(updated)
     fullConfig.value = updated
     const sec = asRecord(updated.security)
     const srv = asRecord(updated.server)
@@ -111,7 +113,15 @@ async function saveSecurityToggle(
     if (srv) {
       httpsEnabled.value = srv.enable_https === true
     }
-    notifySuccess('Security settings saved')
+    // C09: server.* (e.g. enable_https) only takes effect when
+    // internal/server/server.go rebuilds the listener in Start(), so surface
+    // the backend's restart_required signal instead of always claiming a
+    // live save, mirroring SystemSettingsPanel.vue's saveConfig().
+    if (resp?.restart_required) {
+      notifyWarning('Security settings saved — restart required for this change to take effect')
+    } else {
+      notifySuccess('Security settings saved')
+    }
   } catch (e: unknown) {
     notifyError(e, 'Failed to save')
     // Reload from server. If the reload itself fails, refs were never mutated

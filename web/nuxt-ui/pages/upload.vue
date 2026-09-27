@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type {UploadProgress, UploadResult} from '~/types/api'
 import {formatBytes} from '~/utils/format'
+import {isTerminalUploadStatus, uploadStatusColor} from '~/utils/uploadStatus'
 
 definePageMeta({layout: 'default', title: 'Upload Media', middleware: 'auth'})
 
@@ -43,7 +44,7 @@ async function pollProgress(uploadId: string) {
       const p = await uploadApi.getProgress(uploadId)
       consecutiveErrors = 0
       progressMap.value = {...progressMap.value, [uploadId]: p}
-      if (p.status === 'completed' || p.status === 'error') {
+      if (isTerminalUploadStatus(p.status)) {
         activePolls.delete(uploadId)
         return
       }
@@ -305,22 +306,32 @@ async function handleUpload() {
               <li
                   v-for="u in result.uploaded"
                   :key="u.upload_id"
-                  class="flex items-center justify-between py-2 px-1 gap-3"
+                  class="flex flex-col py-2 px-1 gap-1"
               >
-                <div class="flex items-center gap-2 min-w-0">
-                  <UIcon name="i-lucide-check-circle" class="size-4 text-success shrink-0"/>
-                  <span class="text-sm truncate">{{ u.filename }}</span>
+                <div class="flex items-center justify-between gap-3">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <UIcon name="i-lucide-check-circle" class="size-4 text-success shrink-0"/>
+                    <span class="text-sm truncate">{{ u.filename }}</span>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <UBadge
+                        v-if="progressMap[u.upload_id]"
+                        :label="progressMap[u.upload_id].status"
+                        :color="uploadStatusColor(progressMap[u.upload_id].status)"
+                        variant="subtle"
+                        size="xs"
+                    />
+                    <span class="text-xs text-muted">{{ formatBytes(u.size) }}</span>
+                  </div>
                 </div>
-                <div class="flex items-center gap-2 shrink-0">
-                  <UBadge
-                      v-if="progressMap[u.upload_id]"
-                      :label="progressMap[u.upload_id].status"
-                      :color="progressMap[u.upload_id].status === 'completed' ? 'success' : progressMap[u.upload_id].status === 'error' ? 'error' : 'warning'"
-                      variant="subtle"
-                      size="xs"
-                  />
-                  <span class="text-xs text-muted">{{ formatBytes(u.size) }}</span>
-                </div>
+                <!-- Progress.Error (internal/upload's UploadStatusFailed detail) is only ever
+                     populated alongside status "failed"; surface it once the poll observes it. -->
+                <p
+                    v-if="progressMap[u.upload_id]?.status === 'failed' && progressMap[u.upload_id]?.error"
+                    class="text-xs text-error truncate"
+                >
+                  {{ progressMap[u.upload_id].error }}
+                </p>
               </li>
             </ul>
           </UCard>

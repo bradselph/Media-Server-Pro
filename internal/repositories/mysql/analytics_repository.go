@@ -103,6 +103,16 @@ func (r *AnalyticsRepository) DeleteByMediaID(ctx context.Context, mediaID strin
 		Delete(&models.AnalyticsEvent{}).Error
 }
 
+// DeleteByUserID deletes all analytics events attributed to userID. Used by
+// GDPR-style account deletion: analytics_events has no FK to users(id), so
+// nothing removes these rows (which carry ip_address/user_agent PII) unless
+// called explicitly.
+func (r *AnalyticsRepository) DeleteByUserID(ctx context.Context, userID string) error {
+	return r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Delete(&models.AnalyticsEvent{}).Error
+}
+
 // CountByType returns event counts grouped by event type using a single SQL GROUP BY query.
 // Avoids the full in-memory table scan previously used by GetEventTypeCounts and GetEventStats.
 func (r *AnalyticsRepository) CountByType(ctx context.Context) (map[string]int64, error) {

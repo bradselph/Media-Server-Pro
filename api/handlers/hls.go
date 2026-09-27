@@ -52,7 +52,9 @@ func (h *Handler) CheckHLSAvailability(c *gin.Context) {
 		}
 	}
 
-	job, err := h.hls.CheckOrGenerateHLS(c.Request.Context(), &hls.CheckOrGenerateHLSParams{MediaPath: absPath, MediaID: id})
+	// User-facing: the viewer is waiting on this stream, so it must not queue
+	// behind background pre-generation — see hls.GenerateHLSParams.HighPriority.
+	job, err := h.hls.CheckOrGenerateHLS(c.Request.Context(), &hls.CheckOrGenerateHLSParams{MediaPath: absPath, MediaID: id, HighPriority: true})
 	if err != nil {
 		h.log.Debug("HLS check/generate failed for media %s: %v", id, err)
 		writeError(c, http.StatusNotFound, "HLS stream not available")
@@ -122,9 +124,16 @@ func buildGenerateHLSResponse(job *models.HLSJob) map[string]any {
 // applyHLSCompletionFields stamps the shared completion-related fields onto an
 // HLS job response map: availability, the master playlist URL, and (when the
 // job has finished) the completion timestamp.
+//
+// Available (not Status=="completed") drives this: a job becomes playable as
+// soon as its first quality finishes transcoding (see
+// internal/hls.markJobPlayable), so /api/hls/check and /api/hls/status report
+// available=true + a real hls_url while status is still "running" and
+// progress keeps climbing as the rest of the ladder transcodes in the
+// background, instead of only once every quality is done.
 func applyHLSCompletionFields(resp map[string]any, job *models.HLSJob) {
-	resp["available"] = job.Status == models.HLSStatusCompleted
-	if job.Status == models.HLSStatusCompleted {
+	resp["available"] = job.Available
+	if job.Available {
 		resp["hls_url"] = fmt.Sprintf(fmtHLSMasterURL, job.ID)
 	} else {
 		resp["hls_url"] = ""
@@ -162,7 +171,9 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 			return
 		}
 	}
-	job, err := h.hls.GenerateHLS(c.Request.Context(), &hls.GenerateHLSParams{MediaPath: absPath, MediaID: id, Qualities: qualities})
+	// User-facing: the viewer explicitly requested this, so it must not queue
+	// behind background pre-generation — see hls.GenerateHLSParams.HighPriority.
+	job, err := h.hls.GenerateHLS(c.Request.Context(), &hls.GenerateHLSParams{MediaPath: absPath, MediaID: id, Qualities: qualities, HighPriority: true})
 	if err != nil {
 		h.log.Error("%v", err)
 		// Track HLS request errors so dashboards surface a transcoder problem
@@ -225,17 +236,18 @@ func (h *Handler) GetHLSStatus(c *gin.Context) {
 // so HLS cache survives moves/renames) rather than job.MediaPath, which is a
 // snapshot taken at job-creation time and is never refreshed when the catalog
 // re-keys on RenameMedia/MoveMedia — a path lookup would spuriously miss after
-// any rename. A completed job whose source is genuinely no longer indexed (the
-// file was deleted/rescanned away) fails closed: it was gate-eligible at gen
-// time, so verified users still pass checkMatureAccess while anonymous/unverified
-// callers are blocked. A pending/running job with no index entry yet (startup
-// scan race) is treated as non-mature so an in-progress, not-yet-flagged item
-// isn't gated.
+// any rename. A playable job (job.Available — real, servable content exists;
+// see internal/hls.markJobPlayable) whose source is genuinely no longer
+// indexed (the file was deleted/rescanned away) fails closed: it was
+// gate-eligible when it became playable, so verified users still pass
+// checkMatureAccess while anonymous/unverified callers are blocked. A
+// not-yet-playable job with no index entry yet (startup scan race) is treated
+// as non-mature so an in-progress, not-yet-flagged item isn't gated.
 func (h *Handler) hlsJobIsMature(job *models.HLSJob) bool {
 	if item, err := h.media.GetMediaByID(job.ID); err == nil && item != nil {
 		return item.IsMature
 	}
-	return job.Status == models.HLSStatusCompleted
+	return job.Available
 }
 
 // resolveHLSJobForServe loads an HLS job by ID, checks mature access, and records access. On success returns (job, true). On failure writes the error response and returns (nil, false).
@@ -248,24 +260,28 @@ func (h *Handler) resolveHLSJobForServe(c *gin.Context, jobID string) (*models.H
 	// Honour Streaming.RequireAuth here too — the HLS segment routes carry no auth
 	// middleware, so without this an anonymous holder of a job UUID could stream
 	// the full ladder while StreamMedia/DownloadMedia reject them (media.go).
-	if getSession(c) == nil && h.config.Get().Streaming.RequireAuth {
-		writeError(c, http.StatusUnauthorized, "Authentication required to stream media")
+	if !checkStreamingAuth(c, getSession(c), h.config.Get().Streaming.RequireAuth, "Authentication required to stream media") {
 		return nil, false
 	}
 	if !h.checkMatureAccess(c, h.hlsJobIsMature(job)) {
 		return nil, false
 	}
-	// Only refresh the access timestamp for jobs that are still usable.
-	// Terminal failure states (Failed, Canceled) must NOT be kept alive by
-	// access timestamps — CleanInactiveJobs uses LastAccess as the sole gate
-	// for removal, so recording access on a terminal-failure job would prevent
-	// it from ever being cleaned up. The allowlist below is intentional: any
-	// new HLSStatus constant should be considered explicitly.
-	switch job.Status {
-	case models.HLSStatusRunning, models.HLSStatusPending, models.HLSStatusCompleted:
+	// Only refresh the access timestamp for a job with something servable.
+	// Terminal Failed jobs (or a Canceled job that never became playable) must
+	// NOT be kept alive by access timestamps — CleanInactiveJobs uses
+	// LastAccess as the sole gate for removal, so recording access on one
+	// would prevent it from ever being cleaned up. A Canceled job that DID
+	// already become playable before cancellation (e.g. a server shutdown
+	// mid-ladder — see internal/hls.finalizeAfterQualityFailure) still has
+	// real, servable content and should keep extending its lifetime like any
+	// other in-use job.
+	switch {
+	case job.Status == models.HLSStatusFailed:
+		// terminal failure — nothing servable, do not extend lifetime
+	case job.Status == models.HLSStatusCanceled && !job.Available:
+		// canceled before anything became playable — nothing to keep alive
+	default:
 		h.hls.RecordAccess(jobID)
-	case models.HLSStatusFailed, models.HLSStatusCanceled:
-		// terminal failure — do not extend lifetime
 	}
 	return job, true
 }
@@ -282,6 +298,11 @@ func (h *Handler) withResolvedHLSJob(c *gin.Context, jobID, notFoundMsg string, 
 		}
 		switch {
 		case errors.Is(err, hls.ErrNotReady):
+			// Covers both the master-playlist "not Available yet" case and a
+			// lazy-transcode variant/segment whose on-demand encode was just
+			// dispatched in the background (see ensureVariantPlaylistExists) —
+			// either way the player should retry shortly rather than give up.
+			c.Header(headerRetryAfter, "5")
 			writeError(c, http.StatusServiceUnavailable, "HLS transcoding in progress, retry shortly")
 		case errors.Is(err, os.ErrNotExist):
 			writeError(c, http.StatusNotFound, notFoundMsg)

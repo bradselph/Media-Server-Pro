@@ -1126,8 +1126,10 @@ func registerAdminHealthTasks(registerWithOverride func(tasks.TaskRegistration),
 func registerHLSStreamingTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, mediaModule *media.Module, hlsModule *hls.Module, streamingModule *streaming.Module, analyticsModule *analytics.Module, log *logger.Logger) {
 	// HLS pre-generation — generates HLS content for video media that doesn't have it yet.
 	// Interval is configurable via hls.pre_generate_interval_hours (default: 1).
-	// Each cycle queues at most ConcurrentLimit jobs and skips entirely when existing
-	// jobs are already in flight, so the system is never overloaded.
+	// Each cycle queues low-priority jobs up to the remaining low-priority
+	// capacity (ConcurrentLimit minus one slot reserved for viewers, minus any
+	// jobs already active), so a single in-flight viewer request never blocks
+	// the whole catalog sweep, and the system is never overloaded.
 	pregenInterval := max(time.Duration(cfg.Get().HLS.PreGenerateIntervalHours)*time.Hour, 15*time.Minute)
 	registerWithOverride(tasks.TaskRegistration{
 		ID:          "hls-pregenerate",
@@ -1142,16 +1144,20 @@ func registerHLSStreamingTasks(registerWithOverride func(tasks.TaskRegistration)
 				return nil
 			}
 
-			// Skip this cycle entirely if jobs are already running/pending
+			// Skip only when there's no remaining low-priority capacity; a single
+			// in-flight job (e.g. one viewer's on-demand generation) shouldn't
+			// block the whole catalog sweep from using the rest of the headroom.
+			// LowPriorityCapacity already reserves a slot for on-demand requests
+			// (see tryAcquireTranscode), so background jobs queued here can never
+			// starve a viewer even if this whole batch is still running when one
+			// arrives.
+			lowPriorityCapacity := hlsModule.LowPriorityCapacity()
 			active := hlsModule.ActiveJobCount()
-			if active > 0 {
-				log.Debug("HLS pre-generation: %d jobs already active, skipping this cycle", active)
+			batchLimit := lowPriorityCapacity - active
+			if batchLimit <= 0 {
+				log.Debug("HLS pre-generation: %d/%d low-priority job slots active, skipping this cycle", active, lowPriorityCapacity)
 				return nil
 			}
-
-			// Queue at most ConcurrentLimit jobs per cycle so we never flood the
-			// system. Uses the module's effective (CPU-aware when set to auto) limit.
-			batchLimit := hlsModule.EffectiveConcurrentLimit()
 
 			items := mediaModule.ListMedia(media.Filter{})
 
@@ -1197,6 +1203,9 @@ func registerHLSStreamingTasks(registerWithOverride func(tasks.TaskRegistration)
 				if _, err := hlsModule.GenerateHLS(ctx, &hls.GenerateHLSParams{
 					MediaPath: item.Path,
 					MediaID:   item.ID,
+					// Background sweep, not a live viewer request — never jump ahead
+					// of on-demand generation (see tryAcquireTranscode).
+					HighPriority: false,
 				}); err != nil {
 					log.Debug("HLS pre-generation skipped for %s: %v", item.Name, err)
 					continue

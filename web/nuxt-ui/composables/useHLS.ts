@@ -8,6 +8,7 @@
  */
 
 import type {Ref} from 'vue'
+import {HLS_TUNING_CONFIG} from '~/utils/hlsConfig'
 
 export interface HLSQuality {
     index: number
@@ -48,6 +49,8 @@ export interface UseHLSReturn {
     jobProgress: Ref<number>
     /** Whether HLS job is currently generating. */
     jobRunning: Ref<boolean>
+    /** Whether the job has been running long enough to fall back to a slow background poll (still in progress — not a failure). */
+    jobSlow: Ref<boolean>
     /** Re-run the availability check for the current media (e.g. after manual generation). */
     recheck: () => void
 }
@@ -104,6 +107,80 @@ function saveQualityPref(height: number): void {
     }
 }
 
+export interface PlaybackState {
+    time: number
+    wasPlaying: boolean
+}
+
+/**
+ * Snapshot the position/paused state of a media element before a source swap
+ * (direct <-> HLS) that would otherwise reset the element's load state and
+ * silently rewind it to 0. Call sites only act on this when `time > 0`, so a
+ * fresh element (nothing played yet) is left alone.
+ */
+export function capturePlaybackState(el: { currentTime: number; paused: boolean } | null | undefined): PlaybackState {
+    return {
+        time: el?.currentTime ?? 0,
+        wasPlaying: !!el && !el.paused,
+    }
+}
+
+export interface NetworkErrorDecision {
+    action: 'retry' | 'fallback'
+    delayMs: number
+}
+
+/**
+ * Decide how to respond to a fatal hls.js NETWORK_ERROR. When something has
+ * already buffered, a transient outage is worth riding out with a generous
+ * exponential backoff (up to 8 attempts, capped at 30s) — the existing
+ * MediaSource keeps playing from its buffer while we wait for the server.
+ * When nothing has ever buffered (the very first manifest/fragment request
+ * failed), there is no buffered content to protect: allow at most one quick
+ * retry, then fall back to direct playback immediately instead of leaving
+ * the player blank for the ~49s the full backoff loop would otherwise take.
+ */
+export function decideNetworkErrorAction(hasBuffered: boolean, attempt: number): NetworkErrorDecision {
+    if (!hasBuffered) {
+        return attempt <= 1 ? {action: 'retry', delayMs: 1000} : {action: 'fallback', delayMs: 0}
+    }
+    return attempt <= 8
+        ? {action: 'retry', delayMs: Math.min(1000 * Math.pow(1.5, attempt - 1), 30000)}
+        : {action: 'fallback', delayMs: 0}
+}
+
+/**
+ * Message to surface when an HLS job status update indicates the job will
+ * not complete on its own (failed or canceled). Returns null for statuses
+ * that are still in progress or already succeeded, so callers only touch
+ * hlsError for genuine terminal failures.
+ */
+export function resolveTerminalHlsError(status: string, error?: string | null): string | null {
+    if (status === 'failed' || status === 'canceled') return error || 'HLS generation failed'
+    return null
+}
+
+const FAST_POLL_INTERVAL_MS = 3000
+const SLOW_POLL_INTERVAL_MS = 60 * 1000
+const FAST_POLL_WINDOW_MS = 30 * 60 * 1000 // 30 minutes of fast (3s) polling
+const HARD_POLL_LIMIT_MS = 3 * 60 * 60 * 1000 // outer bound — past the backend's 2h stale-lock threshold
+
+export type PollPhase = 'fast' | 'slow' | 'expired'
+
+/**
+ * Which polling cadence doPollCheck should use for a job that has been
+ * running for `elapsedMs`. 'fast' is the normal 3s poll; past
+ * FAST_POLL_WINDOW_MS a legitimately slow encode (large file, multiple
+ * qualities transcoded sequentially, CPU-constrained server) switches to a
+ * 60s background poll rather than giving up outright; HARD_POLL_LIMIT_MS is
+ * the sane outer bound where we finally stop.
+ */
+export function pollPhaseFor(elapsedMs: number): PollPhase {
+    if (elapsedMs > HARD_POLL_LIMIT_MS) return 'expired'
+    if (elapsedMs > FAST_POLL_WINDOW_MS) return 'slow'
+    return 'fast'
+}
+
 export function useHLS(
     videoRef: Ref<HTMLVideoElement | null>,
     mediaId: Ref<string>,
@@ -124,6 +201,7 @@ export function useHLS(
     const bandwidth = ref(0)
     const jobProgress = ref(0)
     const jobRunning = ref(false)
+    const jobSlow = ref(false)
 
     let hlsInstance: import('hls.js').default | null = null
     let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -132,7 +210,8 @@ export function useHLS(
     let activationGen = 0
     let checkGen = 0
     let pollStartTime = 0
-    const MAX_POLL_DURATION = 30 * 60 * 1000 // 30 minutes
+    let pollPhase: PollPhase = 'fast'
+    let activePollId = ''
     const MAX_CONSECUTIVE_ERRORS = 10
 
     function cleanup() {
@@ -167,6 +246,9 @@ export function useHLS(
         hlsActivated.value = false
         jobProgress.value = 0
         jobRunning.value = false
+        jobSlow.value = false
+        pollPhase = 'fast'
+        activePollId = ''
         consecutiveErrors.count = 0
     }
 
@@ -187,14 +269,33 @@ export function useHLS(
         }
     }
 
-    async function attachHLS(url: string, gen: number) {
+    async function attachHLS(url: string, gen: number, preSwitch: PlaybackState = {time: 0, wasPlaying: false}) {
         const el = videoRef.value
         if (!el) return
+
+        // Restore the position/play-state captured before the source swap once
+        // the new source has loaded metadata. Guarded on preSwitch.time > 0 so a
+        // genuine first-ever load (nothing played yet) is left to player.vue's
+        // own restorePosition() flow, and on the gen token so a superseded
+        // activation can't seek an element a newer one now owns. Reused for the
+        // reverse handoff too (HLS -> direct fallback on a fatal error below),
+        // passing the position captured right before that fallback instead.
+        function scheduleResume(target: HTMLMediaElement, state: PlaybackState) {
+            if (state.time <= 0) return
+            const resume = () => {
+                target.removeEventListener('loadedmetadata', resume)
+                if (gen !== activationGen) return
+                target.currentTime = state.time
+                if (state.wasPlaying) target.play().catch(() => {})
+            }
+            target.addEventListener('loadedmetadata', resume, {once: true})
+        }
 
         // Safari native HLS
         if (el.canPlayType('application/vnd.apple.mpegurl')) {
             el.src = url
             hlsLoading.value = false
+            scheduleResume(el, preSwitch)
             return
         }
 
@@ -221,6 +322,7 @@ export function useHLS(
             hlsActivated.value = false
             hlsError.value = 'HLS not supported in this browser'
             hlsLoading.value = false
+            scheduleResume(el, preSwitch)
             return
         }
 
@@ -235,42 +337,22 @@ export function useHLS(
 
         let networkRetryCount = 0
         let mediaRetryCount = 0
+        // Set once the manifest has parsed or a fragment has actually loaded —
+        // i.e. there is something in the buffer. A fatal NETWORK_ERROR before
+        // that point has nothing to "continue playing from" (see the ERROR
+        // handler below), unlike a genuine mid-stream reconnect.
+        let hasBuffered = false
 
-        const hls = new Hls({
-            debug: false,
-            enableWorker: true,
-            lowLatencyMode: false,
-            backBufferLength: 90,
-            // Buffer generously so playback doesn't stall on marginal networks and
-            // so buffering keeps filling ahead while PAUSED (hls.js loads up to
-            // these caps regardless of play/pause — it never stops on pause).
-            // Previously maxMaxBufferLength=120 (well under hls.js's 600 default)
-            // and maxBufferSize=60MB capped high-bitrate streams to only ~20s of
-            // lookahead, causing repeated `waiting` underruns (stuck buffer spinner)
-            // and making the buffer appear to stop growing the moment you paused.
-            maxBufferLength: 90,            // target forward buffer (s)
-            maxMaxBufferLength: 600,        // hard cap (s) — hls.js default; allows deep buffering while paused
-            maxBufferSize: 200 * 1000 * 1000, // byte cap (~48s @25Mbps 4K, ~320s @5Mbps) — was 60MB
-            maxBufferHole: 0.5,
-            manifestLoadingTimeOut: 20000,
-            manifestLoadingMaxRetry: 4,
-            manifestLoadingRetryDelay: 1000,
-            levelLoadingTimeOut: 20000,
-            levelLoadingMaxRetry: 4,
-            levelLoadingRetryDelay: 1000,
-            fragLoadingTimeOut: 30000,
-            fragLoadingMaxRetry: 8,
-            fragLoadingRetryDelay: 1000,
-            fragLoadingMaxRetryTimeout: 16000,
-            startFragPrefetch: true,
-            testBandwidth: true,
-        })
+        // Buffer/retry tuning is shared with useHubProxyPlayback.ts's hls.js
+        // instance (see utils/hlsConfig.ts) so the two players can't drift apart.
+        const hls = new Hls({...HLS_TUNING_CONFIG})
 
         hlsInstance = hls
 
         hls.on(Hls.Events.MANIFEST_PARSED, (_event: unknown, data: {
             levels: Array<{ height: number; width: number; bitrate: number; videoCodec?: string; frameRate?: number }>
         }) => {
+            hasBuffered = true
             const q: HLSQuality[] = data.levels.map((level, i) => ({
                 index: i,
                 height: level.height,
@@ -282,6 +364,7 @@ export function useHLS(
             }))
             qualities.value = q
             hlsLoading.value = false
+            scheduleResume(el, preSwitch)
 
             // Restore saved quality preference. Per-device localStorage takes
             // precedence (an explicit in-player pick should stick on this
@@ -326,6 +409,7 @@ export function useHLS(
         hls.on(Hls.Events.FRAG_LOADED, (_event: unknown, data: {
             frag: { stats: { loaded: number; loading: { start: number; end: number } } }
         }) => {
+            hasBuffered = true
             const stats = data.frag.stats
             if (!stats.loaded || !stats.loading?.end || !stats.loading?.start) return
             const loadTime = stats.loading.end - stats.loading.start
@@ -344,12 +428,16 @@ export function useHLS(
 
             if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
                 networkRetryCount++
-                // Allow up to 8 reconnect attempts with exponential backoff capped at 30s.
-                // We do NOT destroy the hls.js instance — the MediaSource stays attached so
-                // the already-buffered content continues to play while we wait for the server.
-                if (networkRetryCount <= 8) {
-                    const delay = Math.min(1000 * Math.pow(1.5, networkRetryCount - 1), 30000)
-                    hlsReconnecting.value = true
+                // hasBuffered decides whether this is a mid-stream reconnect (ride
+                // it out with the full backoff budget, MediaSource stays attached
+                // so buffered content keeps playing) or a pre-buffer failure
+                // (nothing to continue playing — fail fast, see
+                // decideNetworkErrorAction).
+                const decision = decideNetworkErrorAction(hasBuffered, networkRetryCount)
+                if (decision.action === 'retry') {
+                    // Only claim we're "continuing from buffer" when something
+                    // actually buffered — see player.vue's reconnecting banner.
+                    if (hasBuffered) hlsReconnecting.value = true
                     // Clear any pending retry before scheduling a new one. Rapid
                     // successive NETWORK_ERROR events would otherwise leave multiple
                     // live timers all calling hls.startLoad() on the same instance.
@@ -360,10 +448,11 @@ export function useHLS(
                     networkRetryTimer = setTimeout(() => {
                         networkRetryTimer = null
                         if (hlsInstance === hls) hls.startLoad()
-                    }, delay)
+                    }, decision.delayMs)
                     return
                 }
-                // All retries exhausted — fall through to fatal handling below
+                // Retries exhausted (or none granted for a pre-buffer failure) —
+                // fall through to fatal handling below.
                 hlsReconnecting.value = false
             }
 
@@ -378,6 +467,16 @@ export function useHLS(
 
             hlsLoading.value = false
             hlsError.value = 'HLS playback failed'
+            // Capture position/play-state before flipping hlsActivated so the
+            // fallback to direct play (below) can resume in place instead of
+            // silently restarting from 0 — same handoff used going the other
+            // direction in activateHLS(). If nothing ever buffered, `el`'s own
+            // currentTime is already 0 (Vue's :src=undefined swap reset it
+            // before hls.js got a chance to attach anything) — restore the
+            // pre-switch position captured back in activateHLS() instead. Once
+            // something has buffered, prefer the live position so a mid-stream
+            // failure resumes where HLS playback actually got to.
+            const fallbackState = hasBuffered ? capturePlaybackState(el) : preSwitch
             // Reset hlsActivated: hls.js is being destroyed here, and the <video>
             // :src is `hlsActivated ? undefined : directStreamUrl`. Leaving it true
             // would strand the element with src=undefined (permanent blank playback
@@ -389,6 +488,7 @@ export function useHLS(
             }
             hls.destroy()
             hlsInstance = null
+            scheduleResume(el, fallbackState)
         })
 
         // Re-validate before attaching — the component may have unmounted, or the
@@ -411,6 +511,13 @@ export function useHLS(
         // async retry loop below (e.g. when the user navigates to another item).
         const capturedUrl = hlsUrl.value
         if (!capturedUrl) return
+        // Snapshot the current position/play-state before flipping :src to
+        // undefined (which resets the element's load state) so a direct-to-HLS
+        // handoff can resume in place instead of silently rewinding to 0. A
+        // fresh element that hasn't played yet naturally captures time=0, which
+        // attachHLS treats as "nothing to restore" and leaves to player.vue's
+        // own restorePosition() flow.
+        const preSwitch = capturePlaybackState(videoRef.value)
         hlsActivated.value = true
         const thisGen = ++activationGen
 
@@ -433,7 +540,7 @@ export function useHLS(
 
         if (thisGen !== activationGen) return
 
-        attachHLS(capturedUrl, thisGen).catch((err: unknown) => {
+        attachHLS(capturedUrl, thisGen, preSwitch).catch((err: unknown) => {
             if (thisGen === activationGen) {
                 hlsActivated.value = false
                 // Clear the loading flag here too: attachHLS sets it true before its
@@ -453,14 +560,28 @@ export function useHLS(
     async function doPollCheck(id: string, thisCheck: number) {
         if (thisCheck !== checkGen) return
         if (document.hidden) return
-        if (Date.now() - pollStartTime > MAX_POLL_DURATION) {
+        const elapsed = Date.now() - pollStartTime
+        const phase = pollPhaseFor(elapsed)
+        if (phase === 'expired') {
             jobRunning.value = false
+            jobSlow.value = false
             hlsError.value = 'HLS generation timed out — try again later'
             if (pollTimer) {
                 clearInterval(pollTimer)
                 pollTimer = null
             }
             return
+        }
+        if (phase === 'slow' && pollPhase !== 'slow') {
+            // A legitimately slow encode (large file, multiple qualities
+            // transcoded sequentially, CPU-constrained server) can outlast the
+            // fast-poll window. Don't give up — switch to an infrequent
+            // background poll so a real completion or failure is still picked
+            // up without requiring the user to navigate away and back.
+            pollPhase = 'slow'
+            jobSlow.value = true
+            if (pollTimer) clearInterval(pollTimer)
+            pollTimer = setInterval(() => doPollCheck(id, thisCheck), SLOW_POLL_INTERVAL_MS)
         }
         try {
             const updated = await hlsApi.check(id)
@@ -469,6 +590,7 @@ export function useHLS(
             jobProgress.value = updated.progress
             if (updated.available && updated.hls_url) {
                 jobRunning.value = false
+                jobSlow.value = false
                 hlsError.value = null
                 hlsAvailable.value = true
                 hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
@@ -479,6 +601,9 @@ export function useHLS(
                 await autoActivateIfEnabled(thisCheck)
             } else if (updated.status !== 'running' && updated.status !== 'pending') {
                 jobRunning.value = false
+                jobSlow.value = false
+                const failure = resolveTerminalHlsError(updated.status, updated.error)
+                if (failure) hlsError.value = failure
                 if (pollTimer) {
                     clearInterval(pollTimer)
                     pollTimer = null
@@ -489,12 +614,23 @@ export function useHLS(
             consecutiveErrors.count++
             if (consecutiveErrors.count >= MAX_CONSECUTIVE_ERRORS) {
                 jobRunning.value = false
+                jobSlow.value = false
                 hlsError.value = 'Lost connection to HLS service'
                 if (pollTimer) {
                     clearInterval(pollTimer)
                     pollTimer = null
                 }
             }
+        }
+    }
+
+    /** Force an immediate poll tick when the tab becomes visible again while a
+     * job is running — background tabs are throttled by the browser (Chrome
+     * caps repeating timers to ~1/minute after ~5 minutes hidden), so without
+     * this the progress banner can look frozen for a while after switching back. */
+    function onVisibilityChange() {
+        if (!document.hidden && pollTimer && activePollId) {
+            void doPollCheck(activePollId, checkGen)
         }
     }
 
@@ -529,9 +665,18 @@ export function useHLS(
 
                 // Poll for completion — skip while tab is hidden to avoid wasteful background requests
                 pollStartTime = Date.now()
+                pollPhase = 'fast'
+                jobSlow.value = false
                 consecutiveErrors.count = 0
+                activePollId = id
                 if (pollTimer) clearInterval(pollTimer)
-                pollTimer = setInterval(() => doPollCheck(id, thisCheck), 3000)
+                pollTimer = setInterval(() => doPollCheck(id, thisCheck), FAST_POLL_INTERVAL_MS)
+            } else {
+                // A page load (or manual recheck) that lands directly on an
+                // already-failed/canceled job — surface it instead of silently
+                // falling through to the generic "Generate HLS" prompt.
+                const failure = resolveTerminalHlsError(status.status, status.error)
+                if (failure) hlsError.value = failure
             }
         } catch (err) {
             if (thisCheck !== checkGen) return
@@ -571,8 +716,14 @@ export function useHLS(
         }, 50)
     }, {immediate: true})
 
+    // Force an immediate re-check when the tab becomes visible again instead of
+    // waiting out the rest of a (possibly browser-throttled) background-tab poll
+    // interval — see onVisibilityChange's doc comment above.
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
     // Cleanup on unmount
     onUnmounted(() => {
+        document.removeEventListener('visibilitychange', onVisibilityChange)
         cleanup()
     })
 
@@ -592,5 +743,6 @@ export function useHLS(
         activateHLS,
         jobProgress,
         jobRunning,
+        jobSlow,
     }
 }

@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"media-server-pro/internal/repositories/mysql"
 	"media-server-pro/pkg/models"
 )
 
@@ -582,12 +583,55 @@ func (m *Module) DeleteUser(ctx context.Context, username string) error {
 	delete(m.users, username)
 	m.usersMu.Unlock()
 
+	// Purge rows in user-keyed stores that have no ON DELETE CASCADE back to
+	// users(id) (see ensureSchemaForeignKeys in internal/database/migrations.go
+	// for the tables that already cascade on their own: sessions, favorites,
+	// playlists/items, playback_positions, user_preferences/permissions,
+	// suggestion profiles/view history, smart_playlists, api tokens — no
+	// action needed for those here). Errors are joined rather than swallowed
+	// so a partial failure is reported instead of a false "deleted" success.
+	if err := m.purgeUnfederatedUserData(ctx, user.ID); err != nil {
+		return fmt.Errorf("user deleted but failed to purge dependent data: %w", err)
+	}
+
 	if err := m.evictSessionsForUser(ctx, username, "user deleted"); err != nil {
 		return fmt.Errorf("user deleted but session revocation failed: %w", err)
 	}
 
 	m.log.Info("Deleted user: %s", username)
 	return nil
+}
+
+// purgeUnfederatedUserData erases the deleted user's rows from stores that
+// carry a user_id/reporter_id column but no foreign-key cascade to users(id):
+// analytics_events and saved_searches (deleted outright — analytics_events
+// also carries ip_address/user_agent PII) and media_reports (reporter_id and
+// ip_address are anonymized; the report itself is kept as moderation
+// history). These repositories are constructed directly from the shared DB
+// handle rather than added as Module fields, and every step is nil-guarded,
+// so this stays a no-op (not a panic) for tests and any other caller that
+// builds a Module without a database module wired up.
+func (m *Module) purgeUnfederatedUserData(ctx context.Context, userID string) error {
+	var errs []error
+
+	if m.dbModule != nil {
+		if db := m.dbModule.GORM(); db != nil {
+			if err := mysql.NewAnalyticsRepository(db).DeleteByUserID(ctx, userID); err != nil {
+				errs = append(errs, fmt.Errorf("delete analytics events: %w", err))
+			}
+			if err := mysql.NewMediaReportRepository(db).AnonymizeReporter(ctx, userID); err != nil {
+				errs = append(errs, fmt.Errorf("anonymize media reports: %w", err))
+			}
+		}
+	}
+
+	if m.savedSearchRepo != nil {
+		if err := m.savedSearchRepo.DeleteAllByUser(ctx, userID); err != nil {
+			errs = append(errs, fmt.Errorf("delete saved searches: %w", err))
+		}
+	}
+
+	return errors.Join(errs...)
 }
 
 // ListUsers returns all users (without sensitive data)

@@ -55,6 +55,19 @@ const staleSessionTimeout = 30 * time.Minute
 // stream longer than staleSessionTimeout would be wrongly evicted mid-transfer.
 const keepaliveInterval = staleSessionTimeout / 3
 
+// maxSessionsPerMedia bounds how many concurrent session rows a single
+// (userID, mediaID) pair may hold at once. Sessions for media the caller is
+// already streaming are exempt from the per-user distinct-media cap (see
+// countUserStreamsLocked) so ordinary seeking — which aborts the in-flight
+// Range request and opens a new one for the very same video — doesn't trip a
+// low cap. But that exemption must stay bounded: without a ceiling, flooding
+// a single media ID with concurrent requests would be admitted unconditionally
+// forever, defeating the cap entirely instead of merely tolerating a seek's
+// transient overlap. 2 allows one stale-but-not-yet-reaped row plus the new
+// request that superseded it; a third concurrent request for the same media
+// is rejected like any other cap overflow.
+const maxSessionsPerMedia = 2
+
 // Module implements media streaming
 type Module struct {
 	config         *config.Manager
@@ -109,13 +122,36 @@ type StreamStats struct {
 	PeakConcurrent int   `json:"peak_concurrent"`
 }
 
+// maxPooledBufferSize is a sane upper bound on the pooled I/O buffer computed in
+// NewModule, so a pathological chunk-size config value can't blow up per-buffer
+// memory use (the pool holds one of these per concurrently-streaming goroutine).
+const maxPooledBufferSize = 64 * 1024 * 1024 // 64MB
+
 // NewModule creates a new streaming module
 func NewModule(cfg *config.Manager) *Module {
 	// Buffer size is read once at module construction (streaming is not a
-	// hot-reload config section; changes require restart).
-	bufSize := cfg.Get().Streaming.BufferSize
+	// hot-reload config section; changes require restart). The pooled buffer must
+	// be at least as large as the largest configured chunk size, or
+	// getChunkSize's MaxChunkSize/DefaultChunkSize/MobileChunkSize settings would
+	// be silently truncated to BufferSize on every read (effectiveChunkSize in
+	// streamFromReader/streamContentSeeker/streamContent/writeChunkedData is
+	// min(len(buf), chunkSize)).
+	streamingCfg := cfg.Get().Streaming
+	bufSize := streamingCfg.BufferSize
 	if bufSize <= 0 {
 		bufSize = 1024 * 1024
+	}
+	for _, chunkSize := range []int64{
+		streamingCfg.DefaultChunkSize,
+		streamingCfg.MaxChunkSize,
+		streamingCfg.MobileChunkSize,
+	} {
+		if chunkSize > int64(bufSize) {
+			bufSize = int(chunkSize)
+		}
+	}
+	if bufSize > maxPooledBufferSize {
+		bufSize = maxPooledBufferSize
 	}
 	return &Module{
 		config:         cfg,
@@ -306,9 +342,10 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 	// Use request context so S3 operations are canceled when the client disconnects.
 	ctx := r.Context()
 
-	// Get file size via stat (S3 uses backend; local always uses os.Stat directly
-	// to avoid cross-root errors when videoStore serves music paths).
+	// Get file size and mtime via stat (S3 uses backend; local always uses os.Stat
+	// directly to avoid cross-root errors when videoStore serves music paths).
 	var fileSize int64
+	var modTime time.Time
 	if m.store != nil && !m.store.IsLocal() {
 		info, err := m.store.Stat(ctx, m.storeRelPath(req.Path))
 		if err != nil {
@@ -318,6 +355,7 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 			return fmt.Errorf(errStatFile, err)
 		}
 		fileSize = info.Size
+		modTime = info.ModTime
 	} else {
 		fi, err := os.Stat(req.Path)
 		if err != nil {
@@ -327,6 +365,7 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 			return fmt.Errorf(errStatFile, err)
 		}
 		fileSize = fi.Size()
+		modTime = fi.ModTime()
 	}
 
 	// Determine content type
@@ -335,8 +374,29 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 	// Get chunk size based on quality and device
 	chunkSize := m.getChunkSize(req.Quality, req.UserAgent)
 
+	// Validators let the browser revalidate/resume a previously fetched byte range
+	// (e.g. after SPA navigation away and back) instead of always refetching from
+	// byte 0. hasModTime is false for storage backends whose Stat doesn't report a
+	// mtime, in which case validators are skipped entirely.
+	etag, hasModTime := computeValidators(fileSize, modTime)
+
+	// If-Range: only serve the requested range when the client's cached copy still
+	// matches the current validator; otherwise fall back to serving the full file
+	// with 200 instead of splicing a range onto content that has since changed.
+	rangeHeader := req.RangeHeader
+	if rangeHeader != "" && !ifRangeSatisfied(r.Header.Get("If-Range"), etag, modTime, hasModTime) {
+		rangeHeader = ""
+	}
+
+	// If-None-Match / If-Modified-Since revalidation applies to plain (non-range)
+	// GETs — a Range request is a seek/resume, not a full-response cache check.
+	if req.RangeHeader == "" && notModified(r, etag, modTime, hasModTime) {
+		m.writeNotModified(w, etag, modTime)
+		return nil
+	}
+
 	// Parse range header
-	start, end, err := m.parseRange(req.RangeHeader, fileSize)
+	start, end, err := m.parseRange(rangeHeader, fileSize)
 	if err != nil {
 		w.Header().Set(headerContentRange, fmt.Sprintf("bytes */%d", fileSize))
 		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
@@ -346,6 +406,9 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 	// Track session. startSession enforces req.MaxStreams atomically under the same
 	// lock that inserts the session and returns nil when the cap is already reached,
 	// closing the check-then-act race a separate CanStartStream pre-check leaves open.
+	// The cap counts distinct media per user/IP, not raw session rows, so ordinary
+	// seeking (which recreates the underlying HTTP connection and thus this session)
+	// never trips a low cap by itself — see countUserStreamsLocked.
 	session := m.startSession(req, start)
 	if session == nil {
 		return ErrStreamLimitExceeded
@@ -356,8 +419,8 @@ func (m *Module) Stream(w http.ResponseWriter, r *http.Request, req StreamReques
 	defer m.startSessionKeepalive(session.ID)()
 
 	// Set response headers
-	isRangeRequest := req.RangeHeader != ""
-	m.setHeaders(w, contentType, fileSize, start, end, isRangeRequest)
+	isRangeRequest := rangeHeader != ""
+	m.setHeaders(w, contentType, fileSize, start, end, isRangeRequest, etag, modTime)
 
 	// Determine status code
 	if isRangeRequest {
@@ -521,8 +584,100 @@ func (m *Module) parseRange(rangeHeader string, fileSize int64) (start, end int6
 	return start, end, nil
 }
 
+// computeValidators derives a weak ETag from size+mtime for use as an HTTP
+// validator. The ETag is weak (RFC 7232's "W/" prefix) because chunked delivery
+// across different storage backends doesn't guarantee byte-for-byte
+// reproducibility — only size+mtime identity is guaranteed, and that's exactly
+// what a resume/cache revalidation needs. It is stable across requests as long as
+// the file itself hasn't changed. Returns ("", false) when modTime is unknown
+// (e.g. a storage backend whose Stat doesn't populate ModTime), so callers can
+// skip validators entirely instead of emitting a bogus Unix-epoch mtime.
+func computeValidators(size int64, modTime time.Time) (etag string, hasModTime bool) {
+	if modTime.IsZero() {
+		return "", false
+	}
+	return fmt.Sprintf(`W/"%x-%x"`, size, modTime.UnixNano()), true
+}
+
+// setValidatorHeaders writes ETag/Last-Modified when available; a no-op for
+// whichever is unset (e.g. hasModTime was false when the caller computed etag).
+func setValidatorHeaders(w http.ResponseWriter, etag string, modTime time.Time) {
+	if etag != "" {
+		w.Header().Set("ETag", etag)
+	}
+	if !modTime.IsZero() {
+		w.Header().Set("Last-Modified", modTime.UTC().Format(http.TimeFormat))
+	}
+}
+
+// etagMatch reports whether any entry in a comma-separated If-None-Match/If-Range
+// header value matches etag, honoring the "*" wildcard and ignoring weak ("W/")
+// prefixes on either side, per RFC 7232's weak-comparison rules.
+func etagMatch(header, etag string) bool {
+	if etag == "" {
+		return false
+	}
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return false
+	}
+	if header == "*" {
+		return true
+	}
+	want := strings.TrimPrefix(etag, "W/")
+	for _, part := range strings.Split(header, ",") {
+		if strings.TrimPrefix(strings.TrimSpace(part), "W/") == want {
+			return true
+		}
+	}
+	return false
+}
+
+// ifRangeSatisfied reports whether an If-Range precondition permits serving the
+// requested range. Per RFC 7233 §3.2: a missing header always permits the range;
+// an HTTP-date value permits it only if the file has not been modified since that
+// date; any other value is compared as an ETag (exact match only — a weak
+// validator never satisfies If-Range for byte-range purposes, but since our ETag
+// is itself weak we accept a match here rather than never honoring If-Range at
+// all, which matches this module's "best-effort validators" scope).
+func ifRangeSatisfied(header, etag string, modTime time.Time, hasModTime bool) bool {
+	if header == "" {
+		return true
+	}
+	if t, err := http.ParseTime(header); err == nil {
+		return hasModTime && !modTime.Truncate(time.Second).After(t)
+	}
+	return etagMatch(header, etag)
+}
+
+// notModified evaluates If-None-Match (preferred when present) or
+// If-Modified-Since against the current validators, per RFC 7232 §6. Only
+// meaningful for plain (non-range) GETs — callers must not apply this to a
+// request carrying a Range header, where a 206/200 is always the correct
+// response shape.
+func notModified(r *http.Request, etag string, modTime time.Time, hasModTime bool) bool {
+	if inm := r.Header.Get("If-None-Match"); inm != "" {
+		return etagMatch(inm, etag)
+	}
+	if ims := r.Header.Get("If-Modified-Since"); ims != "" && hasModTime {
+		if t, err := http.ParseTime(ims); err == nil {
+			return !modTime.Truncate(time.Second).After(t)
+		}
+	}
+	return false
+}
+
+// writeNotModified sends a 304 response carrying the current validators. Per RFC
+// 7232 §4.1 a 304 must include the headers that would have accompanied a 200
+// (ETag/Last-Modified/Cache-Control here) and must not include a body.
+func (m *Module) writeNotModified(w http.ResponseWriter, etag string, modTime time.Time) {
+	setValidatorHeaders(w, etag, modTime)
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusNotModified)
+}
+
 // setHeaders sets the appropriate HTTP headers for streaming
-func (m *Module) setHeaders(w http.ResponseWriter, contentType string, fileSize, start, end int64, isRange bool) {
+func (m *Module) setHeaders(w http.ResponseWriter, contentType string, fileSize, start, end int64, isRange bool, etag string, modTime time.Time) {
 	cfg := m.config.Get()
 
 	w.Header().Set("Content-Type", contentType)
@@ -532,13 +687,22 @@ func (m *Module) setHeaders(w http.ResponseWriter, contentType string, fileSize,
 		w.Header().Set(headerContentRange, fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
 	}
 
+	setValidatorHeaders(w, etag, modTime)
+
 	if cfg.Streaming.KeepAliveEnabled {
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("Keep-Alive", fmt.Sprintf("timeout=%d", int(cfg.Streaming.KeepAliveTimeout.Seconds())))
 	}
 
-	// Cache headers for partial content
+	// Cache headers for partial content. no-cache still lets the browser reuse a
+	// cached response after a successful revalidation against ETag/Last-Modified
+	// above — it only forces that revalidation round-trip on every fetch.
 	w.Header().Set("Cache-Control", "no-cache")
+
+	// Disable response buffering on nginx (or any X-Accel-capable proxy) in front
+	// of the app so chunked media bytes reach the client as they're flushed
+	// instead of sitting in a proxy buffer. Mirrors api/handlers/analytics.go.
+	w.Header().Set("X-Accel-Buffering", "no")
 }
 
 // streamFromReader streams content from an io.Reader (e.g., S3 ranged GET response)
@@ -728,6 +892,44 @@ func (m *Module) streamContent(w http.ResponseWriter, file *os.File, start, end,
 	return nil
 }
 
+// countUserStreamsLocked returns the number of distinct media currently counted
+// against userID's concurrent-stream cap, and the number of active sessions (if
+// any) that already match matchMediaID for this user. Callers must hold
+// sessionMu (read or write lock).
+//
+// Sessions are deduped by MediaID because a single logical playback can produce
+// many rows in m.activeSessions: every HTTP Range request (including the ones
+// ordinary seeking/scrubbing generates by aborting and recreating the <video>
+// element's connection) starts its own session, and the old row isn't reaped
+// until its next Write() fails — see Stream()/streamContent. Charging the cap
+// once per Range request instead of once per distinct video is exactly the bug
+// this dedup closes. sameMediaCount is separately bounded by maxSessionsPerMedia
+// (see callers) so that exemption can't be exploited to admit unlimited
+// concurrent rows for one media item.
+//
+// Sessions with no MediaID (currently only TrackProxyStream's receiver-proxy
+// sessions, which have no media identity to dedupe against) are never coalesced
+// together — doing so would let a single user hold unlimited proxy streams under
+// one counted slot.
+func (m *Module) countUserStreamsLocked(userID, matchMediaID string) (distinct, sameMediaCount int) {
+	seenMedia := make(map[string]struct{})
+	anonymous := 0
+	for _, s := range m.activeSessions {
+		if s.UserID != userID {
+			continue
+		}
+		if s.MediaID == "" {
+			anonymous++
+			continue
+		}
+		if matchMediaID != "" && s.MediaID == matchMediaID {
+			sameMediaCount++
+		}
+		seenMedia[s.MediaID] = struct{}{}
+	}
+	return len(seenMedia) + anonymous, sameMediaCount
+}
+
 // startSession creates and tracks a new streaming session
 func (m *Module) startSession(req StreamRequest, position int64) *models.StreamSession {
 	mediaID := req.MediaID
@@ -747,15 +949,23 @@ func (m *Module) startSession(req StreamRequest, position int64) *models.StreamS
 
 	m.sessionMu.Lock()
 	// Enforce the per-user cap inside the same critical section as the insert so
-	// concurrent requests can't both pass a separate pre-check and over-fill.
+	// concurrent requests can't both pass a separate pre-check and over-fill. The
+	// cap counts DISTINCT media (see countUserStreamsLocked), and a request for
+	// media the user is already streaming bypasses it up to maxSessionsPerMedia:
+	// ordinary seeking aborts the in-flight HTTP connection and opens a new one
+	// for the same video, which would otherwise look like a second concurrent
+	// stream until the old session's next failed Write() reaps it. Beyond that
+	// small bound, additional concurrent requests for the same media are subject
+	// to the cap like any other request — otherwise a single media ID could be
+	// flooded with unlimited concurrent sessions once any one of them exists.
 	if req.MaxStreams > 0 {
-		count := 0
-		for _, s := range m.activeSessions {
-			if s.UserID == req.UserID {
-				count++
+		distinct, sameMediaCount := m.countUserStreamsLocked(req.UserID, mediaID)
+		if sameMediaCount > 0 {
+			if sameMediaCount >= maxSessionsPerMedia {
+				m.sessionMu.Unlock()
+				return nil
 			}
-		}
-		if count >= req.MaxStreams {
+		} else if distinct >= req.MaxStreams {
 			m.sessionMu.Unlock()
 			return nil
 		}
@@ -888,26 +1098,46 @@ func (m *Module) GetStats() StreamStats {
 	return stats
 }
 
-// GetActiveStreamCount returns the number of active streams for a user
+// GetActiveStreamCount returns the number of distinct media a user is currently
+// streaming (see countUserStreamsLocked) — not the raw number of session rows,
+// since one logical playback can hold multiple rows across seeks.
 func (m *Module) GetActiveStreamCount(userID string) int {
 	m.sessionMu.RLock()
 	defer m.sessionMu.RUnlock()
 
-	count := 0
-	for _, session := range m.activeSessions {
-		if session.UserID == userID {
-			count++
-		}
-	}
-	return count
+	distinct, _ := m.countUserStreamsLocked(userID, "")
+	return distinct
 }
 
-// CanStartStream checks if a user can start a new stream
+// CanStartStream checks if a user can start a new stream. It has no way to know
+// which media the caller is about to request, so it cannot exempt "already
+// streaming this exact media" the way startSession/CanStartStreamForMedia do —
+// prefer CanStartStreamForMedia when the target mediaID is known before checking.
 func (m *Module) CanStartStream(userID string, maxStreams int) bool {
 	if maxStreams <= 0 {
 		return true
 	}
 	return m.GetActiveStreamCount(userID) < maxStreams
+}
+
+// CanStartStreamForMedia is like CanStartStream but doesn't count a stream
+// against the cap when the user already has an active session for the exact
+// same media, up to maxSessionsPerMedia, so a pre-flight check performed
+// before a Range request for media already in progress (e.g. a seek) doesn't
+// reject it merely because the cap is otherwise full. Beyond that bound,
+// further concurrent requests for the same media are subject to the cap like
+// any other request. maxStreams<=0 disables the cap.
+func (m *Module) CanStartStreamForMedia(userID, mediaID string, maxStreams int) bool {
+	if maxStreams <= 0 {
+		return true
+	}
+	m.sessionMu.RLock()
+	defer m.sessionMu.RUnlock()
+	distinct, sameMediaCount := m.countUserStreamsLocked(userID, mediaID)
+	if sameMediaCount > 0 {
+		return sameMediaCount < maxSessionsPerMedia
+	}
+	return distinct < maxStreams
 }
 
 // TrackProxyStream atomically enforces the per-user/per-IP concurrent-stream cap and,
@@ -918,21 +1148,31 @@ func (m *Module) CanStartStream(userID string, maxStreams int) bool {
 // CanStartStream + TrackProxyStream pair leaves open. The caller must invoke the
 // returned release func when the stream ends.
 func (m *Module) TrackProxyStream(userID string, maxStreams int) (release func(), ok bool) {
+	return m.TrackProxyStreamForMedia(userID, "", maxStreams)
+}
+
+// TrackProxyStreamForMedia is TrackProxyStream with a mediaID so repeated proxy
+// requests for the same receiver-sourced media dedupe against the cap exactly
+// like the local direct-play path (see countUserStreamsLocked). Pass "" for
+// mediaID when the caller has no media identity to dedupe against; such sessions
+// are counted individually and never coalesced with each other.
+func (m *Module) TrackProxyStreamForMedia(userID, mediaID string, maxStreams int) (release func(), ok bool) {
 	session := &models.StreamSession{
 		ID:         generateSessionID("proxy"),
+		MediaID:    mediaID,
 		UserID:     userID,
 		StartedAt:  time.Now(),
 		LastUpdate: time.Now(),
 	}
 	m.sessionMu.Lock()
 	if maxStreams > 0 {
-		count := 0
-		for _, s := range m.activeSessions {
-			if s.UserID == userID {
-				count++
+		distinct, sameMediaCount := m.countUserStreamsLocked(userID, mediaID)
+		if sameMediaCount > 0 {
+			if sameMediaCount >= maxSessionsPerMedia {
+				m.sessionMu.Unlock()
+				return nil, false
 			}
-		}
-		if count >= maxStreams {
+		} else if distinct >= maxStreams {
 			m.sessionMu.Unlock()
 			return nil, false
 		}
@@ -956,6 +1196,7 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 	ctx := r.Context()
 
 	var fileSize int64
+	var modTime time.Time
 	if m.store != nil && !m.store.IsLocal() {
 		info, err := m.store.Stat(ctx, m.storeRelPath(path))
 		if err != nil {
@@ -965,6 +1206,7 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 			return fmt.Errorf(errStatFile, err)
 		}
 		fileSize = info.Size
+		modTime = info.ModTime
 	} else {
 		// Use os.Stat (not open+stat+close) to avoid opening the file twice.
 		fi, err := os.Stat(path)
@@ -975,6 +1217,7 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 			return fmt.Errorf(errStatFile, err)
 		}
 		fileSize = fi.Size()
+		modTime = fi.ModTime()
 	}
 
 	if err := m.validateDownloadFileSize(fileSize); err != nil {
@@ -984,8 +1227,24 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 	filename := filepath.Base(path)
 	contentType := m.getContentType(path)
 
+	// Validators mirror Stream()'s: they let a resumed/retried download revalidate
+	// or resume against a previously fetched range instead of always restarting.
+	etag, hasModTime := computeValidators(fileSize, modTime)
+
 	// Parse range header for resume support
-	rangeHeader := r.Header.Get("Range")
+	origRangeHeader := r.Header.Get("Range")
+	rangeHeader := origRangeHeader
+	if rangeHeader != "" && !ifRangeSatisfied(r.Header.Get("If-Range"), etag, modTime, hasModTime) {
+		rangeHeader = ""
+	}
+
+	// If-None-Match / If-Modified-Since revalidation applies to plain (non-range)
+	// GETs, same rationale as Stream().
+	if origRangeHeader == "" && notModified(r, etag, modTime, hasModTime) {
+		m.writeNotModified(w, etag, modTime)
+		return nil
+	}
+
 	start, end, err := m.parseRange(rangeHeader, fileSize)
 	if err != nil {
 		w.Header().Set(headerContentRange, fmt.Sprintf("bytes */%d", fileSize))
@@ -993,7 +1252,7 @@ func (m *Module) Download(w http.ResponseWriter, r *http.Request, path string) e
 		return nil
 	}
 
-	m.setDownloadHeaders(w, filename, contentType, rangeHeader, fileSize, start, end)
+	m.setDownloadHeaders(w, filename, contentType, rangeHeader, fileSize, start, end, etag, modTime)
 
 	// Remote S3 backends: route through the backend with prefix stripping.
 	if m.store != nil && !m.store.IsLocal() {
@@ -1070,11 +1329,16 @@ func (m *Module) validateDownloadFileSize(fileSize int64) error {
 }
 
 // setDownloadHeaders sets HTTP response headers and writes the status code for a download.
-func (m *Module) setDownloadHeaders(w http.ResponseWriter, filename, contentType, rangeHeader string, fileSize, start, end int64) {
+func (m *Module) setDownloadHeaders(w http.ResponseWriter, filename, contentType, rangeHeader string, fileSize, start, end int64, etag string, modTime time.Time) {
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set(headerContentDisposition, helpers.SafeContentDispositionFilename(filename))
 	w.Header().Set("Accept-Ranges", "bytes")
+	setValidatorHeaders(w, etag, modTime)
+	// no-cache still lets the browser/download-manager reuse a cached response
+	// after a successful revalidation against ETag/Last-Modified above.
 	w.Header().Set("Cache-Control", "no-cache")
+	// Disable proxy response buffering, same rationale as setHeaders.
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	// Handle range request: per RFC 7233, send 206 whenever Range was present
 	if rangeHeader != "" {

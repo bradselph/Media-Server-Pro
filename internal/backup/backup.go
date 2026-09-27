@@ -66,14 +66,91 @@ func defaultBackupVersion(v string) string {
 	return defaultVersionFallback
 }
 
+// backupDirEnvVar redirects backup archive storage to a directory other than
+// the default <Directories.Data>/backups. It is the name setup.sh writes into
+// its generated .env (BACKUP_DIR=./backups) and the value the installer's
+// "Backups dir" (DIR_BACKUP) prompt is intended to produce, so honoring it
+// here — rather than adding a dedicated DirectoriesConfig field — lets an
+// admin who already set it (e.g. to point backups at a separate disk/mount
+// for redundancy, or a path an off-box rsync/monitoring job watches) get the
+// directory they asked for without a config schema change.
+const backupDirEnvVar = "BACKUP_DIR"
+
+// resolveBackupDir determines where backup archives are stored. It honors
+// backupDirEnvVar when set (made absolute so behavior does not depend on the
+// process's working directory, matching how config.Directories paths are
+// resolved); otherwise it falls back to the historical default of
+// <dataDir>/backups so existing installs that never set the var are unaffected.
+func resolveBackupDir(dataDir string) string {
+	if val := strings.TrimSpace(os.Getenv(backupDirEnvVar)); val != "" {
+		if abs, err := filepath.Abs(val); err == nil {
+			return abs
+		}
+		return val
+	}
+	return legacyBackupDir(dataDir)
+}
+
+// legacyBackupDir returns the historical, hardcoded backup location that every
+// install used before backupDirEnvVar was honored (see resolveBackupDir).
+func legacyBackupDir(dataDir string) string {
+	return filepath.Join(dataDir, "backups")
+}
+
+// countArchives returns the number of *.zip files directly inside dir. It
+// returns 0 (not an error) when dir does not exist or cannot be read, since
+// that is the common case (no legacy backups were ever created there).
+func countArchives(dir string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".zip") {
+			count++
+		}
+	}
+	return count
+}
+
+// legacyBackupOrphanWarning returns a startup warning when backupDirEnvVar has
+// redirected backup storage away from the historical default (<dataDir>/backups)
+// and that default directory still holds archives from before the redirect.
+//
+// This matters because BACKUP_DIR can become "live" long after an admin first
+// set it: install.sh has prompted for a "Backups dir" answer since before this
+// env var was wired up, so an already-deployed install's saved answer gets
+// written into .env the next time the installer regenerates it (e.g. to change
+// an unrelated setting) — silently moving where the running server looks for
+// backups. Without this warning an admin could mistake the now-unused legacy
+// directory for clutter and delete it, losing real archives.
+//
+// Returns "" when there is nothing to warn about.
+func legacyBackupOrphanWarning(dataDir, backupDir string) string {
+	legacy := legacyBackupDir(dataDir)
+	if legacy == backupDir {
+		return ""
+	}
+	n := countArchives(legacy)
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf(
+		"BACKUP_DIR points backups at %s, but %d backup archive(s) from before this setting was configured still exist at %s — they will not show up in restore or retention cleanup; move them into %s or unset BACKUP_DIR to use the historical location",
+		backupDir, n, legacy, backupDir,
+	)
+}
+
 // NewModule creates a new backup module
 func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
+	dataDir := cfg.Get().Directories.Data
 	return &Module{
 		config:    cfg,
 		log:       logger.New("backup"),
 		dbModule:  dbModule,
-		backupDir: filepath.Join(cfg.Get().Directories.Data, "backups"),
-		dataDir:   cfg.Get().Directories.Data,
+		backupDir: resolveBackupDir(dataDir),
+		dataDir:   dataDir,
 	}
 }
 
@@ -82,9 +159,22 @@ func (m *Module) Name() string {
 	return "backup"
 }
 
+// BackupDir returns the resolved directory backup archives are stored in
+// (honoring backupDirEnvVar when set — see resolveBackupDir). Exported so
+// callers assembling admin/monitoring config views (e.g. the Directories or
+// Backup panels) can surface the directory actually in effect, rather than
+// operators having to read the raw process environment or Go source to find it.
+func (m *Module) BackupDir() string {
+	return m.backupDir
+}
+
 // Start initializes the backup module.
 func (m *Module) Start(_ context.Context) error {
 	m.log.Info("Starting backup module...")
+
+	if warning := legacyBackupOrphanWarning(m.dataDir, m.backupDir); warning != "" {
+		m.log.Warn(warning)
+	}
 
 	if !m.dbModule.IsConnected() {
 		return fmt.Errorf("database is not connected")

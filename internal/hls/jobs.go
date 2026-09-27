@@ -41,6 +41,9 @@ type createOrReuseHLSJobParams struct {
 	MediaPath string
 	OutputDir string
 	Qualities []string
+	// HighPriority marks this as a live, user-triggered request — see
+	// GenerateHLSParams.HighPriority.
+	HighPriority bool
 }
 
 // updateJobStatusParams holds arguments for updating an HLS job's status.
@@ -65,8 +68,7 @@ type qualityCheckParams struct {
 
 // validateExistingHLSParams holds arguments for validating existing HLS content on disk.
 type validateExistingHLSParams struct {
-	OutputDir          string
-	RequestedQualities []string
+	OutputDir string
 }
 
 // createOrReuseHLSJobLocked creates or reuses an HLS job; caller must hold m.jobsMu.
@@ -95,6 +97,12 @@ func (m *Module) existingJobOrRetryErrorLocked(p *createOrReuseHLSJobParams) (*m
 		// Job is already queued with an active goroutine. Return it directly to
 		// avoid spawning a second goroutine that would overwrite jobCancels/jobDone
 		// and race against the original transcoding to the same output directory.
+		// If this caller is high priority (e.g. a viewer's GenerateHLS request hit
+		// a job a background pregen cycle already queued at low priority), promote
+		// it so its spin loop starts contending for a slot as high priority.
+		if p.HighPriority {
+			m.upgradeJobPriority(existing.ID)
+		}
 		return existing, true, nil
 	case models.HLSStatusFailed:
 		if existing.FailCount >= m.maxFailures() {
@@ -104,12 +112,18 @@ func (m *Module) existingJobOrRetryErrorLocked(p *createOrReuseHLSJobParams) (*m
 	return nil, false, nil
 }
 
-// tryReuseExistingHLSOnDiskLocked reuses valid HLS on disk if present; caller holds m.jobsMu. Returns (job, true) when reused.
+// tryReuseExistingHLSOnDiskLocked reuses valid HLS on disk if present; caller
+// holds m.jobsMu. Returns (job, true) when reused. The reused job's Qualities
+// is the actual validated subset on disk (not p.Qualities, the originally
+// requested ladder) — a job interrupted mid-ladder (server crash between two
+// qualities) leaves a master.m3u8 listing fewer qualities than requested, and
+// that subset is exactly what's reusable; see validateExistingHLS.
 func (m *Module) tryReuseExistingHLSOnDiskLocked(p *createOrReuseHLSJobParams) (*models.HLSJob, bool) {
-	if !m.validateExistingHLS(&validateExistingHLSParams{OutputDir: p.OutputDir, RequestedQualities: p.Qualities}) {
+	valid := m.validateExistingHLS(&validateExistingHLSParams{OutputDir: p.OutputDir})
+	if len(valid) == 0 {
 		return nil, false
 	}
-	m.log.Info("Found existing valid HLS content for %s, reusing files", p.JobID)
+	m.log.Info("Found existing valid HLS content for %s, reusing files (%d of %d requested qualities present)", p.JobID, len(valid), len(p.Qualities))
 	now := time.Now()
 	job := &models.HLSJob{
 		ID:          p.JobID,
@@ -117,7 +131,9 @@ func (m *Module) tryReuseExistingHLSOnDiskLocked(p *createOrReuseHLSJobParams) (
 		OutputDir:   p.OutputDir,
 		Status:      models.HLSStatusCompleted,
 		Progress:    100,
-		Qualities:   p.Qualities,
+		Qualities:   valid,
+		Available:   true,
+		HLSUrl:      hlsURLForJob(p.JobID),
 		StartedAt:   now.Add(-estimatedHLSJobDuration),
 		CompletedAt: &now,
 	}
@@ -162,6 +178,9 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 	}
 	jobCtx, jobCancel := context.WithCancel(context.Background()) //nolint:gosec // cancel stored in m.jobCancels for external cancellation
 	doneCh := make(chan struct{})
+	// Register the job's transcode priority before its goroutine can possibly
+	// call acquireTranscodeSem, so isJobHighPriority never misses on a race.
+	m.setJobPriority(p.JobID, p.HighPriority)
 	m.jobs[p.JobID] = job
 	m.jobCancels[p.JobID] = jobCancel
 	m.jobDone[p.JobID] = doneCh
@@ -255,13 +274,21 @@ func (m *Module) GetJobByMediaPath(mediaPath string) (*models.HLSJob, error) {
 	return nil, fmt.Errorf("HLS job not found for path: %s", mediaPath)
 }
 
-// HasHLS checks if completed HLS content exists for a media file (with disk verification)
+// HasHLS checks if playable HLS content exists for a media file (with disk
+// verification). Available (not Status=="completed") is the gate: a job
+// becomes playable as soon as its first quality finishes — see
+// markJobPlayable — so this reports true for a job that is still Running the
+// rest of its ladder, not only a fully Completed one. Callers that previously
+// relied on this meaning "fully done" (e.g. the pre-generation sweep, via
+// HasHLSByID below) now treat "already playable" as "don't re-queue", which is
+// the same outcome in practice since createOrReuseHLSJobLocked already
+// no-ops a duplicate GenerateHLS call for a Running job.
 func (m *Module) HasHLS(mediaPath string) bool {
 	job, err := m.GetJobByMediaPath(mediaPath)
 	if err != nil {
 		return false
 	}
-	if job.Status != models.HLSStatusCompleted {
+	if !job.Available {
 		return false
 	}
 	masterPath := filepath.Join(job.OutputDir, masterPlaylistName)
@@ -269,15 +296,16 @@ func (m *Module) HasHLS(mediaPath string) bool {
 	return statErr == nil
 }
 
-// HasHLSByID checks completed HLS content for a media item by its stable ID, which
-// is also the HLS job ID (see GenerateHLS: jobID := params.MediaID). This is an O(1)
-// map lookup, unlike HasHLS(path), which linearly scans every job to match MediaPath.
-// Callers with the media ID in hand (e.g. the HLS pre-generation sweep over the whole
+// HasHLSByID checks playable HLS content (see HasHLS's Available note above)
+// for a media item by its stable ID, which is also the HLS job ID (see
+// GenerateHLS: jobID := params.MediaID). This is an O(1) map lookup, unlike
+// HasHLS(path), which linearly scans every job to match MediaPath. Callers
+// with the media ID in hand (e.g. the HLS pre-generation sweep over the whole
 // catalog) should prefer this to avoid an O(items x jobs) scan every cycle.
 func (m *Module) HasHLSByID(mediaID string) bool {
 	m.jobsMu.RLock()
 	job, ok := m.jobs[mediaID]
-	if !ok || job.Status != models.HLSStatusCompleted {
+	if !ok || !job.Available {
 		m.jobsMu.RUnlock()
 		return false
 	}
@@ -525,6 +553,13 @@ func (m *Module) tryDiscoverJobFromEntryLocked(entry os.DirEntry) bool {
 	if !ok {
 		return false
 	}
+	// A job that never got past its first quality before a crash/restart has
+	// its master.m3u8 (if any) reflect that; a job that got further has a
+	// master.m3u8 listing a subset (see transcode()'s progressive
+	// publishMasterPlaylist) — either way, `qualities` above is already
+	// exactly what's genuinely usable. Remove any other variant directory
+	// that isn't in that set and never finished before the interruption.
+	m.removeLeftoverVariantDirs(outputDir, qualities)
 	info, err := entry.Info()
 	if err != nil {
 		m.log.Warn("Failed to stat HLS dir %s: %v", entry.Name(), err)
@@ -539,12 +574,52 @@ func (m *Module) tryDiscoverJobFromEntryLocked(entry os.DirEntry) bool {
 		Status:      models.HLSStatusCompleted,
 		Progress:    100,
 		Qualities:   qualities,
+		Available:   true,
+		HLSUrl:      hlsURLForJob(jobID),
 		StartedAt:   completedTime.Add(-estimatedHLSJobDuration),
 		CompletedAt: &completedTime,
 	}
 	m.jobs[jobID] = job
 	m.log.Debug("Discovered existing HLS job: %s (qualities: %v)", jobID, qualities)
 	return true
+}
+
+// removeLeftoverVariantDirs removes every immediate subdirectory of outputDir
+// that is not one of completedQualities and has no playlist.m3u8 of its own.
+// buildFFmpegTranscodeCmd uses hls_playlist_type=vod, so ffmpeg only writes a
+// quality's playlist.m3u8 once that quality's whole encode finishes — a
+// leftover directory with segments but no playlist.m3u8 can only be one whose
+// encode was interrupted (server crash/restart) before it published (see
+// transcode()'s publishMasterPlaylist). Such a directory is never referenced
+// by master.m3u8 and would otherwise sit as orphaned disk usage indefinitely,
+// or collide with a later lazy/on-demand re-transcode of the same quality
+// (prepareVariantDir does not clean an existing directory before reusing it).
+func (m *Module) removeLeftoverVariantDirs(outputDir string, completedQualities []string) {
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		return
+	}
+	completed := make(map[string]bool, len(completedQualities))
+	for _, q := range completedQualities {
+		completed[q] = true
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || completed[entry.Name()] {
+			continue
+		}
+		variantDir := filepath.Join(outputDir, entry.Name())
+		if _, statErr := os.Stat(filepath.Join(variantDir, "playlist.m3u8")); statErr == nil {
+			// Has its own valid playlist but wasn't listed in master.m3u8 — leave
+			// it alone rather than guess; this should not happen in practice since
+			// publishMasterPlaylist lists a quality immediately once its playlist
+			// exists.
+			continue
+		}
+		m.log.Info("Removing leftover in-progress HLS variant dir (interrupted before completion): %s", variantDir)
+		if removeErr := os.RemoveAll(variantDir); removeErr != nil {
+			m.log.Warn("Failed to remove leftover HLS variant dir %s: %v", variantDir, removeErr)
+		}
+	}
 }
 
 // discoverExistingJobs scans the cache directory and creates job entries for existing HLS content.
@@ -615,34 +690,37 @@ func (m *Module) validateQualityOnDisk(p *qualityCheckParams) bool {
 	return false
 }
 
-// validateExistingHLS checks if valid HLS content exists on disk for the given output directory and qualities.
-func (m *Module) validateExistingHLS(p *validateExistingHLSParams) bool {
+// validateExistingHLS returns the qualities listed in outputDir's master.m3u8
+// that are genuinely valid and complete on disk (playlist + at least one
+// segment — see validateQualityOnDisk), or nil if master.m3u8 is missing/
+// empty or none of its listed variants validate.
+//
+// A job interrupted mid-ladder (server crash/restart between two qualities —
+// see transcode()'s progressive publishMasterPlaylist) leaves a master.m3u8
+// that lists fewer qualities than were originally requested; that is expected
+// and valid, not a validation failure, so this does not require every
+// originally-requested quality to be present. Callers get back whatever
+// subset is actually usable, mirroring getDiscoveredQualitiesLocked (used by
+// discovery at startup) so on-demand reuse (tryReuseExistingHLSOnDiskLocked)
+// and restart discovery treat a partial ladder the same way.
+func (m *Module) validateExistingHLS(p *validateExistingHLSParams) []string {
 	masterPath := filepath.Join(p.OutputDir, masterPlaylistName)
 	masterData, err := os.ReadFile(masterPath)
 	if err != nil {
-		return false
+		return nil
 	}
 
 	existingVariants := m.parseVariantStreams(string(masterData))
 	if len(existingVariants) == 0 {
-		return false
+		return nil
 	}
 
-	existingQualities := make(map[string]bool)
+	valid := make([]string, 0, len(existingVariants))
 	for _, variantPath := range existingVariants {
 		qualityName := filepath.Dir(variantPath)
-		existingQualities[qualityName] = true
-	}
-
-	for _, quality := range p.RequestedQualities {
-		if !existingQualities[quality] {
-			m.log.Debug("Requested quality %s not found in existing HLS content", quality)
-			return false
-		}
-		if !m.validateQualityOnDisk(&qualityCheckParams{OutputDir: p.OutputDir, Quality: quality}) {
-			return false
+		if m.validateQualityOnDisk(&qualityCheckParams{OutputDir: p.OutputDir, Quality: qualityName}) {
+			valid = append(valid, qualityName)
 		}
 	}
-
-	return true
+	return valid
 }

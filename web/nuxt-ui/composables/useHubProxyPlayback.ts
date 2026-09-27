@@ -18,6 +18,7 @@
 
 import type {Ref} from 'vue'
 import {useHubApi} from '~/composables/useApiEndpoints'
+import {HLS_TUNING_CONFIG} from '~/utils/hlsConfig'
 
 /** Fatal hls.js network errors tolerated per attach before falling back. */
 const MAX_NETWORK_RETRIES = 3
@@ -118,7 +119,10 @@ export function useHubProxyPlayback(
             return
         }
 
-        const hls = new Hls({enableWorker: true, lowLatencyMode: false, backBufferLength: 90})
+        // Buffer/retry tuning is shared with the main player's useHLS.ts hls.js
+        // instance (see utils/hlsConfig.ts) so the two can't drift apart; this
+        // composable keeps its own error budgets below (networkRetries/mediaRetries).
+        const hls = new Hls({...HLS_TUNING_CONFIG})
         hlsInstance = hls
         // Recovery budgets, per attach. Retrying unconditionally meant a
         // persistently broken stream looped forever, so `active` never went

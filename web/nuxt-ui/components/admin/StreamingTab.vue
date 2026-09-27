@@ -74,10 +74,12 @@ async function saveHLSConfig() {
         pre_generate_interval_hours: pregenIntervalHours.value,
       },
     }
-    await adminApi.updateConfig(updated)
+    const resp = await adminApi.updateConfig(updated)
     if (destroyed) return
     fullConfig.value = updated
-    notifySuccess('HLS settings saved')
+    notifySuccess(resp?.restart_required
+        ? 'HLS settings saved — restart required for some changes'
+        : 'HLS settings saved')
   } catch (e: unknown) {
     if (destroyed) return
     notifyError(e, 'Failed to save')

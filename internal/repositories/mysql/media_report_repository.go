@@ -101,6 +101,42 @@ func (r *MediaReportRepository) UpdateStatus(ctx context.Context, id, status, re
 	if result.Error != nil {
 		return fmt.Errorf("update media report status: %w", result.Error)
 	}
+	if result.RowsAffected == 0 {
+		// MySQL reports changed rows (not matched rows) for this project's DSN
+		// (no CLIENT_FOUND_ROWS), so RowsAffected==0 here means either the id
+		// doesn't exist or the row already had these exact status/resolved_by/
+		// resolved_at values (e.g. a retried PATCH). Only the former should be
+		// ErrMediaReportNotFound, so check existence directly instead of
+		// inferring it from the update's affected-row count.
+		var exists int64
+		if err := r.db.WithContext(ctx).
+			Model(&mediaReportRow{}).
+			Where("id = ?", id).
+			Count(&exists).Error; err != nil {
+			return fmt.Errorf("verify media report exists: %w", err)
+		}
+		if exists == 0 {
+			return fmt.Errorf("%w: %s", repositories.ErrMediaReportNotFound, id)
+		}
+	}
+	return nil
+}
+
+// AnonymizeReporter clears reporter_id and ip_address on every report filed by
+// userID. The report row itself is kept (it remains valid moderation history
+// for the media item) but is stripped of anything identifying the deleted
+// user. Used by GDPR-style account deletion: media_reports.reporter_id has no
+// FK to users(id), so nothing scrubs it unless called explicitly.
+func (r *MediaReportRepository) AnonymizeReporter(ctx context.Context, userID string) error {
+	if userID == "" {
+		return nil
+	}
+	if err := r.db.WithContext(ctx).
+		Model(&mediaReportRow{}).
+		Where("reporter_id = ?", userID).
+		Updates(map[string]any{"reporter_id": "", "ip_address": ""}).Error; err != nil {
+		return fmt.Errorf("anonymize media reports for user: %w", err)
+	}
 	return nil
 }
 

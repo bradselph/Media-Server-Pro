@@ -26,6 +26,7 @@ func (noOpAnalyticsRepo) List(context.Context, repositories.AnalyticsFilter) ([]
 
 func (noOpAnalyticsRepo) DeleteOlderThan(context.Context, string) error { return nil }
 func (noOpAnalyticsRepo) DeleteByMediaID(context.Context, string) error { return nil }
+func (noOpAnalyticsRepo) DeleteByUserID(context.Context, string) error  { return nil }
 
 func (noOpAnalyticsRepo) Count(context.Context, repositories.AnalyticsFilter) (int64, error) {
 	return 0, nil
