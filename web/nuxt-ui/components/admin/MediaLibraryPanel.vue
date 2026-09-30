@@ -412,8 +412,16 @@ async function generateThumbnail(id: string) {
 
 async function generateHLS(id: string) {
   await withRowBusy(`hls-${id}`, async () => {
-    await hlsApi.generate(id)
-    notifyInfo('HLS generation started')
+    // Report what the server actually did: the request can also resolve to
+    // an existing job (already done, or already queued/running).
+    const job = await hlsApi.generate(id)
+    if (job?.status === 'completed' && job.available) {
+      notifySuccess('HLS is already available for this item')
+    } else if (job?.status === 'running') {
+      notifyInfo(`HLS generation already in progress (${Math.round(job.progress ?? 0)}%)`)
+    } else {
+      notifyInfo('HLS generation queued')
+    }
   }, e => notifyError(e, 'HLS generation failed'))
 }
 

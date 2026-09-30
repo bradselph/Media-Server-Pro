@@ -94,7 +94,14 @@ type Module struct {
 	mediaInputResolver MediaInputResolver                                                  // resolves S3 media keys to ffmpeg-readable URLs
 	ctx                context.Context                                                     // module-lifecycle context for background work not tied to any one HTTP request (e.g. triggerLazyTranscode); set in Start(), canceled in Stop()
 	cancel             context.CancelFunc
+	jobFinished        chan struct{}             // buffered(1) edge trigger: a transcode job goroutine exited, so a slot may be free — drives runRefillLoop
+	refillMu           sync.Mutex                // guards refillFn
+	refillFn           func(ctx context.Context) // background refill (pre-generation sweep) run after jobs finish; see SetBackgroundRefill
 }
+
+// refillDebounce coalesces a burst of job completions (or a fast-failing job)
+// into a single background refill sweep.
+const refillDebounce = 3 * time.Second
 
 // MediaInputResolver converts a stored media path (possibly an S3 key) to a
 // form that ffmpeg can read — an absolute local path or a presigned HTTPS URL.
@@ -117,6 +124,7 @@ func NewModule(cfg *config.Manager, dbModule *database.Module) *Module {
 		jobs:          make(map[string]*models.HLSJob),
 		jobCancels:    make(map[string]context.CancelFunc),
 		jobDone:       make(map[string]chan struct{}),
+		jobFinished:   make(chan struct{}, 1),
 		cacheDir:      cfg.Get().Directories.HLSCache,
 		accessTracker: &AccessTracker{lastAccess: make(map[string]time.Time), lastSaved: make(map[string]time.Time)},
 	}
@@ -229,6 +237,60 @@ func (m *Module) isJobHighPriority(jobID string) bool {
 	return raw.(*atomic.Bool).Load()
 }
 
+// SetBackgroundRefill registers fn to be run (serially, debounced by
+// refillDebounce, under the module-lifecycle context) each time a transcode job
+// goroutine exits. The server wires the HLS pre-generation sweep here so freed
+// capacity is refilled immediately instead of idling until the sweep's next
+// scheduled tick (1h by default). nil disables it. Safe to call at any time.
+func (m *Module) SetBackgroundRefill(fn func(ctx context.Context)) {
+	m.refillMu.Lock()
+	m.refillFn = fn
+	m.refillMu.Unlock()
+}
+
+// notifyJobFinished edge-triggers runRefillLoop without ever blocking; bursts
+// coalesce in the size-1 buffer. A nil channel (Module built directly in
+// tests) takes the default branch.
+func (m *Module) notifyJobFinished() {
+	select {
+	case m.jobFinished <- struct{}{}:
+	default:
+	}
+}
+
+// runRefillLoop runs the registered background refill after job completions
+// until ctx is canceled (module Stop). Refills run one at a time on this
+// goroutine; a completion that arrives mid-refill is buffered and triggers
+// exactly one more pass afterwards, so none is lost.
+func (m *Module) runRefillLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-m.jobFinished:
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(refillDebounce):
+		}
+		m.refillMu.Lock()
+		fn := m.refillFn
+		m.refillMu.Unlock()
+		if fn == nil || m.stopping.Load() {
+			continue
+		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					m.log.Error("Panic in HLS background refill: %v\n%s", r, debug.Stack())
+				}
+			}()
+			fn(ctx)
+		}()
+	}
+}
+
 // Name returns the module name
 func (m *Module) Name() string {
 	return "hls"
@@ -262,6 +324,10 @@ func (m *Module) Start(_ context.Context) error {
 	}
 
 	m.detectHWEncoder(cfg)
+
+	// Started before resuming interrupted jobs so their completions also
+	// trigger refills.
+	go m.runRefillLoop(bgCtx)
 
 	m.runPostLoadStartupTasks()
 
@@ -354,20 +420,21 @@ func (m *Module) runPostLoadStartupTasks() {
 
 // resumeInterruptedJobs re-enqueues pending or retryable-failed jobs that were
 // interrupted by a previous shutdown. Called once during startup after loadJobs
-// and cleanLocksOnStartup have run. Resumes at most ConcurrentLimit jobs to
-// avoid overloading the system on startup; remaining jobs will be picked up
-// by the hls-pregenerate background task in subsequent cycles.
+// and cleanLocksOnStartup have run.
+//
+// Every candidate gets a goroutine: the transcode slot semaphore
+// (waitForTranscodeSlot) is what bounds how many actually encode at once, so
+// resuming them all cannot overload the host. The previous cap of
+// ConcurrentLimit left every other Pending job in memory with no goroutine —
+// and because existingJobOrRetryErrorLocked returned Pending jobs as-is, a
+// "Generate HLS" click or pregen sweep on one of them reported success while
+// nothing would ever run it.
 func (m *Module) resumeInterruptedJobs() int {
-	limit := m.EffectiveConcurrentLimit()
-
 	// Collect candidates under the lock, then stat paths outside the lock to
 	// avoid blocking all job accessors during slow filesystem calls on startup.
 	m.jobsMu.RLock()
 	var candidates []*models.HLSJob
 	for _, job := range m.jobs {
-		if len(candidates) >= limit {
-			break
-		}
 		if m.shouldResumeJob(job) {
 			candidates = append(candidates, job)
 		}
@@ -426,16 +493,15 @@ func (m *Module) resumeInterruptedJobs() int {
 		go func() {
 			defer close(doneCh)
 			defer m.activeJobs.Done()
+			defer m.notifyJobFinished()
 			// Release the per-job context on every exit path (success, failure,
 			// panic) — mirrors enqueueNewHLSJobLocked. A resumed job that fails
 			// never reaches finalizeJobCompleted, so without this its cancel func
 			// leaks in m.jobCancels until module Stop.
 			defer func() {
+				jobCancel()
 				m.jobsMu.Lock()
-				if cancel, ok := m.jobCancels[capturedJob.ID]; ok {
-					cancel()
-					delete(m.jobCancels, capturedJob.ID)
-				}
+				m.releaseJobWorkerLocked(capturedJob.ID, doneCh)
 				m.jobsMu.Unlock()
 			}()
 			defer func() {
@@ -486,9 +552,14 @@ func (m *Module) Stop(ctx context.Context) error {
 	}
 
 	m.jobsMu.Lock()
+	// Running work interrupted by shutdown is parked as Pending — not Canceled —
+	// so the next start resumes it (see resumeInterruptedJobs/shouldResumeJob).
+	// Marking it Canceled meant every deploy/restart silently threw away all
+	// in-flight transcodes, and a long encode that never fit between two
+	// restarts could never complete. Explicit CancelJob still yields Canceled.
 	for _, job := range m.jobs {
 		if job.Status == models.HLSStatusRunning {
-			job.Status = models.HLSStatusCanceled
+			job.Status = models.HLSStatusPending
 		}
 	}
 	for id, cancel := range m.jobCancels {

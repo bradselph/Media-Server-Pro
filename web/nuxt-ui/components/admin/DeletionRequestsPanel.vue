@@ -149,7 +149,7 @@ watch(statusFilter, load)
         v-model:open="processOpen"
         :title="processAction === 'approve' ? 'Approve Deletion Request' : 'Deny Deletion Request'"
         :description="processAction === 'approve'
-        ? `This will permanently delete the account and all data for '${selected?.username}'. This cannot be undone.`
+        ? `This will permanently delete the account for '${selected?.username}' along with their sessions, favorites, playlists, watch history, preferences, saved searches and analytics events. Media reports they filed are kept but anonymized; library media is not affected. This cannot be undone.`
         : `The request from '${selected?.username}' will be denied and closed.`"
     >
       <template #body>

@@ -14,6 +14,15 @@ func TestComputeRestartRequired(t *testing.T) {
 		updates map[string]any
 		want    bool
 	}{
+		// --- uploads: every field is read per request, so no restart. ---
+		{
+			name: "uploads nested object is hot",
+			updates: map[string]any{"uploads": map[string]any{
+				"max_file_size":      1 << 30,
+				"allowed_extensions": []any{".mp4"},
+			}},
+			want: false,
+		},
 		// --- server: section is NOT hot-reload; memory_limit_percent is the
 		// lone exception (cmd/server/main.go OnChange retunes it live). ---
 		{

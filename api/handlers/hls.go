@@ -173,7 +173,11 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 	}
 	// User-facing: the viewer explicitly requested this, so it must not queue
 	// behind background pre-generation — see hls.GenerateHLSParams.HighPriority.
-	job, err := h.hls.GenerateHLS(c.Request.Context(), &hls.GenerateHLSParams{MediaPath: absPath, MediaID: id, Qualities: qualities, HighPriority: true})
+	// An admin's explicit request also retries past the consecutive-failure
+	// circuit breaker, which otherwise leaves no way to retry short of
+	// deleting the job; regular users stay bound by it so repeated clicks on
+	// an untranscodable file can't burn CPU indefinitely.
+	job, err := h.hls.GenerateHLS(c.Request.Context(), &hls.GenerateHLSParams{MediaPath: absPath, MediaID: id, Qualities: qualities, HighPriority: true, ResetFailures: isAdminUser(c)})
 	if err != nil {
 		h.log.Error("%v", err)
 		// Track HLS request errors so dashboards surface a transcoder problem
@@ -182,7 +186,14 @@ func (h *Handler) GenerateHLS(c *gin.Context) {
 			"media_id": id,
 			"error":    err.Error(),
 		})
-		writeError(c, http.StatusInternalServerError, errInternalServer)
+		// Admins get the actual reason (ffmpeg missing, no enabled qualities,
+		// failure breaker, ...) so the panel's toast is actionable; others get
+		// the generic message since the error text can include server paths.
+		msg := errInternalServer
+		if isAdminUser(c) {
+			msg = "HLS generation failed: " + err.Error()
+		}
+		writeError(c, http.StatusInternalServerError, msg)
 		return
 	}
 	h.trackServerEvent(c, "hls_start", map[string]any{

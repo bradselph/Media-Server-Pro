@@ -19,6 +19,11 @@ type GenerateHLSParams struct {
 	// player) rather than background pre-generation, so its transcode goroutine
 	// competes for a slot ahead of low-priority callers — see tryAcquireTranscode.
 	HighPriority bool
+	// ResetFailures is an explicit admin retry: a job that already hit the
+	// maxFailures circuit breaker is re-queued with its failure count reset,
+	// instead of being refused ("will not be retried automatically" only
+	// applies to automatic retries).
+	ResetFailures bool
 }
 
 // GenerateHLS starts HLS transcoding for a media file.
@@ -26,6 +31,11 @@ type GenerateHLSParams struct {
 func (m *Module) GenerateHLS(ctx context.Context, params *GenerateHLSParams) (*models.HLSJob, error) {
 	if params == nil {
 		return nil, fmt.Errorf("GenerateHLSParams cannot be nil")
+	}
+	if m.stopping.Load() {
+		// Stop() has already canceled every job context; a goroutine started now
+		// would be orphaned by the shutdown.
+		return nil, fmt.Errorf("HLS module is shutting down")
 	}
 	if err := m.checkGenerateHLSPrereqs(params.MediaPath); err != nil {
 		return nil, err
@@ -44,12 +54,13 @@ func (m *Module) GenerateHLS(ctx context.Context, params *GenerateHLSParams) (*m
 	m.jobsMu.Lock()
 	defer m.jobsMu.Unlock()
 	return m.createOrReuseHLSJobLocked(&createOrReuseHLSJobParams{
-		Ctx:          ctx,
-		JobID:        jobID,
-		MediaPath:    params.MediaPath,
-		OutputDir:    outputDir,
-		Qualities:    resolved,
-		HighPriority: params.HighPriority,
+		Ctx:           ctx,
+		JobID:         jobID,
+		MediaPath:     params.MediaPath,
+		OutputDir:     outputDir,
+		Qualities:     resolved,
+		HighPriority:  params.HighPriority,
+		ResetFailures: params.ResetFailures,
 	})
 }
 
@@ -143,26 +154,51 @@ func (m *Module) resolveHLSQualities(ctx context.Context, p *resolveQualitiesPar
 	return m.filterQualitiesBySourceHeight(ctx, p)
 }
 
-// tryResolveExistingJob returns an existing job if it is valid and usable.
-// If the job is completed but master.m3u8 is missing, the job is invalidated and (nil, false) is returned.
-// Check and optional delete are done under a single lock to avoid TOCTOU with CreateOrReuseHLSJob.
-func (m *Module) tryResolveExistingJob(mediaID string) (*models.HLSJob, bool) {
+// existingJobState classifies an existing job for CheckOrGenerateHLS.
+type existingJobState int
+
+const (
+	existingJobNone      existingJobState = iota // no usable job: generate if auto-generation is on
+	existingJobUsable                            // report as-is (playable, or genuinely queued/running)
+	existingJobOrphaned                          // Pending/Running with no worker: always re-queue
+	existingJobRetryable                         // Failed under maxFailures, or Canceled before playable
+)
+
+// tryResolveExistingJob looks up the job for mediaID and classifies it (see
+// existingJobState). If the job is completed but master.m3u8 is missing, the
+// job is invalidated and existingJobNone is returned. Check and optional
+// delete are done under a single lock to avoid TOCTOU with CreateOrReuseHLSJob.
+func (m *Module) tryResolveExistingJob(mediaID string) (*models.HLSJob, existingJobState) {
 	m.jobsMu.Lock()
 	defer m.jobsMu.Unlock()
 	job, ok := m.jobs[mediaID]
 	if !ok {
-		return nil, false
+		return nil, existingJobNone
 	}
-	if job.Status != models.HLSStatusCompleted {
-		return job, true
+	switch job.Status {
+	case models.HLSStatusCompleted:
+		masterPath := filepath.Join(job.OutputDir, masterPlaylistName)
+		if _, statErr := os.Stat(masterPath); statErr == nil {
+			return job, existingJobUsable
+		}
+		m.log.Warn("HLS job %s marked complete but master.m3u8 missing from disk, will regenerate", job.ID)
+		delete(m.jobs, job.ID)
+		return nil, existingJobNone
+	case models.HLSStatusPending, models.HLSStatusRunning:
+		if m.hasLiveWorkerLocked(job.ID) {
+			return job, existingJobUsable
+		}
+		return job, existingJobOrphaned
+	case models.HLSStatusFailed:
+		if job.FailCount < m.maxFailures() {
+			return job, existingJobRetryable
+		}
+	case models.HLSStatusCanceled:
+		if !job.Available {
+			return job, existingJobRetryable
+		}
 	}
-	masterPath := filepath.Join(job.OutputDir, masterPlaylistName)
-	if _, statErr := os.Stat(masterPath); statErr == nil {
-		return job, true
-	}
-	m.log.Warn("HLS job %s marked complete but master.m3u8 missing from disk, will regenerate", job.ID)
-	delete(m.jobs, job.ID)
-	return nil, false
+	return job, existingJobUsable
 }
 
 // CheckOrGenerateHLSParams holds parameters for checking or auto-generating HLS.
@@ -179,7 +215,10 @@ func (m *Module) CheckOrGenerateHLS(ctx context.Context, params *CheckOrGenerate
 	if params == nil {
 		return nil, fmt.Errorf("CheckOrGenerateHLSParams cannot be nil")
 	}
-	if job, ok := m.tryResolveExistingJob(params.MediaID); ok {
+	cfg := m.config.Get()
+	job, state := m.tryResolveExistingJob(params.MediaID)
+	switch state {
+	case existingJobUsable:
 		// A background pre-generation cycle may have already queued this item at
 		// low priority; a viewer requesting it now should not wait behind the
 		// rest of that batch, so promote the still-pending job in place.
@@ -187,12 +226,22 @@ func (m *Module) CheckOrGenerateHLS(ctx context.Context, params *CheckOrGenerate
 			m.upgradeJobPriority(job.ID)
 		}
 		return job, nil
+	case existingJobOrphaned:
+		// Someone already asked for this and it was accepted, but nothing is
+		// running it; the viewer would otherwise poll "pending 0%" forever.
+		// Honor the original request regardless of AutoGenerate.
+		m.log.Info("Re-queuing orphaned HLS job for: %s", params.MediaPath)
+	case existingJobRetryable:
+		if !cfg.HLS.AutoGenerate {
+			return job, nil
+		}
+		m.log.Info("Retrying HLS generation for: %s (previous status: %s)", params.MediaPath, job.Status)
+	case existingJobNone:
+		if !cfg.HLS.AutoGenerate {
+			return nil, fmt.Errorf("HLS not available and auto-generation is disabled")
+		}
+		m.log.Info("Auto-generating HLS for: %s", params.MediaPath)
 	}
-	cfg := m.config.Get()
-	if !cfg.HLS.AutoGenerate {
-		return nil, fmt.Errorf("HLS not available and auto-generation is disabled")
-	}
-	m.log.Info("Auto-generating HLS for: %s", params.MediaPath)
 	job, err := m.GenerateHLS(ctx, &GenerateHLSParams{MediaPath: params.MediaPath, MediaID: params.MediaID, Qualities: nil, HighPriority: params.HighPriority})
 	if err != nil {
 		return nil, fmt.Errorf("failed to start HLS generation: %w", err)

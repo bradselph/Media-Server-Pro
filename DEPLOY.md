@@ -144,6 +144,22 @@ deployments should terminate TLS at a reverse proxy (Caddy, nginx, Traefik,
 Cloudflare). Set `SERVER_HOST=127.0.0.1` and bind the proxy to the public
 interface.
 
+Media is served as long-lived byte-range responses and HLS segments, so the
+proxy must not buffer or time them out:
+
+- **Buffering:** the server sends `X-Accel-Buffering: no` on stream, download
+  and HLS responses, which nginx honors per response. If your proxy ignores it,
+  disable response buffering for the whole site (nginx: `proxy_buffering off;`).
+- **Timeouts:** the Go server has no read/write timeout for media. Raise the
+  proxy's upstream timeouts so slow storage reads aren't cut off (nginx's
+  `proxy_read_timeout` / `proxy_send_timeout` default to 60s; use e.g. `3600s`).
+- **Upload size:** the proxy's request-body limit must be at least
+  `uploads.max_file_size` (nginx: `client_max_body_size`, default 1m;
+  `0` disables the check). Cloudflare's proxy caps request bodies (100 MB on
+  Free/Pro plans), so large uploads must go to a host name that bypasses it.
+- **Ranges:** forward the `Range` / `If-Range` headers unchanged and don't gzip
+  `video/*`, `audio/*`, `video/mp2t` or `application/vnd.apple.mpegurl`.
+
 ## Upgrading
 
 ```bash

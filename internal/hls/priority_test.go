@@ -134,7 +134,7 @@ func TestUpgradeJobPriority_RegistersUnknownJobAsHigh(t *testing.T) {
 func TestExistingJobOrRetryErrorLocked_UpgradesReusedPendingJob(t *testing.T) {
 	m := &Module{jobs: map[string]*models.HLSJob{
 		"job1": {ID: "job1", Status: models.HLSStatusPending},
-	}}
+	}, jobCancels: map[string]context.CancelFunc{"job1": func() {}}} // live worker
 	m.setJobPriority("job1", false)
 
 	existing, done, err := m.existingJobOrRetryErrorLocked(&createOrReuseHLSJobParams{JobID: "job1", HighPriority: true})
@@ -152,7 +152,7 @@ func TestExistingJobOrRetryErrorLocked_UpgradesReusedPendingJob(t *testing.T) {
 func TestExistingJobOrRetryErrorLocked_LowPriorityDoesNotUpgrade(t *testing.T) {
 	m := &Module{jobs: map[string]*models.HLSJob{
 		"job1": {ID: "job1", Status: models.HLSStatusPending},
-	}}
+	}, jobCancels: map[string]context.CancelFunc{"job1": func() {}}} // live worker
 	m.setJobPriority("job1", false)
 
 	if _, _, err := m.existingJobOrRetryErrorLocked(&createOrReuseHLSJobParams{JobID: "job1", HighPriority: false}); err != nil {

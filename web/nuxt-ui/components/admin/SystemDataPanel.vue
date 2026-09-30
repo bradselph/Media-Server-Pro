@@ -11,11 +11,6 @@ const {notifyError, notifySuccess, notifyWarning, notifyInfo} = useAdminFeedback
 const backups = ref<BackupEntry[]>([])
 const backupsLoading = ref(false)
 const creatingBackup = ref(false)
-const backupType = ref<'full' | 'incremental'>('full')
-const BACKUP_TYPE_OPTIONS = [
-  {label: 'Full', value: 'full'},
-  {label: 'Incremental', value: 'incremental'},
-]
 
 const backupFullConfig = ref<Record<string, unknown>>({})
 const backupRetentionCount = ref(5)
@@ -71,8 +66,11 @@ async function loadBackups() {
 async function createBackup() {
   creatingBackup.value = true
   try {
-    await adminApi.createBackup(undefined, backupType.value)
-    notifySuccess(`${backupType.value === 'full' ? 'Full' : 'Incremental'} backup created`)
+    // Every backup type currently archives config.json only (the backend rejects
+    // anything but full/config/data, and all three produce the same archive), so
+    // there is no type choice to offer.
+    await adminApi.createBackup(undefined, 'full')
+    notifySuccess('Backup created')
     await loadBackups()
   } catch (e: unknown) {
     notifyError(e, 'Backup failed')
@@ -210,7 +208,6 @@ onMounted(() => {
       </UCard>
 
       <div class="flex gap-2 items-center">
-        <USelect v-model="backupType" :items="BACKUP_TYPE_OPTIONS" class="w-36"/>
         <UButton icon="i-lucide-archive" :loading="creatingBackup" label="Create Backup" @click="createBackup"/>
         <UButton icon="i-lucide-refresh-cw" aria-label="Refresh backups" variant="ghost" color="neutral"
                  @click="loadBackups"/>
@@ -283,7 +280,9 @@ onMounted(() => {
         @update:open="val => { if (!val) confirmRestoreId = null }"
     >
       <template #body>
-        <p>Are you sure you want to restore this backup? This will overwrite the current database.</p>
+        <p>Are you sure you want to restore this backup? This overwrites the current config.json (a pre-restore
+          backup is taken first). The database is not included in backups and is not changed. Restart the server
+          afterwards so every module reloads the restored settings.</p>
       </template>
       <template #footer>
         <UButton variant="ghost" color="neutral" label="Cancel" @click="() => { confirmRestoreId = null }"/>

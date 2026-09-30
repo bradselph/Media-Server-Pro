@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync"
 	"time"
 
 	"media-server-pro/api/handlers"
@@ -740,7 +741,7 @@ func registerTasks(
 	registerSessionBackupTasks(registerWithOverride, cfg, authModule, backupModule, log)
 	registerScannerTasks(registerWithOverride, cfg, mediaModule, scannerModule, duplicatesModule, log)
 	registerAdminHealthTasks(registerWithOverride, cfg, adminModule, log)
-	registerHLSStreamingTasks(registerWithOverride, cfg, mediaModule, hlsModule, streamingModule, analyticsModule, log)
+	registerHLSStreamingTasks(registerWithOverride, scheduler, cfg, mediaModule, hlsModule, streamingModule, analyticsModule, log)
 	registerCacheCleanupTasks(registerWithOverride, cfg, hlsModule, analyticsModule, remoteModule, log)
 	registerScheduleWatcher(scheduler, cfg, log)
 }
@@ -1123,100 +1124,127 @@ func registerAdminHealthTasks(registerWithOverride func(tasks.TaskRegistration),
 
 // registerHLSStreamingTasks registers HLS pre-generation, HLS inactive-job
 // cleanup, and streaming-session eviction tasks.
-func registerHLSStreamingTasks(registerWithOverride func(tasks.TaskRegistration), cfg *config.Manager, mediaModule *media.Module, hlsModule *hls.Module, streamingModule *streaming.Module, analyticsModule *analytics.Module, log *logger.Logger) {
+func registerHLSStreamingTasks(registerWithOverride func(tasks.TaskRegistration), scheduler *tasks.Module, cfg *config.Manager, mediaModule *media.Module, hlsModule *hls.Module, streamingModule *streaming.Module, analyticsModule *analytics.Module, log *logger.Logger) {
 	// HLS pre-generation — generates HLS content for video media that doesn't have it yet.
-	// Interval is configurable via hls.pre_generate_interval_hours (default: 1).
-	// Each cycle queues low-priority jobs up to the remaining low-priority
+	// Each sweep queues low-priority jobs up to the remaining low-priority
 	// capacity (ConcurrentLimit minus one slot reserved for viewers, minus any
 	// jobs already active), so a single in-flight viewer request never blocks
 	// the whole catalog sweep, and the system is never overloaded.
-	pregenInterval := max(time.Duration(cfg.Get().HLS.PreGenerateIntervalHours)*time.Hour, 15*time.Minute)
-	registerWithOverride(tasks.TaskRegistration{
-		ID:          "hls-pregenerate",
-		Name:        "HLS Pre-generation",
-		Description: "Pre-generates HLS streaming content for video files that don't have it yet",
-		Schedule:    pregenInterval,
-		Func: func(ctx context.Context) error {
-			if !hlsModule.IsAvailable() {
-				return nil
-			}
-			if !cfg.Get().HLS.AutoGenerate {
-				return nil
-			}
+	//
+	// The sweep runs on the task schedule (hls.pre_generate_interval_hours,
+	// default 1h) AND every time a transcode job finishes (SetBackgroundRefill),
+	// so freed capacity is refilled within seconds. Previously it only ran
+	// hourly, so each background slot sat idle from the moment its job
+	// finished until the next tick — at most a handful of videos per hour no
+	// matter how fast the host was. pregenMu serializes scheduled and refill
+	// sweeps so two can't both queue against the same free capacity.
+	const pregenTaskID = "hls-pregenerate"
+	var pregenMu sync.Mutex
+	pregenSweep := func(ctx context.Context) error {
+		pregenMu.Lock()
+		defer pregenMu.Unlock()
+		if !hlsModule.IsAvailable() {
+			return nil
+		}
+		if !cfg.Get().HLS.AutoGenerate {
+			return nil
+		}
 
-			// Skip only when there's no remaining low-priority capacity; a single
-			// in-flight job (e.g. one viewer's on-demand generation) shouldn't
-			// block the whole catalog sweep from using the rest of the headroom.
-			// LowPriorityCapacity already reserves a slot for on-demand requests
-			// (see tryAcquireTranscode), so background jobs queued here can never
-			// starve a viewer even if this whole batch is still running when one
-			// arrives.
-			lowPriorityCapacity := hlsModule.LowPriorityCapacity()
-			active := hlsModule.ActiveJobCount()
-			batchLimit := lowPriorityCapacity - active
-			if batchLimit <= 0 {
-				log.Debug("HLS pre-generation: %d/%d low-priority job slots active, skipping this cycle", active, lowPriorityCapacity)
-				return nil
+		// Skip only when there's no remaining low-priority capacity; a single
+		// in-flight job (e.g. one viewer's on-demand generation) shouldn't
+		// block the whole catalog sweep from using the rest of the headroom.
+		// LowPriorityCapacity already reserves a slot for on-demand requests
+		// (see tryAcquireTranscode), so background jobs queued here can never
+		// starve a viewer even if this whole batch is still running when one
+		// arrives.
+		lowPriorityCapacity := hlsModule.LowPriorityCapacity()
+		active := hlsModule.ActiveJobCount()
+		batchLimit := lowPriorityCapacity - active
+		if batchLimit <= 0 {
+			log.Debug("HLS pre-generation: %d/%d low-priority job slots active, skipping this cycle", active, lowPriorityCapacity)
+			return nil
+		}
+
+		items := mediaModule.ListMedia(media.Filter{})
+
+		// Prioritize by popularity: pre-transcode the most-viewed un-HLS'd
+		// items first so the content users actually request is the content
+		// that's already streaming-ready. Without this the batch picks items
+		// in arbitrary catalog (map-iteration) order. Falls back to catalog
+		// order when analytics is unavailable or has no view data yet.
+		if analyticsModule != nil {
+			rank := make(map[string]int)
+			for i, mv := range analyticsModule.GetTopMedia(0) {
+				rank[mv.MediaID] = i
 			}
-
-			items := mediaModule.ListMedia(media.Filter{})
-
-			// Prioritize by popularity: pre-transcode the most-viewed un-HLS'd
-			// items first so the content users actually request is the content
-			// that's already streaming-ready. Without this the batch picks items
-			// in arbitrary catalog (map-iteration) order. Falls back to catalog
-			// order when analytics is unavailable or has no view data yet.
-			if analyticsModule != nil {
-				rank := make(map[string]int)
-				for i, mv := range analyticsModule.GetTopMedia(0) {
-					rank[mv.MediaID] = i
-				}
-				if len(rank) > 0 {
-					sort.SliceStable(items, func(a, b int) bool {
-						ra, oka := rank[items[a].ID]
-						rb, okb := rank[items[b].ID]
-						if oka && okb {
-							return ra < rb // lower index = more views
-						}
-						return oka && !okb // ranked items ahead of unranked
-					})
-				}
+			if len(rank) > 0 {
+				sort.SliceStable(items, func(a, b int) bool {
+					ra, oka := rank[items[a].ID]
+					rb, okb := rank[items[b].ID]
+					if oka && okb {
+						return ra < rb // lower index = more views
+					}
+					return oka && !okb // ranked items ahead of unranked
+				})
 			}
+		}
 
-			queued := 0
-			for _, item := range items {
-				if ctx.Err() != nil {
-					break
-				}
-				if queued >= batchLimit {
-					break
-				}
-				if item.Type != "video" {
-					continue
-				}
-				// Use the O(1) ID lookup (job ID == media ID) instead of HasHLS(path),
-				// which linearly scans every job. This loop runs over the whole catalog
-				// each pre-generation cycle, so a path scan would be O(items x jobs).
-				if hlsModule.HasHLSByID(item.ID) {
-					continue
-				}
-				if _, err := hlsModule.GenerateHLS(ctx, &hls.GenerateHLSParams{
-					MediaPath: item.Path,
-					MediaID:   item.ID,
-					// Background sweep, not a live viewer request — never jump ahead
-					// of on-demand generation (see tryAcquireTranscode).
-					HighPriority: false,
-				}); err != nil {
-					log.Debug("HLS pre-generation skipped for %s: %v", item.Name, err)
-					continue
-				}
+		queued := 0
+		for _, item := range items {
+			if ctx.Err() != nil {
+				break
+			}
+			if queued >= batchLimit {
+				break
+			}
+			if item.Type != "video" {
+				continue
+			}
+			// O(1) ID lookup (job ID == media ID). Skips items that are already
+			// playable, already queued/running, or past the failure circuit
+			// breaker — before GenerateHLS spends an ffprobe on them.
+			if !hlsModule.NeedsPregen(item.ID) {
+				continue
+			}
+			if _, err := hlsModule.GenerateHLS(ctx, &hls.GenerateHLSParams{
+				MediaPath: item.Path,
+				MediaID:   item.ID,
+				// Background sweep, not a live viewer request — never jump ahead
+				// of on-demand generation (see tryAcquireTranscode).
+				HighPriority: false,
+			}); err != nil {
+				log.Debug("HLS pre-generation skipped for %s: %v", item.Name, err)
+				continue
+			}
+			// Only count items that actually started a transcode: GenerateHLS
+			// also succeeds by reusing valid HLS already on disk, which consumes
+			// no slot and will never signal a refill.
+			if hlsModule.IsJobActive(item.ID) {
 				queued++
 			}
-			if queued > 0 {
-				log.Info("Queued %d HLS pre-generation jobs (batch limit: %d)", queued, batchLimit)
-			}
-			return nil
-		},
+		}
+		if queued > 0 {
+			log.Info("Queued %d HLS pre-generation jobs (batch limit: %d)", queued, batchLimit)
+		}
+		return nil
+	}
+
+	pregenInterval := max(time.Duration(cfg.Get().HLS.PreGenerateIntervalHours)*time.Hour, 15*time.Minute)
+	registerWithOverride(tasks.TaskRegistration{
+		ID:          pregenTaskID,
+		Name:        "HLS Pre-generation",
+		Description: "Pre-generates HLS streaming content for video files that don't have it yet (also refills whenever a transcode finishes)",
+		Schedule:    pregenInterval,
+		Func:        pregenSweep,
+	})
+	hlsModule.SetBackgroundRefill(func(ctx context.Context) {
+		// Respect the admin's Tasks-panel toggle for the scheduled sweep.
+		if info, err := scheduler.GetTask(pregenTaskID); err != nil || !info.Enabled {
+			return
+		}
+		if err := pregenSweep(ctx); err != nil {
+			log.Warn("HLS pre-generation refill failed: %v", err)
+		}
 	})
 
 	// HLS inactive-jobs cleanup — purges jobs whose last access is older than
