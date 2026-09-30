@@ -52,13 +52,16 @@ func (m *Module) GetStats() Stats {
 	return stats
 }
 
-// ActiveJobCount returns the number of running + pending HLS jobs.
+// ActiveJobCount returns the number of running + pending HLS jobs that a live
+// transcode goroutine owns. Orphaned Pending rows (no worker) are excluded:
+// they consume no slot, and counting them let a handful of orphans zero out
+// the pre-generation sweep's batch limit indefinitely.
 func (m *Module) ActiveJobCount() int {
 	m.jobsMu.RLock()
 	defer m.jobsMu.RUnlock()
 	count := 0
-	for _, job := range m.jobs {
-		if job.Status == models.HLSStatusRunning || job.Status == models.HLSStatusPending {
+	for id, job := range m.jobs {
+		if isJobRunningOrPending(job, true) && m.hasLiveWorkerLocked(id) {
 			count++
 		}
 	}

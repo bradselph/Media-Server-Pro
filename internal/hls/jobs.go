@@ -44,6 +44,9 @@ type createOrReuseHLSJobParams struct {
 	// HighPriority marks this as a live, user-triggered request — see
 	// GenerateHLSParams.HighPriority.
 	HighPriority bool
+	// ResetFailures lets an explicit admin retry past the maxFailures circuit
+	// breaker — see GenerateHLSParams.ResetFailures.
+	ResetFailures bool
 }
 
 // updateJobStatusParams holds arguments for updating an HLS job's status.
@@ -91,25 +94,63 @@ func (m *Module) existingJobOrRetryErrorLocked(p *createOrReuseHLSJobParams) (*m
 		return nil, false, nil
 	}
 	switch existing.Status {
-	case models.HLSStatusCompleted, models.HLSStatusRunning:
+	case models.HLSStatusCompleted:
+		// A completed job whose master.m3u8 has since vanished from disk (cache
+		// dir wiped/restored) is not servable: regenerate instead of returning a
+		// job that 404s forever. Mirrors tryResolveExistingJob.
+		if _, statErr := os.Stat(filepath.Join(existing.OutputDir, masterPlaylistName)); statErr != nil {
+			m.log.Warn("HLS job %s marked complete but master.m3u8 missing from disk, will regenerate", existing.ID)
+			return nil, false, nil
+		}
 		return existing, true, nil
-	case models.HLSStatusPending:
+	case models.HLSStatusPending, models.HLSStatusRunning:
+		if !m.hasLiveWorkerLocked(existing.ID) {
+			// Orphan: Pending/Running in memory but no transcode goroutine owns it
+			// (e.g. loaded from the DB after a restart and never resumed).
+			// Returning it as-is — the old behavior — meant the caller was told
+			// "started" while nothing would ever run it. Fall through and
+			// re-queue it.
+			m.log.Warn("HLS job %s is %s but has no worker (orphaned); re-queuing", existing.ID, existing.Status)
+			return nil, false, nil
+		}
 		// Job is already queued with an active goroutine. Return it directly to
-		// avoid spawning a second goroutine that would overwrite jobCancels/jobDone
-		// and race against the original transcoding to the same output directory.
-		// If this caller is high priority (e.g. a viewer's GenerateHLS request hit
-		// a job a background pregen cycle already queued at low priority), promote
-		// it so its spin loop starts contending for a slot as high priority.
+		// avoid spawning a second goroutine that would race against the original
+		// transcoding to the same output directory. If this caller is high
+		// priority (e.g. a viewer's GenerateHLS request hit a job a background
+		// pregen cycle already queued at low priority), promote it so its spin
+		// loop starts contending for a slot as high priority.
 		if p.HighPriority {
 			m.upgradeJobPriority(existing.ID)
 		}
 		return existing, true, nil
 	case models.HLSStatusFailed:
-		if existing.FailCount >= m.maxFailures() {
+		if existing.FailCount >= m.maxFailures() && !p.ResetFailures {
 			return existing, true, fmt.Errorf("HLS generation for %s has failed %d times and will not be retried automatically", p.MediaPath, existing.FailCount)
 		}
 	}
 	return nil, false, nil
+}
+
+// hasLiveWorkerLocked reports whether a transcode goroutine currently owns
+// jobID. Every job goroutine registers its cancel func in m.jobCancels before
+// it starts and removes it (only if still its own registration — see
+// releaseJobWorkerLocked) as it exits, so presence here is the liveness
+// signal. Caller holds m.jobsMu (read or write).
+func (m *Module) hasLiveWorkerLocked(jobID string) bool {
+	_, ok := m.jobCancels[jobID]
+	return ok
+}
+
+// releaseJobWorkerLocked drops jobID's jobCancels entry on goroutine exit, but
+// only while doneCh is still the registered done channel for jobID. A newer
+// goroutine may have been enqueued for the same ID after this one's job went
+// terminal (e.g. canceled, then immediately re-requested); deleting its entry
+// would make that live job look orphaned. Caller holds m.jobsMu.
+func (m *Module) releaseJobWorkerLocked(jobID string, doneCh chan struct{}) {
+	if m.jobDone[jobID] != doneCh {
+		return
+	}
+	delete(m.jobCancels, jobID)
 }
 
 // tryReuseExistingHLSOnDiskLocked reuses valid HLS on disk if present; caller
@@ -163,7 +204,7 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 	// here meant it never climbed past 1, so the maxFailures circuit breaker in
 	// existingJobOrRetryErrorLocked could never trip on an untranscodable file.
 	prevFailCount := 0
-	if prev, ok := m.jobs[p.JobID]; ok {
+	if prev, ok := m.jobs[p.JobID]; ok && !p.ResetFailures {
 		prevFailCount = prev.FailCount
 	}
 	job := &models.HLSJob{
@@ -188,17 +229,18 @@ func (m *Module) enqueueNewHLSJobLocked(p *createOrReuseHLSJobParams) (*models.H
 	go func() {
 		defer close(doneCh)
 		defer m.activeJobs.Done()
+		// A slot may have just freed up: let the background refill (pre-generation)
+		// queue the next item now rather than at its next scheduled tick.
+		defer m.notifyJobFinished()
 		// Release the per-job context regardless of exit path (success, failure,
 		// or panic). finalizeJobCompleted handles the success path explicitly,
 		// but failure/panic paths inside transcode() never reach that code and
 		// would otherwise leak the cancel func until module Stop. cancel() is
 		// idempotent so the success-path call is harmless.
 		defer func() {
+			jobCancel()
 			m.jobsMu.Lock()
-			if cancel, ok := m.jobCancels[p.JobID]; ok {
-				cancel()
-				delete(m.jobCancels, p.JobID)
-			}
+			m.releaseJobWorkerLocked(p.JobID, doneCh)
 			m.jobsMu.Unlock()
 		}()
 		defer func() {
@@ -316,6 +358,44 @@ func (m *Module) HasHLSByID(mediaID string) bool {
 	masterPath := filepath.Join(outputDir, masterPlaylistName)
 	_, statErr := os.Stat(masterPath)
 	return statErr == nil
+}
+
+// IsJobActive reports whether mediaID has a Pending/Running job that a live
+// transcode goroutine owns — i.e. work that is genuinely queued or running,
+// as opposed to an orphaned Pending row nothing will ever pick up.
+func (m *Module) IsJobActive(mediaID string) bool {
+	m.jobsMu.RLock()
+	defer m.jobsMu.RUnlock()
+	job, ok := m.jobs[mediaID]
+	if !ok {
+		return false
+	}
+	return isJobRunningOrPending(job, true) && m.hasLiveWorkerLocked(mediaID)
+}
+
+// NeedsPregen reports whether the background pre-generation sweep should
+// (re)queue mediaID: false when it is already playable, already queued or
+// running, or has hit the consecutive-failure circuit breaker. Checking this
+// before GenerateHLS keeps the sweep from spending an ffprobe (source-height
+// probe in resolveHLSQualities) on every permanently failed item each cycle,
+// and from counting already-queued items against its batch.
+func (m *Module) NeedsPregen(mediaID string) bool {
+	if m.HasHLSByID(mediaID) {
+		return false
+	}
+	m.jobsMu.RLock()
+	defer m.jobsMu.RUnlock()
+	job, ok := m.jobs[mediaID]
+	if !ok {
+		return true
+	}
+	switch {
+	case isJobRunningOrPending(job, true) && m.hasLiveWorkerLocked(mediaID):
+		return false
+	case job.Status == models.HLSStatusFailed && job.FailCount >= m.maxFailures():
+		return false
+	}
+	return true
 }
 
 // ListJobs returns copies of all HLS jobs to avoid data races with transcode goroutines.

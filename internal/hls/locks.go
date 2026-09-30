@@ -69,13 +69,25 @@ func (m *Module) checkLock(jobID string) (exists, stale bool, lock *LockFile) {
 	return true, false, lock
 }
 
-// handleStaleLock processes a single stale lock: logs, removes the lock file, and updates job status.
-func (m *Module) handleStaleLock(jobID string, lock *LockFile) {
-	m.log.Warn("Found stale lock for job %s (started: %v)", jobID, lock.StartedAt)
+// handleStaleLock processes a single stale lock: logs, removes the lock file,
+// and updates job status. Returns false (and leaves everything untouched) when
+// a live transcode goroutine in this process still owns the job: the lock's
+// StartedAt is written once when the encode begins and never refreshed, so a
+// healthy long encode (a feature-length source across several qualities on a
+// busy CPU easily exceeds the 2h default threshold) would otherwise be killed
+// mid-way, re-queued from scratch, and killed again — never completing. Hung
+// encodes are caught by the per-encode stall watchdog instead (see
+// ffmpegStallTimeout).
+func (m *Module) handleStaleLock(jobID string, lock *LockFile) bool {
 	// Hold jobsMu across both the lock-file removal and the status update so the
 	// stale-lock handling is atomic with respect to other jobsMu holders.
 	m.jobsMu.Lock()
 	defer m.jobsMu.Unlock()
+	if m.hasLiveWorkerLocked(jobID) {
+		m.log.Debug("Lock for job %s is older than the stale threshold but its transcode is still running; leaving it", jobID)
+		return false
+	}
+	m.log.Warn("Found stale lock for job %s (started: %v)", jobID, lock.StartedAt)
 	m.removeLock(jobID)
 	if job, ok := m.jobs[jobID]; ok && job.Status == models.HLSStatusRunning {
 		job.Status = models.HLSStatusFailed
@@ -90,6 +102,7 @@ func (m *Module) handleStaleLock(jobID string, lock *LockFile) {
 			delete(m.jobCancels, jobID)
 		}
 	}
+	return true
 }
 
 // processEntryForStaleLocks checks one cache dir entry for a stale lock and cleans it if found. Returns true if a lock was removed.
@@ -107,8 +120,7 @@ func (m *Module) processEntryForStaleLocks(entry os.DirEntry) bool {
 		m.removeLock(jobID)
 		return true
 	}
-	m.handleStaleLock(jobID, lock)
-	return true
+	return m.handleStaleLock(jobID, lock)
 }
 
 // CleanStaleLocks finds and removes stale lock files

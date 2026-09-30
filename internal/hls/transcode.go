@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"media-server-pro/internal/config"
@@ -74,6 +75,62 @@ func (t *stderrTailBuffer) Write(p []byte) (int, error) {
 
 func (t *stderrTailBuffer) String() string {
 	return string(t.buf)
+}
+
+// ffmpegStallTimeout is how long an encode may go without its output growing
+// before it is considered hung and killed (dead network input, wedged hardware
+// encoder, ...). Output growth — not stderr chatter — is the liveness signal:
+// ffmpeg 7+ keeps printing its stats line every ~0.5s even while completely
+// blocked. Segments are written incrementally, so even the lowest-bitrate
+// rendition grows every few seconds while healthy. This replaces the old
+// wall-clock stale-lock check as the hung-transcode guard: that one killed
+// perfectly healthy encodes simply for running longer than StaleLockThreshold
+// (2h by default).
+const ffmpegStallTimeout = 15 * time.Minute
+
+// dirBytes returns the total size of the regular files directly in dir (0 if
+// unreadable) — the progress measure for watchFFmpegStall.
+func dirBytes(dir string) int64 {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	var total int64
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if info, err := e.Info(); err == nil {
+			total += info.Size()
+		}
+	}
+	return total
+}
+
+// watchFFmpegStall polls progress() and calls onStall once if the value has not
+// grown for longer than timeout. Returns when done is closed (the encode ended).
+func watchFFmpegStall(done <-chan struct{}, progress func() int64, timeout time.Duration, onStall func()) {
+	interval := min(max(timeout/4, 10*time.Millisecond), 30*time.Second)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	last := progress()
+	lastGrowth := time.Now()
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			if cur := progress(); cur != last {
+				last = cur
+				lastGrowth = time.Now()
+				continue
+			}
+			if time.Since(lastGrowth) > timeout {
+				onStall()
+				return
+			}
+		}
+	}
 }
 
 // transcode performs the actual transcoding. Qualities are encoded
@@ -282,8 +339,20 @@ func (m *Module) acquireTranscodeSem(ctx context.Context, job *models.HLSJob) bo
 	if m.waitForTranscodeSlot(ctx, func() bool { return m.isJobHighPriority(job.ID) }) {
 		return true
 	}
-	m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: models.HLSStatusCanceled, ErrorMsg: "Context canceled", Progress: 0})
+	status, msg := m.interruptedStatus("Context canceled")
+	m.updateJobStatus(&updateJobStatusParams{JobID: job.ID, Status: status, ErrorMsg: msg, Progress: 0})
 	return false
+}
+
+// interruptedStatus returns the status to record for a transcode whose context
+// was canceled. During server shutdown the job is parked as Pending so the next
+// start resumes it (see Stop/resumeInterruptedJobs); otherwise the cancel was
+// explicit (CancelJob/DeleteJob) and the job is Canceled with canceledMsg.
+func (m *Module) interruptedStatus(canceledMsg string) (models.HLSStatus, string) {
+	if m.stopping.Load() {
+		return models.HLSStatusPending, "Interrupted by server shutdown; will resume on restart"
+	}
+	return models.HLSStatusCanceled, canceledMsg
 }
 
 // waitForTranscodeSlot spin-waits (the dynamic semaphore doesn't support
@@ -334,9 +403,14 @@ func (m *Module) finalizeJobCompleted(job *models.HLSJob) {
 	job.Status = models.HLSStatusCompleted
 	job.Progress = 100
 	job.CompletedAt = new(time.Now())
-	if cancel, ok := m.jobCancels[job.ID]; ok {
-		cancel()
-		delete(m.jobCancels, job.ID)
+	// Only touch the cancel registration if this job is still the one tracked
+	// under its ID: if it was canceled and a fresh job re-queued under the same
+	// ID while this goroutine was finishing, the entry belongs to that new job.
+	if m.jobs[job.ID] == job {
+		if cancel, ok := m.jobCancels[job.ID]; ok {
+			cancel()
+			delete(m.jobCancels, job.ID)
+		}
 	}
 	// Do NOT delete from jobDone here. finalizeJobCompleted runs inside transcode(),
 	// which is called from the goroutine body. The goroutine's "defer close(doneCh)"
@@ -393,7 +467,12 @@ func (m *Module) transcodeQuality(ctx context.Context, job *models.HLSJob, quali
 	m.log.Info("Generating HLS variant %s (%dx%d @ %dkbps)", quality, profile.Width, profile.Height, profile.Bitrate/1000)
 
 	paths := &transcodePaths{MediaPath: job.MediaPath, PlaylistPath: playlistPath, SegmentPattern: segmentPattern}
-	cmdWithContext := m.buildFFmpegTranscodeCmd(ctx, paths, profile)
+	// ffmpeg runs under its own child context so the stall watchdog below can
+	// kill just this encode without canceling the job's context — a stall is a
+	// failure (counted toward maxFailures), not a cancellation.
+	ffCtx, ffCancel := context.WithCancel(ctx)
+	defer ffCancel()
+	cmdWithContext := m.buildFFmpegTranscodeCmd(ffCtx, paths, profile)
 
 	var stderrBuf stderrTailBuffer
 	stderrPipe, err := cmdWithContext.StderrPipe()
@@ -412,11 +491,20 @@ func (m *Module) transcodeQuality(ctx context.Context, job *models.HLSJob, quali
 		defer close(progressDone)
 		m.monitorProgress(job.ID, io.TeeReader(stderrPipe, &stderrBuf), run)
 	}()
+	var stalled atomic.Bool
+	go watchFFmpegStall(progressDone, func() int64 { return dirBytes(variantDir) }, ffmpegStallTimeout, func() {
+		m.log.Warn("ffmpeg output for job %s quality %s has not grown for %v; killing stalled encode", job.ID, quality, ffmpegStallTimeout)
+		stalled.Store(true)
+		ffCancel()
+	})
 
 	waitErr := cmdWithContext.Wait()
 	<-progressDone
 
 	if waitErr != nil {
+		if stalled.Load() {
+			waitErr = fmt.Errorf("ffmpeg stalled (output did not grow for %v): %w", ffmpegStallTimeout, waitErr)
+		}
 		errCtx := &transcodeErrorContext{JobID: job.ID, Quality: quality, VariantDir: variantDir, StderrStr: stderrBuf.String()}
 		return m.handleTranscodeWaitError(ctx, errCtx, waitErr)
 	}
@@ -539,7 +627,8 @@ func (m *Module) buildVideoEncodeArgs(profile *config.HLSQuality, segmentDuratio
 func (m *Module) handleTranscodeWaitError(ctx context.Context, errCtx *transcodeErrorContext, waitErr error) error {
 	if m.isTranscodeCancelled(ctx, errCtx.StderrStr) {
 		m.log.Info("HLS transcoding canceled for job %s quality %s", errCtx.JobID, errCtx.Quality)
-		m.updateJobStatus(&updateJobStatusParams{JobID: errCtx.JobID, Status: models.HLSStatusCanceled, ErrorMsg: "Transcoding canceled", Progress: 0})
+		status, msg := m.interruptedStatus("Transcoding canceled")
+		m.updateJobStatus(&updateJobStatusParams{JobID: errCtx.JobID, Status: status, ErrorMsg: msg, Progress: 0})
 		return waitErr
 	}
 	if errOutput := strings.TrimSpace(errCtx.StderrStr); errOutput != "" {

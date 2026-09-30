@@ -29,6 +29,7 @@ import (
 	"media-server-pro/internal/logger"
 	"media-server-pro/internal/repositories"
 	"media-server-pro/internal/repositories/mysql"
+	"media-server-pro/internal/runtimeenv"
 	"media-server-pro/pkg/helpers"
 	"media-server-pro/pkg/models"
 	"media-server-pro/pkg/storage"
@@ -735,7 +736,7 @@ func (m *Module) Scan() error {
 	// populated before any API request can see the new items.
 	if m.ffprobeAvail {
 		var wg sync.WaitGroup
-		sem := make(chan struct{}, 10)
+		sem := make(chan struct{}, scanProbeWorkers())
 		for _, item := range newMedia {
 			wg.Add(1)
 			sem <- struct{}{}
@@ -1232,6 +1233,15 @@ type ffprobeResult struct {
 		Width     int    `json:"width"`
 		Height    int    `json:"height"`
 	} `json:"streams"`
+}
+
+// scanProbeWorkers sizes the scan's ffprobe worker pool. Each ffprobe is a
+// short, mostly I/O- and process-spawn-bound run, so two per usable CPU keeps a
+// many-core host busy during a first scan of a large library. Never below the
+// historical fixed 10 (small hosts behave exactly as before), capped at 32 so a
+// huge host doesn't hammer the disk with hundreds of concurrent header reads.
+func scanProbeWorkers() int {
+	return min(max(runtimeenv.UsableCPUs()*2, 10), 32)
 }
 
 // extractMetadata extracts metadata using ffprobe.
