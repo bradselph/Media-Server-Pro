@@ -83,7 +83,27 @@ die()     { echo -e "${RED}[deploy] ERROR:${RESET} $*" >&2; exit 1; }
 
 # ── Load config files ────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[[ -f "$SCRIPT_DIR/.deploy.env" ]] && source "$SCRIPT_DIR/.deploy.env"
+
+# load_deploy_env — source .deploy.env, but check it parses first. It is plain
+# bash, so one bad line (an unquoted ; [ space or quote, e.g. a mistyped value)
+# otherwise stops every deploy with a cryptic "unexpected EOF" — or runs part
+# of the value as a command. Names the offending lines, never their values.
+load_deploy_env() {
+  local f="$SCRIPT_DIR/.deploy.env" n=0 line
+  [[ -f "$f" ]] || return 0
+  if ! bash -n "$f" 2>/dev/null; then
+    echo -e "${RED}[deploy] ERROR:${RESET} .deploy.env is not valid shell, so it can't be loaded:" >&2
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      n=$((n + 1))
+      [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+      bash -n <<<"$line" 2>/dev/null || echo "  line $n: ${line%%=*} — fix or quote this value, or re-enter it: ./deploy-configure.sh --only ${line%%=*}" >&2
+    done < "$f"
+    exit 1
+  fi
+  # shellcheck disable=SC1090,SC1091
+  source "$f"
+}
+load_deploy_env
 
 # ── Knob registry ────────────────────────────────────────────────────────────
 # Populates KNOB_ORDER, KNOB_DESCRIPTION, KNOB_DEFAULT, KNOB_SCOPE, KNOB_SECTION,
@@ -216,7 +236,7 @@ run_configure() {
   fi
   # Re-source so values written by the prompter become visible to the rest
   # of this script (VPS_HOST may have been set just now).
-  [[ -f "$SCRIPT_DIR/.deploy.env" ]] && source "$SCRIPT_DIR/.deploy.env"
+  load_deploy_env
 }
 
 if $REVIEW_ONLY; then
@@ -912,6 +932,13 @@ RCLONE_CONF
     #    (no backslash continuations) to stay heredoc-safe. Mount flags come from
     #    HIDRIVE_MOUNT_FLAGS: read-only+cache off for a streaming source, or
     #    --vfs-cache-mode writes when HiDrive is a writable download target.
+    #    Stop a running mount first, while the OLD unit is still installed: its
+    #    ExecStop unmounts the old mount point, and 'enable --now' below would
+    #    otherwise leave the running mount on the old flags/path until a reboot.
+    if systemctl is-active --quiet hidrive-media.service 2>/dev/null; then
+      echo '[hidrive] Stopping the running mount to apply the new settings...'
+      sudo systemctl stop hidrive-media.service || true
+    fi
     sudo tee /etc/systemd/system/hidrive-media.service >/dev/null <<UNIT
 [Unit]
 Description=rclone WebDAV mount (IONOS HiDrive) for Media Server Pro

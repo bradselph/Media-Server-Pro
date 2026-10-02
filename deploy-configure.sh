@@ -118,28 +118,93 @@ read_env_value() {
   # Last uncommented assignment wins (matches bash sourcing semantics).
   local val
   val=$(grep -E "^[[:space:]]*${key}=" "$file" 2>/dev/null | tail -n 1 | cut -d= -f2-)
-  # Strip one layer of surrounding quotes (sensitive values are written
-  # single-quoted by upsert_env_var so they survive bash sourcing). This is
-  # display-only — the load-bearing value comes from deploy.sh sourcing the
-  # file, where bash handles the quoting correctly.
-  val="${val%\"}"; val="${val#\"}"
-  val="${val%\'}"; val="${val#\'}"
+  # Undo the quoting quote_env_value applies ('…' with '\'' for an embedded
+  # single quote), or strip a plain "…" pair. Display-only — the load-bearing
+  # value comes from deploy.sh sourcing the file, where bash decodes it.
+  if [[ ${#val} -ge 2 && "${val:0:1}" == "'" && "${val: -1}" == "'" ]]; then
+    val="${val:1:${#val}-2}"
+    val="${val//\'\\\'\'/\'}"
+  elif [[ ${#val} -ge 2 && "${val:0:1}" == '"' && "${val: -1}" == '"' ]]; then
+    val="${val:1:${#val}-2}"
+  fi
   printf '%s' "$val"
 }
 
-# quote_if_sensitive KEY VAL — single-quote the value (escaping any embedded
-# single quotes via the close-escape-reopen idiom '\'') when the knob is marked
-# sensitive in deploy-knobs.sh. deploy.sh `source`s .deploy.env, so an unquoted
-# secret containing $, #, whitespace, or quotes would be mangled or trigger an
-# unbound-variable error under `set -u`. Non-sensitive knobs are written verbatim
-# so values like KEY_FILE=$HOME/.ssh/id_ed25519 keep their intended expansion.
-quote_if_sensitive() {
+# quote_env_value KEY VAL — VAL as it must appear after "KEY=" so that
+# deploy.sh's `source .deploy.env` reads back exactly VAL. A value made only of
+# characters bash takes literally in an assignment is written bare — `$` and
+# braces included, so KEY_FILE=$HOME/.ssh/id_ed25519 keeps its intended
+# expansion. Anything else (whitespace ; & | < > ( ) ` # quotes [ ] \ …) is
+# single-quoted, with embedded single quotes as '\'': unquoted, those split the
+# line, run part of it as a command, or — as a typed "fal;se[se" once did —
+# make the whole file fail to parse, breaking every later deploy. Sensitive
+# values are always single-quoted.
+quote_env_value() {
   local key="$1" val="$2"
-  if [[ "${KNOB_SENSITIVE[$key]:-}" == "true" ]] && [[ -n "$val" ]]; then
-    printf "'%s'" "${val//\'/\'\\\'\'}"
-  else
+  local bare_re='^[A-Za-z0-9_./:,@%+=~${}-]+$'
+  [[ -z "$val" ]] && return
+  if [[ "${KNOB_SENSITIVE[$key]:-}" != "true" ]] && [[ "$val" =~ $bare_re ]]; then
     printf '%s' "$val"
+  else
+    printf "'%s'" "${val//\'/\'\\\'\'}"
   fi
+}
+
+# knob_kind KEY → "bool" or "int" when the registry default says so (true/false,
+# or a whole number), "" otherwise.
+knob_kind() {
+  local def="${KNOB_DEFAULT[$1]:-}"
+  case "$def" in
+    true|false) echo bool ;;
+    *) [[ "$def" =~ ^[0-9]+$ ]] && echo int ;;
+  esac
+  return 0
+}
+
+# knob_value_error KEY VAL → why VAL can't be used for KEY, or nothing when it
+# can. Mirrors the server's parsing (internal/config/env_helpers.go: booleans
+# true/false/yes/no/on/off/1/0, integers via strconv.Atoi), so a typo is caught
+# at the prompt instead of being ignored at startup — or breaking the file.
+knob_value_error() {
+  local key="$1" val="$2"
+  case "$(knob_kind "$key")" in
+    bool) [[ "${val,,}" =~ ^(true|false|yes|no|on|off|1|0)$ ]] || echo "expected true or false" ;;
+    int)  [[ "$val" =~ ^[+-]?[0-9]+$ ]] || echo "expected a whole number" ;;
+  esac
+  return 0
+}
+
+# normalize_knob_value KEY VAL → the value to store. Booleans become exactly
+# true/false: deploy.sh compares vps-scope flags such as HIDRIVE_ENABLED
+# literally against "true".
+normalize_knob_value() {
+  local key="$1" val="$2"
+  if [[ "$(knob_kind "$key")" == "bool" ]]; then
+    case "${val,,}" in
+      true|yes|on|1) val="true" ;;
+      *) val="false" ;;
+    esac
+  fi
+  printf '%s' "$val"
+}
+
+# check_env_syntax FILE — fail loudly, naming the offending lines (never their
+# values), when FILE is not valid shell. deploy.sh `source`s it, so a single bad
+# line otherwise stops every deploy with a cryptic parse error.
+check_env_syntax() {
+  local file="$1" n=0 line key
+  [[ -f "$file" ]] || return 0
+  bash -n "$file" 2>/dev/null && return 0
+  echo -e "${RED}[configure] ERROR:${RESET} $file is not valid shell, so deploy.sh can't load it." >&2
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    n=$((n + 1))
+    [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+    if ! bash -n <<<"$line" 2>/dev/null; then
+      key="${line%%=*}"
+      echo "  line $n: ${key:0:60} — fix or quote this value (./deploy-configure.sh --only ${key:0:60})" >&2
+    fi
+  done < "$file"
+  return 1
 }
 
 # is_new_knob FILE KEY — true when the env file makes no mention of
@@ -199,7 +264,7 @@ upsert_env_var() {
     : > "$file"
   fi
   local out
-  out="$(quote_if_sensitive "$key" "$val")"
+  out="$(quote_env_value "$key" "$val")"
   local tmp
   tmp="$(mktemp)"
   local found=0
@@ -274,25 +339,47 @@ prompt_knob() {
 
   print_knob "$key"
 
+  local what="new value"
+  case "$(knob_kind "$key")" in
+    bool) what="true/false" ;;
+    int)  what="a whole number" ;;
+  esac
   local hint
   if [[ -n "$current" ]]; then
-    hint="Enter = keep, '-' = clear, or new value"
+    hint="Enter = keep, '-' = clear, or ${what}"
   else
-    hint="Enter = skip (VPS .env stays as-is), or new value to override"
+    hint="Enter = skip (VPS .env stays as-is), or ${what} to override"
   fi
-  echo -en "  ${CYAN}>${RESET} ${DIM}(${hint})${RESET} "
-  local reply=""
+  local reply="" problem=""
   local sensitive="${KNOB_SENSITIVE[$key]:-}"
-  if [[ "$sensitive" == "true" ]]; then
-    # Silent read so the secret doesn't echo to the terminal.
-    read -r -s reply </dev/tty || true
-    echo ""
-  else
-    read -r reply </dev/tty || true
+  # Re-ask until the value is usable: a typo written into .deploy.env is at
+  # best ignored by the server and at worst breaks loading the file.
+  while :; do
+    echo -en "  ${CYAN}>${RESET} ${DIM}(${hint})${RESET} "
+    reply=""
+    if [[ "$sensitive" == "true" ]]; then
+      # Silent read so the secret doesn't echo to the terminal.
+      read -r -s reply </dev/tty || true
+      echo ""
+    else
+      read -r reply </dev/tty || true
+    fi
+    reply="${reply//$'\r'/}"
+    # Drop arrow-key/escape bytes a non-readline `read` captures during editing.
+    reply="$(strip_control_chars "$reply")"
+    if [[ "$sensitive" != "true" ]]; then
+      # Stray surrounding spaces are never meant (secrets are left untouched).
+      reply="${reply#"${reply%%[![:space:]]*}"}"
+      reply="${reply%"${reply##*[![:space:]]}"}"
+    fi
+    [[ -z "$reply" || "$reply" == "-" ]] && break
+    problem="$(knob_value_error "$key" "$reply")"
+    [[ -z "$problem" ]] && break
+    echo -e "    ${RED}✗ ${problem}${RESET} ${DIM}— try again${RESET}"
+  done
+  if [[ -n "$reply" && "$reply" != "-" ]]; then
+    reply="$(normalize_knob_value "$key" "$reply")"
   fi
-  reply="${reply//$'\r'/}"
-  # Drop arrow-key/escape bytes a non-readline `read` captures during editing.
-  reply="$(strip_control_chars "$reply")"
 
   if [[ -z "$reply" ]]; then
     # SAFE-BY-DEFAULT: pressing Enter on a never-seen knob marks it as
@@ -534,6 +621,12 @@ mode_set() {
     if [[ -z "${KNOB_DESCRIPTION[$key]+x}" ]]; then
       die "Unknown knob: $key (run --list to see all)"
     fi
+    if [[ -n "$val" ]]; then
+      local problem
+      problem="$(knob_value_error "$key" "$val")"
+      [[ -z "$problem" ]] || die "$key: $problem"
+      val="$(normalize_knob_value "$key" "$val")"
+    fi
     upsert_env_var "$ENV_FILE" "$key" "$val"
     applied=$((applied + 1))
     local sensitive="${KNOB_SENSITIVE[$key]:-}"
@@ -554,3 +647,7 @@ case "$MODE" in
   list)   mode_list ;;
   quiet)  mode_quiet ;;
 esac
+
+# deploy.sh sources this file next: point at any line that would stop it
+# (including hand edits) now, rather than leave a cryptic parse error.
+check_env_syntax "$ENV_FILE" || exit 1
