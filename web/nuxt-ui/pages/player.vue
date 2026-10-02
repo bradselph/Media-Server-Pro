@@ -191,26 +191,34 @@ const playerDescription = computed(() => {
 // useSeoMeta takes per-key getters for reactivity (passing a ComputedRef
 // directly is rejected by the type signature). Each getter resolves when
 // the head dependency runs.
-const ogTitle = computed(() => media.value ? getDisplayTitle(media.value) : '')
-// og=1 so social-card crawlers are served the real thumbnail instead of the
-// censored "red box" placeholder the mature gate returns to unauthenticated
-// requests. Mirrors the Go SEO shell (ogThumbnailURL in api/handlers/shell.go).
+// A mature item's link-preview tags (og:/twitter:) carry neutral copy and no
+// image, and it gets no JSON-LD; the document title/description stay real for
+// search. Mirrors matureShellMeta in api/handlers/shell.go, which is what
+// link-preview bots (always logged out) actually receive.
+const isMatureItem = computed(() => media.value?.is_mature === true)
+const ogTitle = computed(() => {
+  if (!media.value) return ''
+  return isMatureItem.value ? 'Age-restricted content' : getDisplayTitle(media.value)
+})
+const shareDescription = computed(() => isMatureItem.value
+  ? 'This content is for adults only. Sign in and confirm you are 18 or older to watch it.'
+  : playerDescription.value)
 const ogThumb = computed(() => {
   const t = media.value?.thumbnail_url
-  if (!t) return ''
-  return absUrl(t + (t.includes('?') ? '&og=1' : '?og=1'))
+  if (!t || isMatureItem.value) return ''
+  return absUrl(t)
 })
 const ogType = computed(() => media.value?.type === 'audio' ? 'music.song' : 'video.other')
 useSeoMeta({
   description: () => playerDescription.value,
   ogTitle: () => ogTitle.value,
-  ogDescription: () => playerDescription.value,
+  ogDescription: () => shareDescription.value,
   ogType: () => ogType.value,
   ogUrl: () => playerCanonicalUrl.value,
   ogImage: () => ogThumb.value || undefined,
   twitterCard: () => ogThumb.value ? 'summary_large_image' : 'summary',
   twitterTitle: () => ogTitle.value,
-  twitterDescription: () => playerDescription.value,
+  twitterDescription: () => shareDescription.value,
   twitterImage: () => ogThumb.value || undefined,
 })
 
@@ -233,6 +241,9 @@ function toISODuration(seconds: number): string {
 useHead(computed(() => {
   const item = media.value
   if (!item) return {}
+  // No structured data for a mature item: its thumbnail is gated, and a
+  // VideoObject without one is invalid. Keep only the canonical link.
+  if (item.is_mature) return {link: [{rel: 'canonical', href: playerCanonicalUrl.value}]}
   const ld: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': item.type === 'audio' ? 'AudioObject' : 'VideoObject',
@@ -414,8 +425,10 @@ const downloadPrompt = computed(() => userPrefs.value?.download_prompt ?? true)
 
 // Share at timestamp — once playback gets past 5s the label flips to
 // "Share @ M:SS" so the user knows the link will resume from where they
-// are. Click copies origin+path?id=&t=, then the label flashes
-// "Link copied" for 1.8s before reverting (plan §5.3).
+// are. On phones and tablets the click opens the native share sheet
+// (Messages, WhatsApp, Telegram, ...), where most sharing happens; elsewhere
+// it copies origin+path?id=&t= and the label flashes "Link copied" for 1.8s
+// before reverting (plan §5.3).
 const linkCopied = ref(false)
 let linkCopiedTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -430,14 +443,77 @@ const shareLabel = computed(() => {
   return 'Share'
 })
 
-function copyTimestampLink() {
-  if (!mediaId.value) return
+function buildShareUrl(id: string): string {
   const t = Math.floor(currentTime.value)
-  const origin = globalThis.location.origin
-  const path = globalThis.location.pathname
-  const params = new URLSearchParams({id: mediaId.value})
+  const params = new URLSearchParams({id})
   if (t > 0) params.set('t', String(t))
-  navigator.clipboard.writeText(`${origin}${path}?${params.toString()}`)
+  return `${globalThis.location.origin}${globalThis.location.pathname}?${params.toString()}`
+}
+
+// Touch-first devices get the OS share sheet. Desktop browsers implement
+// navigator.share too, but there a copied link is what people expect.
+function prefersNativeShare(): boolean {
+  return typeof navigator.share === 'function'
+      && globalThis.matchMedia?.('(pointer: coarse)').matches === true
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    // No async clipboard (plain-HTTP origin) or permission denied.
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.setAttribute('readonly', '')
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      return ok
+    } catch {
+      return false
+    }
+  }
+}
+
+// Shares are the cheapest acquisition channel there is — record them so the
+// admin event breakdown shows how often (and how) links go out.
+function trackShare(id: string, method: 'native' | 'copy') {
+  analyticsApi.submitEvent({
+    type: 'share',
+    media_id: id,
+    data: {method, at_time: Math.floor(currentTime.value) > 0},
+  }).catch(() => {
+  })
+}
+
+async function shareTimestampLink() {
+  const id = mediaId.value
+  if (!id) return
+  const url = buildShareUrl(id)
+  if (prefersNativeShare()) {
+    try {
+      // A mature item goes out as a bare link — its title stays out of the
+      // message text, matching its neutral link preview.
+      await navigator.share(isMatureItem.value || !media.value
+          ? {url}
+          : {title: getDisplayTitle(media.value), url})
+      trackShare(id, 'native')
+      return
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'AbortError') return // sheet dismissed
+      // Share refused (e.g. no user activation) — copy instead.
+    }
+  }
+  if (!(await copyText(url))) {
+    toast.add({title: 'Copy this link to share it', description: url, color: 'neutral', icon: 'i-lucide-link'})
+    return
+  }
+  trackShare(id, 'copy')
   linkCopied.value = true
   clearTimeout(linkCopiedTimer)
   linkCopiedTimer = setTimeout(() => {
@@ -668,6 +744,33 @@ const {
   jobSlow,
   recheck: recheckHls,
 } = useHLS(videoRef, mediaIdRef, {defaultQuality: () => userPrefs.value?.default_quality})
+
+// Direct-play recovery: hls.js retries its own loads, the plain <video src>
+// stream does not — reload and resume after a dropped or hung connection, and
+// tell a transient server error apart from an unplayable format.
+const {
+  reconnecting: directReconnecting,
+  failure: directFailure,
+  handleError: handleDirectError,
+  retryNow: retryDirectNow,
+} = useDirectPlayRecovery({
+  mediaRef: videoRef,
+  directUrl: () => (media.value && !hlsActivated.value && !isHubItem.value)
+      ? mediaApi.getStreamUrl(media.value.id)
+      : null,
+  onUnplayable: () => {
+    // HLS is an H.264/AAC re-encode, so it plays where the original can't.
+    if (media.value?.type === 'audio' || !hlsAvailable.value || hlsActivated.value) return false
+    toast.add({
+      title: 'Switched to adaptive streaming',
+      description: "Your browser can't play the original file directly.",
+      color: 'info',
+      icon: 'i-lucide-zap',
+    })
+    void activateHLS()
+    return true
+  },
+})
 
 // Request on-demand HLS generation
 const hlsApi = useHlsApi()
@@ -1588,18 +1691,22 @@ function onVideoError(e?: Event) {
   // Log the underlying MediaError for debugging; otherwise playback failures are invisible.
   const el = videoRef.value
   if (el?.error) {
-    const code = el.error.code
-    const msg = el.error.message ?? ''
-    console.error(`[player] MediaError code=${code} message=${msg}`, el.error)
+    console.error(`[player] MediaError code=${el.error.code} message=${el.error.message ?? ''}`, el.error)
+  }
+  analyticsApi.submitEvent({type: 'error', media_id: mediaId.value}).catch(() => {
+  })
+  // Direct play: reconnect and resume (or explain why it can't) instead of
+  // stopping for good; progress and failures show on the player itself.
+  if (handleDirectError()) return
+  if (el?.error) {
     // Show user-visible error with actionable info
+    const code = el.error.code
     let desc: string
     if (code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) desc = 'This file format may not be supported by your browser'
     else if (code === MediaError.MEDIA_ERR_NETWORK) desc = 'Network error — check your connection'
     else desc = 'Playback error'
     toast.add({title: desc, color: 'error', icon: 'i-lucide-alert-circle'})
   }
-  analyticsApi.submitEvent({type: 'error', media_id: mediaId.value}).catch(() => {
-  })
 }
 
 function trackComplete() {
@@ -1899,6 +2006,29 @@ watch(mediaId, (id, oldId) => {
             </div>
           </div>
 
+          <!-- Direct-play recovery: reconnecting after a dropped/hung stream,
+               or the reason it couldn't recover (with a manual retry). -->
+          <div
+              v-if="directReconnecting && !hlsLoading"
+              class="absolute inset-x-0 top-3 flex justify-center pointer-events-none z-10"
+              aria-live="polite"
+          >
+            <div class="flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-xs text-white">
+              <UIcon name="i-lucide-loader-2" class="animate-spin size-4"/>
+              Connection interrupted — reconnecting…
+            </div>
+          </div>
+          <div
+              v-else-if="directFailure"
+              class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/75 p-4 text-center"
+              role="alert"
+              @click.stop
+          >
+            <UIcon name="i-lucide-alert-circle" class="size-8 text-error"/>
+            <p class="max-w-sm text-sm text-white">{{ directFailure }}</p>
+            <UButton label="Retry" size="sm" icon="i-lucide-rotate-ccw" @click="retryDirectNow()"/>
+          </div>
+
           <!-- Media info overlay (press I) -->
           <Transition name="fade">
             <div
@@ -2026,6 +2156,19 @@ watch(mediaId, (id, oldId) => {
           >
             <template #actions>
               <UButton label="Retry" size="xs" color="error" :loading="retrying" @click="retryLoad"/>
+            </template>
+          </UAlert>
+
+          <!-- Direct-play recovery for audio (video shows it on the player) -->
+          <UAlert
+              v-if="media.type === 'audio' && (directReconnecting || directFailure)"
+              :title="directFailure || 'Connection interrupted — reconnecting…'"
+              :color="directFailure ? 'error' : 'warning'"
+              variant="soft"
+              :icon="directFailure ? 'i-lucide-alert-circle' : 'i-lucide-wifi-off'"
+          >
+            <template v-if="directFailure" #actions>
+              <UButton label="Retry" size="xs" @click="retryDirectNow()"/>
             </template>
           </UAlert>
 
@@ -2241,7 +2384,7 @@ watch(mediaId, (id, oldId) => {
                   :variant="linkCopied ? 'solid' : 'outline'"
                   :color="linkCopied ? 'success' : 'neutral'"
                   size="sm"
-                  @click="copyTimestampLink"
+                  @click="shareTimestampLink"
               />
               <UButton
                   v-if="authStore.isLoggedIn"

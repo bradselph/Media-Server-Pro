@@ -200,11 +200,40 @@ func TestParseRange_StartAfterEnd(t *testing.T) {
 	}
 }
 
-func TestParseRange_EndBeyondFile(t *testing.T) {
+// RFC 9110 §14.1.2: a last-byte-pos at or past the end means "to the end".
+// Rejecting it with 416 made players that request a fixed window near the end
+// (or size requests from a stale Content-Range) abort playback.
+func TestParseRange_EndBeyondFileIsClamped(t *testing.T) {
 	m := newTestModule(t)
-	_, _, err := m.parseRange("bytes=0-1000", 1000)
-	if !errors.Is(err, ErrInvalidRange) {
-		t.Errorf("expected ErrInvalidRange for end>=fileSize, got %v", err)
+	for _, header := range []string{"bytes=0-1000", "bytes=0-999999999", "bytes=900-5000"} {
+		start, end, err := m.parseRange(header, 1000)
+		if err != nil {
+			t.Fatalf("parseRange(%q): %v", header, err)
+		}
+		if end != 999 {
+			t.Errorf("parseRange(%q) end = %d, want 999 (clamped to the last byte)", header, end)
+		}
+		if start > end {
+			t.Errorf("parseRange(%q) = %d-%d", header, start, end)
+		}
+	}
+}
+
+func TestParseRange_StartAtOrBeyondEndIsUnsatisfiable(t *testing.T) {
+	m := newTestModule(t)
+	for _, header := range []string{"bytes=1000-", "bytes=1000-2000", "bytes=5000-"} {
+		if _, _, err := m.parseRange(header, 1000); !errors.Is(err, ErrInvalidRange) {
+			t.Errorf("parseRange(%q) err = %v, want ErrInvalidRange", header, err)
+		}
+	}
+}
+
+func TestParseRange_EmptyFileHasNoSatisfiableRange(t *testing.T) {
+	m := newTestModule(t)
+	for _, header := range []string{"bytes=0-", "bytes=0-0", "bytes=-10"} {
+		if _, _, err := m.parseRange(header, 0); !errors.Is(err, ErrInvalidRange) {
+			t.Errorf("parseRange(%q) on an empty file err = %v, want ErrInvalidRange", header, err)
+		}
 	}
 }
 

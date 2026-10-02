@@ -1382,6 +1382,21 @@ func (m *Module) GetMediaNamesByIDs(ids []string) map[string]string {
 	return names
 }
 
+// MatureIDs returns the subset of ids that are local media items flagged
+// mature, in a single lock acquisition. IDs not in the library are omitted.
+func (m *Module) MatureIDs(ids []string) map[string]bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	mature := make(map[string]bool)
+	for _, id := range ids {
+		if item, exists := m.mediaByID[id]; exists && item.IsMature {
+			mature[id] = true
+		}
+	}
+	return mature
+}
+
 // ListMedia returns all media items with optional filtering
 func (m *Module) ListMedia(filter Filter) []*models.MediaItem {
 	m.mu.RLock()

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"media-server-pro/pkg/models"
@@ -37,7 +38,7 @@ func (m *Module) ensureVariantPlaylistExists(job *models.HLSJob, quality string)
 	// splits on '/' so a literal slash cannot appear, but a single ".." is
 	// enough to escape the job directory. This mirrors the guard in ServeSegment.
 	if strings.Contains(quality, "..") || strings.ContainsAny(quality, "/\\") {
-		return "", fmt.Errorf("invalid quality value: %q", quality)
+		return "", fmt.Errorf("%w: invalid quality value %q", os.ErrNotExist, quality)
 	}
 	playlistPath := filepath.Join(job.OutputDir, quality, "playlist.m3u8")
 	if _, err := os.Stat(playlistPath); err == nil {
@@ -53,7 +54,7 @@ func (m *Module) ensureVariantPlaylistExists(job *models.HLSJob, quality string)
 			// signal ServeMasterPlaylist gives before the job is even Available.
 			return "", fmt.Errorf("%w: quality %s not yet transcoded", ErrNotReady, quality)
 		}
-		return "", fmt.Errorf("variant playlist not found: %s", quality)
+		return "", fmt.Errorf("%w: variant playlist %s", os.ErrNotExist, quality)
 	}
 
 	// Never block this request for the encode: kick off (or join, via
@@ -63,10 +64,12 @@ func (m *Module) ensureVariantPlaylistExists(job *models.HLSJob, quality string)
 	return "", fmt.Errorf("%w: quality %s is being transcoded on demand", ErrNotReady, quality)
 }
 
-// rewritePlaylistLines rewrites non-comment, non-empty lines to absolute CDN URLs.
-// Segment names containing path traversal components ("..") or newline characters
-// are skipped — they should never appear in FFmpeg-generated manifests.
-func rewritePlaylistLines(data []byte, baseURL string) []byte {
+// rewritePlaylistLines rewrites non-comment, non-empty (URI) lines: prefixed
+// with baseURL (absolute CDN URLs; "" keeps them relative) and, when version is
+// set, tagged with a v=<version> query parameter. Segment names containing path
+// traversal components ("..") or newline characters are skipped — they should
+// never appear in FFmpeg-generated manifests.
+func rewritePlaylistLines(data []byte, baseURL, version string) []byte {
 	var buf bytes.Buffer
 	for line := range strings.SplitSeq(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -76,6 +79,13 @@ func rewritePlaylistLines(data []byte, baseURL string) []byte {
 				continue
 			}
 			line = baseURL + trimmed
+			if version != "" {
+				sep := "?"
+				if strings.Contains(trimmed, "?") {
+					sep = "&"
+				}
+				line += sep + "v=" + version
+			}
 		}
 		buf.WriteString(line)
 		buf.WriteString("\n")
@@ -89,6 +99,9 @@ type servePlaylistOpts struct {
 	cdnBase    string
 	urlPath    string
 	corsOrigin string // value for Access-Control-Allow-Origin header
+	// version, when set, is appended to every URI as ?v=<version> — see
+	// variantPlaylistVersion.
+	version string
 }
 
 // hlsCORSOrigin computes the correct Access-Control-Allow-Origin header value for
@@ -140,11 +153,14 @@ func servePlaylist(w http.ResponseWriter, _ *http.Request, opts servePlaylistOpt
 	}
 	if opts.cdnBase == "" {
 		w.Header().Set(headerCacheControl, "no-cache")
+		if opts.version != "" {
+			data = rewritePlaylistLines(data, "", opts.version)
+		}
 		if _, err := w.Write(data); err != nil {
 			return fmt.Errorf("failed to write playlist: %w", err)
 		}
 	} else {
-		rewritten := rewritePlaylistLines(data, opts.cdnBase+"/hls/"+opts.urlPath+"/")
+		rewritten := rewritePlaylistLines(data, opts.cdnBase+"/hls/"+opts.urlPath+"/", opts.version)
 		w.Header().Set(headerCacheControl, "public, max-age=60")
 		if _, err := w.Write(rewritten); err != nil {
 			return fmt.Errorf("failed to write rewritten playlist: %w", err)
@@ -208,8 +224,27 @@ func (m *Module) ServeVariantPlaylist(w http.ResponseWriter, r *http.Request, p 
 		cdnBase:    cfg.HLS.CDNBaseURL,
 		urlPath:    p.JobID + "/" + p.Quality,
 		corsOrigin: m.hlsCORSOrigin(r),
+		version:    variantPlaylistVersion(playlistPath),
 	}
 	return servePlaylist(w, r, opts)
+}
+
+// variantPlaylistVersion identifies one encode of a variant: its playlist's
+// modification time, which changes whenever the quality is (re)encoded.
+//
+// Segment URLs are otherwise stable across encodes — the job ID is the media
+// ID and ffmpeg numbers segments from zero — while ServeSegment lets clients
+// cache them for a year. Without a version, a viewer who watched before the
+// HLS was regenerated (new segment duration or encoder settings, replaced
+// source) would splice year-cached old segments into the new playlist: wrong
+// timing, decode errors, stalls. Returns "" when the playlist can't be
+// stat'ed, which leaves the URIs untouched.
+func variantPlaylistVersion(playlistPath string) string {
+	fi, err := os.Stat(playlistPath)
+	if err != nil {
+		return ""
+	}
+	return strconv.FormatInt(fi.ModTime().UnixNano(), 36)
 }
 
 // SegmentParams holds job ID, quality, and segment name for segment requests.
@@ -231,11 +266,14 @@ func (m *Module) ServeSegment(w http.ResponseWriter, r *http.Request, p SegmentP
 	// Reject traversal components before joining: a single ".." in :quality
 	// collapses job.OutputDir to the cache root and would defeat the prefix
 	// check below (mirrors the guard in ensureVariantPlaylistExists).
+	// These (and the containment/existence checks below) wrap os.ErrNotExist
+	// so the handler answers 404 — a request for a segment that isn't there —
+	// instead of logging a server error and returning 500 for each of them.
 	if strings.Contains(p.Quality, "..") || strings.ContainsAny(p.Quality, "/\\") {
-		return fmt.Errorf("invalid quality value: %q", p.Quality)
+		return fmt.Errorf("%w: invalid quality value %q", os.ErrNotExist, p.Quality)
 	}
 	if strings.Contains(p.Segment, "..") || strings.ContainsAny(p.Segment, "/\\") {
-		return fmt.Errorf("invalid segment name: %q", p.Segment)
+		return fmt.Errorf("%w: invalid segment name %q", os.ErrNotExist, p.Segment)
 	}
 
 	// Reject a quality whose own playlist.m3u8 doesn't exist yet: ffmpeg only
@@ -253,10 +291,10 @@ func (m *Module) ServeSegment(w http.ResponseWriter, r *http.Request, p SegmentP
 	cleanSeg := filepath.Clean(segmentPath)
 	qualityDir := filepath.Join(cleanOut, filepath.Clean(p.Quality))
 	if !strings.HasPrefix(cleanSeg, qualityDir+string(filepath.Separator)) {
-		return fmt.Errorf("segment path outside quality directory")
+		return fmt.Errorf("%w: segment path outside quality directory", os.ErrNotExist)
 	}
 	if _, err := os.Stat(segmentPath); err != nil {
-		return fmt.Errorf("segment not found: %s", p.Segment)
+		return fmt.Errorf("%w: segment %s", os.ErrNotExist, p.Segment)
 	}
 
 	w.Header().Set("Content-Type", "video/mp2t")
