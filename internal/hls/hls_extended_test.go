@@ -3,6 +3,8 @@ package hls
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"media-server-pro/internal/config"
 	"media-server-pro/internal/logger"
 	"media-server-pro/pkg/models"
 )
@@ -190,7 +193,7 @@ func TestIsSegmentLine(t *testing.T) {
 
 func TestRewritePlaylistLines_Simple(t *testing.T) {
 	data := []byte("#EXTM3U\n#EXTINF:10.0,\nseg001.ts\n#EXTINF:10.0,\nseg002.ts\n")
-	got := string(rewritePlaylistLines(data, "/hls/job123/720p/"))
+	got := string(rewritePlaylistLines(data, "/hls/job123/720p/", ""))
 	if got == "" {
 		t.Fatal("result should not be empty")
 	}
@@ -209,7 +212,7 @@ func TestRewritePlaylistLines_Simple(t *testing.T) {
 
 func TestRewritePlaylistLines_PreservesComments(t *testing.T) {
 	data := []byte("#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:10.0,\nseg.ts\n#EXT-X-ENDLIST\n")
-	got := string(rewritePlaylistLines(data, "/base/"))
+	got := string(rewritePlaylistLines(data, "/base/", ""))
 	if !strings.Contains(got, "#EXT-X-VERSION:3") {
 		t.Error("should preserve version tag")
 	}
@@ -220,7 +223,63 @@ func TestRewritePlaylistLines_PreservesComments(t *testing.T) {
 
 func TestRewritePlaylistLines_EmptyInput(_ *testing.T) {
 	// nil input may produce empty or single newline, both OK — just verify no panic
-	_ = rewritePlaylistLines(nil, "/base/")
+	_ = rewritePlaylistLines(nil, "/base/", "")
+}
+
+func TestRewritePlaylistLines_Version(t *testing.T) {
+	data := []byte("#EXTM3U\n#EXTINF:6.0,\nsegment_0000.ts\n#EXTINF:6.0,\nseg.ts?x=1\n#EXT-X-ENDLIST\n")
+	got := string(rewritePlaylistLines(data, "", "abc"))
+	for _, want := range []string{"\nsegment_0000.ts?v=abc\n", "\nseg.ts?x=1&v=abc\n", "#EXTINF:6.0,\n", "#EXT-X-ENDLIST"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("versioned playlist missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// Segment URLs are stable across encodes (job ID = media ID, segments numbered
+// from zero) and cached for a year, so a re-encoded variant must hand out new
+// URLs — otherwise returning viewers splice stale cached segments into it.
+func TestServeVariantPlaylist_SegmentURLsChangeWithEachEncode(t *testing.T) {
+	outputDir := t.TempDir()
+	qualityDir := filepath.Join(outputDir, "720p")
+	if err := os.MkdirAll(qualityDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	playlist := filepath.Join(qualityDir, "playlist.m3u8")
+	body := []byte("#EXTM3U\n#EXTINF:6.0,\nsegment_0000.ts\n#EXT-X-ENDLIST\n")
+	if err := os.WriteFile(playlist, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := &Module{
+		jobs:   map[string]*models.HLSJob{"job1": {ID: "job1", OutputDir: outputDir, Status: models.HLSStatusCompleted, Available: true}},
+		log:    logger.New("test"),
+		config: config.NewManager(filepath.Join(t.TempDir(), "config.json")),
+	}
+	serve := func() string {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/hls/job1/720p/playlist.m3u8", nil)
+		if err := m.ServeVariantPlaylist(w, r, VariantPlaylistParams{JobID: "job1", Quality: "720p"}); err != nil {
+			t.Fatalf("ServeVariantPlaylist: %v", err)
+		}
+		return w.Body.String()
+	}
+
+	first := serve()
+	if !strings.Contains(first, "segment_0000.ts?v=") {
+		t.Fatalf("segment URI not versioned:\n%s", first)
+	}
+	if serve() != first {
+		t.Error("the same encode must keep the same segment URLs (or caching is useless)")
+	}
+
+	// Re-encode: same file name and content layout, newer mtime.
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(playlist, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if serve() == first {
+		t.Error("a re-encoded variant must hand out new segment URLs")
+	}
 }
 
 // ---------------------------------------------------------------------------

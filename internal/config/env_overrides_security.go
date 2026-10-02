@@ -123,6 +123,23 @@ func isValidCSPPolicy(policy string) bool {
 }
 
 func (m *Manager) applySecurityIPOverrides() {
+	// Proxies whose X-Forwarded-For is trusted for the real client IP (rate
+	// limits, bans, age-gate IP verification). Empty in config = built-in
+	// RFC-1918 + loopback defaults. Only valid CIDRs are kept; an all-invalid
+	// value is ignored rather than clearing the list.
+	if val := envGetStr("SECURITY_TRUSTED_PROXY_CIDRS"); val != "" {
+		var cidrs []string
+		for _, c := range splitTrimmed(val) {
+			if _, _, err := net.ParseCIDR(c); err == nil {
+				cidrs = append(cidrs, c)
+			} else if m.log != nil {
+				m.log.Warn("SECURITY_TRUSTED_PROXY_CIDRS: skipping invalid CIDR %q", c)
+			}
+		}
+		if len(cidrs) > 0 {
+			m.config.Security.TrustedProxyCIDRs = cidrs
+		}
+	}
 	if val, ok := envGetBool("SECURITY_ENABLE_IP_WHITELIST"); ok {
 		m.config.Security.EnableIPWhitelist = val
 	}

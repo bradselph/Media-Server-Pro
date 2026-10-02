@@ -42,10 +42,22 @@ func (m *Manager) applyServerEnvOverrides() {
 	if val := envGetStr("SERVER_KEY_FILE"); val != "" {
 		m.config.Server.KeyFile = val
 	}
+	// Go soft memory limit as a percent of system RAM: 0 = auto (75%), else
+	// 10-95 (see internal/runtimeenv.TuneMemoryLimit).
+	if val, ok := envGetInt("SERVER_MEMORY_LIMIT_PERCENT"); ok {
+		if val == 0 || (val >= 10 && val <= 95) {
+			m.config.Server.MemoryLimitPercent = val
+		} else {
+			m.log.Warn("SERVER_MEMORY_LIMIT_PERCENT value %d is outside 0 (auto) or 10-95, ignoring", val)
+		}
+	}
 	m.applyServerTimeoutOverrides()
 }
 
 func (m *Manager) applyServerTimeoutOverrides() {
+	if val, ok := envGetDuration(time.Second, "SERVER_READ_HEADER_TIMEOUT"); ok && val > 0 {
+		m.config.Server.ReadHeaderTimeout = val
+	}
 	if val, ok := envGetDuration(time.Second, "SERVER_READ_TIMEOUT"); ok {
 		m.config.Server.ReadTimeout = val
 	}

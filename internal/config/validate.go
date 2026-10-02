@@ -56,18 +56,24 @@ func (m *Manager) validateServerPort() []error {
 	return []error{fmt.Errorf("invalid server port: %d", m.config.Server.Port)}
 }
 
+// validateServerTimeouts warns about timeouts that are actually risky.
+// ReadTimeout/WriteTimeout of 0 (no limit) are the deliberate defaults — a
+// whole-request limit kills large uploads and a whole-response limit cuts long
+// video streams off — so 0 is not warned about; a non-zero value is, because
+// it silently truncates those. The slowloris guard is ReadHeaderTimeout.
 func (m *Manager) validateServerTimeouts() {
-	for _, t := range []struct {
-		name string
-		d    time.Duration
-	}{
-		{"ReadTimeout", m.config.Server.ReadTimeout},
-		{"WriteTimeout", m.config.Server.WriteTimeout},
-		{"IdleTimeout", m.config.Server.IdleTimeout},
-	} {
-		if t.d <= 0 {
-			m.log.Warn("%s is %v, timeouts disabled - may cause resource exhaustion", t.name, t.d)
-		}
+	s := m.config.Server
+	if s.ReadHeaderTimeout <= 0 {
+		m.log.Warn("ReadHeaderTimeout is %v: slow clients can hold connections open indefinitely (slowloris)", s.ReadHeaderTimeout)
+	}
+	if s.IdleTimeout <= 0 {
+		m.log.Warn("IdleTimeout is %v: idle keep-alive connections are never closed", s.IdleTimeout)
+	}
+	if s.ReadTimeout > 0 {
+		m.log.Warn("ReadTimeout is %v: uploads that take longer are cut off (0 = no limit)", s.ReadTimeout)
+	}
+	if s.WriteTimeout > 0 {
+		m.log.Warn("WriteTimeout is %v: responses, including video streams, are cut off after this long (0 = no limit)", s.WriteTimeout)
 	}
 }
 

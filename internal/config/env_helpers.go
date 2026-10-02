@@ -5,12 +5,48 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
+// envSource is where every env override reads from. The default is the real
+// process environment; ApplyDeployKnobs narrows it to an allowlist of keys and
+// KnownEnvKeys swaps in an empty environment with a recorder attached.
+type envSource struct {
+	lookup func(key string) string
+	// record, when set, receives every key list an envGet* call checks: the
+	// primary name first, then its fallback aliases.
+	record func(keys []string)
+}
+
+var (
+	processEnv  = &envSource{lookup: os.Getenv}
+	envOverride atomic.Pointer[envSource] // nil = processEnv
+	envSwapMu   sync.Mutex                // serializes withEnvSource swaps
+)
+
+// withEnvSource runs fn with every envGet* call reading through src instead
+// of the process environment, then restores the previous source.
+func withEnvSource(src *envSource, fn func()) {
+	envSwapMu.Lock()
+	defer envSwapMu.Unlock()
+	prev := envOverride.Load()
+	envOverride.Store(src)
+	defer envOverride.Store(prev)
+	fn()
+}
+
 func envGetStr(keys ...string) string {
+	src := envOverride.Load()
+	if src == nil {
+		src = processEnv
+	}
+	if src.record != nil {
+		src.record(keys)
+	}
 	for _, key := range keys {
-		if val := os.Getenv(key); val != "" {
+		if val := src.lookup(key); val != "" {
 			return val
 		}
 	}
