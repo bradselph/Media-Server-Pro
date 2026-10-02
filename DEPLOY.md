@@ -40,41 +40,96 @@ on every deploy and forwards them to the VPS:
 |-------------|--------------------------------------------|---------------------------------------------------|
 | `vps`       | Local `.deploy.env`                        | Consumed by `deploy.sh` itself (SSH, paths)       |
 | `toolchain` | Local `.deploy.env`                        | Version pins (`MSP_GO_VERSION`, `MSP_NODE_MAJOR`) |
-| `runtime`   | Forwarded to `$DEPLOY_DIR/.env` on the VPS | Read by the Go server on every start              |
+| `runtime`   | Forwarded to `$DEPLOY_DIR/.env` on the VPS | See "How runtime knobs take effect" below         |
 | `build`     | Exported into the npm build shell          | Baked into the Nuxt bundle (`NUXT_PUBLIC_*`)      |
 
 **Safe-by-default**: pressing Enter on a never-seen knob marks it "seen" as
 a commented hint and does **not** push the registry default to the VPS — the
 VPS `.env` keeps whatever it had. Only values the operator explicitly types
-are forwarded.
+are forwarded. When a release adds many knobs at once, the walk asks per
+section first: Enter walks it, `s` skips the section, `a` skips the rest
+(skipped knobs are marked seen; walk them later with `--review` / `--only`).
+
+The registry covers every environment variable the server reads;
+`internal/config/knob_registry_test.go` fails the build if a new server env
+var ships without a knob (or a runtime knob stops being read).
+
+### How runtime knobs take effect
+
+The server stores its settings in `$DEPLOY_DIR/config.json`. Two kinds of
+runtime knob behave differently:
+
+- **Re-read on every start** — data paths (`VIDEOS_DIR`, …), database
+  (`DATABASE_*`), object storage (`STORAGE_BACKEND`, `S3_*`) and the admin
+  bootstrap login (`ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, …). The `.env`
+  value always wins; the deploy's restart picks up a change.
+- **Owned by config.json** — everything else (server port and timeouts,
+  logging, auth, rate limits, CSP/CORS, streaming, HLS, thumbnails, feature
+  flags, …). The env var only seeds a brand-new `config.json`; afterwards the
+  admin UI edits `config.json` and the server ignores the env var at startup.
+  So after forwarding knobs, `deploy.sh` stops the service and runs
+  `./server -apply-knobs <forwarded knob names>`, which writes each of these
+  knobs **whose value changed since the last deploy** into `config.json`
+  (validated, saved atomically, with a per-field diff in the deploy log).
+  Knobs you did not change are left alone, so a setting you later change in
+  the admin UI keeps your UI value until you change the knob itself.
+  `./deploy.sh --reapply-knobs` re-asserts every forwarded knob instead. The
+  record of what was applied is `$DEPLOY_DIR/.knobs-applied` (hashes only).
+  **The first deploy on an install has no record yet, so it only records a
+  baseline:** nothing is applied, and the log lists every field where
+  `.deploy.env` disagrees with the live `config.json`. Review that list, then
+  either update `.deploy.env` to match or run `./deploy.sh --reapply-knobs`
+  to apply it — upgrading never silently reverts admin-UI edits. A knob value that
+  fails validation is reported, `config.json` is left untouched, the service
+  starts with its previous settings, and the next deploy retries it.
+  (`--docker` deploys have no apply step: change these in the admin UI.)
+
+`FEATURE_*` flags are the master switches: the server copies them over the
+modules' own `*_ENABLED` flags on every start, so set `FEATURE_UPLOADS`, not
+`UPLOADS_ENABLED` (likewise `FEATURE_USER_AUTH` / `AUTH_ENABLED`,
+`FEATURE_ADMIN_PANEL` / `ADMIN_ENABLED`, `FEATURE_DOWNLOADER`,
+`FEATURE_RECEIVER`, `FEATURE_HUGGINGFACE`).
+
+`GOMEMLIMIT` / `GOGC` are read by the Go runtime when the service starts
+(systemd loads `.env` as its `EnvironmentFile`); leave them empty to let the
+server size the Go memory limit itself (`SERVER_MEMORY_LIMIT_PERCENT`,
+default 75% of RAM).
 
 Commands:
 
 ```bash
 ./deploy.sh --configure                    # walk ★ NEW knobs only
 ./deploy.sh --review                       # re-walk every knob
+./deploy.sh --reapply-knobs                # deploy, re-applying every knob to config.json
 ./deploy-configure.sh --only NUXT_PUBLIC_GA_ID   # update one knob
 ./deploy-configure.sh --list               # inventory with current values
 ./deploy-configure.sh --set KEY=VAL        # set a knob non-interactively
+
+# On the VPS (service stopped), preview what a knob change would do:
+cd $DEPLOY_DIR && ./server -apply-knobs HLS_CONCURRENT_LIMIT -knobs-dry-run
 ```
 
 ## Configuration
 
-All runtime config is supplied via environment variables read from
-`$DEPLOY_DIR/.env`. The full override matrix lives in
-`internal/config/env_overrides_*.go`. Common variables:
+Runtime config reaches the server through environment variables in
+`$DEPLOY_DIR/.env` (set them as knobs in `.deploy.env`; see "How runtime
+knobs take effect" above for when each one applies). The full override matrix
+lives in `internal/config/env_overrides_*.go`, and `./deploy-configure.sh
+--list` prints every knob with its description. Common variables:
 
 - `SERVER_PORT`, `SERVER_HOST` — listening socket
 - `DATABASE_NAME`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` — app DB credentials
 - `LOG_LEVEL` — `debug` / `info` / `warn` / `error`
-- `AUTH_ALLOW_REGISTRATION`, `AUTH_ALLOW_GUESTS` — public exposure. **Seed-only:**
-  only read on a brand-new `config.json` or the one-shot upgrade of an existing
-  one; after that `config.json`'s `auth.allow_registration` / `auth.allow_guests`
-  are authoritative and `auth.*` is denylisted from the admin config API, so
-  there is no admin-UI control either. Set these before the *first* deploy —
-  changing them and redeploying later does nothing to an already-seeded
-  server; edit `config.json` directly and restart instead.
-- `RECEIVER_ENABLED`, `RECEIVER_API_KEYS` — accept federated peers
+- `AUTH_ALLOW_REGISTRATION`, `AUTH_ALLOW_GUESTS` — public exposure. `auth.*` is
+  denylisted from the admin config API, so these knobs are the way to change
+  them on a running site (the deploy applies a changed value to `config.json`).
+- `HLS_AUTO_GENERATE`, `HLS_CONCURRENT_LIMIT`, `HLS_HARDWARE_ACCEL`,
+  `HLS_QUALITIES` — transcoding
+- `SERVER_MEMORY_LIMIT_PERCENT`, `THUMBNAILS_WORKER_COUNT`,
+  `DATABASE_MAX_OPEN_CONNS` / `DATABASE_MAX_IDLE_CONNS` — capacity tuning
+- `SECURITY_TRUSTED_PROXY_CIDRS` — reverse proxies trusted for the real
+  client IP (rate limits, bans, age-gate IP checks)
+- `FEATURE_RECEIVER`, `RECEIVER_API_KEY` — accept federated peers
 - `FEATURE_HUGGINGFACE`, `HUGGINGFACE_API_KEY` — visual classifier
 
 Build-time (baked into the Nuxt bundle by `deploy.sh`):
@@ -133,6 +188,15 @@ Implementation notes:
   Every seek and every HLS transcode pulls bytes from IONOS through the server.
   Direct play is usually fine; transcoded 4K will start slowly. Treat HiDrive as
   a cold tier, not the hot-path store.
+- **Read tuning** (applied by `--setup-hidrive`; re-run it after changing them):
+  - `HIDRIVE_BUFFER_SIZE` (default `32M`) — rclone's in-memory read-ahead per
+    open file. It is what rides out WebDAV latency spikes mid-stream; raise it
+    if HiDrive-hosted videos stall while local ones don't. Costs that much RAM
+    per file being streamed or transcoded.
+  - `HIDRIVE_VFS_CACHE_MODE=full` — keep what has been read on the VPS disk
+    (`/var/cache/hidrive-media`, capped by `HIDRIVE_VFS_CACHE_MAX_SIZE`, default
+    `20G`; data unread for a week is dropped). Seeking back and re-watching are
+    then served locally. Default `off` keeps the mount disk-free.
 
 Mount diagnostics on the VPS: `systemctl status hidrive-media.service` and
 `journalctl -u hidrive-media.service -n 40`.

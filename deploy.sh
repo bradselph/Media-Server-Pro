@@ -22,6 +22,11 @@
 #                                       # ./deploy-configure.sh directly.
 #   ./deploy.sh --review                # interactive: re-walk every knob,
 #                                       # even ones already set, then exit.
+#   ./deploy.sh --reapply-knobs         # deploy and write EVERY forwarded
+#                                       # runtime knob into config.json, not
+#                                       # just the ones changed since the
+#                                       # last deploy (overrides admin-UI
+#                                       # edits to those settings).
 #   ./deploy.sh --docker                # alternative: deploy via the GHCR
 #                                       # image + docker compose instead of
 #                                       # native build + systemd. Native
@@ -36,7 +41,11 @@
 #   config. Knobs are registered in deploy-knobs.sh — each one is scoped:
 #     vps       — used locally by this script (VPS_HOST, SERVICE, …)
 #     toolchain — version pins (MSP_GO_VERSION, MSP_NODE_MAJOR)
-#     runtime   — upserted into $DEPLOY_DIR/.env on every deploy
+#     runtime   — upserted into $DEPLOY_DIR/.env on every deploy; then,
+#                 with the service stopped, `server -apply-knobs` writes
+#                 each config.json-owned knob whose value changed since
+#                 the last deploy into config.json (paths/DB/storage/admin
+#                 knobs need no apply — they are re-read every start)
 #     build     — exported into the on-VPS `npm run build` shell so
 #                 NUXT_PUBLIC_* knobs (e.g. NUXT_PUBLIC_GA_ID) are
 #                 baked into the Nuxt bundle.
@@ -143,6 +152,11 @@ SETUP_RECEIVER=false
 SETUP_HIDRIVE=false
 CONFIGURE_ONLY=false
 REVIEW_ONLY=false
+# REAPPLY_KNOBS re-applies every forwarded runtime knob to config.json, not
+# just the ones whose value changed since the last deploy (see the
+# "Apply changed runtime knobs" step). Use it to re-assert .deploy.env over
+# settings that were edited in the admin UI.
+REAPPLY_KNOBS=false
 # DOCKER_MODE swaps the build+systemd backend for `docker compose up` against
 # the GHCR image. Native path is the default; --docker is opt-in per run and
 # does NOT persist into .deploy.env — each deploy chooses its own backend.
@@ -176,6 +190,7 @@ while [[ $# -gt 0 ]]; do
     --dev)             BRANCH="development"  ; shift ;;
     --configure)       CONFIGURE_ONLY=true   ; shift ;;
     --review)          REVIEW_ONLY=true      ; shift ;;
+    --reapply-knobs)   REAPPLY_KNOBS=true    ; shift ;;
     --docker)          DOCKER_MODE=true      ; shift ;;
     --help|-h)
       sed -n '/^# Usage/,/^[^#]/p' "$0" | head -n -1
@@ -694,8 +709,11 @@ if $SETUP_RECEIVER; then
     sudo mkdir -p '$DEPLOY_DIR/data/remote_cache'
     sudo chown mediaserver:mediaserver '$DEPLOY_DIR/data/remote_cache' 2>/dev/null || true
 
-    # Open the server port in UFW so slave nodes can reach this master
-    APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' \"\$ENV\" 2>/dev/null || echo 8080)
+    # Open the server port in UFW so slave nodes can reach this master.
+    # config.json owns server.port once seeded; .env only seeds it.
+    APP_PORT=\$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(\"server\",{}).get(\"port\") or \"\")' '$DEPLOY_DIR/config.json' 2>/dev/null || true)
+    [ -n \"\$APP_PORT\" ] || APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' \"\$ENV\" 2>/dev/null | tail -n 1 || true)
+    [ -n \"\$APP_PORT\" ] || APP_PORT=8080
     if command -v ufw &>/dev/null; then
       sudo ufw allow \"\${APP_PORT}/tcp\" 2>/dev/null || true
       sudo ufw allow ssh 2>/dev/null || true
@@ -765,13 +783,43 @@ if $SETUP_HIDRIVE; then
   # vs read-write so the downloader can store imported media on HiDrive. Writes are
   # staged in rclone's vfs cache then uploaded, so --vfs-cache-mode writes is
   # required; "off" only supports read-only streaming.
+  # Read tuning. --buffer-size is rclone's in-memory read-ahead per open file —
+  # the cushion that rides out WebDAV latency spikes mid-stream (rclone's own
+  # default, 16M, is only ~15s of an 8 Mbps video). HIDRIVE_VFS_CACHE_MODE=full
+  # also keeps what has been read on local disk (bounded by
+  # HIDRIVE_VFS_CACHE_MAX_SIZE), so seeking back and re-watching are served
+  # locally instead of being fetched from HiDrive again.
+  HIDRIVE_BUFFER="$(strip_control_chars "${HIDRIVE_BUFFER_SIZE:-32M}")"
+  HIDRIVE_CACHE_MODE="$(strip_control_chars "${HIDRIVE_VFS_CACHE_MODE:-off}")"
+  HIDRIVE_CACHE_MAX="$(strip_control_chars "${HIDRIVE_VFS_CACHE_MAX_SIZE:-20G}")"
+  [[ "$HIDRIVE_BUFFER" =~ ^[0-9]+[KMG]?$ ]] \
+    || die "HIDRIVE_BUFFER_SIZE must be an rclone size such as 32M (got '$HIDRIVE_BUFFER')."
+  [[ "$HIDRIVE_CACHE_MAX" =~ ^[0-9]+[KMGT]?$ ]] \
+    || die "HIDRIVE_VFS_CACHE_MAX_SIZE must be an rclone size such as 20G (got '$HIDRIVE_CACHE_MAX')."
+  case "$HIDRIVE_CACHE_MODE" in
+    off|full) ;;
+    *) die "HIDRIVE_VFS_CACHE_MODE must be 'off' or 'full' (got '$HIDRIVE_CACHE_MODE')." ;;
+  esac
+
   if [[ "${HIDRIVE_READONLY:-true}" == "false" ]]; then
-    HIDRIVE_MOUNT_FLAGS="--vfs-cache-mode writes"
+    # Writes are staged in the vfs cache, so read-write needs at least "writes"
+    # ("full" includes it).
+    if [[ "$HIDRIVE_CACHE_MODE" == "full" ]]; then
+      HIDRIVE_MOUNT_FLAGS="--vfs-cache-mode full"
+    else
+      HIDRIVE_MOUNT_FLAGS="--vfs-cache-mode writes"
+    fi
     HIDRIVE_MODE_LABEL="read-write (downloader can store here)"
   else
-    HIDRIVE_MOUNT_FLAGS="--read-only --vfs-cache-mode off"
+    HIDRIVE_MOUNT_FLAGS="--read-only --vfs-cache-mode $HIDRIVE_CACHE_MODE"
     HIDRIVE_MODE_LABEL="read-only (streaming source)"
   fi
+  if [[ "$HIDRIVE_CACHE_MODE" == "full" ]]; then
+    HIDRIVE_MOUNT_FLAGS+=" --cache-dir /var/cache/hidrive-media --vfs-cache-max-size $HIDRIVE_CACHE_MAX --vfs-cache-max-age 168h --vfs-read-ahead 128M"
+    HIDRIVE_MODE_LABEL+=", local read cache up to $HIDRIVE_CACHE_MAX"
+  fi
+  HIDRIVE_MOUNT_FLAGS+=" --buffer-size $HIDRIVE_BUFFER"
+  HIDRIVE_MODE_LABEL+=", read-ahead $HIDRIVE_BUFFER per open file"
 
   if [[ "${HIDRIVE_ENABLED:-false}" != "true" ]]; then
     # Teardown path — HIDRIVE_ENABLED is off, so make the flag reversible:
@@ -963,6 +1011,9 @@ RUNTIME_PAYLOAD=""
 BUILD_PAYLOAD=""
 RUNTIME_COUNT=0
 BUILD_COUNT=0
+# Names of the runtime knobs forwarded this deploy — handed to
+# `server -apply-knobs` after the build (see "Apply changed runtime knobs").
+RUNTIME_KEYS=()
 
 if ! $DRY_RUN; then
   RUNTIME_PAYLOAD="$(mktemp)"
@@ -977,6 +1028,7 @@ if ! $DRY_RUN; then
     fi
     printf '%s=%s\n' "$_k" "$_v" >> "$RUNTIME_PAYLOAD"
     RUNTIME_COUNT=$((RUNTIME_COUNT + 1))
+    RUNTIME_KEYS+=("$_k")
   done
 
   for _k in "${FORWARDED_BUILD[@]}"; do
@@ -1210,6 +1262,39 @@ run_or_dry remote "
   echo '[deploy] Build complete'
 "
 
+# ── Apply changed runtime knobs to config.json ───────────────────────────────
+# Once config.json exists, the server owns most settings there (admin UI) and
+# ignores their env vars at startup, so writing a changed knob into .env alone
+# would do nothing. `server -apply-knobs` (internal/config/apply_knobs.go) loads
+# config.json + .env exactly like a start, writes every listed knob whose value
+# changed since the last deploy (all of them with --reapply-knobs) into
+# config.json, validates, and saves atomically. It records SHA-256 hashes of
+# what it applied in $DEPLOY_DIR/.knobs-applied; with no record yet (the first
+# deploy on an install) it only records a baseline and lists where .deploy.env
+# differs from config.json, so upgrading never reverts admin-UI edits.
+# Runs with the service stopped (the build step above stopped it) and before
+# the ownership fix below, which hands any file it rewrote back to the service
+# user. A failed apply leaves config.json untouched and is retried on the next
+# deploy; the service still starts with its previous settings.
+if [[ ${#RUNTIME_KEYS[@]} -gt 0 ]]; then
+  info "Applying changed runtime knobs to config.json..."
+  KNOB_KEYS_CSV="$(IFS=,; printf '%s' "${RUNTIME_KEYS[*]}")"
+  KNOB_FORCE_FLAG=""
+  $REAPPLY_KNOBS && KNOB_FORCE_FLAG="-knobs-force"
+  run_or_dry remote "
+    cd '$DEPLOY_DIR'
+    if [ ! -f config.json ]; then
+      echo '[knobs] No config.json yet: the server seeds it from .env on first start.'
+      exit 0
+    fi
+    if ! ./server -config config.json -apply-knobs '$KNOB_KEYS_CSV' $KNOB_FORCE_FLAG; then
+      echo '[knobs] WARNING: knob values were NOT applied (config.json is unchanged).'
+      echo '[knobs]          Fix the value(s) reported above in .deploy.env and redeploy;'
+      echo '[knobs]          the service starts with its previous settings.'
+    fi
+  "
+fi
+
 # ── Update systemd unit if changed ────────────────────────────────────────────
 run_or_dry remote "
   if [ -f '$DEPLOY_DIR/systemd/media-server.service' ]; then
@@ -1263,7 +1348,12 @@ run_or_dry remote "
     exit 1
   fi
 
-  PORT=\$(grep -o 'SERVER_PORT=[0-9]*' '$DEPLOY_DIR/.env' 2>/dev/null | cut -d= -f2 || echo 8080)
+  # The port the server actually binds: config.json owns server.port once
+  # seeded (SERVER_PORT in .env only seeds it), so read it from there first.
+  # Fall back to the last uncommented SERVER_PORT line, then the Go default.
+  PORT=\$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(\"server\",{}).get(\"port\") or \"\")' '$DEPLOY_DIR/config.json' 2>/dev/null || true)
+  [ -n \"\$PORT\" ] || PORT=\$(grep -E '^SERVER_PORT=[0-9]+\$' '$DEPLOY_DIR/.env' 2>/dev/null | tail -n 1 | cut -d= -f2 || true)
+  [ -n \"\$PORT\" ] || PORT=8080
   HEALTH_URL=\"http://127.0.0.1:\${PORT}/health\"
   echo \"[deploy] Polling \$HEALTH_URL (waiting for media scan to complete)...\"
   OK=false
@@ -1282,6 +1372,13 @@ run_or_dry remote "
 "
 
 else  # DOCKER_MODE branch
+
+# The native path's "Apply changed runtime knobs" step has no Docker
+# equivalent yet: knobs land in .env.docker, which only seeds a fresh
+# config.json inside the container's data volume.
+if [[ ${#RUNTIME_KEYS[@]} -gt 0 ]]; then
+  warn "--docker: changed knobs for settings owned by config.json (everything except paths, database, storage and admin login) are NOT applied to an existing install — change those in the admin UI."
+fi
 
 # ── Docker mode: install Docker, stop systemd unit, compose up ───────────────
 info "Checking Docker on VPS..."

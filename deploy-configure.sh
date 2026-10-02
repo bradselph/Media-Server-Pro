@@ -456,16 +456,55 @@ mode_walk_inner() {
   echo -e "current value. Type a value to override. '-' clears (also not pushed)."
   echo -e "Ctrl-C aborts without saving.${RESET}"
 
+  if [[ "$mode" == "walk" ]] && [[ ${#keys[@]} -gt 10 ]]; then
+    echo ""
+    echo -e "${YELLOW}Many new knobs: each section asks first — Enter walks it, 's' skips it,"
+    echo -e "'a' skips every remaining section. Skipped knobs are marked seen without"
+    echo -e "changing anything on the VPS; walk them later with --review or --only KEY.${RESET}"
+  fi
+
   # Group by section so the walk feels structured.
   local current_section=""
   local kept=0 set=0 cleared=0 skipped=0
-  local key
+  local skip_section=0 skip_all=0
+  local key idx=0
   for key in "${keys[@]}"; do
+    idx=$((idx + 1))
     local section="${KNOB_SECTION[$key]:-Other}"
+    if [[ $skip_all -eq 1 ]]; then
+      append_comment_hint "$ENV_FILE" "$key" "${KNOB_DEFAULT[$key]:-}"
+      skipped=$((skipped + 1))
+      continue
+    fi
     if [[ "$section" != "$current_section" ]]; then
       echo ""
       echo -e "${BOLD}── ${section} ──────────────────────────────────${RESET}"
       current_section="$section"
+      skip_section=0
+      # Offer a per-section skip in walk mode when the section has several
+      # new knobs (count the run of same-section keys starting here).
+      if [[ "$mode" == "walk" ]]; then
+        local n=0 j
+        for j in "${keys[@]:$((idx - 1))}"; do
+          [[ "${KNOB_SECTION[$j]:-Other}" == "$section" ]] || break
+          n=$((n + 1))
+        done
+        if [[ $n -gt 1 ]]; then
+          echo -en "  ${CYAN}>${RESET} ${n} new knob(s) in this section. ${DIM}(Enter = walk, s = skip section, a = skip all remaining)${RESET} "
+          local choice=""
+          read -r choice </dev/tty || true
+          choice="$(strip_control_chars "${choice//$'\r'/}")"
+          case "${choice,,}" in
+            s) skip_section=1 ;;
+            a) skip_all=1 ;;
+          esac
+        fi
+      fi
+    fi
+    if [[ $skip_section -eq 1 ]] || [[ $skip_all -eq 1 ]]; then
+      append_comment_hint "$ENV_FILE" "$key" "${KNOB_DEFAULT[$key]:-}"
+      skipped=$((skipped + 1))
+      continue
     fi
     prompt_knob "$key"
     case "$KNOB_PROMPT_RESULT" in
