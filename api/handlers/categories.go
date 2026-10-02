@@ -250,7 +250,52 @@ func (h *Handler) GetCategory(c *gin.Context) {
 		}
 	}
 
+	if !h.canViewMatureContent(c) {
+		items = withoutMatureCategoryItems(items, h.media.MatureIDs(categoryItemIDs(items)), h.isFederatedMediaMature)
+	}
+
 	writeSuccess(c, categoryWithItems{MediaCategory: cat, Items: items})
+}
+
+// categoryItemIDs returns the media IDs of a category listing.
+func categoryItemIDs(items []categoryItemResponse) []string {
+	ids := make([]string, len(items))
+	for i, it := range items {
+		ids[i] = it.MediaID
+	}
+	return ids
+}
+
+// withoutMatureCategoryItems drops mature members from a category listing for
+// a viewer who may not see mature content. The listing carries each member's
+// name, and the category page shows that name for any item the (already
+// mature-filtered) media batch lookup omits — so without this a shared
+// category link showed mature titles to logged-out visitors. localMature holds
+// the mature local IDs; federatedMature answers for members not in the local
+// library.
+func withoutMatureCategoryItems(items []categoryItemResponse, localMature map[string]bool, federatedMature func(id string) bool) []categoryItemResponse {
+	out := make([]categoryItemResponse, 0, len(items))
+	for _, it := range items {
+		if localMature[it.MediaID] || federatedMature(it.MediaID) {
+			continue
+		}
+		out = append(out, it)
+	}
+	return out
+}
+
+// isFederatedMediaMature reports whether id is a federated (receiver) item
+// that is mature — by the peer's own flag or the master's fingerprint match.
+// Local or unknown IDs report false.
+func (h *Handler) isFederatedMediaMature(id string) bool {
+	if h.receiver == nil {
+		return false
+	}
+	ri := h.receiver.GetMediaItem(id)
+	if ri == nil {
+		return false
+	}
+	return ri.IsMature || h.isReceiverItemMature(ri.ContentFingerprint)
 }
 
 // CreateCategory creates a new media category.

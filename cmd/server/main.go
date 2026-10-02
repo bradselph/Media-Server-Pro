@@ -5,8 +5,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -70,12 +72,18 @@ func fatalExit(log *logger.Logger, format string, args ...any) {
 }
 
 func main() {
-	configPath, logLevel, showVer := parseFlags()
+	configPath, logLevel, showVer, knobs := parseFlags()
 
 	if showVer {
 		showVersion()
 		logger.Shutdown()
 		os.Exit(0)
+	}
+
+	if knobs.apply != "" {
+		code := runApplyKnobs(configPath, knobs)
+		logger.Shutdown()
+		os.Exit(code)
 	}
 
 	// Create server (initializes logger + config)
@@ -146,14 +154,100 @@ func main() {
 	}
 }
 
-func parseFlags() (string, string, bool) {
+// knobFlags are the deploy-time -apply-knobs options (see runApplyKnobs).
+type knobFlags struct {
+	apply  string // comma-separated env knob names; non-empty = one-shot apply mode
+	state  string
+	force  bool
+	dryRun bool
+}
+
+func parseFlags() (string, string, bool, knobFlags) {
 	var (
 		configPath = flag.String("config", "config.json", "Path to config file")
 		logLevel   = flag.String("log-level", "info", "Log level: debug, info, warn, error")
 		showVer    = flag.Bool("version", false, "Show version and exit")
+		knobs      knobFlags
 	)
+	flag.StringVar(&knobs.apply, "apply-knobs", "", "Deploy step: comma-separated env knob names to apply to config.json (only those whose value changed since the last apply), then exit without starting the server")
+	flag.StringVar(&knobs.state, "knobs-state", "", "With -apply-knobs: record of applied knob values (default: .knobs-applied next to the config file)")
+	flag.BoolVar(&knobs.force, "knobs-force", false, "With -apply-knobs: apply every listed knob even when unchanged since the last apply")
+	flag.BoolVar(&knobs.dryRun, "knobs-dry-run", false, "With -apply-knobs: print what would change without writing anything")
 	flag.Parse()
-	return *configPath, *logLevel, *showVer
+	return *configPath, *logLevel, *showVer, knobs
+}
+
+// runApplyKnobs is the one-shot behind -apply-knobs, run by deploy.sh while
+// the service is stopped: it applies the listed seed-only deploy knobs to
+// config.json (config.Manager.ApplyDeployKnobs), prints what changed, and
+// returns the process exit code. It never starts the server.
+func runApplyKnobs(configPath string, knobs knobFlags) int {
+	// Keep the deploy log to the report below plus real warnings/errors.
+	logger.SetGlobalLevel(logger.WARN)
+	mgr := config.NewManager(configPath)
+	res, err := mgr.ApplyDeployKnobs(config.ApplyKnobsOptions{
+		Keys:      strings.Split(knobs.apply, ","),
+		StatePath: knobs.state,
+		Force:     knobs.force,
+		DryRun:    knobs.dryRun,
+	})
+	printKnobReport(os.Stdout, res, knobs.dryRun, err)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "[knobs] ERROR: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// printKnobReport prints what ApplyDeployKnobs did; the closing status line
+// is omitted when it failed (runApplyKnobs prints the error instead).
+func printKnobReport(w io.Writer, res *config.ApplyKnobsResult, dryRun bool, err error) {
+	if res == nil {
+		return
+	}
+	list := func(label string, keys []string) {
+		if len(keys) > 0 {
+			_, _ = fmt.Fprintf(w, "[knobs] %s (%d): %s\n", label, len(keys), strings.Join(keys, ", "))
+		}
+	}
+	changes := func() {
+		for _, c := range res.Changes {
+			_, _ = fmt.Fprintf(w, "[knobs]   %s: %s -> %s\n", c.Path, c.Old, c.New)
+		}
+	}
+	if len(res.Baselined) > 0 {
+		_, _ = fmt.Fprintf(w, "[knobs] First deploy with knob tracking: recorded the current value of %d knob(s) as the baseline WITHOUT applying them, so settings changed in the admin UI since the server was set up are kept. From now on a knob is applied when you change it in .deploy.env.\n", len(res.Baselined))
+		if len(res.Changes) > 0 {
+			_, _ = fmt.Fprintln(w, "[knobs] .deploy.env differs from the live config.json here (config.json -> .deploy.env); apply with ./deploy.sh --reapply-knobs, or update .deploy.env to match:")
+			changes()
+		} else {
+			_, _ = fmt.Fprintln(w, "[knobs] config.json already matches .deploy.env")
+		}
+	}
+	verb := "applied"
+	if dryRun {
+		verb = "would apply (dry run)"
+	}
+	list(verb+" — new or changed since the last deploy", res.Applied)
+	if len(res.Applied) > 0 {
+		changes()
+	}
+	list("unchanged since the last deploy — left as-is so admin-UI edits are kept", res.Unchanged)
+	list("re-read from .env on every start — nothing to apply", res.Always)
+	list("read from the environment when the service starts — nothing to apply", res.Process)
+	list("WARNING: not read by the server (typo or removed knob?)", res.Unknown)
+	switch {
+	case err != nil, len(res.Baselined) > 0:
+		return
+	case len(res.Applied) == 0:
+		_, _ = fmt.Fprintln(w, "[knobs] nothing to apply")
+	case dryRun:
+		_, _ = fmt.Fprintln(w, "[knobs] dry run — config.json not written")
+	case res.Saved:
+		_, _ = fmt.Fprintln(w, "[knobs] config.json updated")
+	default:
+		_, _ = fmt.Fprintln(w, "[knobs] config.json already matched — recorded as applied")
+	}
 }
 
 func showVersion() {

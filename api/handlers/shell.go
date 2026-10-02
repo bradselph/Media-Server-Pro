@@ -37,9 +37,11 @@ func (h *Handler) EnrichSPAShell(c *gin.Context) web.ShellMeta {
 	case "/player":
 		return h.shellMetaForPlayer(c)
 	case "/":
-		return h.shellMetaForDiscovery(c,
+		m := h.shellMetaForDiscovery(c,
 			"Media Server Pro",
 			"Stream and browse the full media library on Media Server Pro.")
+		m.Head += websiteJSONLD(seoBaseURL(c), "Media Server Pro")
+		return m
 	case "/browse":
 		return h.shellMetaForDiscovery(c,
 			"Browse — Media Server Pro",
@@ -85,14 +87,31 @@ func (h *Handler) shellMetaForPlayer(c *gin.Context) web.ShellMeta {
 	if err != nil || item == nil {
 		return web.ShellMeta{}
 	}
+	return playerShellMeta(seoBaseURL(c), item)
+}
 
-	base := seoBaseURL(c)
+// Neutral link-preview copy for a mature item (see matureShellMeta).
+const (
+	matureShellTitle       = "Age-restricted content — Media Server Pro"
+	matureShellDescription = "This content is for adults only. Sign in and confirm you are 18 or older to watch it."
+)
+
+// playerShellMeta builds the player-page shell for item. The shell is served
+// to every visitor before any JavaScript runs, and link-preview bots (Discord,
+// iMessage, X, Telegram, WhatsApp, Slack, ...) and search crawlers fetch it
+// without a session — whatever its preview tags carry ends up in a card that
+// everyone in the chat or feed sees. So a mature item gets matureShellMeta:
+// neutral preview tags and no image.
+func playerShellMeta(base string, item *models.MediaItem) web.ShellMeta {
+	canonical := fmt.Sprintf("%s/player?id=%s", base, url.QueryEscape(item.ID))
 	title := shellMediaTitle(item)
 	desc := shellMediaDescription(item, title)
-	canonical := fmt.Sprintf("%s/player?id=%s", base, url.QueryEscape(item.ID))
-	// og=1 so the (always unauthenticated) social-card crawler is served the real
-	// thumbnail instead of the censored "red box" placeholder. See GetThumbnail.
-	thumb := absoluteURL(base, ogThumbnailURL(item.ThumbnailURL))
+	if item.IsMature {
+		return matureShellMeta(canonical, title, desc)
+	}
+	// Plain thumbnail URL: for a non-mature item GetThumbnail serves the real
+	// image to anyone, crawlers included.
+	thumb := absoluteURL(base, item.ThumbnailURL)
 
 	ogType, ldType := "video.other", "VideoObject"
 	if item.Type == models.MediaTypeAudio {
@@ -136,19 +155,42 @@ func (h *Handler) shellMetaForPlayer(c *gin.Context) web.ShellMeta {
 	}
 }
 
-// ogThumbnailURL marks a thumbnail URL as a social-card / OpenGraph fetch (?og=1)
-// so the GetThumbnail handler serves the real thumbnail to the unauthenticated
-// crawler instead of the censored "red box" placeholder the mature gate returns.
-// Returns "" unchanged so the caller's empty-thumb guard still suppresses og:image
-// when an item has no thumbnail.
-func ogThumbnailURL(thumbnailURL string) string {
-	if thumbnailURL == "" {
-		return ""
+// matureShellMeta is the shell for a mature item's player page.
+//
+// Link-preview cards are built from the OpenGraph/Twitter tags (every major
+// chat and social app reads og:title/og:description before <title>), so those
+// carry only neutral copy, and there is no og:image/twitter:image, no
+// large-image card and no <img> anywhere: a shared link never puts the item's
+// title or an explicit thumbnail in front of the people it was shared with.
+//
+// The document <title>, meta description and <noscript> heading keep the real
+// title: they are what search engines index and show, and this is an
+// adult-content site whose pages are meant to be found (the site-wide
+// rating=adult tag in nuxt.config.ts classifies them for SafeSearch). No
+// VideoObject JSON-LD — without a public thumbnail it would only be flagged
+// as invalid structured data.
+func matureShellMeta(canonical, title, desc string) web.ShellMeta {
+	var head strings.Builder
+	writeMetaProperty(&head, "og:type", "website")
+	writeMetaProperty(&head, "og:title", matureShellTitle)
+	writeMetaProperty(&head, "og:description", matureShellDescription)
+	writeMetaProperty(&head, "og:url", canonical)
+	writeMetaName(&head, "twitter:card", "summary")
+	writeMetaName(&head, "twitter:title", matureShellTitle)
+	writeMetaName(&head, "twitter:description", matureShellDescription)
+	head.WriteString(`<link rel="canonical" href="` + html.EscapeString(canonical) + `">`)
+
+	var ns strings.Builder
+	ns.WriteString(`<h1>` + html.EscapeString(title) + `</h1>`)
+	ns.WriteString(`<p>Age-restricted: sign in and confirm you are 18 or older to watch.</p>`)
+	ns.WriteString(`<p><a href="` + html.EscapeString(canonical) + `">` + html.EscapeString(title) + `</a></p>`)
+
+	return web.ShellMeta{
+		Title:       html.EscapeString(title),
+		Description: html.EscapeString(desc),
+		Head:        head.String(),
+		NoScript:    ns.String(),
 	}
-	if strings.Contains(thumbnailURL, "?") {
-		return thumbnailURL + "&og=1"
-	}
-	return thumbnailURL + "?og=1"
 }
 
 // shellMetaForDiscovery renders SEO for the home/browse/categories landing
@@ -207,23 +249,12 @@ func (h *Handler) discoveryLinks() string {
 	}
 	shellDiscoveryMu.Unlock()
 
+	// Titles and links only — never an image — so mature items are listed like
+	// any other: this is the crawlable link graph into the (adult) library.
 	items, total, _ := h.media.ListMediaPage(
 		media.Filter{SortBy: "date_added", SortDesc: true},
 		shellDiscoveryLimit, 0)
-
-	var b strings.Builder
-	b.WriteString(`<ul>`)
-	for _, item := range items {
-		b.WriteString(`<li><a href="/player?id=` + url.QueryEscape(item.ID) + `">` +
-			html.EscapeString(shellMediaTitle(item)) + `</a></li>`)
-	}
-	b.WriteString(`</ul>`)
-	if total > len(items) {
-		fmt.Fprintf(&b,
-			`<p>Showing %d of %d items — see <a href="/sitemap.xml">the sitemap</a> for the full list.</p>`,
-			len(items), total)
-	}
-	out := b.String()
+	out := discoveryListHTML(items, total)
 
 	shellDiscoveryMu.Lock()
 	shellDiscoveryHTML = out
@@ -231,6 +262,26 @@ func (h *Handler) discoveryLinks() string {
 	shellDiscoveryHas = true
 	shellDiscoveryMu.Unlock()
 	return out
+}
+
+// discoveryListHTML renders the <noscript> link list for the landing pages:
+// text links only, no thumbnails.
+func discoveryListHTML(items []*models.MediaItem, total int) string {
+	var b strings.Builder
+	b.WriteString(`<ul>`)
+	shown := 0
+	for _, item := range items {
+		shown++
+		b.WriteString(`<li><a href="/player?id=` + url.QueryEscape(item.ID) + `">` +
+			html.EscapeString(shellMediaTitle(item)) + `</a></li>`)
+	}
+	b.WriteString(`</ul>`)
+	if total > shown {
+		fmt.Fprintf(&b,
+			`<p>Showing %d of %d items — see <a href="/sitemap.xml">the sitemap</a> for the full list.</p>`,
+			shown, total)
+	}
+	return b.String()
 }
 
 // writeMetaProperty / writeMetaName append a single meta tag with an
@@ -248,6 +299,22 @@ func writeMetaName(b *strings.Builder, name, content string) {
 		return
 	}
 	b.WriteString(`<meta name="` + name + `" content="` + html.EscapeString(content) + `">`)
+}
+
+// websiteJSONLD is the home page's schema.org WebSite block — the signal
+// Google uses to show the site's name (rather than its bare domain) above
+// every result from it.
+func websiteJSONLD(base, name string) string {
+	b, err := json.Marshal(map[string]any{
+		"@context": "https://schema.org",
+		"@type":    "WebSite",
+		"name":     name,
+		"url":      base + "/",
+	})
+	if err != nil {
+		return ""
+	}
+	return `<script type="application/ld+json">` + strings.ReplaceAll(string(b), "<", "\\u003c") + `</script>`
 }
 
 // playerJSONLD builds a schema.org VideoObject/AudioObject block. name and

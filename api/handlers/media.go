@@ -651,12 +651,18 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 							UserAgent: c.Request.UserAgent(),
 						})
 					}
-					if h.suggestions != nil && trackUserID != "" {
+					if trackUserID != "" {
 						// Receiver items can be added to curated categories too;
-						// look up membership by ID so federated views still build
-						// category affinity.
-						catIDs := h.media.GetCategoryIDsForItem(c.Request.Context(), id)
-						h.suggestions.RecordView(trackUserID, id, catIDs, item.MediaType, item.Duration)
+						// membership is looked up by ID so federated views still
+						// build category affinity. No local view counter.
+						h.recordViewSideEffectsAsync(streamViewSideEffects{
+							userID:        trackUserID,
+							mediaID:       id,
+							suggestKey:    id,
+							mediaType:     item.MediaType,
+							duration:      item.Duration,
+							recordSuggest: true,
+						})
 					}
 				}
 				if err := h.receiver.ProxyStream(c.Writer, c.Request, id); err != nil {
@@ -773,14 +779,15 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 			})
 		}
 
-		if h.suggestions != nil && userID != "" && localItem != nil {
-			catIDs := h.media.GetCategoryIDsForItem(c.Request.Context(), localItem.ID)
-			h.suggestions.RecordView(userID, absPath, catIDs, string(localItem.Type), localItem.Duration)
-		}
-
-		if err := h.media.IncrementViews(c.Request.Context(), absPath); err != nil {
-			h.log.Warn("Failed to increment view count for %s: %v", absPath, err)
-		}
+		h.recordViewSideEffectsAsync(streamViewSideEffects{
+			userID:        userID,
+			mediaID:       localItem.ID,
+			suggestKey:    absPath,
+			mediaType:     string(localItem.Type),
+			duration:      localItem.Duration,
+			recordSuggest: userID != "",
+			viewCountPath: absPath,
+		})
 	}
 
 	if err := h.streaming.Stream(c.Writer, c.Request, req); err != nil {
@@ -797,6 +804,53 @@ func (h *Handler) StreamMedia(c *gin.Context) {
 			writeError(c, http.StatusInternalServerError, "Stream error")
 		}
 	}
+}
+
+// streamViewSideEffects is the per-view bookkeeping a counted stream start
+// triggers beyond the (in-memory) analytics event.
+type streamViewSideEffects struct {
+	userID        string
+	mediaID       string // stable ID, for category-membership lookup
+	suggestKey    string // key the suggestions profile records the view under
+	mediaType     string
+	duration      float64
+	recordSuggest bool   // feed the suggestions profile
+	viewCountPath string // local library path whose view counter to bump; "" = none
+}
+
+// streamViewSideEffectTimeout bounds the background view bookkeeping so a
+// stuck database can't pile up goroutines indefinitely.
+const streamViewSideEffectTimeout = 2 * time.Minute
+
+// recordViewSideEffectsAsync does a counted view's database work in the
+// background instead of before the first byte of the stream. Done inline it
+// stalled the start of playback: IncrementViews waits on the media module's
+// save lock — which the post-scan bulk metadata save holds while it rewrites
+// the whole library — and the category lookup is a database round trip.
+// tryRecordView already deduplicates per user+media, so this runs at most once
+// per view, not per Range request.
+func (h *Handler) recordViewSideEffectsAsync(v streamViewSideEffects) {
+	if !v.recordSuggest && v.viewCountPath == "" {
+		return
+	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				h.log.Error("Recording view of %s panicked: %v", v.mediaID, r)
+			}
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), streamViewSideEffectTimeout)
+		defer cancel()
+		if v.recordSuggest && h.suggestions != nil {
+			catIDs := h.media.GetCategoryIDsForItem(ctx, v.mediaID)
+			h.suggestions.RecordView(v.userID, v.suggestKey, catIDs, v.mediaType, v.duration)
+		}
+		if v.viewCountPath != "" {
+			if err := h.media.IncrementViews(ctx, v.viewCountPath); err != nil {
+				h.log.Warn("Failed to increment view count for %s: %v", v.viewCountPath, err)
+			}
+		}
+	}()
 }
 
 // variantDownloadName builds a safe attachment filename for a per-quality HLS

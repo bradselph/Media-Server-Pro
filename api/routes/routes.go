@@ -537,6 +537,7 @@ func Setup(r *gin.Engine, srv *server.Server, h *handlers.Handler, authModule *a
 	// categories, every public media item); robots.txt blocks the API/admin/
 	// streaming surface and points at the sitemap.
 	r.GET("/sitemap.xml", h.GetSitemap)
+	r.GET("/sitemaps/:part", h.GetSitemapPart) // parts listed by the index once a sitemap outgrows one file
 	r.GET("/robots.txt", h.GetRobotsTxt)
 
 	// /metrics is for Prometheus scraping — admin-protected, no frontend caller by design

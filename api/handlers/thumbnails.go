@@ -128,18 +128,6 @@ func (h *Handler) tryServePlaceholderByType(c *gin.Context, thumbnailType string
 	return true
 }
 
-// isOGImageRequest reports whether this thumbnail fetch is an OpenGraph /
-// social-card preview, marked with ?og=1 on the og:image URL the SEO shell emits
-// (see ogThumbnailURL in shell.go). Those fetches come from unauthenticated
-// crawlers (Discord, Facebook, Twitter, iMessage, …), so the mature gate would
-// otherwise serve the censored "red box" placeholder. For og fetches we
-// deliberately serve the real thumbnail so shared links show an actual preview —
-// an operator-chosen exposure. Normal in-app /thumbnail requests omit the marker
-// and keep the gate fully intact.
-func isOGImageRequest(c *gin.Context) bool {
-	return c.Query("og") == "1"
-}
-
 // tryServeReceiverThumbnail serves a slave-sourced thumbnail by proxying it
 // over the WS pipeline. Falls back to a placeholder when:
 //   - the item is censored for the current user (mature gating),
@@ -162,10 +150,11 @@ func (h *Handler) tryServeReceiverThumbnail(c *gin.Context, id string) bool {
 
 	// Censored gating short-circuits before we contact the slave so a guest
 	// can never observe via cache headers whether a real thumbnail exists.
-	// og=1 (social-card preview) bypasses the gate so shared links of federated
-	// items show the real thumbnail rather than the red censored placeholder.
+	// There is deliberately no bypass for link-preview / OpenGraph fetches:
+	// those come from unauthenticated bots, and whatever they get is shown to
+	// everyone the link is shared with (see matureShellMeta).
 	isMature := ri.IsMature || h.isReceiverItemMature(ri.ContentFingerprint)
-	if isMature && !h.canViewMatureContent(c) && !isOGImageRequest(c) {
+	if isMature && !h.canViewMatureContent(c) {
 		h.serveReceiverPlaceholder(c, "censored")
 		return true
 	}
@@ -286,11 +275,11 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 	if !ok {
 		return
 	}
-	// og=1 marks a social-card / OpenGraph fetch (unauthenticated crawler). Bypass
-	// the mature gate so shared links show the real thumbnail instead of the
-	// censored "red box"; normal in-app requests keep the gate. See ogThumbnailURL.
-	og := isOGImageRequest(c)
-	if !og && h.tryServeCensoredIfMature(c, path) {
+	// The mature gate applies to every request, including link-preview /
+	// OpenGraph bots: they are unauthenticated, and whatever they fetch is shown
+	// to everyone the link is shared with. (A former ?og=1 bypass served them —
+	// and anyone who appended it — the real image.)
+	if h.tryServeCensoredIfMature(c, path) {
 		return
 	}
 	if !h.ensureThumbnailGenerated(c, path, id) {
@@ -302,10 +291,9 @@ func (h *Handler) GetThumbnail(c *gin.Context) {
 		isMature = item.IsMature
 	}
 	thumbFilePath, contentType := h.getThumbnailFilePathAndType(c, id)
-	// OG previews are public-cacheable (the operator chose to expose them, and the
-	// social platform stores the image anyway); in-app mature thumbnails stay
-	// private-cache only so shared proxies/CDNs don't redistribute them.
-	h.serveThumbnailFileResponse(c, thumbFilePath, contentType, isMature && !og)
+	// Mature thumbnails stay private-cache only so shared proxies/CDNs never
+	// redistribute them to other viewers.
+	h.serveThumbnailFileResponse(c, thumbFilePath, contentType, isMature)
 }
 
 // ServeThumbnailFile serves a thumbnail image file by filename from the thumbnails directory.
