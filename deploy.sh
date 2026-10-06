@@ -22,6 +22,11 @@
 #                                       # ./deploy-configure.sh directly.
 #   ./deploy.sh --review                # interactive: re-walk every knob,
 #                                       # even ones already set, then exit.
+#   ./deploy.sh --reapply-knobs         # deploy and write EVERY forwarded
+#                                       # runtime knob into config.json, not
+#                                       # just the ones changed since the
+#                                       # last deploy (overrides admin-UI
+#                                       # edits to those settings).
 #   ./deploy.sh --docker                # alternative: deploy via the GHCR
 #                                       # image + docker compose instead of
 #                                       # native build + systemd. Native
@@ -36,7 +41,11 @@
 #   config. Knobs are registered in deploy-knobs.sh — each one is scoped:
 #     vps       — used locally by this script (VPS_HOST, SERVICE, …)
 #     toolchain — version pins (MSP_GO_VERSION, MSP_NODE_MAJOR)
-#     runtime   — upserted into $DEPLOY_DIR/.env on every deploy
+#     runtime   — upserted into $DEPLOY_DIR/.env on every deploy; then,
+#                 with the service stopped, `server -apply-knobs` writes
+#                 each config.json-owned knob whose value changed since
+#                 the last deploy into config.json (paths/DB/storage/admin
+#                 knobs need no apply — they are re-read every start)
 #     build     — exported into the on-VPS `npm run build` shell so
 #                 NUXT_PUBLIC_* knobs (e.g. NUXT_PUBLIC_GA_ID) are
 #                 baked into the Nuxt bundle.
@@ -74,7 +83,27 @@ die()     { echo -e "${RED}[deploy] ERROR:${RESET} $*" >&2; exit 1; }
 
 # ── Load config files ────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[[ -f "$SCRIPT_DIR/.deploy.env" ]] && source "$SCRIPT_DIR/.deploy.env"
+
+# load_deploy_env — source .deploy.env, but check it parses first. It is plain
+# bash, so one bad line (an unquoted ; [ space or quote, e.g. a mistyped value)
+# otherwise stops every deploy with a cryptic "unexpected EOF" — or runs part
+# of the value as a command. Names the offending lines, never their values.
+load_deploy_env() {
+  local f="$SCRIPT_DIR/.deploy.env" n=0 line
+  [[ -f "$f" ]] || return 0
+  if ! bash -n "$f" 2>/dev/null; then
+    echo -e "${RED}[deploy] ERROR:${RESET} .deploy.env is not valid shell, so it can't be loaded:" >&2
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      n=$((n + 1))
+      [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+      bash -n <<<"$line" 2>/dev/null || echo "  line $n: ${line%%=*} — fix or quote this value, or re-enter it: ./deploy-configure.sh --only ${line%%=*}" >&2
+    done < "$f"
+    exit 1
+  fi
+  # shellcheck disable=SC1090,SC1091
+  source "$f"
+}
+load_deploy_env
 
 # ── Knob registry ────────────────────────────────────────────────────────────
 # Populates KNOB_ORDER, KNOB_DESCRIPTION, KNOB_DEFAULT, KNOB_SCOPE, KNOB_SECTION,
@@ -143,6 +172,11 @@ SETUP_RECEIVER=false
 SETUP_HIDRIVE=false
 CONFIGURE_ONLY=false
 REVIEW_ONLY=false
+# REAPPLY_KNOBS re-applies every forwarded runtime knob to config.json, not
+# just the ones whose value changed since the last deploy (see the
+# "Apply changed runtime knobs" step). Use it to re-assert .deploy.env over
+# settings that were edited in the admin UI.
+REAPPLY_KNOBS=false
 # DOCKER_MODE swaps the build+systemd backend for `docker compose up` against
 # the GHCR image. Native path is the default; --docker is opt-in per run and
 # does NOT persist into .deploy.env — each deploy chooses its own backend.
@@ -176,6 +210,7 @@ while [[ $# -gt 0 ]]; do
     --dev)             BRANCH="development"  ; shift ;;
     --configure)       CONFIGURE_ONLY=true   ; shift ;;
     --review)          REVIEW_ONLY=true      ; shift ;;
+    --reapply-knobs)   REAPPLY_KNOBS=true    ; shift ;;
     --docker)          DOCKER_MODE=true      ; shift ;;
     --help|-h)
       sed -n '/^# Usage/,/^[^#]/p' "$0" | head -n -1
@@ -201,7 +236,7 @@ run_configure() {
   fi
   # Re-source so values written by the prompter become visible to the rest
   # of this script (VPS_HOST may have been set just now).
-  [[ -f "$SCRIPT_DIR/.deploy.env" ]] && source "$SCRIPT_DIR/.deploy.env"
+  load_deploy_env
 }
 
 if $REVIEW_ONLY; then
@@ -522,10 +557,16 @@ if $SETUP; then
     fi
 
     # ── Receiver API key ─────────────────────────────────────────────────────
-    if [ -f '$DEPLOY_DIR/.env' ] && ! grep -q '^RECEIVER_API_KEYS=.\+' '$DEPLOY_DIR/.env'; then
+    # RECEIVER_API_KEY is the canonical name (the one the knob system forwards);
+    # older runs wrote RECEIVER_API_KEYS. Rename once so a single name holds
+    # the key and the pairing steps below read the value the server uses.
+    if [ -f '$DEPLOY_DIR/.env' ] && grep -q '^RECEIVER_API_KEYS=' '$DEPLOY_DIR/.env' && ! grep -q '^RECEIVER_API_KEY=' '$DEPLOY_DIR/.env'; then
+      sudo sed -i 's/^RECEIVER_API_KEYS=/RECEIVER_API_KEY=/' '$DEPLOY_DIR/.env'
+    fi
+    if [ -f '$DEPLOY_DIR/.env' ] && ! grep -q '^RECEIVER_API_KEY=.\+' '$DEPLOY_DIR/.env'; then
       echo '[setup] Generating receiver API key...'
       RECV_KEY=\$(openssl rand -hex 32 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' || date +%s | sha256sum | head -c 32)
-      echo \"RECEIVER_API_KEYS=\$RECV_KEY\" | sudo tee -a '$DEPLOY_DIR/.env' > /dev/null
+      echo \"RECEIVER_API_KEY=\$RECV_KEY\" | sudo tee -a '$DEPLOY_DIR/.env' > /dev/null
       echo \"[setup] Receiver API key → \$RECV_KEY\"
       echo '[setup] Keep this key secret — slave nodes need it to register with this master'
     fi
@@ -551,7 +592,7 @@ if $SETUP; then
 
   # Save the API key locally so slave setup can read it
   if ! $DRY_RUN; then
-    RECV_KEY=$(remote "grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
+    RECV_KEY=$(remote "grep -oP '(?<=^RECEIVER_API_KEY=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
     if [[ -n "$RECV_KEY" ]]; then
       save_to_deploy_env "RECEIVER_API_KEY" "$RECV_KEY"
       success "Saved RECEIVER_API_KEY to .deploy.env"
@@ -593,18 +634,22 @@ if $FIX_ENV; then
     fi
 
     echo '  [remote media proxy]'
-    patch_or_add REMOTE_MEDIA_ENABLED false
+    # (the FEATURE_* flag is the switch — the server ignores REMOTE_MEDIA_ENABLED)
     patch_or_add REMOTE_MEDIA_CACHE_ENABLED true
-    patch_or_add REMOTE_MEDIA_CACHE_SIZE_MB 1024
+    patch_or_add REMOTE_MEDIA_CACHE_SIZE 1073741824
     patch_or_add FEATURE_REMOTE_MEDIA false
 
     # Receiver (master) settings
     echo '  [receiver / master node]'
     patch_or_add RECEIVER_ENABLED false
     patch_or_add FEATURE_RECEIVER false
-    if ! grep -q '^RECEIVER_API_KEYS=.\+' \"\$ENV\"; then
+    # Canonical name is RECEIVER_API_KEY; rename a legacy RECEIVER_API_KEYS once.
+    if grep -q '^RECEIVER_API_KEYS=' \"\$ENV\" && ! grep -q '^RECEIVER_API_KEY=' \"\$ENV\"; then
+      sed -i 's/^RECEIVER_API_KEYS=/RECEIVER_API_KEY=/' \"\$ENV\"
+    fi
+    if ! grep -q '^RECEIVER_API_KEY=.\+' \"\$ENV\"; then
       RECV_KEY=\$(openssl rand -hex 32 2>/dev/null || echo \"change-me-\$(date +%s)\")
-      patch_or_add RECEIVER_API_KEYS \"\$RECV_KEY\"
+      patch_or_add RECEIVER_API_KEY \"\$RECV_KEY\"
       echo \"  [IMPORTANT] New receiver API key written — give it to your slave nodes\"
     fi
 
@@ -671,22 +716,27 @@ if $SETUP_RECEIVER; then
       echo \"  \$key=\$val\"
     }
 
-    # Enable receiver and remote media proxy
+    # Enable receiver and remote media proxy (the FEATURE_* flags are the
+    # switches — the server ignores REMOTE_MEDIA_ENABLED)
     patch_or_add RECEIVER_ENABLED true
     patch_or_add FEATURE_RECEIVER true
-    patch_or_add REMOTE_MEDIA_ENABLED true
     patch_or_add FEATURE_REMOTE_MEDIA true
     patch_or_add REMOTE_MEDIA_CACHE_ENABLED true
 
+    # Canonical name is RECEIVER_API_KEY; rename a legacy RECEIVER_API_KEYS once
+    # so the key printed below is the one the server actually uses.
+    if grep -q '^RECEIVER_API_KEYS=' \"\$ENV\" 2>/dev/null && ! grep -q '^RECEIVER_API_KEY=' \"\$ENV\" 2>/dev/null; then
+      sed -i 's/^RECEIVER_API_KEYS=/RECEIVER_API_KEY=/' \"\$ENV\"
+    fi
     # Generate API key if not already present
-    if ! grep -q '^RECEIVER_API_KEYS=.\+' \"\$ENV\" 2>/dev/null; then
+    if ! grep -q '^RECEIVER_API_KEY=.\+' \"\$ENV\" 2>/dev/null; then
       RECV_KEY=\$(openssl rand -hex 32)
-      patch_or_add RECEIVER_API_KEYS \"\$RECV_KEY\"
+      patch_or_add RECEIVER_API_KEY \"\$RECV_KEY\"
       echo ''
       echo '[receiver] *** Receiver API key generated ***'
       echo \"[receiver] Key: \$RECV_KEY\"
     else
-      RECV_KEY=\$(grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' \"\$ENV\" | head -1)
+      RECV_KEY=\$(grep -oP '(?<=^RECEIVER_API_KEY=)\S+' \"\$ENV\" | head -1)
       echo \"[receiver] Existing API key: \$RECV_KEY\"
     fi
 
@@ -694,8 +744,11 @@ if $SETUP_RECEIVER; then
     sudo mkdir -p '$DEPLOY_DIR/data/remote_cache'
     sudo chown mediaserver:mediaserver '$DEPLOY_DIR/data/remote_cache' 2>/dev/null || true
 
-    # Open the server port in UFW so slave nodes can reach this master
-    APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' \"\$ENV\" 2>/dev/null || echo 8080)
+    # Open the server port in UFW so slave nodes can reach this master.
+    # config.json owns server.port once seeded; .env only seeds it.
+    APP_PORT=\$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(\"server\",{}).get(\"port\") or \"\")' '$DEPLOY_DIR/config.json' 2>/dev/null || true)
+    [ -n \"\$APP_PORT\" ] || APP_PORT=\$(grep -oP '(?<=^SERVER_PORT=)[0-9]+' \"\$ENV\" 2>/dev/null | tail -n 1 || true)
+    [ -n \"\$APP_PORT\" ] || APP_PORT=8080
     if command -v ufw &>/dev/null; then
       sudo ufw allow \"\${APP_PORT}/tcp\" 2>/dev/null || true
       sudo ufw allow ssh 2>/dev/null || true
@@ -726,7 +779,7 @@ if $SETUP_RECEIVER; then
 
   # Save API key and MASTER_URL locally
   if ! $DRY_RUN; then
-    RECV_KEY=$(remote "grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
+    RECV_KEY=$(remote "grep -oP '(?<=^RECEIVER_API_KEY=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
     if [[ -n "$RECV_KEY" ]]; then
       if [[ -z "$MASTER_URL" ]]; then
         MASTER_URL="http://$VPS_HOST"
@@ -765,13 +818,43 @@ if $SETUP_HIDRIVE; then
   # vs read-write so the downloader can store imported media on HiDrive. Writes are
   # staged in rclone's vfs cache then uploaded, so --vfs-cache-mode writes is
   # required; "off" only supports read-only streaming.
+  # Read tuning. --buffer-size is rclone's in-memory read-ahead per open file —
+  # the cushion that rides out WebDAV latency spikes mid-stream (rclone's own
+  # default, 16M, is only ~15s of an 8 Mbps video). HIDRIVE_VFS_CACHE_MODE=full
+  # also keeps what has been read on local disk (bounded by
+  # HIDRIVE_VFS_CACHE_MAX_SIZE), so seeking back and re-watching are served
+  # locally instead of being fetched from HiDrive again.
+  HIDRIVE_BUFFER="$(strip_control_chars "${HIDRIVE_BUFFER_SIZE:-32M}")"
+  HIDRIVE_CACHE_MODE="$(strip_control_chars "${HIDRIVE_VFS_CACHE_MODE:-off}")"
+  HIDRIVE_CACHE_MAX="$(strip_control_chars "${HIDRIVE_VFS_CACHE_MAX_SIZE:-20G}")"
+  [[ "$HIDRIVE_BUFFER" =~ ^[0-9]+[KMG]?$ ]] \
+    || die "HIDRIVE_BUFFER_SIZE must be an rclone size such as 32M (got '$HIDRIVE_BUFFER')."
+  [[ "$HIDRIVE_CACHE_MAX" =~ ^[0-9]+[KMGT]?$ ]] \
+    || die "HIDRIVE_VFS_CACHE_MAX_SIZE must be an rclone size such as 20G (got '$HIDRIVE_CACHE_MAX')."
+  case "$HIDRIVE_CACHE_MODE" in
+    off|full) ;;
+    *) die "HIDRIVE_VFS_CACHE_MODE must be 'off' or 'full' (got '$HIDRIVE_CACHE_MODE')." ;;
+  esac
+
   if [[ "${HIDRIVE_READONLY:-true}" == "false" ]]; then
-    HIDRIVE_MOUNT_FLAGS="--vfs-cache-mode writes"
+    # Writes are staged in the vfs cache, so read-write needs at least "writes"
+    # ("full" includes it).
+    if [[ "$HIDRIVE_CACHE_MODE" == "full" ]]; then
+      HIDRIVE_MOUNT_FLAGS="--vfs-cache-mode full"
+    else
+      HIDRIVE_MOUNT_FLAGS="--vfs-cache-mode writes"
+    fi
     HIDRIVE_MODE_LABEL="read-write (downloader can store here)"
   else
-    HIDRIVE_MOUNT_FLAGS="--read-only --vfs-cache-mode off"
+    HIDRIVE_MOUNT_FLAGS="--read-only --vfs-cache-mode $HIDRIVE_CACHE_MODE"
     HIDRIVE_MODE_LABEL="read-only (streaming source)"
   fi
+  if [[ "$HIDRIVE_CACHE_MODE" == "full" ]]; then
+    HIDRIVE_MOUNT_FLAGS+=" --cache-dir /var/cache/hidrive-media --vfs-cache-max-size $HIDRIVE_CACHE_MAX --vfs-cache-max-age 168h --vfs-read-ahead 128M"
+    HIDRIVE_MODE_LABEL+=", local read cache up to $HIDRIVE_CACHE_MAX"
+  fi
+  HIDRIVE_MOUNT_FLAGS+=" --buffer-size $HIDRIVE_BUFFER"
+  HIDRIVE_MODE_LABEL+=", read-ahead $HIDRIVE_BUFFER per open file"
 
   if [[ "${HIDRIVE_ENABLED:-false}" != "true" ]]; then
     # Teardown path — HIDRIVE_ENABLED is off, so make the flag reversible:
@@ -864,6 +947,13 @@ RCLONE_CONF
     #    (no backslash continuations) to stay heredoc-safe. Mount flags come from
     #    HIDRIVE_MOUNT_FLAGS: read-only+cache off for a streaming source, or
     #    --vfs-cache-mode writes when HiDrive is a writable download target.
+    #    Stop a running mount first, while the OLD unit is still installed: its
+    #    ExecStop unmounts the old mount point, and 'enable --now' below would
+    #    otherwise leave the running mount on the old flags/path until a reboot.
+    if systemctl is-active --quiet hidrive-media.service 2>/dev/null; then
+      echo '[hidrive] Stopping the running mount to apply the new settings...'
+      sudo systemctl stop hidrive-media.service || true
+    fi
     sudo tee /etc/systemd/system/hidrive-media.service >/dev/null <<UNIT
 [Unit]
 Description=rclone WebDAV mount (IONOS HiDrive) for Media Server Pro
@@ -944,7 +1034,8 @@ run_or_dry remote "
 # from KNOB_SCOPE) and ships non-empty values to the VPS as two payload
 # files in /tmp:
 #   /tmp/msp-runtime.env  — KEY=value lines merged into $DEPLOY_DIR/.env
-#                           by deploy-knobs-merge.py (atomic rename).
+#                           by deploy-knobs-merge.py (atomic rename); values
+#                           quoted for that file's parsers by env_file_quote.
 #   /tmp/msp-build.env    — single-quoted `KEY='value'` lines sourced by
 #                           the npm build shell so NUXT_PUBLIC_* knobs
 #                           land in the bundle.
@@ -959,10 +1050,33 @@ shell_quote() {
   printf "'%s'" "$v"
 }
 
+# env_file_quote VAL → VAL as it must appear after KEY= in the VPS .env, which
+# is read by two parsers — systemd's EnvironmentFile and the server's own
+# (internal/config/envfile.go). Plain values go bare. Anything with whitespace,
+# '#', quotes or a backslash would be trimmed, cut at " #" or mis-read by one
+# of them, so it is single-quoted (verbatim in both) — or, when it contains a
+# single quote itself, double-quoted with the \" and \\ escapes both honour.
+env_file_quote() {
+  local v="$1"
+  local plain_re='^[^[:space:]#"'"'"'\\]*$'
+  if [[ "$v" =~ $plain_re ]]; then
+    printf '%s' "$v"
+  elif [[ "$v" != *"'"* ]]; then
+    printf "'%s'" "$v"
+  else
+    v="${v//\\/\\\\}"
+    v="${v//\"/\\\"}"
+    printf '"%s"' "$v"
+  fi
+}
+
 RUNTIME_PAYLOAD=""
 BUILD_PAYLOAD=""
 RUNTIME_COUNT=0
 BUILD_COUNT=0
+# Names of the runtime knobs forwarded this deploy — handed to
+# `server -apply-knobs` after the build (see "Apply changed runtime knobs").
+RUNTIME_KEYS=()
 
 if ! $DRY_RUN; then
   RUNTIME_PAYLOAD="$(mktemp)"
@@ -975,8 +1089,9 @@ if ! $DRY_RUN; then
       warn "Skipping $_k — value contains newlines (not supported in .env)"
       continue
     fi
-    printf '%s=%s\n' "$_k" "$_v" >> "$RUNTIME_PAYLOAD"
+    printf '%s=%s\n' "$_k" "$(env_file_quote "$_v")" >> "$RUNTIME_PAYLOAD"
     RUNTIME_COUNT=$((RUNTIME_COUNT + 1))
+    RUNTIME_KEYS+=("$_k")
   done
 
   for _k in "${FORWARDED_BUILD[@]}"; do
@@ -1210,6 +1325,39 @@ run_or_dry remote "
   echo '[deploy] Build complete'
 "
 
+# ── Apply changed runtime knobs to config.json ───────────────────────────────
+# Once config.json exists, the server owns most settings there (admin UI) and
+# ignores their env vars at startup, so writing a changed knob into .env alone
+# would do nothing. `server -apply-knobs` (internal/config/apply_knobs.go) loads
+# config.json + .env exactly like a start, writes every listed knob whose value
+# changed since the last deploy (all of them with --reapply-knobs) into
+# config.json, validates, and saves atomically. It records SHA-256 hashes of
+# what it applied in $DEPLOY_DIR/.knobs-applied; with no record yet (the first
+# deploy on an install) it only records a baseline and lists where .deploy.env
+# differs from config.json, so upgrading never reverts admin-UI edits.
+# Runs with the service stopped (the build step above stopped it) and before
+# the ownership fix below, which hands any file it rewrote back to the service
+# user. A failed apply leaves config.json untouched and is retried on the next
+# deploy; the service still starts with its previous settings.
+if [[ ${#RUNTIME_KEYS[@]} -gt 0 ]]; then
+  info "Applying changed runtime knobs to config.json..."
+  KNOB_KEYS_CSV="$(IFS=,; printf '%s' "${RUNTIME_KEYS[*]}")"
+  KNOB_FORCE_FLAG=""
+  $REAPPLY_KNOBS && KNOB_FORCE_FLAG="-knobs-force"
+  run_or_dry remote "
+    cd '$DEPLOY_DIR'
+    if [ ! -f config.json ]; then
+      echo '[knobs] No config.json yet: the server seeds it from .env on first start.'
+      exit 0
+    fi
+    if ! ./server -config config.json -apply-knobs '$KNOB_KEYS_CSV' $KNOB_FORCE_FLAG; then
+      echo '[knobs] WARNING: knob values were NOT applied (config.json is unchanged).'
+      echo '[knobs]          Fix the value(s) reported above in .deploy.env and redeploy;'
+      echo '[knobs]          the service starts with its previous settings.'
+    fi
+  "
+fi
+
 # ── Update systemd unit if changed ────────────────────────────────────────────
 run_or_dry remote "
   if [ -f '$DEPLOY_DIR/systemd/media-server.service' ]; then
@@ -1263,7 +1411,12 @@ run_or_dry remote "
     exit 1
   fi
 
-  PORT=\$(grep -o 'SERVER_PORT=[0-9]*' '$DEPLOY_DIR/.env' 2>/dev/null | cut -d= -f2 || echo 8080)
+  # The port the server actually binds: config.json owns server.port once
+  # seeded (SERVER_PORT in .env only seeds it), so read it from there first.
+  # Fall back to the last uncommented SERVER_PORT line, then the Go default.
+  PORT=\$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(\"server\",{}).get(\"port\") or \"\")' '$DEPLOY_DIR/config.json' 2>/dev/null || true)
+  [ -n \"\$PORT\" ] || PORT=\$(grep -E '^SERVER_PORT=[0-9]+\$' '$DEPLOY_DIR/.env' 2>/dev/null | tail -n 1 | cut -d= -f2 || true)
+  [ -n \"\$PORT\" ] || PORT=8080
   HEALTH_URL=\"http://127.0.0.1:\${PORT}/health\"
   echo \"[deploy] Polling \$HEALTH_URL (waiting for media scan to complete)...\"
   OK=false
@@ -1282,6 +1435,13 @@ run_or_dry remote "
 "
 
 else  # DOCKER_MODE branch
+
+# The native path's "Apply changed runtime knobs" step has no Docker
+# equivalent yet: knobs land in .env.docker, which only seeds a fresh
+# config.json inside the container's data volume.
+if [[ ${#RUNTIME_KEYS[@]} -gt 0 ]]; then
+  warn "--docker: changed knobs for settings owned by config.json (everything except paths, database, storage and admin login) are NOT applied to an existing install — change those in the admin UI."
+fi
 
 # ── Docker mode: install Docker, stop systemd unit, compose up ───────────────
 info "Checking Docker on VPS..."

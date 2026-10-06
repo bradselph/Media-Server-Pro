@@ -8,7 +8,8 @@ import (
 func (m *Manager) applyHLSEnvOverrides() {
 	m.applyHLSBaseOverridesCore()
 	m.applyHLSCleanupOverrides()
-	if val, ok := envGetInt("HLS_CONCURRENT_LIMIT", "HLS_MAX_CONCURRENT_JOBS"); ok && val >= 1 {
+	// 0 = auto (scale with CPU / GPU sessions, see hls.EffectiveConcurrentLimit).
+	if val, ok := envGetInt("HLS_CONCURRENT_LIMIT", "HLS_MAX_CONCURRENT_JOBS"); ok && val >= 0 {
 		m.config.HLS.ConcurrentLimit = val
 	}
 	m.applyHLSQualityOverrides()
@@ -42,6 +43,11 @@ func (m *Manager) applyHLSCleanupOverrides() {
 	}
 }
 
+// applyHLSQualityOverrides enables exactly the quality profiles named in
+// HLS_QUALITIES (comma-separated) and disables the rest. Profiles are toggled,
+// not removed, so a deploy that narrows the ladder can be reversed later from
+// the admin UI or a new value. A value naming no existing profile is ignored
+// rather than disabling every profile.
 func (m *Manager) applyHLSQualityOverrides() {
 	raw := envGetStr("HLS_QUALITIES")
 	if raw == "" {
@@ -51,14 +57,19 @@ func (m *Manager) applyHLSQualityOverrides() {
 	for name := range strings.SplitSeq(raw, ",") {
 		nameSet[strings.TrimSpace(name)] = true
 	}
-	filtered := make([]HLSQuality, 0, len(m.config.HLS.QualityProfiles))
+	matched := false
 	for _, p := range m.config.HLS.QualityProfiles {
 		if nameSet[p.Name] {
-			filtered = append(filtered, p)
+			matched = true
+			break
 		}
 	}
-	if len(filtered) > 0 {
-		m.config.HLS.QualityProfiles = filtered
+	if !matched {
+		m.log.Warn("HLS_QUALITIES %q names no configured quality profile, ignoring", raw)
+		return
+	}
+	for i := range m.config.HLS.QualityProfiles {
+		m.config.HLS.QualityProfiles[i].Enabled = nameSet[m.config.HLS.QualityProfiles[i].Name]
 	}
 }
 

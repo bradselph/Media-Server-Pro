@@ -1,5 +1,5 @@
 import {describe, it, expect} from 'vitest'
-import {HLS_TUNING_CONFIG} from '~/utils/hlsConfig'
+import {HLS_MOBILE_OVERRIDES, HLS_TUNING_CONFIG, hlsTuningForDevice} from '~/utils/hlsConfig'
 
 // C18: the Hub server-proxy player (useHubProxyPlayback.ts) used to construct
 // its own bare `new Hls({enableWorker, lowLatencyMode, backBufferLength})`
@@ -26,5 +26,29 @@ describe('HLS_TUNING_CONFIG', () => {
         expect(HLS_TUNING_CONFIG.manifestLoadingMaxRetry).toBe(4)
         expect(HLS_TUNING_CONFIG.levelLoadingMaxRetry).toBe(4)
         expect(HLS_TUNING_CONFIG.fragLoadingMaxRetry).toBe(8)
+    })
+})
+
+// hls.js sizes its forward buffer from maxBufferSize / bitrate, so the desktop
+// 200MB cap asked for up to the full 600s on mobile renditions — well past
+// what phone browsers let a SourceBuffer hold, and a lot of metered data.
+describe('hlsTuningForDevice', () => {
+    it('keeps the desktop tuning on fine-pointer devices', () => {
+        expect(hlsTuningForDevice(false)).toEqual(HLS_TUNING_CONFIG)
+    })
+
+    it('caps buffering on touch devices while inheriting everything else', () => {
+        const mobile = hlsTuningForDevice(true)
+        expect(mobile.maxBufferSize).toBe(40 * 1000 * 1000)
+        expect(mobile.maxMaxBufferLength).toBe(120)
+        expect(mobile.maxBufferLength).toBe(45)
+        expect(mobile.backBufferLength).toBe(20)
+        expect(mobile.maxBufferSize!).toBeLessThan(HLS_TUNING_CONFIG.maxBufferSize!)
+        expect(mobile.maxMaxBufferLength!).toBeLessThan(HLS_TUNING_CONFIG.maxMaxBufferLength!)
+        // Retry budgets and worker settings are shared, not re-tuned.
+        for (const key of Object.keys(HLS_TUNING_CONFIG) as Array<keyof typeof HLS_TUNING_CONFIG>) {
+            if (key in HLS_MOBILE_OVERRIDES) continue
+            expect(mobile[key]).toEqual(HLS_TUNING_CONFIG[key])
+        }
     })
 })

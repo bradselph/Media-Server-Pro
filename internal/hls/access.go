@@ -22,6 +22,7 @@ const accessSaveInterval = 30 * time.Second
 type AccessTracker struct {
 	lastAccess map[string]time.Time
 	lastSaved  map[string]time.Time // last time we persisted each job to DB
+	saving     map[string]bool      // jobs with a background persist in flight (lazily allocated)
 	mu         sync.RWMutex
 }
 
@@ -32,32 +33,53 @@ func (m *Module) RecordAccess(jobID string) {
 	now := time.Now()
 
 	// Always update the in-memory timestamp
-	m.accessTracker.mu.Lock()
-	m.accessTracker.lastAccess[jobID] = now
-	lastSave := m.accessTracker.lastSaved[jobID]
-	needsSave := now.Sub(lastSave) >= accessSaveInterval
+	t := m.accessTracker
+	t.mu.Lock()
+	t.lastAccess[jobID] = now
+	lastSave := t.lastSaved[jobID]
+	// At most one background persist per job at a time: while the database is
+	// unreachable a save can hang for its whole timeout, and a new one every
+	// accessSaveInterval would otherwise pile up behind it.
+	needsSave := now.Sub(lastSave) >= accessSaveInterval && !t.saving[jobID]
 	if needsSave {
-		m.accessTracker.lastSaved[jobID] = now
+		t.lastSaved[jobID] = now
+		if t.saving == nil {
+			t.saving = make(map[string]bool)
+		}
+		t.saving[jobID] = true
 	}
-	m.accessTracker.mu.Unlock()
+	t.mu.Unlock()
 
 	if !needsSave {
 		return
 	}
 
-	// Debounced: persist to DB at most every accessSaveInterval
-	var jobCopy *models.HLSJob
-	m.jobsMu.Lock()
-	job, exists := m.jobs[jobID]
-	if exists {
-		job.LastAccessedAt = &now
-		jobCopy = copyHLSJob(job)
-	}
-	m.jobsMu.Unlock()
+	// Debounced: persist to DB at most every accessSaveInterval — and off the
+	// request path. RecordAccess runs on every playlist/segment request, so a
+	// synchronous save made whichever segment crossed the 30s boundary wait on
+	// a database round trip (or a whole connect timeout while the database was
+	// unreachable): a periodic playback stall for every viewer of the job. The
+	// job is snapshotted inside the goroutine so the row written carries the
+	// latest status rather than a copy taken before a concurrent update.
+	go func() {
+		defer func() {
+			t.mu.Lock()
+			delete(t.saving, jobID)
+			t.mu.Unlock()
+		}()
+		var jobCopy *models.HLSJob
+		m.jobsMu.Lock()
+		job, exists := m.jobs[jobID]
+		if exists {
+			job.LastAccessedAt = &now
+			jobCopy = copyHLSJob(job)
+		}
+		m.jobsMu.Unlock()
 
-	if jobCopy != nil {
-		_ = m.saveJob(jobCopy)
-	}
+		if jobCopy != nil {
+			_ = m.saveJob(jobCopy)
+		}
+	}()
 }
 
 // GetLastAccess returns the last access time for a job

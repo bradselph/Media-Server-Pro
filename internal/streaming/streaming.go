@@ -530,6 +530,12 @@ func generateSessionID(prefix string) string {
 
 // parseRange parses the Range header and returns start and end positions.
 // Supports both standard byte ranges (bytes=0-499) and suffix-byte-ranges (bytes=-500).
+// Per RFC 9110 §14.1.2 a last-byte-pos at or past the end of the file means
+// "through the end" and is clamped, not rejected: players that size a request
+// from an earlier Content-Range (e.g. after the file was replaced by a shorter
+// re-encode) or that ask for a fixed-size window near the end would otherwise
+// get a 416 and abort playback. Only a range that starts at or beyond the end
+// of the file is unsatisfiable.
 func (m *Module) parseRange(rangeHeader string, fileSize int64) (start, end int64, err error) {
 	if rangeHeader == "" {
 		return 0, fileSize - 1, nil
@@ -537,6 +543,10 @@ func (m *Module) parseRange(rangeHeader string, fileSize int64) (start, end int6
 
 	// Parse "bytes=start-end"
 	if !strings.HasPrefix(rangeHeader, "bytes=") {
+		return 0, 0, ErrInvalidRange
+	}
+	// No byte range of an empty file is satisfiable.
+	if fileSize <= 0 {
 		return 0, 0, ErrInvalidRange
 	}
 
@@ -572,12 +582,15 @@ func (m *Module) parseRange(rangeHeader string, fileSize int64) (start, end int6
 		if err != nil {
 			return 0, 0, ErrInvalidRange
 		}
+		if end >= fileSize {
+			end = fileSize - 1
+		}
 	} else {
 		end = fileSize - 1
 	}
 
 	// Validate range
-	if start < 0 || end >= fileSize || start > end {
+	if start < 0 || start >= fileSize || start > end {
 		return 0, 0, ErrInvalidRange
 	}
 

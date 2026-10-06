@@ -3,6 +3,7 @@
 /server.exe
 
 config.json
+.knobs-applied
 .env
 .env.generated
 .env.recovery

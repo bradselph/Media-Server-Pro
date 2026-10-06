@@ -392,7 +392,7 @@ func (h *Handler) ClearMediaCache(c *gin.Context) {
 		// stale. Drop them here so an explicit "clear cache" reflects new/removed
 		// items immediately instead of waiting out their TTLs.
 		sitemapCacheMu.Lock()
-		sitemapCache = nil
+		clear(sitemapCache)
 		sitemapCacheMu.Unlock()
 		h.feedCacheMu.Lock()
 		h.feedCache = nil

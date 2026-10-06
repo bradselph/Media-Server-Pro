@@ -191,26 +191,34 @@ const playerDescription = computed(() => {
 // useSeoMeta takes per-key getters for reactivity (passing a ComputedRef
 // directly is rejected by the type signature). Each getter resolves when
 // the head dependency runs.
-const ogTitle = computed(() => media.value ? getDisplayTitle(media.value) : '')
-// og=1 so social-card crawlers are served the real thumbnail instead of the
-// censored "red box" placeholder the mature gate returns to unauthenticated
-// requests. Mirrors the Go SEO shell (ogThumbnailURL in api/handlers/shell.go).
+// A mature item's link-preview tags (og:/twitter:) carry neutral copy and no
+// image, and it gets no JSON-LD; the document title/description stay real for
+// search. Mirrors matureShellMeta in api/handlers/shell.go, which is what
+// link-preview bots (always logged out) actually receive.
+const isMatureItem = computed(() => media.value?.is_mature === true)
+const ogTitle = computed(() => {
+  if (!media.value) return ''
+  return isMatureItem.value ? 'Age-restricted content' : getDisplayTitle(media.value)
+})
+const shareDescription = computed(() => isMatureItem.value
+  ? 'This content is for adults only. Sign in and confirm you are 18 or older to watch it.'
+  : playerDescription.value)
 const ogThumb = computed(() => {
   const t = media.value?.thumbnail_url
-  if (!t) return ''
-  return absUrl(t + (t.includes('?') ? '&og=1' : '?og=1'))
+  if (!t || isMatureItem.value) return ''
+  return absUrl(t)
 })
 const ogType = computed(() => media.value?.type === 'audio' ? 'music.song' : 'video.other')
 useSeoMeta({
   description: () => playerDescription.value,
   ogTitle: () => ogTitle.value,
-  ogDescription: () => playerDescription.value,
+  ogDescription: () => shareDescription.value,
   ogType: () => ogType.value,
   ogUrl: () => playerCanonicalUrl.value,
   ogImage: () => ogThumb.value || undefined,
   twitterCard: () => ogThumb.value ? 'summary_large_image' : 'summary',
   twitterTitle: () => ogTitle.value,
-  twitterDescription: () => playerDescription.value,
+  twitterDescription: () => shareDescription.value,
   twitterImage: () => ogThumb.value || undefined,
 })
 
@@ -233,6 +241,9 @@ function toISODuration(seconds: number): string {
 useHead(computed(() => {
   const item = media.value
   if (!item) return {}
+  // No structured data for a mature item: its thumbnail is gated, and a
+  // VideoObject without one is invalid. Keep only the canonical link.
+  if (item.is_mature) return {link: [{rel: 'canonical', href: playerCanonicalUrl.value}]}
   const ld: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': item.type === 'audio' ? 'AudioObject' : 'VideoObject',
@@ -279,6 +290,42 @@ const playbackSpeed = ref(userPrefs.value?.playback_speed ?? 1)
 
 // Auto-play preference
 const autoPlay = computed(() => userPrefs.value?.auto_play ?? false)
+
+// Browsers refuse play() with sound unless it comes straight from a tap —
+// iOS always, Chrome until the page has been interacted with — and the
+// refusal is a silent promise rejection, so "autoplay" simply didn't happen.
+// Muted playback is always allowed: start that way and offer a tap-to-unmute
+// pill instead of a video that never starts.
+const autoplayMuted = ref(false)
+
+async function startPlayback(el: HTMLMediaElement) {
+  try {
+    await el.play()
+  } catch (e: unknown) {
+    if (e instanceof DOMException && e.name === 'NotAllowedError') resumeMuted(el)
+  }
+}
+
+function resumeMuted(el: HTMLMediaElement) {
+  // Muted audio-only playback is pointless; leave it to the user.
+  if (el.muted || media.value?.type === 'audio') return
+  el.muted = true
+  el.play().then(() => {
+    autoplayMuted.value = true
+  }).catch(() => {
+    el.muted = false
+  })
+}
+
+function unmuteFromPill() {
+  if (videoRef.value) videoRef.value.muted = false
+  autoplayMuted.value = false
+}
+
+function onVolumeChange() {
+  // Unmuted by any route (the pill, the controls, a key) — the pill is done.
+  if (autoplayMuted.value && videoRef.value && !videoRef.value.muted) autoplayMuted.value = false
+}
 
 // Keep volume / speed in sync when session or preferences load or update after mount.
 // immediate: true ensures that if prefs are already loaded (e.g. cached session)
@@ -347,35 +394,29 @@ function toggleAutoNext() {
   }
 }
 
-// Buffer stall spinner (checklist §6) — flips on when the browser fires
-// `waiting`/`stalled` (video element ran out of buffered data) and back off
-// when `playing` resumes. Distinct from hlsLoading, which only covers HLS
-// manifest/segment fetches before playback starts. Defensive timeout
-// guards against browsers that fire `waiting` and never recover (e.g. seek
-// past end-of-stream): clears the indicator after 8s no matter what.
+// Buffer stall spinner (checklist §6) — on when the browser fires `waiting`
+// (playback stopped because it ran out of buffered data), off as soon as
+// playback moves again: `playing`/`canplay`/`seeked`, a `timeupdate` that
+// advanced, a pause, or the end. Distinct from hlsLoading, which only covers
+// HLS manifest/segment fetches before playback starts.
+//
+// Deliberately NOT driven by `stalled`: that event only means a network fetch
+// has gone quiet, and with HLS (where hls.js, not the element, does the
+// fetching) Chrome fires it every few seconds during perfectly smooth
+// playback — which kept the spinner permanently on screen on phones.
 const videoStalled = ref(false)
-let stallTimer: ReturnType<typeof setTimeout> | null = null
 
 function onVideoWaiting() {
   // Emit one analytics `buffering` event per stall episode (the false→true
-  // edge), not on every `waiting`/`stalled` repeat — onVideoPlaying clears the
-  // flag when playback resumes, so the next genuine stall reports again. This
-  // is the only client-side source of buffering telemetry; the admin event
-  // breakdown surfaces it so stall frequency is actually measurable.
+  // edge), not on every `waiting` repeat — onVideoPlaying clears the flag when
+  // playback resumes, so the next genuine stall reports again. This is the
+  // only client-side source of buffering telemetry; the admin event breakdown
+  // surfaces it so stall frequency is actually measurable.
   if (!videoStalled.value) trackBuffering()
   videoStalled.value = true
-  if (stallTimer) clearTimeout(stallTimer)
-  stallTimer = setTimeout(() => {
-    videoStalled.value = false;
-    stallTimer = null
-  }, 8000)
 }
 
 function onVideoPlaying() {
-  if (stallTimer) {
-    clearTimeout(stallTimer);
-    stallTimer = null
-  }
   videoStalled.value = false
 }
 
@@ -414,8 +455,10 @@ const downloadPrompt = computed(() => userPrefs.value?.download_prompt ?? true)
 
 // Share at timestamp — once playback gets past 5s the label flips to
 // "Share @ M:SS" so the user knows the link will resume from where they
-// are. Click copies origin+path?id=&t=, then the label flashes
-// "Link copied" for 1.8s before reverting (plan §5.3).
+// are. On phones and tablets the click opens the native share sheet
+// (Messages, WhatsApp, Telegram, ...), where most sharing happens; elsewhere
+// it copies origin+path?id=&t= and the label flashes "Link copied" for 1.8s
+// before reverting (plan §5.3).
 const linkCopied = ref(false)
 let linkCopiedTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -430,14 +473,77 @@ const shareLabel = computed(() => {
   return 'Share'
 })
 
-function copyTimestampLink() {
-  if (!mediaId.value) return
+function buildShareUrl(id: string): string {
   const t = Math.floor(currentTime.value)
-  const origin = globalThis.location.origin
-  const path = globalThis.location.pathname
-  const params = new URLSearchParams({id: mediaId.value})
+  const params = new URLSearchParams({id})
   if (t > 0) params.set('t', String(t))
-  navigator.clipboard.writeText(`${origin}${path}?${params.toString()}`)
+  return `${globalThis.location.origin}${globalThis.location.pathname}?${params.toString()}`
+}
+
+// Touch-first devices get the OS share sheet. Desktop browsers implement
+// navigator.share too, but there a copied link is what people expect.
+function prefersNativeShare(): boolean {
+  return typeof navigator.share === 'function'
+      && globalThis.matchMedia?.('(pointer: coarse)').matches === true
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    // No async clipboard (plain-HTTP origin) or permission denied.
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.setAttribute('readonly', '')
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      return ok
+    } catch {
+      return false
+    }
+  }
+}
+
+// Shares are the cheapest acquisition channel there is — record them so the
+// admin event breakdown shows how often (and how) links go out.
+function trackShare(id: string, method: 'native' | 'copy') {
+  analyticsApi.submitEvent({
+    type: 'share',
+    media_id: id,
+    data: {method, at_time: Math.floor(currentTime.value) > 0},
+  }).catch(() => {
+  })
+}
+
+async function shareTimestampLink() {
+  const id = mediaId.value
+  if (!id) return
+  const url = buildShareUrl(id)
+  if (prefersNativeShare()) {
+    try {
+      // A mature item goes out as a bare link — its title stays out of the
+      // message text, matching its neutral link preview.
+      await navigator.share(isMatureItem.value || !media.value
+          ? {url}
+          : {title: getDisplayTitle(media.value), url})
+      trackShare(id, 'native')
+      return
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'AbortError') return // sheet dismissed
+      // Share refused (e.g. no user activation) — copy instead.
+    }
+  }
+  if (!(await copyText(url))) {
+    toast.add({title: 'Copy this link to share it', description: url, color: 'neutral', icon: 'i-lucide-link'})
+    return
+  }
+  trackShare(id, 'copy')
   linkCopied.value = true
   clearTimeout(linkCopiedTimer)
   linkCopiedTimer = setTimeout(() => {
@@ -654,6 +760,7 @@ const mediaIdRef = computed(() => (isHubItem.value ? '' : (mediaId.value ?? ''))
 const {
   hlsAvailable,
   hlsActivated,
+  hlsDeciding,
   hlsLoading,
   hlsError,
   hlsReconnecting,
@@ -667,7 +774,37 @@ const {
   jobRunning,
   jobSlow,
   recheck: recheckHls,
-} = useHLS(videoRef, mediaIdRef, {defaultQuality: () => userPrefs.value?.default_quality})
+} = useHLS(videoRef, mediaIdRef, {
+  defaultQuality: () => userPrefs.value?.default_quality,
+  onPlayRefused: resumeMuted,
+})
+
+// Direct-play recovery: hls.js retries its own loads, the plain <video src>
+// stream does not — reload and resume after a dropped or hung connection, and
+// tell a transient server error apart from an unplayable format.
+const {
+  reconnecting: directReconnecting,
+  failure: directFailure,
+  handleError: handleDirectError,
+  retryNow: retryDirectNow,
+} = useDirectPlayRecovery({
+  mediaRef: videoRef,
+  directUrl: () => (media.value && !hlsActivated.value && !hlsDeciding.value && !isHubItem.value)
+      ? mediaApi.getStreamUrl(media.value.id)
+      : null,
+  onUnplayable: () => {
+    // HLS is an H.264/AAC re-encode, so it plays where the original can't.
+    if (media.value?.type === 'audio' || !hlsAvailable.value || hlsActivated.value) return false
+    toast.add({
+      title: 'Switched to adaptive streaming',
+      description: "Your browser can't play the original file directly.",
+      color: 'info',
+      icon: 'i-lucide-zap',
+    })
+    void activateHLS()
+    return true
+  },
+})
 
 // Request on-demand HLS generation
 const hlsApi = useHlsApi()
@@ -729,6 +866,27 @@ function resetControlsTimer() {
   controlsTimer = setTimeout(() => {
     if (isPlaying.value) showControls.value = false
   }, 3000)
+}
+
+// Phones: a tap on the video first brings the controls back; only a tap
+// while they are showing toggles play/pause. Toggling on every tap meant the
+// only way to see where you were was to pause the video. touchstart (which
+// also reveals the controls) fires before the click, so remember what the
+// tap found.
+let controlsHiddenAtTouch = false
+
+function onPlayerTouchStart() {
+  controlsHiddenAtTouch = !showControls.value
+  resetControlsTimer()
+}
+
+function onMobileCenterTap() {
+  resetControlsTimer()
+  if (controlsHiddenAtTouch && isPlaying.value) {
+    controlsHiddenAtTouch = false
+    return
+  }
+  togglePlay()
 }
 
 let loadGeneration = 0
@@ -920,6 +1078,7 @@ async function restorePosition() {
 // returning to this item later starts from the beginning rather than immediately
 // re-triggering the ended/auto-next behaviour.
 async function onMediaEnded() {
+  videoStalled.value = false
   // In loop-one mode the video element has loop=true and fires 'ended' on every
   // iteration. Resetting the resume position and recording a completion event on
   // each loop cycle would corrupt progress tracking. Only act on a real end.
@@ -995,8 +1154,7 @@ function onVideoLoaded() {
   playbackStore.startAutoSave()
   // Auto-play when preference is enabled
   if (autoPlay.value && videoRef.value && videoRef.value.paused) {
-    videoRef.value.play().catch(() => {
-    })
+    void startPlayback(videoRef.value)
   }
   // Restore PiP if we were in PiP before an auto-next transition
   if (_restorePiP && videoRef.value) {
@@ -1071,7 +1229,10 @@ function onTimeUpdate() {
   const now = performance.now()
   if (now - lastTimeUpdateAt < 250) return
   lastTimeUpdateAt = now
-  currentTime.value = videoRef.value?.currentTime ?? 0
+  const t = videoRef.value?.currentTime ?? 0
+  // Time moving on is the surest sign a stall is over.
+  if (videoStalled.value && t > currentTime.value) videoStalled.value = false
+  currentTime.value = t
   duration.value = videoRef.value?.duration ?? 0
   playbackStore.updatePosition(currentTime.value, duration.value)
   updateBufferedFraction()
@@ -1079,6 +1240,8 @@ function onTimeUpdate() {
 
 function onPlayPause() {
   isPlaying.value = !videoRef.value?.paused
+  // A paused video isn't buffering.
+  if (videoRef.value?.paused) videoStalled.value = false
   // Resume AudioContext on play for ALL media types (audio and video).
   // Moved here from onVideoLoaded to avoid accumulating listeners on every
   // loadedmetadata event (HLS quality switches, auto-next transitions).
@@ -1122,7 +1285,11 @@ function handleQualitySelect(index: number) {
 
 function setVolume(v: number) {
   volume.value = v
-  if (videoRef.value) videoRef.value.volume = v
+  if (videoRef.value) {
+    videoRef.value.volume = v
+    // Raising the volume after a muted autoplay must actually be audible.
+    if (v > 0 && videoRef.value.muted) videoRef.value.muted = false
+  }
   // Persist volume preference (debounced 1 s, fire-and-forget, logged-in users only)
   if (authStore.isLoggedIn) {
     if (volumeSaveTimer) clearTimeout(volumeSaveTimer)
@@ -1135,15 +1302,22 @@ function setVolume(v: number) {
 }
 
 function toggleFullscreen() {
-  const el = document.querySelector('.player-wrapper') as HTMLElement
+  const el = document.querySelector('.player-wrapper') as HTMLElement | null
   if (!el) return
   if (document.fullscreenElement) {
-    document.exitFullscreen()
+    void document.exitFullscreen()
     isFullscreen.value = false
-  } else {
-    el.requestFullscreen()
-    isFullscreen.value = true
+    return
   }
+  if (typeof el.requestFullscreen === 'function') {
+    el.requestFullscreen().catch(() => {})
+    isFullscreen.value = true
+    return
+  }
+  // iPhone Safari has no element fullscreen — only the video's own native
+  // fullscreen player (now that playback is inline via playsinline).
+  const video = videoRef.value as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null
+  video?.webkitEnterFullscreen?.()
 }
 
 const isPiP = ref(false)
@@ -1497,10 +1671,6 @@ onUnmounted(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   document.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('beforeunload', onBeforeUnload)
-  if (stallTimer) {
-    clearTimeout(stallTimer);
-    stallTimer = null
-  }
 })
 
 function cycleSpeed() {
@@ -1588,18 +1758,22 @@ function onVideoError(e?: Event) {
   // Log the underlying MediaError for debugging; otherwise playback failures are invisible.
   const el = videoRef.value
   if (el?.error) {
-    const code = el.error.code
-    const msg = el.error.message ?? ''
-    console.error(`[player] MediaError code=${code} message=${msg}`, el.error)
+    console.error(`[player] MediaError code=${el.error.code} message=${el.error.message ?? ''}`, el.error)
+  }
+  analyticsApi.submitEvent({type: 'error', media_id: mediaId.value}).catch(() => {
+  })
+  // Direct play: reconnect and resume (or explain why it can't) instead of
+  // stopping for good; progress and failures show on the player itself.
+  if (handleDirectError()) return
+  if (el?.error) {
     // Show user-visible error with actionable info
+    const code = el.error.code
     let desc: string
     if (code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) desc = 'This file format may not be supported by your browser'
     else if (code === MediaError.MEDIA_ERR_NETWORK) desc = 'Network error — check your connection'
     else desc = 'Playback error'
     toast.add({title: desc, color: 'error', icon: 'i-lucide-alert-circle'})
   }
-  analyticsApi.submitEvent({type: 'error', media_id: mediaId.value}).catch(() => {
-  })
 }
 
 function trackComplete() {
@@ -1795,24 +1969,26 @@ watch(mediaId, (id, oldId) => {
             v-if="media.type !== 'audio'"
             class="player-wrapper relative bg-black overflow-hidden group touch-manipulation max-md:rounded-none md:rounded-xl max-md:h-[calc(100dvh-3.5rem-env(safe-area-inset-bottom,0px))] max-md:w-full md:aspect-video"
             @mousemove="resetControlsTimer"
-            @touchstart="resetControlsTimer"
+            @touchstart="onPlayerTouchStart"
             @click="togglePlay"
         >
           <video
               ref="videoRef"
               class="max-md:absolute max-md:inset-0 max-md:h-full max-md:w-full max-md:object-contain md:relative md:inset-auto md:h-auto md:w-full md:aspect-video"
-              :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
+              :src="hlsActivated || hlsDeciding ? undefined : mediaApi.getStreamUrl(media.id)"
               :poster="mediaApi.getThumbnailUrl(media.id)"
               preload="auto"
+              playsinline
               @loadedmetadata="onVideoLoaded"
               @timeupdate="onTimeUpdate"
               @progress="updateBufferedFraction"
               @play="onPlayPause(); trackPlay()"
               @pause="onPlayPause(); trackPause()"
               @waiting="onVideoWaiting"
-              @stalled="onVideoWaiting"
               @playing="onVideoPlaying"
               @canplay="onVideoPlaying"
+              @seeked="onVideoPlaying"
+              @volumechange="onVolumeChange"
               @ended="onMediaEnded()"
               @error="onVideoError"
               @leavepictureinpicture="onPiPChange"
@@ -1858,11 +2034,11 @@ watch(mediaId, (id, oldId) => {
                 </div>
               </Transition>
             </button>
-            <!-- Centre tap: toggle play/pause -->
+            <!-- Centre tap: reveal controls, or toggle play/pause once they show -->
             <button
                 class="pointer-events-auto w-1/2 h-full"
                 aria-label="Play or pause"
-                @click.stop="togglePlay(); resetControlsTimer()"
+                @click.stop="onMobileCenterTap"
             />
             <!-- Skip forward -->
             <button
@@ -1897,6 +2073,39 @@ watch(mediaId, (id, oldId) => {
             <div class="bg-black/55 rounded-full p-3">
               <UIcon name="i-lucide-loader-2" class="animate-spin size-6 text-white"/>
             </div>
+          </div>
+
+          <!-- Autoplay could only start muted (browser policy): one tap restores sound -->
+          <button
+              v-if="autoplayMuted"
+              class="absolute left-3 top-3 z-20 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-xs font-medium text-white"
+              @click.stop="unmuteFromPill"
+          >
+            <UIcon name="i-lucide-volume-x" class="size-4"/>
+            Tap to unmute
+          </button>
+
+          <!-- Direct-play recovery: reconnecting after a dropped/hung stream,
+               or the reason it couldn't recover (with a manual retry). -->
+          <div
+              v-if="directReconnecting && !hlsLoading"
+              class="absolute inset-x-0 top-3 flex justify-center pointer-events-none z-10"
+              aria-live="polite"
+          >
+            <div class="flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-xs text-white">
+              <UIcon name="i-lucide-loader-2" class="animate-spin size-4"/>
+              Connection interrupted — reconnecting…
+            </div>
+          </div>
+          <div
+              v-else-if="directFailure"
+              class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/75 p-4 text-center"
+              role="alert"
+              @click.stop
+          >
+            <UIcon name="i-lucide-alert-circle" class="size-8 text-error"/>
+            <p class="max-w-sm text-sm text-white">{{ directFailure }}</p>
+            <UButton label="Retry" size="sm" icon="i-lucide-rotate-ccw" @click="retryDirectNow()"/>
           </div>
 
           <!-- Media info overlay (press I) -->
@@ -1999,7 +2208,7 @@ watch(mediaId, (id, oldId) => {
             </div>
             <audio
                 ref="videoRef"
-                :src="hlsActivated ? undefined : mediaApi.getStreamUrl(media.id)"
+                :src="hlsActivated || hlsDeciding ? undefined : mediaApi.getStreamUrl(media.id)"
                 preload="auto"
                 controls
                 class="w-full"
@@ -2026,6 +2235,19 @@ watch(mediaId, (id, oldId) => {
           >
             <template #actions>
               <UButton label="Retry" size="xs" color="error" :loading="retrying" @click="retryLoad"/>
+            </template>
+          </UAlert>
+
+          <!-- Direct-play recovery for audio (video shows it on the player) -->
+          <UAlert
+              v-if="media.type === 'audio' && (directReconnecting || directFailure)"
+              :title="directFailure || 'Connection interrupted — reconnecting…'"
+              :color="directFailure ? 'error' : 'warning'"
+              variant="soft"
+              :icon="directFailure ? 'i-lucide-alert-circle' : 'i-lucide-wifi-off'"
+          >
+            <template v-if="directFailure" #actions>
+              <UButton label="Retry" size="xs" @click="retryDirectNow()"/>
             </template>
           </UAlert>
 
@@ -2241,7 +2463,7 @@ watch(mediaId, (id, oldId) => {
                   :variant="linkCopied ? 'solid' : 'outline'"
                   :color="linkCopied ? 'success' : 'neutral'"
                   size="sm"
-                  @click="copyTimestampLink"
+                  @click="shareTimestampLink"
               />
               <UButton
                   v-if="authStore.isLoggedIn"

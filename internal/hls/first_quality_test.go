@@ -461,6 +461,39 @@ func TestServeSegment_CompletedVariant_Serves(t *testing.T) {
 	}
 }
 
+// A segment request that can never succeed (missing file, bogus name) must
+// surface as os.ErrNotExist so the handler answers 404 — not a logged 500 per
+// request — while a quality still mid-encode keeps answering ErrNotReady (503).
+func TestServeSegment_MissingOrInvalidSegment_IsNotExist(t *testing.T) {
+	outputDir := t.TempDir()
+	qualityDir := filepath.Join(outputDir, "720p")
+	if err := os.MkdirAll(qualityDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(qualityDir, "playlist.m3u8"), []byte("#EXTM3U\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	job := &models.HLSJob{ID: "job1", OutputDir: outputDir, Status: models.HLSStatusCompleted, Available: true}
+	m := &Module{
+		jobs:   map[string]*models.HLSJob{"job1": job},
+		log:    logger.New("test"),
+		config: config.NewManager(filepath.Join(t.TempDir(), "config.json")),
+	}
+
+	for _, p := range []SegmentParams{
+		{JobID: "job1", Quality: "720p", Segment: "segment_9999.ts"},
+		{JobID: "job1", Quality: "720p", Segment: "..%2fmaster.m3u8"},
+		{JobID: "job1", Quality: "..", Segment: "master.m3u8"},
+	} {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, "/hls/job1/x/y", nil)
+		err := m.ServeSegment(w, r, p)
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("ServeSegment(%+v) err = %v, want os.ErrNotExist (404)", p, err)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // validateExistingHLS: accepts a partial ladder instead of requiring every
 // originally-requested quality.

@@ -184,31 +184,50 @@ func (h *Handler) ListPublicPlaylists(c *gin.Context) {
 	// Strip mature-flagged items from public playlists when the caller cannot view
 	// mature content. Without this, unauthenticated callers can enumerate the media
 	// IDs and titles of mature items by inspecting public playlist responses.
-	if h.media != nil && !h.canViewMatureContent(c) {
+	if !h.canViewMatureContent(c) {
 		for _, pl := range playlists {
-			// Allocate a new slice to avoid mutating the shared backing array of
-			// pl.Items. Using pl.Items[:0] would overwrite the original elements
-			// in-place because append reuses the same underlying array, silently
-			// stripping mature items from the in-memory playlist object for all
-			// subsequent callers (including admin users who can view mature content).
-			kept := make([]models.PlaylistItem, 0, len(pl.Items))
-			for _, item := range pl.Items {
-				// Hub items are always mature — never surface them (title/thumb)
-				// to callers who cannot view mature content. h.media has no record
-				// of them, so the lookup below would fail-open and keep them.
-				if strings.HasPrefix(item.MediaID, hubItemPrefix) {
-					continue
-				}
-				media, err := h.media.GetMediaByID(item.MediaID)
-				if err != nil || media == nil || !media.IsMature {
-					kept = append(kept, item)
-				}
-			}
-			pl.Items = kept
+			h.stripMaturePlaylistItems(pl)
 		}
 	}
 	h.hydrateHubPlaylistItems(playlists...)
 	writeSuccess(c, playlists)
+}
+
+// stripMaturePlaylistItems removes mature items (and hub items, which are
+// always mature) from pl, for a caller who may not view mature content.
+func (h *Handler) stripMaturePlaylistItems(pl *models.Playlist) {
+	if h.media == nil || pl == nil {
+		return
+	}
+	ids := make([]string, len(pl.Items))
+	for i, item := range pl.Items {
+		ids[i] = item.MediaID
+	}
+	localMature := h.media.MatureIDs(ids)
+	pl.Items = withoutMaturePlaylistItems(pl.Items, func(id string) bool {
+		return localMature[id] || h.isFederatedMediaMature(id)
+	})
+}
+
+// withoutMaturePlaylistItems returns the items that are neither hub items nor
+// reported mature by isMature.
+//
+// It allocates a new slice to avoid mutating the shared backing array of the
+// input. Reusing items[:0] would overwrite the original elements in place,
+// silently stripping mature items from the in-memory playlist for all
+// subsequent callers (including users who can view mature content).
+func withoutMaturePlaylistItems(items []models.PlaylistItem, isMature func(id string) bool) []models.PlaylistItem {
+	kept := make([]models.PlaylistItem, 0, len(items))
+	for _, item := range items {
+		// Hub items are always mature — never surface them (title/thumb)
+		// to callers who cannot view mature content. The local library has
+		// no record of them, so a library lookup alone would keep them.
+		if strings.HasPrefix(item.MediaID, hubItemPrefix) || isMature(item.MediaID) {
+			continue
+		}
+		kept = append(kept, item)
+	}
+	return kept
 }
 
 // CreatePlaylist creates a new playlist
@@ -266,6 +285,12 @@ func (h *Handler) GetPlaylist(c *gin.Context) {
 	if err != nil {
 		writePlaylistError(c, err, "Cannot access playlist")
 		return
+	}
+	// Someone else's public playlist (e.g. opened from a shared link) must not
+	// show mature items to a viewer who may not see them — same rule as
+	// ListPublicPlaylists. The owner always sees their own playlist in full.
+	if pl.UserID != s.UserID && !h.canViewMatureContent(c) {
+		h.stripMaturePlaylistItems(pl)
 	}
 
 	h.hydratePlaylistTitles(pl)

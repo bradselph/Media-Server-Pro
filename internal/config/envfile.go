@@ -26,13 +26,19 @@ func (m *Manager) findEnvFile() string {
 	return ""
 }
 
+// stripEnvQuotes removes one layer of quotes from an .env value. Double
+// quotes honour the \" and \\ escapes — the same two systemd collapses inside
+// double quotes in an EnvironmentFile, so both readers of the deployed .env
+// (systemd for the service, this parser for `server -apply-knobs` and
+// non-systemd starts) hand the server the same value. Single quotes are
+// verbatim in both.
 func stripEnvQuotes(value string) string {
 	if len(value) < 2 {
 		return value
 	}
 	if value[0] == '"' && value[len(value)-1] == '"' {
 		unquoted := value[1 : len(value)-1]
-		return strings.ReplaceAll(unquoted, `\"`, `"`)
+		return strings.NewReplacer(`\"`, `"`, `\\`, `\`).Replace(unquoted)
 	}
 	if value[0] == '\'' && value[len(value)-1] == '\'' {
 		return value[1 : len(value)-1]

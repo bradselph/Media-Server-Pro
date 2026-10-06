@@ -666,7 +666,7 @@ onMounted(async () => {
               size="sm"
               color="primary"
               :loading="peerConnecting"
-              :disabled="receiverSettings.api_keys.length === 0"
+              :disabled="!receiverSettings || receiverSettings.api_keys.length === 0"
               @click="connectPeer"
           />
         </div>

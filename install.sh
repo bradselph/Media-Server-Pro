@@ -1720,7 +1720,7 @@ DOWNLOAD_REQUIRE_AUTH=false
 # NOTE: These HLS_* values SEED config.json on first boot only. After the
 # first start the admin UI / config.json owns them, so change them there —
 # editing these lines later has no effect on an existing install.
-HLS_ENABLED=$FEAT_HLS
+# (on/off is FEATURE_HLS below — the server ignores HLS_ENABLED)
 HLS_SEGMENT_DURATION=6
 HLS_CONCURRENT_LIMIT=2
 # hardware_accel: auto|none|nvenc|qsv|vaapi|videotoolbox (auto probes for a GPU
@@ -1732,7 +1732,7 @@ HLS_QUALITIES=360p,480p,720p,1080p
 HLS_CLEANUP_ENABLED=true
 
 # ── Thumbnails ───────────────────────────────────────────────────────────
-THUMBNAILS_ENABLED=$FEAT_THUMBS
+# (on/off is FEATURE_THUMBNAILS below)
 THUMBNAILS_AUTO_GENERATE=true
 THUMBNAILS_WIDTH=320
 THUMBNAILS_HEIGHT=180
@@ -1742,7 +1742,7 @@ THUMBNAILS_WORKER_COUNT=4
 THUMBNAILS_QUEUE_SIZE=1000
 
 # ── Analytics ────────────────────────────────────────────────────────────
-ANALYTICS_ENABLED=$FEAT_ANALYTICS
+# (on/off is FEATURE_ANALYTICS below)
 ANALYTICS_RETENTION_DAYS=30
 ANALYTICS_TRACK_PLAYBACK=true
 ANALYTICS_TRACK_VIEWS=true
@@ -1793,7 +1793,7 @@ AGE_GATE_IP_VERIFY_TTL_HOURS=24
 AGE_GATE_BYPASS_IPS=127.0.0.1,::1
 
 # ── Mature content scanner ───────────────────────────────────────────────
-MATURE_SCANNER_ENABLED=$FEAT_MATURE
+# (on/off is FEATURE_MATURE_SCANNER below)
 MATURE_SCANNER_AUTO_FLAG=true
 MATURE_SCANNER_HIGH_CONFIDENCE_THRESHOLD=0.35
 MATURE_SCANNER_MEDIUM_CONFIDENCE_THRESHOLD=0.15
@@ -1838,13 +1838,13 @@ FEATURE_HUB=false
 
 # ── Receiver (master accepting slave nodes) ──────────────────────────────
 RECEIVER_ENABLED=$FEAT_RECEIVER
-RECEIVER_API_KEYS=$RECEIVER_API_KEY
+RECEIVER_API_KEY=$RECEIVER_API_KEY
 RECEIVER_PROXY_TIMEOUT_SECONDS=60
 
 # ── Remote media ─────────────────────────────────────────────────────────
-REMOTE_MEDIA_ENABLED=$FEAT_REMOTE
+# (on/off is FEATURE_REMOTE_MEDIA above — the server ignores REMOTE_MEDIA_ENABLED)
 REMOTE_MEDIA_CACHE_ENABLED=true
-REMOTE_MEDIA_CACHE_SIZE_MB=1024
+REMOTE_MEDIA_CACHE_SIZE=1073741824
 
 # ── Downloader integration ───────────────────────────────────────────────
 DOWNLOADER_ENABLED=$FEAT_DOWNLOADER
