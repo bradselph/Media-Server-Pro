@@ -33,6 +33,22 @@ func TestParseEnvLine_SingleQuoted(t *testing.T) {
 	}
 }
 
+// deploy.sh quotes forwarded values the same way for systemd and for this
+// parser (env_file_quote): single quotes verbatim, double quotes with \" and
+// \\ escapes. Both must decode to the operator's exact value.
+func TestParseEnvLine_QuotedSpecialCharacters(t *testing.T) {
+	cases := map[string]string{
+		`KEY='pass #1 $x "q"'`:     `pass #1 $x "q"`,
+		`KEY="it's \"here\" a\\b"`: `it's "here" a\b`,
+		`KEY='  padded  '`:         `  padded  `,
+	}
+	for line, want := range cases {
+		if _, got := parseEnvLine(line); got != want {
+			t.Errorf("parseEnvLine(%s) = %q, want %q", line, got, want)
+		}
+	}
+}
+
 func TestParseEnvLine_InlineComment(t *testing.T) {
 	key, val := parseEnvLine("KEY=value # this is a comment")
 	if key != "KEY" || val != "value" {

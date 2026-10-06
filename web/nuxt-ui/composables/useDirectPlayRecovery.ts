@@ -381,9 +381,12 @@ export function useDirectPlayRecovery(opts: DirectPlayRecoveryOptions) {
         intentPlaying = false
     }
 
+    // 'waiting' is the signal that playback actually stopped for data. The
+    // browser's 'stalled' is deliberately not used: it only means a network
+    // fetch has gone quiet, which Chrome also reports every few seconds for a
+    // perfectly healthy stream.
     const listeners: Array<[string, () => void]> = [
         ['waiting', onStall],
-        ['stalled', onStall],
         ['progress', onProgress],
         ['loadstart', onProgress],
         ['loadedmetadata', onLoadedMetadata],

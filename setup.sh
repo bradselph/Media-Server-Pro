@@ -307,7 +307,7 @@ DOWNLOAD_ENABLED=true
 # NOTE: These HLS_* values SEED config.json on first boot only. After the
 # first start the admin UI / config.json owns them, so change them there —
 # editing these lines later has no effect on an existing install.
-HLS_ENABLED=$FEAT_HLS
+# (on/off is FEATURE_HLS below — the server ignores HLS_ENABLED)
 HLS_SEGMENT_DURATION=6
 HLS_CONCURRENT_LIMIT=2
 # hardware_accel: auto|none|nvenc|qsv|vaapi|videotoolbox (auto probes for a GPU
@@ -319,14 +319,14 @@ HLS_CDN_BASE_URL=
 HLS_LAZY_TRANSCODE=false
 
 # ── Thumbnails ────────────────────────────────────────────────
-THUMBNAILS_ENABLED=true
+# (on/off is FEATURE_THUMBNAILS below)
 THUMBNAILS_AUTO_GENERATE=true
 THUMBNAILS_WIDTH=320
 THUMBNAILS_HEIGHT=180
 THUMBNAILS_PREVIEW_COUNT=5
 
 # ── Analytics ─────────────────────────────────────────────────
-ANALYTICS_ENABLED=$FEAT_ANALYTICS
+# (on/off is FEATURE_ANALYTICS below)
 ANALYTICS_RETENTION_DAYS=90
 
 # ── Uploads ───────────────────────────────────────────────────
@@ -369,7 +369,7 @@ AGE_GATE_IP_VERIFY_TTL_HOURS=24
 AGE_GATE_BYPASS_IPS=127.0.0.1,::1
 
 # ── Mature Content Scanner ───────────────────────────────────
-MATURE_SCANNER_ENABLED=true
+# (on/off is FEATURE_MATURE_SCANNER below)
 MATURE_SCANNER_HIGH_CONFIDENCE_THRESHOLD=0.85
 MATURE_SCANNER_AUTO_FLAG=false
 MATURE_SCANNER_REQUIRE_REVIEW=true
@@ -425,13 +425,13 @@ UPDATER_METHOD=source
 BACKUP_RETENTION_COUNT=10
 
 # ── Remote Media ──────────────────────────────────────────────
-REMOTE_MEDIA_ENABLED=$FEAT_REMOTE
+# (on/off is FEATURE_REMOTE_MEDIA above — the server ignores REMOTE_MEDIA_ENABLED)
 REMOTE_MEDIA_CACHE_ENABLED=true
-REMOTE_MEDIA_CACHE_SIZE_MB=1024
+REMOTE_MEDIA_CACHE_SIZE=1073741824
 
 # ── Receiver ──────────────────────────────────────────────────
 RECEIVER_ENABLED=$FEAT_RECEIVER
-RECEIVER_API_KEYS=$RECV_API_KEY
+RECEIVER_API_KEY=$RECV_API_KEY
 ENVFILE
   success "Server configuration generated"
 

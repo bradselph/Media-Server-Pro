@@ -422,17 +422,16 @@ prompt_knob() {
 
 # ── Modes ─────────────────────────────────────────────────────────────
 
-# Bootstrap an empty file from the example so the operator gets the
-# documented hint comments on first run. Idempotent.
+# Create the file on first run. The walk itself writes every knob (as a value
+# or a commented hint) with its description shown at the prompt, so there is
+# no separate template to seed from. Idempotent.
 bootstrap_env_file() {
   if [[ -f "$ENV_FILE" ]]; then return; fi
-  local example="$SCRIPT_DIR/.deploy.env.example"
-  if [[ -f "$example" ]]; then
-    info "No $ENV_FILE yet — seeding from .deploy.env.example."
-    cp "$example" "$ENV_FILE"
-  else
-    : > "$ENV_FILE"
-  fi
+  info "No $ENV_FILE yet — creating it; the walk below fills it in."
+  {
+    echo "# Media Server Pro deploy configuration — written by ./deploy-configure.sh"
+    echo "# (./deploy.sh --configure). Local only, gitignored. See DEPLOY.md."
+  } > "$ENV_FILE"
 }
 
 mode_list() {

@@ -557,10 +557,16 @@ if $SETUP; then
     fi
 
     # ── Receiver API key ─────────────────────────────────────────────────────
-    if [ -f '$DEPLOY_DIR/.env' ] && ! grep -q '^RECEIVER_API_KEYS=.\+' '$DEPLOY_DIR/.env'; then
+    # RECEIVER_API_KEY is the canonical name (the one the knob system forwards);
+    # older runs wrote RECEIVER_API_KEYS. Rename once so a single name holds
+    # the key and the pairing steps below read the value the server uses.
+    if [ -f '$DEPLOY_DIR/.env' ] && grep -q '^RECEIVER_API_KEYS=' '$DEPLOY_DIR/.env' && ! grep -q '^RECEIVER_API_KEY=' '$DEPLOY_DIR/.env'; then
+      sudo sed -i 's/^RECEIVER_API_KEYS=/RECEIVER_API_KEY=/' '$DEPLOY_DIR/.env'
+    fi
+    if [ -f '$DEPLOY_DIR/.env' ] && ! grep -q '^RECEIVER_API_KEY=.\+' '$DEPLOY_DIR/.env'; then
       echo '[setup] Generating receiver API key...'
       RECV_KEY=\$(openssl rand -hex 32 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' || date +%s | sha256sum | head -c 32)
-      echo \"RECEIVER_API_KEYS=\$RECV_KEY\" | sudo tee -a '$DEPLOY_DIR/.env' > /dev/null
+      echo \"RECEIVER_API_KEY=\$RECV_KEY\" | sudo tee -a '$DEPLOY_DIR/.env' > /dev/null
       echo \"[setup] Receiver API key → \$RECV_KEY\"
       echo '[setup] Keep this key secret — slave nodes need it to register with this master'
     fi
@@ -586,7 +592,7 @@ if $SETUP; then
 
   # Save the API key locally so slave setup can read it
   if ! $DRY_RUN; then
-    RECV_KEY=$(remote "grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
+    RECV_KEY=$(remote "grep -oP '(?<=^RECEIVER_API_KEY=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
     if [[ -n "$RECV_KEY" ]]; then
       save_to_deploy_env "RECEIVER_API_KEY" "$RECV_KEY"
       success "Saved RECEIVER_API_KEY to .deploy.env"
@@ -628,18 +634,22 @@ if $FIX_ENV; then
     fi
 
     echo '  [remote media proxy]'
-    patch_or_add REMOTE_MEDIA_ENABLED false
+    # (the FEATURE_* flag is the switch — the server ignores REMOTE_MEDIA_ENABLED)
     patch_or_add REMOTE_MEDIA_CACHE_ENABLED true
-    patch_or_add REMOTE_MEDIA_CACHE_SIZE_MB 1024
+    patch_or_add REMOTE_MEDIA_CACHE_SIZE 1073741824
     patch_or_add FEATURE_REMOTE_MEDIA false
 
     # Receiver (master) settings
     echo '  [receiver / master node]'
     patch_or_add RECEIVER_ENABLED false
     patch_or_add FEATURE_RECEIVER false
-    if ! grep -q '^RECEIVER_API_KEYS=.\+' \"\$ENV\"; then
+    # Canonical name is RECEIVER_API_KEY; rename a legacy RECEIVER_API_KEYS once.
+    if grep -q '^RECEIVER_API_KEYS=' \"\$ENV\" && ! grep -q '^RECEIVER_API_KEY=' \"\$ENV\"; then
+      sed -i 's/^RECEIVER_API_KEYS=/RECEIVER_API_KEY=/' \"\$ENV\"
+    fi
+    if ! grep -q '^RECEIVER_API_KEY=.\+' \"\$ENV\"; then
       RECV_KEY=\$(openssl rand -hex 32 2>/dev/null || echo \"change-me-\$(date +%s)\")
-      patch_or_add RECEIVER_API_KEYS \"\$RECV_KEY\"
+      patch_or_add RECEIVER_API_KEY \"\$RECV_KEY\"
       echo \"  [IMPORTANT] New receiver API key written — give it to your slave nodes\"
     fi
 
@@ -706,22 +716,27 @@ if $SETUP_RECEIVER; then
       echo \"  \$key=\$val\"
     }
 
-    # Enable receiver and remote media proxy
+    # Enable receiver and remote media proxy (the FEATURE_* flags are the
+    # switches — the server ignores REMOTE_MEDIA_ENABLED)
     patch_or_add RECEIVER_ENABLED true
     patch_or_add FEATURE_RECEIVER true
-    patch_or_add REMOTE_MEDIA_ENABLED true
     patch_or_add FEATURE_REMOTE_MEDIA true
     patch_or_add REMOTE_MEDIA_CACHE_ENABLED true
 
+    # Canonical name is RECEIVER_API_KEY; rename a legacy RECEIVER_API_KEYS once
+    # so the key printed below is the one the server actually uses.
+    if grep -q '^RECEIVER_API_KEYS=' \"\$ENV\" 2>/dev/null && ! grep -q '^RECEIVER_API_KEY=' \"\$ENV\" 2>/dev/null; then
+      sed -i 's/^RECEIVER_API_KEYS=/RECEIVER_API_KEY=/' \"\$ENV\"
+    fi
     # Generate API key if not already present
-    if ! grep -q '^RECEIVER_API_KEYS=.\+' \"\$ENV\" 2>/dev/null; then
+    if ! grep -q '^RECEIVER_API_KEY=.\+' \"\$ENV\" 2>/dev/null; then
       RECV_KEY=\$(openssl rand -hex 32)
-      patch_or_add RECEIVER_API_KEYS \"\$RECV_KEY\"
+      patch_or_add RECEIVER_API_KEY \"\$RECV_KEY\"
       echo ''
       echo '[receiver] *** Receiver API key generated ***'
       echo \"[receiver] Key: \$RECV_KEY\"
     else
-      RECV_KEY=\$(grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' \"\$ENV\" | head -1)
+      RECV_KEY=\$(grep -oP '(?<=^RECEIVER_API_KEY=)\S+' \"\$ENV\" | head -1)
       echo \"[receiver] Existing API key: \$RECV_KEY\"
     fi
 
@@ -764,7 +779,7 @@ if $SETUP_RECEIVER; then
 
   # Save API key and MASTER_URL locally
   if ! $DRY_RUN; then
-    RECV_KEY=$(remote "grep -oP '(?<=^RECEIVER_API_KEYS=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
+    RECV_KEY=$(remote "grep -oP '(?<=^RECEIVER_API_KEY=)\S+' '$DEPLOY_DIR/.env' 2>/dev/null | head -1" 2>/dev/null || echo "")
     if [[ -n "$RECV_KEY" ]]; then
       if [[ -z "$MASTER_URL" ]]; then
         MASTER_URL="http://$VPS_HOST"
@@ -1019,7 +1034,8 @@ run_or_dry remote "
 # from KNOB_SCOPE) and ships non-empty values to the VPS as two payload
 # files in /tmp:
 #   /tmp/msp-runtime.env  — KEY=value lines merged into $DEPLOY_DIR/.env
-#                           by deploy-knobs-merge.py (atomic rename).
+#                           by deploy-knobs-merge.py (atomic rename); values
+#                           quoted for that file's parsers by env_file_quote.
 #   /tmp/msp-build.env    — single-quoted `KEY='value'` lines sourced by
 #                           the npm build shell so NUXT_PUBLIC_* knobs
 #                           land in the bundle.
@@ -1032,6 +1048,26 @@ run_or_dry remote "
 shell_quote() {
   local v="${1//\'/\'\\\'\'}"
   printf "'%s'" "$v"
+}
+
+# env_file_quote VAL → VAL as it must appear after KEY= in the VPS .env, which
+# is read by two parsers — systemd's EnvironmentFile and the server's own
+# (internal/config/envfile.go). Plain values go bare. Anything with whitespace,
+# '#', quotes or a backslash would be trimmed, cut at " #" or mis-read by one
+# of them, so it is single-quoted (verbatim in both) — or, when it contains a
+# single quote itself, double-quoted with the \" and \\ escapes both honour.
+env_file_quote() {
+  local v="$1"
+  local plain_re='^[^[:space:]#"'"'"'\\]*$'
+  if [[ "$v" =~ $plain_re ]]; then
+    printf '%s' "$v"
+  elif [[ "$v" != *"'"* ]]; then
+    printf "'%s'" "$v"
+  else
+    v="${v//\\/\\\\}"
+    v="${v//\"/\\\"}"
+    printf '"%s"' "$v"
+  fi
 }
 
 RUNTIME_PAYLOAD=""
@@ -1053,7 +1089,7 @@ if ! $DRY_RUN; then
       warn "Skipping $_k — value contains newlines (not supported in .env)"
       continue
     fi
-    printf '%s=%s\n' "$_k" "$_v" >> "$RUNTIME_PAYLOAD"
+    printf '%s=%s\n' "$_k" "$(env_file_quote "$_v")" >> "$RUNTIME_PAYLOAD"
     RUNTIME_COUNT=$((RUNTIME_COUNT + 1))
     RUNTIME_KEYS+=("$_k")
   done

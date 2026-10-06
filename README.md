@@ -171,7 +171,7 @@ and configures the source's follower to push its catalog to the receiver. From t
 the unified `/api/media` listing, with thumbnails proxied on demand and byte streams pushed over WebSocket-controlled
 HTTP.
 
-Either side can also pre-seed pairing through env (`FOLLOWER_MASTER_URL`, `FOLLOWER_API_KEY`, `RECEIVER_API_KEYS`). The
+Either side can also pre-seed pairing through env (`FOLLOWER_MASTER_URL`, `FOLLOWER_API_KEY`, `RECEIVER_API_KEY`). The
 source makes only outbound connections; no inbound port needs opening on it.
 
 ---
@@ -210,7 +210,7 @@ the most common cause of "admin login fails" reports. `setup.sh` quotes automati
 |--------------------------------------------------------------------------------------------------------------|---------------|--------------------------------------------------------------------------|
 | `AUTH_ALLOW_REGISTRATION`                                                                                    | `true`        | Public self-registration                                                 |
 | `AUTH_ALLOW_GUESTS`                                                                                          | `true`        | Anonymous browsing without login                                         |
-| `RECEIVER_ENABLED` / `RECEIVER_API_KEYS`                                                                     | off           | Accept federated peers (slave catalog ingest)                            |
+| `FEATURE_RECEIVER` / `RECEIVER_API_KEY`                                                                      | off           | Accept federated peers (slave catalog ingest)                            |
 | `FOLLOWER_MASTER_URL` / `FOLLOWER_API_KEY`                                                                   | off           | This server pushes its catalog to a peer                                 |
 | `FEATURE_HUGGINGFACE` / `HUGGINGFACE_API_KEY`                                                                | off           | Visual mature-content classifier                                         |
 | `FEATURE_HUB` / `HUB_SOURCE_URL` / `HUB_AUTO_IMPORT`                                                          | off           | BETA external-embed catalog; auto-fetch + import a zipped CSV on boot     |

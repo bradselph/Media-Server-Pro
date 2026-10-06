@@ -274,3 +274,28 @@ describe('useDirectPlayRecovery', () => {
         expect(api.handleError()).toBe(false) // not direct play any more
     })
 })
+
+describe('useDirectPlayRecovery stall watchdog', () => {
+    beforeEach(() => {
+        vi.useFakeTimers()
+    })
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    // Chrome fires 'stalled' every few seconds for a healthy HLS/MSE stream
+    // (it only means a network fetch went quiet), so it must never start the
+    // reload watchdog on its own.
+    it('ignores the browser\'s stalled event', async () => {
+        const {el, probe} = setup([{kind: 'ok'}])
+        playThenFail(el, 30, 2)
+        el.error = null
+        el.readyState = 2
+        for (let i = 0; i < 20; i++) {
+            el.dispatchEvent(new Event('stalled'))
+            await vi.advanceTimersByTimeAsync(3000)
+        }
+        expect(probe).not.toHaveBeenCalled()
+        expect(el.load).not.toHaveBeenCalled()
+    })
+})

@@ -54,6 +54,15 @@ The registry covers every environment variable the server reads;
 `internal/config/knob_registry_test.go` fails the build if a new server env
 var ships without a knob (or a runtime knob stops being read).
 
+**Input checking.** The prompter rejects a mistyped value for a true/false
+knob or a whole-number knob and asks again (`yes`/`no`/`on`/`off`/`1`/`0`
+are accepted and stored as `true`/`false`). Values with spaces, `#`, quotes
+or brackets are quoted automatically in `.deploy.env`, which `deploy.sh`
+loads as shell — a bare one would break every later deploy or run part of
+the value as a command. If the file is ever unloadable (a hand edit),
+`deploy.sh` names the line and the knob instead of failing with a parse
+error; `./deploy-configure.sh --only KEY` re-enters it.
+
 ### How runtime knobs take effect
 
 The server stores its settings in `$DEPLOY_DIR/config.json`. Two kinds of
@@ -138,10 +147,11 @@ Build-time (baked into the Nuxt bundle by `deploy.sh`):
 - `NUXT_PUBLIC_BUILD_ID` — free-form bundle tag
 - `NUXT_PUBLIC_API_BASE` — override API base URL (empty = same-origin)
 
-**Always single-quote secrets** in `.env` — unquoted values containing `#`,
-`$`, embedded whitespace, or special chars are silently mangled by the
-env-file parser, which is the most common cause of "admin login fails"
-reports.
+Values forwarded by `deploy.sh` are quoted for the `.env` parsers
+automatically. **When editing `$DEPLOY_DIR/.env` by hand, single-quote any
+value containing `#`, whitespace, quotes or a backslash** — bare, it is
+trimmed or cut at ` #` by the env-file parser, which is the most common cause
+of "admin login fails" reports.
 
 ## HiDrive (WebDAV) cold-tier mount
 
@@ -237,7 +247,7 @@ snapshot before upgrading across major versions.
 
 ## Security checklist
 
-- [ ] All secrets (`DATABASE_PASSWORD`, `ADMIN_PASSWORD`, `RECEIVER_API_KEYS`,
+- [ ] All secrets (`DATABASE_PASSWORD`, `ADMIN_PASSWORD`, `RECEIVER_API_KEY`,
   `HUGGINGFACE_API_KEY`) are strong unique values.
 - [ ] `SERVER_HOST=127.0.0.1` when running behind a reverse proxy.
 - [ ] `AUTH_ALLOW_REGISTRATION=false` unless you intend an open community.

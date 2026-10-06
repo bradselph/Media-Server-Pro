@@ -39,3 +39,31 @@ export const HLS_TUNING_CONFIG: Partial<import('hls.js').HlsConfig> = {
     startFragPrefetch: true,
     testBandwidth: true,
 }
+
+/**
+ * Buffer caps for phones and tablets. hls.js derives its forward-buffer
+ * target from maxBufferSize / bitrate, so the desktop 200MB cap means up to
+ * the full 600s on a 2-3 Mbps mobile rendition — several times what mobile
+ * browsers allow a SourceBuffer to hold (tens of MB) and a lot of data to
+ * pull on a metered connection. hls.js does recover from the resulting
+ * QuotaExceededErrors, but each one aborts an append and shrinks the target
+ * on the fly; staying under the quota keeps playback steady instead.
+ * 45–120s of lookahead is still far more than a stall needs.
+ */
+export const HLS_MOBILE_OVERRIDES: Partial<import('hls.js').HlsConfig> = {
+    backBufferLength: 20,
+    maxBufferLength: 45,
+    maxMaxBufferLength: 120,
+    maxBufferSize: 40 * 1000 * 1000,
+}
+
+/** Touch-first device (phone/tablet) — the same probe the share sheet uses. */
+export function isCoarsePointerDevice(): boolean {
+    return typeof globalThis.matchMedia === 'function'
+        && globalThis.matchMedia('(pointer: coarse)').matches
+}
+
+/** The tuning to construct an `Hls` instance with on this device. */
+export function hlsTuningForDevice(coarsePointer: boolean = isCoarsePointerDevice()): Partial<import('hls.js').HlsConfig> {
+    return coarsePointer ? {...HLS_TUNING_CONFIG, ...HLS_MOBILE_OVERRIDES} : {...HLS_TUNING_CONFIG}
+}

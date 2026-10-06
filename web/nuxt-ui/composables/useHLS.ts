@@ -8,7 +8,7 @@
  */
 
 import type {Ref} from 'vue'
-import {HLS_TUNING_CONFIG} from '~/utils/hlsConfig'
+import {hlsTuningForDevice} from '~/utils/hlsConfig'
 
 export interface HLSQuality {
     index: number
@@ -25,6 +25,14 @@ export interface UseHLSReturn {
     hlsAvailable: Ref<boolean>
     /** Whether HLS has been activated (hls.js is attached to the video element). */
     hlsActivated: Ref<boolean>
+    /**
+     * True from a media change until the availability check has decided
+     * whether HLS takes over (bounded by HLS_DECIDE_TIMEOUT_MS). The player
+     * holds the direct <video src> back while this is set, so an item with
+     * HLS never starts a direct download that is thrown away a moment later —
+     * and never plays, stops and restarts as the source is swapped.
+     */
+    hlsDeciding: Ref<boolean>
     /** The master playlist URL when available. */
     hlsUrl: Ref<string | null>
     /** Whether HLS is currently loading/initializing. */
@@ -160,6 +168,9 @@ export function resolveTerminalHlsError(status: string, error?: string | null): 
     return null
 }
 
+/** Longest the direct source is held back waiting for the HLS availability check. */
+export const HLS_DECIDE_TIMEOUT_MS = 1500
+
 const FAST_POLL_INTERVAL_MS = 3000
 const SLOW_POLL_INTERVAL_MS = 60 * 1000
 const FAST_POLL_WINDOW_MS = 30 * 60 * 1000 // 30 minutes of fast (3s) polling
@@ -184,13 +195,43 @@ export function pollPhaseFor(elapsedMs: number): PollPhase {
 export function useHLS(
     videoRef: Ref<HTMLVideoElement | null>,
     mediaId: Ref<string>,
-    opts?: { defaultQuality?: () => string | null | undefined },
+    opts?: {
+        defaultQuality?: () => string | null | undefined
+        /**
+         * The browser refused the play() that resumes playback after a source
+         * swap (direct <-> HLS) — mobile browsers only allow unmuted playback
+         * started by a tap. The caller decides how to recover (e.g. resume
+         * muted with a tap-to-unmute prompt); without it the video just stays
+         * paused.
+         */
+        onPlayRefused?: (el: HTMLMediaElement) => void
+    },
 ): UseHLSReturn {
     const hlsApi = useHlsApi()
     const settingsApi = useSettingsApi()
 
     const hlsAvailable = ref(false)
     const hlsActivated = ref(false)
+    const hlsDeciding = ref(false)
+    let decideTimer: ReturnType<typeof setTimeout> | null = null
+
+    function startDeciding() {
+        hlsDeciding.value = true
+        if (decideTimer) clearTimeout(decideTimer)
+        // A slow or hung check must not hold direct playback hostage.
+        decideTimer = setTimeout(() => {
+            decideTimer = null
+            hlsDeciding.value = false
+        }, HLS_DECIDE_TIMEOUT_MS)
+    }
+
+    function doneDeciding() {
+        if (decideTimer) {
+            clearTimeout(decideTimer)
+            decideTimer = null
+        }
+        hlsDeciding.value = false
+    }
     const hlsUrl = ref<string | null>(null)
     const hlsLoading = ref(false)
     const hlsError = ref<string | null>(null)
@@ -232,6 +273,7 @@ export function useHLS(
             clearTimeout(networkRetryTimer)
             networkRetryTimer = null
         }
+        doneDeciding()
         if (hlsInstance) {
             hlsInstance.destroy()
             hlsInstance = null
@@ -286,7 +328,11 @@ export function useHLS(
                 target.removeEventListener('loadedmetadata', resume)
                 if (gen !== activationGen) return
                 target.currentTime = state.time
-                if (state.wasPlaying) target.play().catch(() => {})
+                if (state.wasPlaying) {
+                    target.play().catch((e: unknown) => {
+                        if (e instanceof DOMException && e.name === 'NotAllowedError') opts?.onPlayRefused?.(target)
+                    })
+                }
             }
             target.addEventListener('loadedmetadata', resume, {once: true})
         }
@@ -345,7 +391,7 @@ export function useHLS(
 
         // Buffer/retry tuning is shared with useHubProxyPlayback.ts's hls.js
         // instance (see utils/hlsConfig.ts) so the two players can't drift apart.
-        const hls = new Hls({...HLS_TUNING_CONFIG})
+        const hls = new Hls(hlsTuningForDevice())
 
         hlsInstance = hls
 
@@ -659,7 +705,13 @@ export function useHLS(
                 hlsAvailable.value = true
                 hlsUrl.value = hlsApi.getMasterPlaylistUrl(id)
                 await autoActivateIfEnabled(thisCheck)
-            } else if (status.status === 'running' || status.status === 'pending') {
+                // Decided only now: if HLS took over, hlsActivated is already
+                // set, so releasing the direct source can't start a download.
+                if (thisCheck === checkGen) doneDeciding()
+                return
+            }
+            if (thisCheck === checkGen) doneDeciding()
+            if (status.status === 'running' || status.status === 'pending') {
                 jobRunning.value = true
                 jobProgress.value = status.progress
 
@@ -681,6 +733,7 @@ export function useHLS(
         } catch (err) {
             if (thisCheck !== checkGen) return
             // HLS not available or check failed — fall back to direct streaming
+            doneDeciding()
             console.warn('[hls] check failed:', err)
         }
     }
@@ -710,6 +763,8 @@ export function useHLS(
 
         if (!id) return
 
+        // Hold the direct source back until runCheck has decided.
+        startDeciding()
         checkDebounce = setTimeout(() => {
             checkDebounce = null
             runCheck(id)
@@ -730,6 +785,7 @@ export function useHLS(
     return {
         hlsAvailable,
         hlsActivated,
+        hlsDeciding,
         recheck,
         hlsUrl,
         hlsLoading,
